@@ -21,6 +21,7 @@ class User(db.Model):
     created_date = db.Column(db.DateTime, default=func.now(), nullable=False)
     client_id = db.Column(db.Integer, db.ForeignKey('clients.id'))
     client = db.relationship("Client", backref=db.backref("clients", uselist=True))
+    admin = db.Column(db.Boolean, default=False, nullable=False)
 
     def __init__(self, username, email, password):
         self.username = username
@@ -34,7 +35,8 @@ class User(db.Model):
             'id': self.id,
             'username': self.username,
             'email': self.email,
-            'active': self.active
+            'active': self.active,
+            'admin': self.admin  # new
         }
 
     def encode_auth_token(self, user_id):

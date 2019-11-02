@@ -5,6 +5,14 @@ services:
 
 env:
   DOCKER_COMPOSE_VERSION: 1.23.2
+  # new
+  COMMIT: ${TRAVIS_COMMIT::8}
+  MAIN_REPO: https://github.com/ravi-xo/wareiq-app.git
+  USERS: wareiq-users
+  USERS_REPO: ${MAIN_REPO}#${TRAVIS_BRANCH}:services/users
+  USERS_DB: wareiq-users_db
+  USERS_DB_REPO: ${MAIN_REPO}#${TRAVIS_BRANCH}:services/users/project/db
+  SECRET_KEY: my_precious
 
 before_install:
   - sudo rm /usr/local/bin/docker-compose
@@ -13,4 +21,7 @@ before_install:
   - sudo mv docker-compose /usr/local/bin
 
 script:
-  - bash test.sh
+  - bash test.sh stage
+
+after_success:
+  - bash ./docker-push.sh

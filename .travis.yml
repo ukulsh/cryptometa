@@ -12,11 +12,5 @@ before_install:
   - chmod +x docker-compose
   - sudo mv docker-compose /usr/local/bin
 
-before_script:
-  - docker-compose up -d --build
-
 script:
-  - docker-compose exec users python manage.py test
-
-after_script:
-  - docker-compose down
+  - bash test.sh

@@ -36,3 +36,32 @@ services:
       - 80:80
     depends_on:
       - users
+
+  core:
+    build:
+      context: ./services/core
+      dockerfile: Dockerfile
+    volumes:
+      - './services/core:/usr/src/app'
+    ports:
+      - 5002:5000
+    environment:
+      - FLASK_ENV=production
+      - APP_SETTINGS=project.config.ProductionConfig
+      - USERS_SERVICE_URL=http://users:5000
+      - SECRET_KEY=my_precious
+      - DATABASE_URL=postgres://postgres:postgres@core-db:5432/core_dev  # new
+      - DATABASE_TEST_URL=postgres://postgres:postgres@core-db:5432/core_test  # new
+    depends_on:
+      - users
+      - core-db  # new
+
+  core-db:
+    build:
+      context: ./services/core/project/db
+      dockerfile: Dockerfile
+    ports:
+      - 5437:5432
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres

@@ -13,9 +13,9 @@ env:
   USERS_DB: wareiq-users_db
   USERS_DB_REPO: ${MAIN_REPO}#${TRAVIS_BRANCH}:services/users/project/db
   CORE: wareiq-core
-  EXERCISES_REPO: ${MAIN_REPO}#${TRAVIS_BRANCH}:services/core
-  EXERCISES_DB: wareiq-core_db
-  EXERCISES_DB_REPO: ${MAIN_REPO}#${TRAVIS_BRANCH}:services/core/project/db
+  CORE_REPO: ${MAIN_REPO}#${TRAVIS_BRANCH}:services/core
+  CORE_DB: wareiq-core_db
+  CORE_DB_REPO: ${MAIN_REPO}#${TRAVIS_BRANCH}:services/core/project/db
   SECRET_KEY: my_precious
 
 before_install:

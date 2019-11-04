@@ -40,11 +40,11 @@ services:
   core:
     build:
       context: ./services/core
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile-prod
     volumes:
       - './services/core:/usr/src/app'
-    ports:
-      - 5002:5000
+    expose:
+      - 5000
     environment:
       - FLASK_ENV=production
       - APP_SETTINGS=project.config.ProductionConfig

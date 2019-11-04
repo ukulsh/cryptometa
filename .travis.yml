@@ -5,7 +5,6 @@ services:
 
 env:
   DOCKER_COMPOSE_VERSION: 1.23.2
-  # new
   COMMIT: ${TRAVIS_COMMIT::8}
   MAIN_REPO: https://github.com/ravi-xo/wareiq-app.git
   USERS: wareiq-users

@@ -20,8 +20,7 @@
       <change afterPath="$PROJECT_DIR$/services/users/project/tests/test_user_model.py" afterDir="false" />
       <change afterPath="$PROJECT_DIR$/services/users/project/tests/test_users.py" afterDir="false" />
       <change afterPath="$PROJECT_DIR$/services/users/project/tests/utils.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/docker-compose-prod.yml" beforeDir="false" afterPath="$PROJECT_DIR$/docker-compose-prod.yml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/services/nginx/dev.conf" beforeDir="false" afterPath="$PROJECT_DIR$/services/nginx/dev.conf" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/services/nginx/prod.conf" beforeDir="false" afterPath="$PROJECT_DIR$/services/nginx/prod.conf" afterDir="false" />
     </list>
     <option name="EXCLUDED_CONVERTED_TO_IGNORED" value="true" />
     <option name="SHOW_DIALOG" value="false" />
@@ -69,7 +68,7 @@
       <usages-collector id="statistics.file.extensions.edit">
         <counts>
           <entry key="Dockerfile-prod" value="1" />
-          <entry key="conf" value="38" />
+          <entry key="conf" value="40" />
           <entry key="md" value="34" />
           <entry key="py" value="631" />
           <entry key="sh" value="10" />
@@ -81,7 +80,7 @@
       <usages-collector id="statistics.file.types.edit">
         <counts>
           <entry key="Markdown" value="34" />
-          <entry key="PLAIN_TEXT" value="56" />
+          <entry key="PLAIN_TEXT" value="58" />
           <entry key="Python" value="631" />
           <entry key="SQL" value="22" />
           <entry key="YAML" value="247" />
@@ -100,20 +99,20 @@
           </provider>
         </entry>
       </file>
-      <file pinned="false" current-in-tab="false">
+      <file pinned="false" current-in-tab="true">
         <entry file="file://$PROJECT_DIR$/services/nginx/prod.conf">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="240">
-              <caret line="16" column="16" selection-start-line="16" selection-start-column="12" selection-end-line="16" selection-end-column="16" />
+            <state relative-caret-position="551">
+              <caret line="61" column="52" selection-start-line="61" selection-start-column="52" selection-end-line="61" selection-end-column="52" />
             </state>
           </provider>
         </entry>
       </file>
-      <file pinned="false" current-in-tab="true">
+      <file pinned="false" current-in-tab="false">
         <entry file="file://$PROJECT_DIR$/services/nginx/dev.conf">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="401">
-              <caret line="52" column="18" selection-start-line="52" selection-start-column="18" selection-end-line="52" selection-end-column="18" />
+            <state relative-caret-position="11">
+              <caret line="28" column="2" selection-start-line="28" selection-start-column="2" selection-end-line="61" selection-end-column="52" />
             </state>
           </provider>
         </entry>
@@ -229,7 +228,6 @@
         <option value="$PROJECT_DIR$/services/swagger/nginx.conf" />
         <option value="$PROJECT_DIR$/services/swagger/start.sh" />
         <option value="$PROJECT_DIR$/services/swagger/swagger.json" />
-        <option value="$PROJECT_DIR$/services/nginx/prod.conf" />
         <option value="$PROJECT_DIR$/README.md" />
         <option value="$PROJECT_DIR$/test-ci.sh" />
         <option value="$PROJECT_DIR$/docker-push.sh" />
@@ -247,6 +245,7 @@
         <option value="$PROJECT_DIR$/services/core/Dockerfile-prod" />
         <option value="$PROJECT_DIR$/docker-compose-prod.yml" />
         <option value="$PROJECT_DIR$/services/nginx/dev.conf" />
+        <option value="$PROJECT_DIR$/services/nginx/prod.conf" />
       </list>
     </option>
   </component>
@@ -759,17 +758,17 @@
         </state>
       </provider>
     </entry>
-    <entry file="file://$PROJECT_DIR$/services/nginx/prod.conf">
+    <entry file="file://$PROJECT_DIR$/services/nginx/dev.conf">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="240">
-          <caret line="16" column="16" selection-start-line="16" selection-start-column="12" selection-end-line="16" selection-end-column="16" />
+        <state relative-caret-position="11">
+          <caret line="28" column="2" selection-start-line="28" selection-start-column="2" selection-end-line="61" selection-end-column="52" />
         </state>
       </provider>
     </entry>
-    <entry file="file://$PROJECT_DIR$/services/nginx/dev.conf">
+    <entry file="file://$PROJECT_DIR$/services/nginx/prod.conf">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="401">
-          <caret line="52" column="18" selection-start-line="52" selection-start-column="18" selection-end-line="52" selection-end-column="18" />
+        <state relative-caret-position="551">
+          <caret line="61" column="52" selection-start-line="61" selection-start-column="52" selection-end-line="61" selection-end-column="52" />
         </state>
       </provider>
     </entry>

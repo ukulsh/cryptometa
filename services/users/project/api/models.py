@@ -21,6 +21,10 @@ class User(db.Model):
     created_date = db.Column(db.DateTime, default=func.now(), nullable=False)
     client_id = db.Column(db.Integer, db.ForeignKey('clients.id'))
     client = db.relationship("Client", backref=db.backref("clients", uselist=True))
+    warehouse_id = db.Column(db.Integer, db.ForeignKey('warehouses.id'))
+    warehouse = db.relationship("Warehouse", backref=db.backref("warehouses", uselist=True))
+    group_id = db.Column(db.Integer, db.ForeignKey('usergroups.id'))
+    group = db.relationship("UserGroups", backref=db.backref("usergroups", uselist=True))
     admin = db.Column(db.Boolean, default=False, nullable=False)
 
     def __init__(self, username, email, password):
@@ -36,7 +40,10 @@ class User(db.Model):
             'username': self.username,
             'email': self.email,
             'active': self.active,
-            'admin': self.admin  # new
+            'admin': self.admin,
+            'user_group': self.group.group,
+            'client_prefix': self.client.client_prefix,
+            'warehouse_prefix': self.warehouse.warehouse_prefix,
         }
 
     def encode_auth_token(self, user_id):
@@ -73,10 +80,9 @@ class User(db.Model):
         except jwt.InvalidTokenError:
             return 'Invalid token. Please log in again.'
 
+
 class Client(db.Model):
-
     __tablename__ = 'clients'
-
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     client_name = db.Column(db.String(128), unique=True, nullable=False)
     client_prefix = db.Column(db.String(32), unique=True, nullable=False)
@@ -92,3 +98,31 @@ class Client(db.Model):
             'client_name': self.client_name,
             'primary_email': self.primary_email
         }
+
+
+class Warehouse(db.Model):
+    __tablename__ = 'warehouses'
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    warehouse_name = db.Column(db.String(128), unique=True, nullable=False)
+    warehouse_prefix = db.Column(db.String(32), unique=True, nullable=False)
+    primary_email = db.Column(db.String(128), unique=True, nullable=False)
+
+    def __init__(self, warehouse_name, primary_email):
+        self.warehouse_name = warehouse_name
+        self.primary_email = primary_email
+
+    def to_json(self):
+        return {
+            'id': self.id,
+            'warehouse_name': self.warehouse_name,
+            'primary_email': self.primary_email
+        }
+
+
+class UserGroups(db.Model):
+    __tablename__ = 'usergroups'
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    group = db.Column(db.String(128), unique=True, nullable=False)
+
+    def __init__(self, group):
+        self.group = group

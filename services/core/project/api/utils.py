@@ -66,3 +66,24 @@ def ensure_authenticated(token):
         return data
     else:
         return False
+
+
+def get_products_sort_func(Products, ProductsQuantity, sort, sort_by):
+    if sort_by == 'product_name':
+        x = Products.name
+    elif sort_by == 'price':
+        x = Products.price
+    elif sort_by == 'master_sku':
+        x = Products.sku
+    elif sort_by == 'total_quantity':
+        x = ProductsQuantity.approved_quantity
+    elif sort_by == 'weight':
+        x = Products.weight
+    else:
+        x = ProductsQuantity.available_quantity
+
+    if sort.lower() == 'desc':
+        x = x.desc
+    else:
+        x = x.asc
+    return x

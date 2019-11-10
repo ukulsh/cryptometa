@@ -27,8 +27,11 @@ class ProductList(Resource):
         sort_by = data.get('sort_by', 'available_quantity')
         search_key = data.get('search_key', '')
         search_key = '%{}%'.format(search_key)
-        if resp.get('user_group') == 'super-admin' or 'client':
-            client_prefix = resp['client_prefix']
+        auth_data = resp.get('data')
+        if not auth_data:
+            return {"success": False, "msg": "Auth Failed"}, 404
+        if auth_data.get('user_group') == 'super-admin' or 'client':
+            client_prefix = auth_data.get('client_prefix')
             sort_func = get_products_sort_func(Products, ProductQuantity, sort, sort_by)
             products_qs = db.session.query(Products, ProductQuantity)\
                 .filter(Products.client_prefix==client_prefix)\

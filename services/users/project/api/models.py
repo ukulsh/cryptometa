@@ -42,8 +42,8 @@ class User(db.Model):
             'active': self.active,
             'admin': self.admin,
             'user_group': self.group.group,
-            'client_prefix': self.client.client_prefix,
-            'warehouse_prefix': self.warehouse.warehouse_prefix,
+            'client_prefix': self.client.client_prefix if self.client else None,
+            'warehouse_prefix': self.warehouse.warehouse_prefix if self.client else None,
         }
 
     def encode_auth_token(self, user_id):

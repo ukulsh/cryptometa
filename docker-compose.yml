@@ -13,7 +13,7 @@ services:
     environment:
       - FLASK_ENV=development
       - APP_SETTINGS=project.config.DevelopmentConfig
-      - DATABASE_URL=postgres://postgres:postgres@users-db:5432/users_dev  # new
+      - DATABASE_URL=postgres://postgres:Kad97711@wareiq-users-prod.cvqssxsqruyc.us-east-1.rds.amazonaws.com:5432/users_prod  # new
       - DATABASE_TEST_URL=postgres://postgres:postgres@users-db:5432/users_test
       - SECRET_KEY=my_precious
     depends_on:  # new
@@ -52,7 +52,7 @@ services:
       - APP_SETTINGS=project.config.DevelopmentConfig
       - USERS_SERVICE_URL=http://users:5000
       - SECRET_KEY=my_precious
-      - DATABASE_URL=postgres://postgres:postgres@core-db:5432/core_dev  # new
+      - DATABASE_URL=postgres://postgres:Kad97711@wareiq-users-prod.cvqssxsqruyc.us-east-1.rds.amazonaws.com:5432/users_prod  # new
       - DATABASE_TEST_URL=postgres://postgres:postgres@core-db:5432/core_test  # new
     depends_on:
       - users

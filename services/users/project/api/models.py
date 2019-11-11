@@ -17,6 +17,8 @@ class User(db.Model):
     username = db.Column(db.String(128), unique=True, nullable=False)  # new
     email = db.Column(db.String(128), unique=True, nullable=False)
     password = db.Column(db.String(255), nullable=False)   # new
+    first_name = db.Column(db.String(255), nullable=True)   # new
+    last_name = db.Column(db.String(255), nullable=True)   # new
     active = db.Column(db.Boolean(), default=True, nullable=False)
     created_date = db.Column(db.DateTime, default=func.now(), nullable=False)
     client_id = db.Column(db.Integer, db.ForeignKey('clients.id'))
@@ -38,6 +40,8 @@ class User(db.Model):
         return {
             'id': self.id,
             'username': self.username,
+            'first_name': self.first_name,
+            'last_name': self.last_name,
             'email': self.email,
             'active': self.active,
             'admin': self.admin,

@@ -87,3 +87,18 @@ def get_products_sort_func(Products, ProductsQuantity, sort, sort_by):
     else:
         x = x.asc
     return x
+
+
+def get_orders_sort_func(Orders, sort, sort_by):
+    if sort_by == 'order_id':
+        x = Orders.channel_order_id
+    elif sort_by == 'status':
+        x = Orders.status
+    else:
+        x = Orders.order_date
+
+    if sort.lower() == 'asc':
+        x = x.asc
+    else:
+        x = x.desc
+    return x

@@ -1,14 +1,15 @@
 # services/core/project/api/core.py
 
 import requests, json, math, datetime
-from sqlalchemy import or_
+from sqlalchemy import or_, func
 from flask import Blueprint, request, jsonify
 from flask_restful import Resource, Api
+from collections import OrderedDict
 
 from project import db
 from project.api.models import Products, ProductQuantity, \
     Orders, OrdersPayments, PickupPoints, MasterChannels, \
-    MasterCouriers, Shipments
+    MasterCouriers, Shipments, OPAssociation
 from project.api.utils import authenticate_restful, get_products_sort_func, get_orders_sort_func
 
 
@@ -94,6 +95,7 @@ class OrderList(Resource):
         sort = data.get('sort', 'desc')
         sort_by = data.get('sort_by', 'order_date')
         search_key = data.get('search_key', '')
+        filters = data.get('filters', {})
         search_key = '%{}%'.format(search_key)
         auth_data = resp.get('data')
         if not auth_data:
@@ -116,6 +118,18 @@ class OrderList(Resource):
             else:
                 return {"success": False, "msg": "Invalid URL"}, 404
 
+            if filters:
+                if 'status' in filters:
+                    orders_qs = orders_qs.filter(Orders.status.in_(filters['status']))
+                if 'courier' in filters:
+                    orders_qs = orders_qs.join(Shipments, Orders.id==Shipments.order_id)\
+                        .join(MasterCouriers, MasterCouriers.id==Shipments.courier_id)\
+                        .filter(MasterCouriers.courier_name.in_(filters['courier']))
+                if 'order_date' in filters:
+                    filter_date = datetime.datetime.strptime(filters['order_date'], "%d/%m/%Y")
+                    filter_next_date = filter_date + datetime.timedelta(days=1)
+                    orders_qs = orders_qs.filter(Orders.order_date >= filter_date).filter(Orders.order_date <= filter_next_date)
+
             orders_qs_data = orders_qs.limit(per_page).offset((page-1)*per_page).all()
             response_data = list()
             for order in orders_qs_data:
@@ -130,8 +144,9 @@ class OrderList(Resource):
                 resp_obj['product_details'] = list()
                 for prod in order.products:
                     resp_obj['product_details'].append(
-                        {"name": prod.name,
-                         "sku": prod.sku}
+                        {"name": prod.product.name,
+                         "sku": prod.product.sku,
+                         "quantity": prod.quantity}
                     )
 
                 resp_obj['shipping_details'] = dict()
@@ -159,6 +174,47 @@ class OrderList(Resource):
 api.add_resource(OrderList, '/orders/<type>')
 
 
+@core_blueprint.route('/dashboard', methods=['GET'])
+@authenticate_restful
+def get_dashboard(resp):
+    response = dict()
+    auth_data = resp.get('data')
+    client_prefix = auth_data.get('client_prefix')
+    qs_data = db.session.query(func.date_trunc('day', Orders.order_date).label('date'), func.count(Orders.id), func.sum(OrdersPayments.amount))\
+        .join(OrdersPayments, Orders.id==OrdersPayments.order_id)\
+        .filter(Orders.order_date >= datetime.datetime.today()- datetime.timedelta(days=30))\
+        .filter(Orders.client_prefix == client_prefix)\
+        .group_by('date').order_by('date').all()
+
+    response['today'] = {"orders": qs_data[-1][1], "revenue": qs_data[-1][2]}
+    response['yesterday'] = {"orders": qs_data[-2][1], "revenue": qs_data[-2][2]}
+    response['graph_data'] = list()
+
+    for dat_obj in qs_data:
+        response['graph_data'].append({"date":datetime.datetime.strftime(dat_obj[0], '%d-%m-%Y'),
+                                       "orders":dat_obj[1],
+                                       "revenue":dat_obj[2]})
+
+    return jsonify(response), 200
+
+
+@core_blueprint.route('/orders/get_filters', methods=['GET'])
+@authenticate_restful
+def get_orders_filters(resp):
+    response = {"filters":{}, "success": True}
+    auth_data = resp.get('data')
+    client_prefix = auth_data.get('client_prefix')
+    status_qs = db.session.query(Orders.status.distinct().label('status')) \
+        .filter(Orders.client_prefix == client_prefix).order_by(Orders.status).all()
+    response['filters']['status'] = [x.status for x in status_qs]
+    courier_qs = db.session.query(MasterCouriers.courier_name.distinct().label('courier')) \
+        .join(Shipments, MasterCouriers.id == Shipments.courier_id).join(Orders, Orders.id == Shipments.order_id) \
+        .filter(Orders.client_prefix == client_prefix).order_by(MasterCouriers.courier_name).all()
+    response['filters']['courier'] = [x.courier for x in courier_qs]
+
+    return jsonify(response), 200
+
+
 @core_blueprint.route('/core/ping', methods=['GET'])
 @authenticate_restful
 def ping_pong():
@@ -172,9 +228,10 @@ def ping_pong():
 def ping_dev():
     shiprocket_token = """Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOjI0NzIyNiwiaXNzIjoiaHR0cHM6Ly9hcGl2Mi5zaGlwcm9ja2V0LmluL3YxL2V4dGVybmFsL2F1dGgvbG9naW4iLCJpYXQiOjE1NzMzNTIzMTYsImV4cCI6MTU3NDIxNjMxNiwibmJmIjoxNTczMzUyMzE2LCJqdGkiOiJmclBCRHZNYnVUZEEwanZOIn0.Gqax7B1zPWoM34yKkUz2Oa7vIvja7D6Z-C8NsyNIIE4"""
 
-    url = "https://apiv2.shiprocket.in/v1/external/orders?per_page=1000&page=2"
+    url = "https://apiv2.shiprocket.in/v1/external/orders?per_page=100&page=1"
     headers = {'Authorization': shiprocket_token}
     response = requests.get(url, headers=headers)
+
 
     data = response.json()['data']
 
@@ -187,24 +244,9 @@ def ping_dev():
                 shipment_dimensions['height'] = float(point['shipments'][0]['dimensions'].split('x')[2])
             except Exception:
                 pass
-            shipment = Shipments(
-                awb=point['shipments'][0]['awb'],
-                weight=float(point['shipments'][0]['weight']),
-                volumetric_weight=point['shipments'][0]['volumetric_weight'],
-                dimensions=shipment_dimensions,
-            )
-            courier = db.session.query(MasterCouriers).filter(MasterCouriers.courier_name==point['shipments'][0]['courier']).first()
-            shipment.courier = courier
-
-            payment = OrdersPayments(
-                payment_mode=point['payment_method'],
-                amount=float(point['total']),
-                currency='INR',
-            )
-
             order_date = datetime.datetime.strptime(point['created_at'], '%d %b %Y, %I:%M %p')
-
             url_specific_order = "https://apiv2.shiprocket.in/v1/external/orders/show/%s"%(str(point['id']))
+
             order_spec = requests.get(url_specific_order, headers=headers).json()['data']
             delivery_address = {
                 "address": order_spec["customer_address"],
@@ -213,7 +255,8 @@ def ping_dev():
                 "state": order_spec["customer_state"],
                 "country": order_spec["customer_country"],
                 "pincode": int(order_spec["customer_pincode"]),
-                                }
+            }
+
             new_order = Orders(
                 channel_order_id=point['channel_order_id'],
                 order_date=order_date,
@@ -221,13 +264,29 @@ def ping_dev():
                 customer_email=point['customer_email'],
                 customer_phone=point['customer_phone'],
                 status=point['status'],
-                shipments=[shipment],
-                payment=[payment],
                 delivery_address=delivery_address,
-                               )
+                client_prefix='MIRAKKI',
+            )
+            shipment = Shipments(
+                awb=point['shipments'][0]['awb'],
+                weight=float(point['shipments'][0]['weight']),
+                volumetric_weight=point['shipments'][0]['volumetric_weight'],
+                dimensions=shipment_dimensions,
+                order=new_order,
+            )
+            courier = db.session.query(MasterCouriers).filter(MasterCouriers.courier_name==point['shipments'][0]['courier']).first()
+            shipment.courier = courier
+
+            payment = OrdersPayments(
+                payment_mode=point['payment_method'],
+                amount=float(point['total']),
+                currency='INR',
+                order=new_order
+            )
             for prod in point['products']:
                 prod_obj = db.session.query(Products).filter(Products.sku==prod['channel_sku']).first()
-                new_order.products.append(prod_obj)
+                op_association = OPAssociation(order=new_order, product=prod_obj, quantity=prod['quantity'])
+                new_order.products.append(op_association)
 
             db.session.add(new_order)
             db.session.commit()

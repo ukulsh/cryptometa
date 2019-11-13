@@ -78,11 +78,14 @@ class PickupPoints(db.Model):
     warehouse_prefix = db.Column(db.String, nullable=True)
 
 
-op_association = db.Table('op_association', db.Model.metadata,
-    db.Column('order_id', db.Integer, db.ForeignKey('orders.id')),
-    db.Column('product_id', db.Integer, db.ForeignKey('products.id')),
-    db.Column('quantity', db.Integer)
-)
+class OPAssociation(db.Model):
+    __tablename__ = 'op_association'
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    order_id = db.Column('order_id', db.Integer, db.ForeignKey('orders.id'))
+    product_id = db.Column('product_id', db.Integer, db.ForeignKey('products.id'))
+    quantity = db.Column(db.Integer)
+    order = db.relationship("Orders")
+    product = db.relationship("Products")
 
 
 class Orders(db.Model):
@@ -94,11 +97,12 @@ class Orders(db.Model):
     customer_email = db.Column(db.String, nullable=True)
     customer_phone = db.Column(db.String, nullable=False)
     status = db.Column(db.String, nullable=False)
-    products = db.relationship("Products", secondary=op_association)
+    products = db.relationship("OPAssociation", backref="orders", primaryjoin=id == OPAssociation.order_id)
     delivery_address = db.Column(JSON)
     client_prefix = db.Column(db.String, nullable=True)
     date_created = db.Column(db.DateTime, default=datetime.now)
     date_updated = db.Column(db.DateTime, onupdate=datetime.now)
+    __table_args__ = (db.UniqueConstraint('channel_order_id', 'client_prefix', name='orders_uc'),)
 
 
 class OrdersPayments(db.Model):

@@ -699,7 +699,6 @@ def ping_pong(resp):
 
 @core_blueprint.route('/core/dev', methods=['GET'])
 def ping_dev():
-
     shopify_url = "https://dc8ae0b7f5c1c6558f551d81e1352bcd:00dfeaf8f77b199597e360aa4a50a168@origin-clothing-india.myshopify.com/admin/api/2019-10/orders.json?limit=250"
     data = requests.get(shopify_url).json()
 

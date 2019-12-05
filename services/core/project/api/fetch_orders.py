@@ -42,7 +42,7 @@ def lambda_handler():
 
                     orders_tuple = (str(order['order_number']), order['created_at'], customer_name, order['customer']['email'],
                                     customer_phone if customer_phone else "", shipping_address_id,
-                                    datetime.now(), "NEW", channel[1], channel[0])
+                                    datetime.now(), "NEW", channel[1], channel[0], str(order['id']))
 
                     cur.execute(insert_orders_data_query, orders_tuple)
                     order_id = cur.fetchone()[0]

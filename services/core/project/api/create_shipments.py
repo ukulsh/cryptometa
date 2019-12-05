@@ -41,7 +41,7 @@ def lambda_handler():
 
                 shipment_data = dict()
                 shipment_data['city'] = order[17]
-                shipment_data['weight'] = sum(order[-2])*1000
+                shipment_data['weight'] = sum(order[34])*1000
                 shipment_data['add'] = order[15]
                 if order[16]:
                     shipment_data['add'] += '\n' + order[16]
@@ -50,7 +50,7 @@ def lambda_handler():
                 shipment_data['name'] = order[13]
                 if order[14]:
                     shipment_data['name'] += " " + order[14]
-                shipment_data['product_quantity'] = sum(order[-1])
+                shipment_data['product_quantity'] = sum(order[35])
                 shipment_data['pin'] = order[18]
                 shipment_data['state'] = order[19]
                 shipment_data['order_date'] = str(order[2])
@@ -94,7 +94,8 @@ def lambda_handler():
             return_data += req.json()['packages']
 
         insert_shipments_data_query = """INSERT INTO SHIPMENTS (awb, status, order_id, pickup_id, courier_id, 
-                                        dimensions, volumetric_weight, weight, remark, return_point_id, routing_code)
+                                        dimensions, volumetric_weight, weight, remark, return_point_id, routing_code, 
+                                        channel_fulfillment_id, tracking_link)
                                         VALUES  %s"""
 
         for i in range(len(return_data)-1):
@@ -104,13 +105,36 @@ def lambda_handler():
 
         orders_dict = dict()
         for prev_order in all_orders:
-            orders_dict[prev_order[1]] = (prev_order[0], prev_order[-3], prev_order[-2], prev_order[-1])
+            orders_dict[prev_order[1]] = (prev_order[0], prev_order[33], prev_order[34], prev_order[35],
+                                          prev_order[36], prev_order[37], prev_order[38], prev_order[39])
 
         order_status_change_ids = list()
         insert_shipments_data_tuple = list()
         for package in return_data:
+            fulfillment_id = None
+            tracking_link = None
             if package['waybill']:
                 order_status_change_ids.append(orders_dict[package['refnum']][0])
+                if orders_dict[package['refnum']][7]:
+                    create_fulfillment_url = "https://%s:%s@%s/admin/api/2019-10/orders/%s/fulfillments.json"%(
+                        orders_dict[package['refnum']][4], orders_dict[package['refnum']][5],
+                        orders_dict[package['refnum']][6], orders_dict[package['refnum']][7])
+                    tracking_link = "https://www.delhivery.com/track/package/%s"%str(package['waybill'])
+                    fulfil_data = {
+                                    "fulfillment": {
+                                        "tracking_number": str(package['waybill']),
+                                        "tracking_urls": [
+                                            tracking_link
+                                        ],
+                                        "notify_customer": False
+                                        }
+                                    }
+                    try:
+                        req_ful = requests.post(create_fulfillment_url, data=fulfil_data)
+                        fulfillment_id = str(req_ful.json()['fulfillment']['id'])
+                    except Exception as e:
+                        print("Couldn't update shopify for: " + str(orders_dict[package['refnum']][0]))
+
             dimensions = orders_dict[package['refnum']][1][0]
             dimensions['length'] = dimensions['length']*orders_dict[package['refnum']][3][0]
             weight = orders_dict[package['refnum']][2][0]*orders_dict[package['refnum']][3][0]
@@ -127,7 +151,8 @@ def lambda_handler():
                 remark = package['remarks'][0]
 
             data_tuple = (package['waybill'], package['status'], orders_dict[package['refnum']][0], pickup_point[1],
-                          courier[9], json.dumps(dimensions), volumetric_weight, weight, remark, pickup_point[2], package['sort_code'])
+                          courier[9], json.dumps(dimensions), volumetric_weight, weight, remark, pickup_point[2],
+                          package['sort_code'], fulfillment_id, tracking_link)
             insert_shipments_data_tuple.append(data_tuple)
 
         if insert_shipments_data_tuple:

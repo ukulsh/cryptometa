@@ -9,8 +9,8 @@ insert_shipping_address_query = """INSERT INTO shipping_address (first_name, las
                             """
 
 insert_orders_data_query = """INSERT INTO orders (channel_order_id, order_date, customer_name, customer_email, 
-                                customer_phone, delivery_address_id, date_created, status, client_prefix, client_channel_id)
-                                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id;
+                                customer_phone, delivery_address_id, date_created, status, client_prefix, client_channel_id, order_id_channel_unique)
+                                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id;
                             """
 
 insert_payments_data_query = """INSERT INTO orders_payments (payment_mode, amount, subtotal, shipping_charges, currency, order_id)
@@ -53,7 +53,7 @@ get_orders_to_ship_query = """select aa.id,aa.channel_order_id,aa.order_date,aa.
                                 aa.date_created,aa.date_updated,aa.status,aa.client_prefix,aa.client_channel_id,aa.delivery_address_id,
                                 cc.id,cc.first_name,cc.last_name,cc.address_one,cc.address_two,cc.city,cc.pincode,cc.state,cc.country,cc.phone,
                                 cc.latitude,cc.longitude,cc.country_code,dd.id,dd.payment_mode,dd.amount,dd.currency,dd.order_id,dd.shipping_charges,
-                                dd.subtotal,dd.order_id,ee.dimensions,ee.weights,ee.quan
+                                dd.subtotal,dd.order_id,ee.dimensions,ee.weights,ee.quan, ff.api_key, ff.api_password, ff.shop_url, aa.order_id_channel_unique
                                 from orders aa
                                 left join shipping_address cc
                                 on aa.delivery_address_id=cc.id
@@ -68,6 +68,8 @@ get_orders_to_ship_query = """select aa.id,aa.channel_order_id,aa.order_date,aa.
                                  and client_prefix=%s
                                  group by order_id) ee
                                 on aa.id=ee.order_id
+                                left join client_channel ff
+                                on aa.client_channel_id=ff.id
                                 where aa.client_prefix=%s
                                 and aa.id>%s
                                 and aa.status='NEW'

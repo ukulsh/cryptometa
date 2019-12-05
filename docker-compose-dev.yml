@@ -5,15 +5,17 @@ services:
   users:
     build:
       context: ./services/users
-      dockerfile: Dockerfile-prod
-    expose:
-      - 5000
+      dockerfile: Dockerfile
+    volumes:
+      - './services/users:/usr/src/app'
+    ports:
+      - 5001:5000
     environment:
-      - FLASK_ENV=production
-      - APP_SETTINGS=project.config.ProductionConfig
+      - FLASK_ENV=development
+      - APP_SETTINGS=project.config.DevelopmentConfig
       - DATABASE_URL=postgres://postgres:Kad97711@wareiq-users-prod.cvqssxsqruyc.us-east-1.rds.amazonaws.com:5432/users_prod  # new
       - DATABASE_TEST_URL=postgres://postgres:postgres@users-db:5432/users_test
-      - SECRET_KEY=${SECRET_KEY}
+      - SECRET_KEY=my_precious
     depends_on:  # new
       - users-db
 
@@ -21,8 +23,8 @@ services:
     build:
       context: ./services/users/project/db
       dockerfile: Dockerfile
-    expose:
-      - 5432
+    ports:
+      - 5435:5432
     environment:
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=postgres
@@ -30,7 +32,7 @@ services:
   nginx:
     build:
       context: ./services/nginx
-      dockerfile: Dockerfile-prod
+      dockerfile: Dockerfile
     restart: always
     ports:
       - 80:80
@@ -40,15 +42,17 @@ services:
   core:
     build:
       context: ./services/core
-      dockerfile: Dockerfile-prod
+      dockerfile: Dockerfile
+    volumes:
+      - './services/core:/usr/src/app'
     expose:
       - 5000
     environment:
-      - FLASK_ENV=production
-      - APP_SETTINGS=project.config.ProductionConfig
+      - FLASK_ENV=development
+      - APP_SETTINGS=project.config.DevelopmentConfig
       - USERS_SERVICE_URL=http://users:5000
       - SECRET_KEY=my_precious
-      - DATABASE_URL=postgres://postgres:postgres@wareiq-core-prod.cvqssxsqruyc.us-east-1.rds.amazonaws.com:5432/core_prod
+      - DATABASE_URL=postgres://postgres:postgres@wareiq-core-prod.cvqssxsqruyc.us-east-1.rds.amazonaws.com:5432/users_prod
       - DATABASE_TEST_URL=postgres://postgres:postgres@core-db:5432/core_test  # new
     depends_on:
       - users

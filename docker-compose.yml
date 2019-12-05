@@ -5,17 +5,15 @@ services:
   users:
     build:
       context: ./services/users
-      dockerfile: Dockerfile
-    volumes:
-      - './services/users:/usr/src/app'
-    ports:
-      - 5001:5000
+      dockerfile: Dockerfile-prod
+    expose:
+      - 5000
     environment:
-      - FLASK_ENV=development
-      - APP_SETTINGS=project.config.DevelopmentConfig
-      - DATABASE_URL=postgres://postgres:Kad97711@wareiq-users-prod.cvqssxsqruyc.us-east-1.rds.amazonaws.com:5432/users_prod  # new
+      - FLASK_ENV=production
+      - APP_SETTINGS=project.config.ProductionConfig
+      - DATABASE_URL=postgres://postgres:postgres@wareiq-core-prod.cvqssxsqruyc.us-east-1.rds.amazonaws.com:5432/users_prod  # new
       - DATABASE_TEST_URL=postgres://postgres:postgres@users-db:5432/users_test
-      - SECRET_KEY=my_precious
+      - SECRET_KEY=${SECRET_KEY}
     depends_on:  # new
       - users-db
 
@@ -23,8 +21,8 @@ services:
     build:
       context: ./services/users/project/db
       dockerfile: Dockerfile
-    ports:
-      - 5435:5432
+    expose:
+      - 5432
     environment:
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=postgres
@@ -32,24 +30,33 @@ services:
   nginx:
     build:
       context: ./services/nginx
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile-prod
     restart: always
     ports:
       - 80:80
+      - 443:443
     depends_on:
       - users
+    volumes:
+      - ./data/nginx:/etc/nginx/conf.d
+      - ./data/certbot/conf:/etc/letsencrypt
+      - ./data/certbot/www:/var/www/certbot
+
+  certbot:
+    image: certbot/certbot
+    volumes:
+      - ./data/certbot/conf:/etc/letsencrypt
+      - ./data/certbot/www:/var/www/certbot
 
   core:
     build:
       context: ./services/core
-      dockerfile: Dockerfile
-    volumes:
-      - './services/core:/usr/src/app'
+      dockerfile: Dockerfile-prod
     expose:
       - 5000
     environment:
-      - FLASK_ENV=development
-      - APP_SETTINGS=project.config.DevelopmentConfig
+      - FLASK_ENV=production
+      - APP_SETTINGS=project.config.ProductionConfig
       - USERS_SERVICE_URL=http://users:5000
       - SECRET_KEY=my_precious
       - DATABASE_URL=postgres://postgres:postgres@wareiq-core-prod.cvqssxsqruyc.us-east-1.rds.amazonaws.com:5432/core_prod

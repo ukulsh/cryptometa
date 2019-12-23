@@ -169,8 +169,9 @@ def fill_shiplabel_data(c, order, offset):
 
     awb_string = order.shipments[0].awb
     awb_barcode = code128.Code128(awb_string,barHeight=0.8*inch, barWidth=0.5*mm)
+    temp_param = float((awb_barcode.width/165)-0.7)
 
-    awb_barcode.drawOn(c, (offset-.5)*inch, 6.00*inch)
+    awb_barcode.drawOn(c, (offset-temp_param)*inch, 6.00*inch)
 
     try:
         order_id_string = order.channel_order_id
@@ -189,14 +190,18 @@ def fill_shiplabel_data(c, order, offset):
     c.setFont('Helvetica', 10)
     full_address = order.delivery_address.address_one
     if order.delivery_address.address_two:
-        full_address += order.delivery_address.address_two
+        full_address += " "+order.delivery_address.address_two
     full_address = split_string(full_address, 35)
     y_axis = 4.85
     for addr in full_address:
         c.drawString((offset - 0.85) * inch, y_axis * inch, addr)
         y_axis -= 0.15
-    c.drawString((offset - 0.85) * inch, 4.10 * inch, order.delivery_address.city+", "+order.delivery_address.state)
-    c.drawString((offset - 0.85) * inch, 3.90 * inch, order.delivery_address.country+", PIN: "+order.delivery_address.pincode)
+
+    try:
+        c.drawString((offset - 0.85) * inch, 4.10 * inch, order.delivery_address.city+", "+order.delivery_address.state)
+        c.drawString((offset - 0.85) * inch, 3.90 * inch, order.delivery_address.country+", PIN: "+order.delivery_address.pincode)
+    except Exception:
+        pass
 
     try:
         return_address = order.shipments[0].return_point.address
@@ -253,7 +258,9 @@ def fill_shiplabel_data(c, order, offset):
 def split_string(str, limit, sep=" "):
     words = str.split()
     if max(map(len, words)) > limit:
-        raise ValueError("limit is too small")
+        str = str.replace(',', ' ')
+        str = str.replace(';', ' ')
+        words = str.split()
     res, part, others = [], words[0], words[1:]
     for word in others:
         if len(sep)+len(word) > limit-len(part):

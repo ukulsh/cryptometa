@@ -23,7 +23,7 @@ def lambda_handler():
 
         time_before = time_before.strftime("%Y-%m-%d %H:%M")
 
-        get_orders_data_tuple = (pick_req[3], pick_req[5], time_before)
+        get_orders_data_tuple = (pick_req[5], time_before)
         cur.execute(get_request_pickup_orders_data_query, get_orders_data_tuple)
 
         last_picked_update_id = pick_req[3]
@@ -51,17 +51,18 @@ def lambda_handler():
                                    pickup_date_string, manifest_url, current_time)
             cur.execute(insert_manifest_data_query, manifest_data_tuple)
 
-            pickup_request_api_body = json.dumps({ "pickup_time": "15:00:00",
-                                        "pickup_date": pickup_date.strftime("%Y-%m-%d"),
-                                        "pickup_location": pick_req[2],
-                                        "expected_package_count": len(values['orders'])})
+            if courier in ("Delhivery", "Delhivery Surface Standard"):
+                pickup_request_api_body = json.dumps({ "pickup_time": "15:00:00",
+                                            "pickup_date": pickup_date.strftime("%Y-%m-%d"),
+                                            "pickup_location": pick_req[2],
+                                            "expected_package_count": len(values['orders'])})
 
-            pickup_request_api_url = "https://track.delhivery.com/fm/request/new/"
+                pickup_request_api_url = "https://track.delhivery.com/fm/request/new/"
 
-            headers = {"Authorization": "Token " + values['api_key'],
-                       "Content-Type": "application/json"}
+                headers = {"Authorization": "Token " + values['api_key'],
+                           "Content-Type": "application/json"}
 
-            req = requests.post(pickup_request_api_url, headers=headers, data=pickup_request_api_body)
+                req = requests.post(pickup_request_api_url, headers=headers, data=pickup_request_api_body)
 
         update_pickup_requests_tuple = (last_picked_update_id, datetime.now(), pick_req[2])
         cur.execute(update_pickup_requests_query, update_pickup_requests_tuple)

@@ -1,4 +1,4 @@
-import psycopg2, requests, os
+import psycopg2, requests, os, json
 from datetime import datetime
 
 from .queries import *
@@ -75,7 +75,7 @@ def lambda_handler():
                                 dimensions = { "length": 9, "breadth": 5, "height": 12 }
                                 weight = 0.13
                             product_insert_tuple = (prod['name'], str(prod['variant_id']), True, channel[2],
-                                                    channel[1], datetime.now(), dimensions, float(prod['price']), weight)
+                                                    channel[1], datetime.now(), json.dumps(dimensions), float(prod['price']), weight)
                             cur.execute(insert_product_query, product_insert_tuple)
                             product_id = cur.fetchone()[0]
 

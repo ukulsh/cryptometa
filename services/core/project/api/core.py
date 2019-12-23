@@ -1,9 +1,10 @@
 # services/core/project/api/core.py
 
 import requests, json, math, datetime, pytz
-import boto3, os
-from sqlalchemy import or_, func
-from flask import Blueprint, request, jsonify
+import boto3, os, csv, io
+import pandas as pd
+from sqlalchemy import or_, func, not_, and_
+from flask import Blueprint, request, jsonify, make_response
 from flask_restful import Resource, Api
 from reportlab.lib.pagesizes import landscape, A4
 from reportlab.lib.units import inch
@@ -24,6 +25,8 @@ session = boto3.Session(
     aws_secret_access_key='3dw3MQgEL9Q0Ug9GqWLo8+O1e5xu5Edi5Hl90sOs',
 )
 
+ORDERS_DOWNLOAD_HEADERS = ["Order ID", "Customer Name", "Customer Email", "Customer Phone", "Order_Date",
+                            "Courier", "Weight", "awb", "Delivery Date", "Status"]
 
 class ProductList(Resource):
 
@@ -106,24 +109,29 @@ class OrderList(Resource):
         search_key = data.get('search_key', '')
         filters = data.get('filters', {})
         search_key = '%{}%'.format(search_key)
+        download_flag = request.args.get("download", None)
         auth_data = resp.get('data')
         if not auth_data:
             return {"success": False, "msg": "Auth Failed"}, 404
         if auth_data.get('user_group') == 'super-admin' or 'client':
             client_prefix = auth_data.get('client_prefix')
             sort_func = get_orders_sort_func(Orders, sort, sort_by)
-            orders_qs = db.session.query(Orders)
+            orders_qs = db.session.query(Orders).join(Shipments, Orders.id==Shipments.order_id, isouter=True)
             if auth_data['user_group'] != 'super-admin':
                 orders_qs = orders_qs.filter(Orders.client_prefix==client_prefix)
             orders_qs = orders_qs.order_by(sort_func())\
-                .filter(or_(Orders.channel_order_id.ilike(search_key), Orders.customer_name.ilike(search_key)))
+                .filter(or_(Orders.channel_order_id.ilike(search_key), Orders.customer_name.ilike(search_key),
+                            Shipments.awb.ilike(search_key)))
 
             if type == 'new':
                 orders_qs = orders_qs.filter(Orders.status == 'NEW')
             elif type == 'ready_to_ship':
                 orders_qs = orders_qs.filter(Orders.status == 'READY TO SHIP')
             elif type == 'shipped':
-                orders_qs = orders_qs.filter(Orders.status == 'DELIVERED')
+                orders_qs = orders_qs.filter(not_(Orders.status.in_(["NEW", "READY TO SHIP", "PICKUP REQUESTED","NOT PICKED"])))
+            elif type == "return":
+                orders_qs = orders_qs.filter(or_(Orders.status_type == 'RT',
+                                                 and_(Orders.status_type == 'DL', Orders.status == "RTO")))
             elif type == 'all':
                 pass
             else:
@@ -133,15 +141,42 @@ class OrderList(Resource):
                 if 'status' in filters:
                     orders_qs = orders_qs.filter(Orders.status.in_(filters['status']))
                 if 'courier' in filters:
-                    orders_qs = orders_qs.join(Shipments, Orders.id==Shipments.order_id)\
-                        .join(MasterCouriers, MasterCouriers.id==Shipments.courier_id)\
+                    orders_qs = orders_qs.join(MasterCouriers, MasterCouriers.id==Shipments.courier_id)\
                         .filter(MasterCouriers.courier_name.in_(filters['courier']))
+                if 'client' in filters and auth_data['user_group'] == 'super-admin':
+                    orders_qs = orders_qs.filter(Orders.client_prefix.in_(filters['client']))
+
                 if 'order_date' in filters:
                     filter_date_start = datetime.datetime.strptime(filters['order_date'][0], "%Y-%m-%dT%H:%M:%S.%fZ")
                     filter_date_end = datetime.datetime.strptime(filters['order_date'][1], "%Y-%m-%dT%H:%M:%S.%fZ")
                     orders_qs = orders_qs.filter(Orders.order_date >= filter_date_start).filter(Orders.order_date <= filter_date_end)
 
             orders_qs_data = orders_qs.limit(per_page).offset((page-1)*per_page).all()
+
+            if download_flag:
+                si = io.StringIO()
+                cw = csv.writer(si)
+                cw.writerow(ORDERS_DOWNLOAD_HEADERS)
+                for order in orders_qs_data:
+                    new_row = list()
+                    new_row.append(str(order.channel_order_id))
+                    new_row.append(str(order.customer_name))
+                    new_row.append(str(order.customer_email))
+                    new_row.append(str(order.customer_phone))
+                    new_row.append(order.order_date.strftime("%Y-%m-%d") if order.order_date else "N/A")
+                    new_row.append(str(order.shipments[0].courier.courier_name) if order.shipments and order.shipments[0].courier else "N/A")
+                    new_row.append(str(order.shipments[0].weight) if order.shipments else "N/A")
+                    new_row.append(str(order.shipments[0].awb) if order.shipments else "N/A")
+                    new_row.append(order.shipments[0].edd.strftime("%Y-%m-%d") if order.shipments and order.shipments[0].edd else "N/A")
+                    new_row.append(str(order.status))
+                    cw.writerow(new_row)
+
+                output = make_response(si.getvalue())
+                filename = client_prefix+"_EXPORT.csv"
+                output.headers["Content-Disposition"] = "attachment; filename="+filename
+                output.headers["Content-type"] = "text/csv"
+                return output
+
             response_data = list()
             for order in orders_qs_data:
                 resp_obj=dict()
@@ -170,8 +205,14 @@ class OrderList(Resource):
                     resp_obj['dimensions'] = order.shipments[0].dimensions
                     resp_obj['weight'] = order.shipments[0].weight
                     resp_obj['volumetric'] = order.shipments[0].volumetric_weight
+                    edd = order.shipments[0].edd
+                    if edd:
+                        edd = edd.strftime('%-d %b')
+                    resp_obj['edd'] = edd
                 if order.shipments and auth_data['user_group'] == 'super-admin':
                     resp_obj['remark'] = order.shipments[0].remark
+                if type == "shipped":
+                    resp_obj['status_detail'] = order.status_detail
 
                 resp_obj['status'] = order.status
                 response_data.append(resp_obj)
@@ -221,21 +262,46 @@ def get_dashboard(resp):
 def get_orders_filters(resp):
     response = {"filters":{}, "success": True}
     auth_data = resp.get('data')
+    current_tab = request.args.get('tab')
     client_prefix = auth_data.get('client_prefix')
-    status_qs = db.session.query(Orders.status.distinct().label('status'))
+    client_qs = None
+    status_qs = db.session.query(Orders.status, func.count(Orders.status)).group_by(Orders.status)
+    courier_qs = db.session.query(MasterCouriers.courier_name, func.count(MasterCouriers.courier_name)) \
+        .join(Shipments, MasterCouriers.id == Shipments.courier_id).join(Orders, Orders.id == Shipments.order_id) \
+        .group_by(MasterCouriers.courier_name)
+    if auth_data['user_group'] == 'super-admin':
+        client_qs = db.session.query(Orders.client_prefix, func.count(Orders.client_prefix))
+
     if auth_data['user_group'] != 'super-admin':
         status_qs=status_qs.filter(Orders.client_prefix == client_prefix)
-    status_qs = status_qs.order_by(Orders.status).all()
-    response['filters']['status'] = [x.status for x in status_qs]
-    courier_qs = db.session.query(MasterCouriers.courier_name.distinct().label('courier')) \
-        .join(Shipments, MasterCouriers.id == Shipments.courier_id).join(Orders, Orders.id == Shipments.order_id)
-    if auth_data['user_group'] != 'super-admin':
         courier_qs = courier_qs.filter(Orders.client_prefix == client_prefix)
+    if current_tab=="shipped":
+        status_qs = status_qs.filter(not_(Orders.status.in_(["NEW","READY TO SHIP","PICKUP REQUESTED","NOT PICKED"])))
+        courier_qs = courier_qs.filter(not_(Orders.status.in_(["NEW","READY TO SHIP","PICKUP REQUESTED","NOT PICKED"])))
+        if client_qs:
+            client_qs = client_qs.filter(not_(Orders.status.in_(["NEW", "READY TO SHIP", "PICKUP REQUESTED", "NOT PICKED"])))
+    if current_tab=="return":
+        status_qs = status_qs.filter(or_(Orders.status_type == 'RT', and_(Orders.status_type == 'DL', Orders.status == "RTO")))
+        courier_qs = courier_qs.filter(or_(Orders.status_type == 'RT', and_(Orders.status_type == 'DL', Orders.status == "RTO")))
+        if client_qs:
+            client_qs = client_qs.filter(or_(Orders.status_type == 'RT', and_(Orders.status_type == 'DL', Orders.status == "RTO")))
+    if current_tab=="new":
+        status_qs = status_qs.filter(Orders.status=="NEW")
+        courier_qs = courier_qs.filter(Orders.status=="NEW")
+        if client_qs:
+            client_qs = client_qs.filter(Orders.status=="NEW")
+    if current_tab=="ready_to_ship":
+        status_qs = status_qs.filter(Orders.status == "READY TO SHIP")
+        courier_qs = courier_qs.filter(Orders.status == "READY TO SHIP")
+        if client_qs:
+            client_qs = client_qs.filter(Orders.status == "READY TO SHIP")
+    status_qs = status_qs.order_by(Orders.status).all()
+    response['filters']['status'] = [{x[0]:x[1]} for x in status_qs]
     courier_qs = courier_qs.order_by(MasterCouriers.courier_name).all()
-    response['filters']['courier'] = [x.courier for x in courier_qs]
-    if auth_data['user_group'] == 'super-admin':
-        client_qs = db.session.query(Orders.client_prefix.distinct().label('client')).order_by(Orders.client_prefix).all()
-        response['filters']['client'] = [x.client for x in client_qs]
+    response['filters']['courier'] = [{x[0]:x[1]} for x in courier_qs]
+    if client_qs:
+        client_qs = client_qs.group_by(Orders.client_prefix).order_by(Orders.client_prefix).all()
+        response['filters']['client'] = [{x[0]: x[1]} for x in client_qs]
 
     return jsonify(response), 200
 
@@ -311,6 +377,71 @@ class AddOrder(Resource):
 api.add_resource(AddOrder, '/orders/add')
 
 
+@core_blueprint.route('/orders/v1/upload', methods=['POST'])
+@authenticate_restful
+def upload_orders(resp):
+    auth_data = resp.get('data')
+    if not auth_data:
+        return {"success": False, "msg": "Auth Failed"}, 404
+
+    myfile = request.files['myfile']
+
+    data_xlsx = pd.read_excel(myfile)
+    failed_ids = dict()
+
+    for row in data_xlsx.iterrows():
+        try:
+            row_data = row[1]
+            delivery_address = ShippingAddress(first_name=str(row_data.customer_name),
+                                               address_one=str(row_data.address_one),
+                                               address_two=str(row_data.address_two),
+                                               city=str(row_data.city),
+                                               pincode=str(row_data.pincode),
+                                               state=str(row_data.state),
+                                               country=str(row_data.country),
+                                               phone=str(row_data.customer_phone))
+
+            new_order = Orders(channel_order_id=str(row_data.order_id),
+                               order_date=datetime.datetime.now(tz=pytz.timezone('Asia/Calcutta')),
+                               customer_name=str(row_data.customer_name),
+                               customer_email=str(row_data.customer_email),
+                               customer_phone=str(row_data.customer_phone),
+                               delivery_address=delivery_address,
+                               status="NEW",
+                               client_prefix=auth_data.get('client_prefix'),
+                               )
+
+            if row_data.sku:
+                sku = row_data.sku.split('|')
+                sku_quantity = row_data.sku_quantity.split('|')
+                for idx, sku in enumerate(sku):
+                    prod_obj = db.session.query(Products).filter(Products.sku == sku).first()
+                    if prod_obj:
+                        op_association = OPAssociation(order=new_order, product=prod_obj, quantity=int(sku_quantity[idx]))
+                        new_order.products.append(op_association)
+
+            payment = OrdersPayments(
+                payment_mode=str(row_data.payment_mode),
+                subtotal=float(row_data.subtotal),
+                amount=float(row_data.subtotal) + float(row_data.shipping_charges),
+                shipping_charges=float(row_data.shipping_charges),
+                currency='INR',
+                order=new_order
+            )
+
+            db.session.add(new_order)
+            db.session.commit()
+
+        except Exception as e:
+            failed_ids[str(row[1].order_id)] = str(e.args[0])
+            db.session.rollback()
+
+    return jsonify({
+        'status': 'success',
+        "failed_ids": failed_ids
+    }), 200
+
+
 @core_blueprint.route('/orders/v1/download/shiplabels', methods=['POST'])
 @authenticate_restful
 def download_shiplabels(resp):
@@ -330,11 +461,16 @@ def download_shiplabels(resp):
     create_shiplabel_blank_page(c)
     failed_ids = dict()
     idx=0
-    for idx, order in enumerate(orders_qs):
+    for ixx, order in enumerate(orders_qs):
         try:
+            if not order.shipments or not order.shipments[0].awb:
+                continue
             if auth_data['client_prefix'] == "KYORIGIN":
                 offset = 3.863
-                fill_shiplabel_data(c, order, offset)
+                try:
+                    fill_shiplabel_data(c, order, offset)
+                except Exception:
+                    pass
                 c.setFillColorRGB(1, 1, 1)
                 c.rect(6.730 * inch, -1.0 * inch, 10 * inch, 10 * inch, fill=1)
                 c.rect(-1.0 * inch, -1.0 * inch, 3.857 * inch, 10 * inch, fill=1)
@@ -343,18 +479,22 @@ def download_shiplabels(resp):
                     create_shiplabel_blank_page(c)
             else:
                 offset_dict = {0:0.0, 1:3.863, 2:7.726}
-                fill_shiplabel_data(c, order, offset_dict[idx%3])
-                if idx%3==2 and idx!=(len(orders_qs)-1):
+                try:
+                    fill_shiplabel_data(c, order, offset_dict[idx%3])
+                except Exception:
+                    pass
+                if idx%3==2 and ixx!=(len(orders_qs)-1):
                     c.showPage()
                     create_shiplabel_blank_page(c)
+            idx += 1
         except Exception as e:
             failed_ids[order.channel_order_id] = str(e.args[0])
             pass
     if auth_data['client_prefix'] != "KYORIGIN":
         c.setFillColorRGB(1, 1, 1)
-        if idx%3==0:
-            c.rect(2.867 * inch, -1.0 * inch, 10 * inch, 10*inch, fill=1)
         if idx%3==1:
+            c.rect(2.867 * inch, -1.0 * inch, 10 * inch, 10*inch, fill=1)
+        if idx%3==2:
             c.rect(6.730 * inch, -1.0 * inch, 10 * inch, 10*inch, fill=1)
 
     c.save()
@@ -395,7 +535,8 @@ def get_manifests(resp):
         manifest_dict['manifest_id'] = manifest.manifest_id
         manifest_dict['courier'] = manifest.courier.courier_name
         manifest_dict['pickup_point'] = manifest.pickup.name
-        manifest_dict['no_of_orders'] = manifest.no_of_orders
+        manifest_dict['total_scheduled'] = manifest.total_scheduled
+        manifest_dict['total_picked'] = manifest.total_picked
         manifest_dict['pickup_date'] = manifest.pickup_date
         manifest_dict['manifest_url'] = manifest.manifest_url
         return_data.append(manifest_dict)
@@ -463,7 +604,8 @@ class OrderDetails(Resource):
                     resp_obj['weight'] = order.shipments[0].weight
                     resp_obj['volumetric'] = order.shipments[0].volumetric_weight
                 resp_obj['status'] = order.status
-                if auth_data['user_group'] == 'super-admin':
+                resp_obj['remark'] = None
+                if auth_data['user_group'] == 'super-admin' and order.shipments:
                     resp_obj['remark'] = order.shipments[0].remark
 
                 response['data'] = resp_obj
@@ -474,7 +616,7 @@ class OrderDetails(Resource):
                 return response, 404
 
         except Exception as e:
-            return {"status": "Failed", "msg": ""}, 400
+            return {"status": "Failed", "msg": str(e.args)}, 400
 
     def patch(self, resp, order_id):
         try:
@@ -561,6 +703,7 @@ def ship_order(resp, order_id):
         order_weight = 0.0
         product_quan = 0
         order_dimensions = None
+        package_string = ""
         for prod in order.products:
             order_weight += prod.quantity*prod.product.weight
             product_quan += prod.quantity
@@ -569,6 +712,10 @@ def ship_order(resp, order_id):
                 order_dimensions['length'] = order_dimensions['length']*prod.quantity
             else:
                 order_dimensions['length'] += prod.product.dimensions['length']*prod.quantity
+
+            package_string += prod.product.name + " (" + str(prod.quantity) + ") + "
+
+        package_string += "Shipping"
 
         order_volumetric = None
         if order_dimensions:
@@ -593,6 +740,7 @@ def ship_order(resp, order_id):
         shipment_data['country'] = order.delivery_address.country
         shipment_data['client'] = courier.courier.api_password
         shipment_data['order'] = order_id
+        shipment_data['products_desc'] = package_string
         if order.payments[0].payment_mode.lower() == "cod":
             shipment_data['cod_amount'] = order.payments[0].amount
 
@@ -618,6 +766,55 @@ def ship_order(resp, order_id):
             return jsonify({"success": False, "msg": "Some error occurred"}), 400
 
         package = return_data[0]
+        tracking_link = None
+        fulfillment_id = None
+        try:
+            exotel_sms_data = {
+                'From': 'LM-WAREIQ'
+            }
+            customer_phone = order.customer_phone.replace(" ", "")
+            customer_phone = "0" + customer_phone[-10:]
+
+            sms_to_key = "Messages[0][To]"
+            sms_body_key = "Messages[0][Body]"
+
+            exotel_sms_data[sms_to_key] = customer_phone
+            exotel_sms_data[
+                sms_body_key] = "Dear Customer, thank you for ordering from %s. Your order will be shipped by Delhivery with AWB number %s. " \
+                                "You can track your order using this AWB number." % (
+                                order.client_prefix, str(package['waybill']))
+
+            lad = requests.post(
+                'https://ff2064142bc89ac5e6c52a6398063872f95f759249509009:783fa09c0ba1110309f606c7411889192335bab2e908a079@api.exotel.com/v1/Accounts/wareiq1/Sms/bulksend',
+                data=exotel_sms_data)
+        except Exception as e:
+            pass
+
+        try:
+            create_fulfillment_url = "https://%s:%s@%s/admin/api/2019-10/orders/%s/fulfillments.json" % (
+                order.client_channel.api_key, order.client_channel.api_password,
+                order.client_channel.shop_url, order.order_id_channel_unique)
+            tracking_link = "https://www.delhivery.com/track/package/%s" % str(package['waybill'])
+            ful_header = {'Content-Type': 'application/json'}
+            fulfil_data = {
+                "fulfillment": {
+                    "tracking_number": str(package['waybill']),
+                    "tracking_urls": [
+                        tracking_link
+                    ],
+                    "tracking_company": "Delhivery",
+                    "location_id": 16721477681,
+                    "notify_customer": False
+                }
+            }
+            try:
+                req_ful = requests.post(create_fulfillment_url, data=json.dumps(fulfil_data),
+                                        headers=ful_header)
+                fulfillment_id = str(req_ful.json()['fulfillment']['id'])
+            except Exception as e:
+                pass
+        except Exception as e:
+            pass
 
         shipment = Shipments(status=package['status'],
                              weight=order_weight,
@@ -626,6 +823,8 @@ def ship_order(resp, order_id):
                              order=order,
                              pickup=pickup_point.pickup,
                              return_point=pickup_point.return_point,
+                             channel_fulfillment_id=fulfillment_id,
+                             tracking_link=tracking_link,
                              )
 
         if not package['waybill']:
@@ -699,37 +898,172 @@ def ping_pong(resp):
 
 @core_blueprint.route('/core/dev', methods=['GET'])
 def ping_dev():
-    shopify_url = "https://dc8ae0b7f5c1c6558f551d81e1352bcd:00dfeaf8f77b199597e360aa4a50a168@origin-clothing-india.myshopify.com/admin/api/2019-10/orders.json?limit=250"
+
+    # from .create_shipments import lambda_handler
+    # lambda_handler()
+    return 0
+
+
+    order_qs = db.session.query(Orders).filter(Orders.client_prefix=="KYORIGIN").filter(Orders.status.in_(['READY TO SHIP', 'PICKUP REQUESTED', 'NOT PICKED'])).all()
+    for order in order_qs:
+        try:
+            create_fulfillment_url = "https://%s:%s@%s/admin/api/2019-10/orders/%s/fulfillments.json" % (
+                order.client_channel.api_key, order.client_channel.api_password,
+                order.client_channel.shop_url, order.order_id_channel_unique)
+            tracking_link = "https://www.delhivery.com/track/package/%s" % str(order.shipments[0].awb)
+            ful_header = {'Content-Type': 'application/json'}
+            fulfil_data = {
+                "fulfillment": {
+                    "tracking_number": str(order.shipments[0].awb),
+                    "tracking_urls": [
+                        tracking_link
+                    ],
+                    "tracking_company": "Delhivery",
+                    "location_id": 16721477681,
+                    "notify_customer": False
+                }
+            }
+            try:
+                req_ful = requests.post(create_fulfillment_url, data=json.dumps(fulfil_data),
+                                        headers=ful_header)
+                fulfillment_id = str(req_ful.json()['fulfillment']['id'])
+                order.shipments[0].tracking_link = tracking_link
+                order.shipments[0].channel_fulfillment_id = fulfillment_id
+
+            except Exception as e:
+                pass
+        except Exception as e:
+            pass
+
+    db.session.commit()
+    # for awb in awb_list:
+    #     try:
+    #         req = requests.get("https://track.delhivery.com/api/status/packages/json/?waybill=%s&token=d6ce40e10b52b5ca74805a6e2fb45083f0194185"%str(awb)).json()
+    #         r = req['ShipmentData']
+    #         print(r[0]['Shipment']['Status']['Status'])
+    #     except Exception as e:
+    #         pass
+
+    exotel_call_data = {"From": "08750108744",
+                        "CallType": "trans",
+                        "Url": "http://my.exotel.in/exoml/start/257945",
+                        "CallerId": "01141182252"}
+    res = requests.post(
+        'https://ff2064142bc89ac5e6c52a6398063872f95f759249509009:783fa09c0ba1110309f606c7411889192335bab2e908a079@api.exotel.com/v1/Accounts/wareiq1/Calls/connect',
+        data=exotel_call_data)
+
+    exotel_sms_data = {
+        'From': 'LM-WAREIQ',
+        'Messages[0][To]': '08750108744',
+        'Messages[0][Body]': 'Dear Customer, your Know Your Origin order with AWB number 123456 is IN-TRANSIT via Delhivery and will be delivered by 23 Dec. Thank you for ordering.'
+    }
+
+    lad = requests.post(
+        'https://ff2064142bc89ac5e6c52a6398063872f95f759249509009:783fa09c0ba1110309f606c7411889192335bab2e908a079@api.exotel.com/v1/Accounts/wareiq1/Sms/bulksend',
+        data=exotel_sms_data)
+
+    orders = db.session.query(Orders).join(Shipments, Orders.id==Shipments.order_id).filter(Orders.status == "IN TRANSIT", Orders.status_type=='UD', Orders.client_prefix=="KYORIGIN").all()
+    awb_str = ""
+
+    awb_dict = {}
+    for order in orders:
+        awb_str += order.shipments[0].awb+","
+        customer_phone = order.customer_phone
+        customer_phone = customer_phone.replace(" ", "")
+        customer_phone = "0" + customer_phone[-10:]
+        awb_dict[order.shipments[0].awb] = customer_phone
+
+    req = requests.get("https://track.delhivery.com/api/status/packages/json/?waybill=%s&token=1368a2c7e666aeb44068c2cd17d2d2c0e9223d37"%awb_str).json()
+
+
+
+    exotel_sms_data = {
+      'From': 'LM-WAREIQ'
+    }
+    exotel_idx = 0
+    for shipment in req['ShipmentData']:
+        try:
+            sms_to_key = "Messages[%s][To]" % str(exotel_idx)
+            sms_body_key = "Messages[%s][Body]" % str(exotel_idx)
+            expected_date = shipment['Shipment']['expectedDate']
+            expected_date = datetime.datetime.strptime(expected_date, '%Y-%m-%dT%H:%M:%S')
+            if expected_date < datetime.datetime.today():
+                continue
+            expected_date = expected_date.strftime('%-d %b')
+
+            exotel_sms_data[sms_to_key] =  awb_dict[shipment["Shipment"]['AWB']]
+            exotel_sms_data[
+                sms_body_key] = "Dear Customer, your Know Your Origin order with AWB number %s is IN-TRANSIT via Delhivery and will be delivered by %s. Thank you for ordering." % (
+                shipment["Shipment"]['AWB'], expected_date)
+            exotel_idx += 1
+        except Exception:
+            pass
+
+    lad = requests.post(
+        'https://ff2064142bc89ac5e6c52a6398063872f95f759249509009:783fa09c0ba1110309f606c7411889192335bab2e908a079@api.exotel.com/v1/Accounts/wareiq1/Sms/bulksend',
+        data=exotel_sms_data)
+    return 0
+
+    lad = requests.post('https://ff2064142bc89ac5e6c52a6398063872f95f759249509009:783fa09c0ba1110309f606c7411889192335bab2e908a079@api.exotel.com/v1/Accounts/wareiq1/Sms/bulksend', data=data)
+
+    shopify_url = "https://e35b2c3b1924d686e817b267b5136fe0:a5e60ec3e34451e215ae92f0877dddd0@daprstore.myshopify.com/admin/api/2019-10/products.json?limit=250"
     data = requests.get(shopify_url).json()
 
-    for prod in data['products']:
-        for p_sku in prod['variants']:
-            try:
-                sku = str(p_sku['id'])
-                product = Products(name=prod['title'] + " - " + p_sku['title'],
-                                   sku=sku,
-                                   active=True,
-                                   channel_id=1,
-                                   client_prefix="KYORIGIN",
-                                   date_created=datetime.datetime.now(),
-                                   dimensions = {"length":1.25, "breadth":30, "height":30},
-                                   price=0,
-                                   weight=0.25)
+    # for order in data['orders']:
+    #     order_qs = db.session.query(Orders).filter(Orders.channel_order_id==str(order['order_number'])).first()
+    #     if not order_qs:
+    #         continue
+    #     order_qs.order_id_channel_unique = str(order['id'])
+    #
+    # db.session.commit()
 
-                product_quantity = ProductQuantity(product=product,
-                                                   total_quantity=5000,
-                                                   approved_quantity=5000,
-                                                   available_quantity=5000,
-                                                   warehouse_prefix="KYORIGIN",
-                                                   status="APPROVED",
-                                                   date_created=datetime.datetime.now()
-                                                   )
-                db.session.add(product)
-                db.session.commit()
-            except Exception as e:
-                print("Exception for " + sku+ " "+ str(e.args[0]))
+    import csv
+    with open('dapr_products.csv', 'w', newline='') as file:
+        writer = csv.writer(file)
+        writer.writerow(["Shopify Product ID", "Title", "Product Type", "Master SKU", "Channel SKU", "Price", "Weight(Kg)", "Quantity", "Image URL"])
+        for prod in data['products']:
+            for p_sku in prod['variants']:
+                try:
+                    list_item = list()
+                    list_item.append("ID"+str(prod['id']))
+                    list_item.append(str(prod['title']))
+                    list_item.append(str(prod['product_type']))
+                    list_item.append(str(p_sku['sku']))
+                    list_item.append("ID"+str(p_sku['id']))
+                    list_item.append(str(p_sku['price']))
+                    list_item.append(p_sku['weight'])
+                    list_item.append(p_sku['inventory_quantity'])
+                    list_item.append(prod['image']['src'])
+                    writer.writerow(list_item)
 
+                #     sku = str(p_sku['id'])
+                #     product = Products(name=prod['title'] + " - " + p_sku['title'],
+                #                        sku=sku,
+                #                        active=True,
+                #                        channel_id=1,
+                #                        client_prefix="KYORIGIN",
+                #                        date_created=datetime.datetime.now(),
+                #                        dimensions = {"length":1.25, "breadth":30, "height":30},
+                #                        price=0,
+                #                        weight=0.25)
+                #
+                #     product_quantity = ProductQuantity(product=product,
+                #                                        total_quantity=5000,
+                #                                        approved_quantity=5000,
+                #                                        available_quantity=5000,
+                #                                        warehouse_prefix="KYORIGIN",
+                #                                        status="APPROVED",
+                #                                        date_created=datetime.datetime.now()
+                #                                        )
+                #     db.session.add(product)
+                #     db.session.commit()
+                except Exception as e:
+                    print("Exception for "+ str(e.args[0]))
 
+    return jsonify({
+        'status': 'success',
+        'message': 'pong!'
+    })
 
     from .create_shipments import lambda_handler
     lambda_handler()
@@ -767,21 +1101,7 @@ def ping_dev():
         'message': 'pong!'
     })
 
-    """
-    import requests
 
-    data = {
-      'From': 'LM-WAREIQ',
-      'Messages[0][Body]': 'Dear Customer, your Origin order has been shipped via Delhivery with AWB number 1904116940032. It is expected to arrive by 21/10/2235. You shall be notified when the order is dispatched for delivery.',
-      'Messages[0][To]': '8750108744',
-      'Messages[1][Body]': "Dear Customer, your Origin order has been shipped via Delhivery with AWB number 1904116940032. It is expected to arrive by 21/10/2235. You shall be notified when the order is dispatched for delivery.",
-      'Messages[1][To]': "9999503623",
-      'Messages[2][Body]': "Dear Customer, your Origin order has been shipped via Delhivery with AWB number 1904116940032. It is expected to arrive by 21/10/2235. You shall be notified when the order is dispatched for delivery.",
-      'Messages[2][To]': "9650010831"
-    }
-
-    lad = requests.post('https://ff2064142bc89ac5e6c52a6398063872f95f759249509009:783fa09c0ba1110309f606c7411889192335bab2e908a079@api.exotel.com/v1/Accounts/wareiq1/Sms/bulksend', data=data)
-    """
 
     shiprocket_token = """Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOjI0NzIyNiwiaXNzIjoiaHR0cHM6Ly9hcGl2Mi5zaGlwcm9ja2V0LmluL3YxL2V4dGVybmFsL2F1dGgvbG9naW4iLCJpYXQiOjE1NzMzNTIzMTYsImV4cCI6MTU3NDIxNjMxNiwibmJmIjoxNTczMzUyMzE2LCJqdGkiOiJmclBCRHZNYnVUZEEwanZOIn0.Gqax7B1zPWoM34yKkUz2Oa7vIvja7D6Z-C8NsyNIIE4"""
 
@@ -907,36 +1227,142 @@ def send_dev():
         'message': 'pong!'
     })
 
-    awbs = [(3991610001002,"	+919969087591  "),
-            (3991610001024,"	98200 41554    "),
-            (3991610000151,"	+917780902661  "),
-            (3991610000162,"	96344 99890    "),
-            (3991610000173,"	99096 02605    "),
-            (3991610001046,"	99328 55751    "),
-            (3991610000184,"	+919717229103  "),
-            (3991610000195,"	+919820081682  "),  ]
+    awbs = [('3991610006801', '+917506690669'),
+             ('3991610004336','	+918787482176      '),
+             ('3991610008293','	+919820230796      '),
+             ('3991610006731','	+918138092054      '),
+             ('3991610007700','	98209 30321        '),
+             ('3991610000943','	+917005627591      '),
+             ('3991610001175','	+919717176667      '),
+             ('3991610001374','	090960 71512       '),
+             ('3991610001481','	+919741674496      '),
+             ('3991610008050','	+1918595044988     '),
+             ('3991610008595','	+919526986805      '),
+             ('3991610004782','	+91 89717 33536    '),
+             ('3991610007943','	86553 85670        '),
+             ('3991610002321','	98100 45281        '),
+             ('3991610007711','	98209 30321        '),
+             ('3991610007722','	+917012049592      '),
+             ('3991610002796','	+917977617587      '),
+             ('3991610008470','	+44919328994129    '),
+             ('3991610008385','	+919618260073      '),
+             ('3991610003172','	+919930102345      '),
+             ('3991610003301','	+917021962754      '),
+             ('3991610000755','	+918001067507      '),
+             ('3991610003835','	+916909446693      '),
+             ('3991610008621','	+918416008617      '),
+             ('3991610008632','	+918259050206      '),
+             ('3991610008013','	+916363505914      '),
+             ('3991610008643','	98629 76373        '),
+             ('3991610007302','	81210 72107        '),
+             ('3991610007324','	+919449431826      '),
+             ('3991610008326','	+916238686207      '),
+             ('3991610005681','	70056 74243        '),
+             ('3991610005703','	85002 82645        '),
+             ('3991610008260','	+91 99141 67766    '),
+             ('3991610008315','	+919958487091      '),
+             ('3991610008330','	+916238686207      '),
+             ('3991610007615','	88992 33470        '),
+             ('3991610007313','	+919829056309      '),
+             ('3991610007254','	82510 81952        '),
+             ('3991610006871','	+919394755677      '),
+             ('3991610008304','	+916360510948      '),
+             ('3991610007243','	+918828339077      '),
+             ('3991610007663','	+919821014568      '),
+             ('3991610008072','	+918169956705      '),
+             ('3991610007361','	+91 99018 55486    '),
+             ('3991610007464','	+919068293393      '),
+             ('3991610007696','	+919644720222      '),
+             ('3991610008341','	95262 89568        '),
+             ('3991610008083','	+919821446978      '),
+             ('3991610007685','	98716 61078        '),
+             ('3991610006226','	+917000369859      '),
+             ('3991610008352','	98301 83388        '),
+             ('3991610007534','	98201 17697        '),
+             ('3991610008374','	70058 68142        '),
+             ('3991610007921','	92165 02343        '),
+             ('3991610006436','	+919833016729      '),
+             ('3991610007910','	98920 08381        '),
+             ('3991610007906','	+919811552594      '),
+             ('3991610007851','	+917678129877      '),
+             ('3991610007862','	99613 96558        '),
+             ('3991610007873','	+1 647-765-9590    '),
+             ('3991610007895','	+91 98737 6865     '),
+             ('3991610007980','	+917907547041      '),
+             ('3991610007991','	+919899001111      '),
+             ('3991610008002','	89549 22096        '),
+             ('3991610008024','	+919749523194      '),
+             ('3991610008035','	62943 69034        '),
+             ('3991610008094','	99221 09350        '),
+             ('3991610008105','	95662 44655        '),
+             ('3991610007733','	+919873245510      '),
+             ('3991610008116','	97696 98672        '),
+             ('3991610008610','	+919774392766      '),
+             ('3991610008396','	9873611567         '),
+             ('3991610008120','	773 811 7123       '),
+             ('3991610008046','	99203 55018        '),
+             ('3991610008131','	94372 26316        '),
+             ('3991610007781','	+919871679545      '),
+             ('3991610006694','	+918879864512      '),
+             ('3991610007766','	09868383418        '),
+             ('3991610007770','	89795 58889        '),
+             ('3991610008400','	+918800211112      '),
+             ('3991610008411','	+918105814941      '),
+             ('3991610008363','	+918800809478      '),
+             ('3991610007792','	+919945606401      '),
+             ('3991610007803','	9560960800         '),
+             ('3991610008142','	+918007555572      '),
+             ('3991610008422','	63661 06748        '),
+             ('3991610008433','	+919901855486      '),
+             ('3991610007814','	+917977617587      '),
+             ('3991610008153','	+918800809478      '),
+             ('3991610008061','	+919833779503      '),
+             ('3991610008175','	79922 69795        '),
+             ('3991610007825','	96228 40080        '),
+             ('3991610008164','	+919871666200      '),
+             ('3991610007836','	99304 05052        '),
+             ('3991610008455','	91599 22197        '),
+             ('3991610008186','	+917005586957      '),
+             ('3991610008190','	98846 47422        '),
+             ('3991610008444','	+917770008889      '),
+             ('3991610007840','	99300 47404        '),
+             ('3991610008201','	97248 55955        '),
+             ('3991610008606','	+917640937804      '),
+             ('3991610008466','	+919350595059      '),
+             ('3991610008573','	+917506990571      '),
+             ('3991610006086','	+917387856666      '),
+             ('3991610008514','	81058 14941        '),
+             ('3991610007884','	+917011324658      '),
+             ('3991610007954','	87225 70614        '),
+             ('3991610003614','	+919526155206      '),
+             ('3991610008503','	+919164813738      '),
+             ('3991610008223','	+919810188004      '),
+             ('3991610007626','	97115 19100        '),
+             ('3991610008271','	+918806432161      '),
+             ('3991610008282','	+919958366365      '),
+             ('3991610008584','	79070 53381        '),
+             ('3991610008525','	+919999033337      '),
+             ('3991610008245','	+919582523379      '),
+             ('3991610008256','	98202 20247        '),
+             ('3991610007571','	+919898554996      '),
+             ('3991610007545','	99209 49032        '),
+             ('3991610007556','	+919930126434      '),
+             ('3991610007976','	+918454962678      '),
+             ('3991610008234','	+919739753385      '),
+             ('3991610008212','	99997 21539]       '),      ]
 
     sms_data = {
         'From': 'LM-WAREIQ'
     }
     itt = 0
     for idx, awb in enumerate(awbs):
-        url = "https://track.delhivery.com/api/status/packages/json/?waybill=%s&token=d6ce40e10b52b5ca74805a6e2fb45083f0194185"%str(awb[0])
-        try:
-            edd = requests.get(url).json()['ShipmentData'][0]['Shipment']['expectedDate']
-            edd = datetime.datetime.strptime(edd, '%Y-%m-%dT%H:%M:%S')
-            if edd<datetime.datetime.now():
-                continue
-            edd = edd.strftime('%-d %b')
-        except Exception:
-            continue
 
         sms_to_key = "Messages[%s][To]"%str(itt)
         sms_body_key = "Messages[%s][Body]"%str(itt)
         customer_phone = awb[1].replace(" ","")
         customer_phone = "0"+customer_phone[-10:]
         sms_data[sms_to_key] = customer_phone
-        sms_data[sms_body_key] = "Dear Customer, your Origin order has been shipped via Delhivery with AWB number %s. It is expected to arrive by %s. You shall be notified when the order is dispatched for delivery."%(str(awb[0]), edd)
+        sms_data[sms_body_key] = "Dear Customer, we apologise for the delay. Your order from Know Your Origin has not been shipped due to huge volumes. It will be shipped with in next two days with AWB no. %s by Delhivery."%str(awb[0])
         itt +=1
     lad = requests.post(
         'https://ff2064142bc89ac5e6c52a6398063872f95f759249509009:783fa09c0ba1110309f606c7411889192335bab2e908a079@api.exotel.com/v1/Accounts/wareiq1/Sms/bulksend',

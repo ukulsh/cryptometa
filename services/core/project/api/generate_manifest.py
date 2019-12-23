@@ -13,7 +13,7 @@ session = boto3.Session(
 
 
 def fill_manifest_data(orders, courier, store, warehouse):
-    file_name = "MANIFEST_" + warehouse+"_"+str(datetime.now().strftime("%d_%b_%Y_%H_%M_%S"))+".pdf"
+    file_name = "/tmp/MANIFEST_" + warehouse+"_"+str(datetime.now().strftime("%d_%b_%Y_%H_%M_%S"))+".pdf"
     c = canvas.Canvas(file_name, pagesize=A4)
     pickup_date = datetime.now() + timedelta(days=1)
     pickup_date = pickup_date.strftime('%d-%m-%Y')

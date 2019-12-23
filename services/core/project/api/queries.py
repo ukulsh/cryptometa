@@ -1,5 +1,8 @@
 
-fetch_client_channels_query = """select * from client_channel aa
+fetch_client_channels_query = """select aa.id,aa.client_prefix,aa.channel_id,aa.api_key,aa.api_password,aa.shop_url,
+                                aa.last_synced_order,aa.last_synced_time,aa.date_created,aa.date_updated,
+                                bb.id,bb.channel_name,bb.logo_url,bb.date_created,bb.date_updated 
+                                from client_channel aa
                                 left join master_channels bb
                                 on aa.channel_id=bb.id"""
 
@@ -35,13 +38,18 @@ insert_product_quantity_query = """INSERT INTO products_quantity (product_id,tot
 
 ########################create shipments
 
-fetch_client_couriers_query = """select * from client_couriers aa
+fetch_client_couriers_query = """select aa.id,aa.client_prefix,aa.courier_id,aa.priority,aa.last_shipped_order_id,
+                                aa.last_shipped_time,aa.date_created,aa.date_updated,aa.unique_parameter,bb.id,
+                                bb.courier_name,bb.logo_url,bb.date_created,bb.date_updated,bb.api_key,bb.api_password,bb.api_url
+		                        from client_couriers aa
                                 left join master_couriers bb
                                 on aa.courier_id=bb.id"""
 
 get_pickup_points_query = """select aa.id, aa.pickup_id, aa.return_point_id, 
                                 bb.phone, bb.address, bb.address_two, bb.city,
-                                bb.country, bb.pincode, bb.warehouse_prefix
+                                bb.country, bb.pincode, bb.warehouse_prefix, bb.state, bb.name,
+                                cc.phone, cc.address, cc.address_two, cc.city,
+                                cc.country, cc.pincode, cc.warehouse_prefix, cc.state, cc.name
                                 from client_pickups aa
                                 left join pickup_points bb
                                 on aa.pickup_id=bb.id
@@ -53,14 +61,16 @@ get_orders_to_ship_query = """select aa.id,aa.channel_order_id,aa.order_date,aa.
                                 aa.date_created,aa.date_updated,aa.status,aa.client_prefix,aa.client_channel_id,aa.delivery_address_id,
                                 cc.id,cc.first_name,cc.last_name,cc.address_one,cc.address_two,cc.city,cc.pincode,cc.state,cc.country,cc.phone,
                                 cc.latitude,cc.longitude,cc.country_code,dd.id,dd.payment_mode,dd.amount,dd.currency,dd.order_id,dd.shipping_charges,
-                                dd.subtotal,dd.order_id,ee.dimensions,ee.weights,ee.quan, ff.api_key, ff.api_password, ff.shop_url, aa.order_id_channel_unique
+                                dd.subtotal,dd.order_id,ee.dimensions,ee.weights,ee.quan, ff.api_key, ff.api_password, 
+                                ff.shop_url, aa.order_id_channel_unique, ee.products_name
                                 from orders aa
                                 left join shipping_address cc
                                 on aa.delivery_address_id=cc.id
                                 left join orders_payments dd
                                 on dd.order_id=aa.id
                                 left join 
-                                (select order_id, array_agg(dimensions) as dimensions, array_agg(weight) as weights, array_agg(quantity) as quan
+                                (select order_id, array_agg(dimensions) as dimensions, array_agg(weight) as weights, 
+                                array_agg(quantity) as quan, array_agg(pp.name) as products_name
                                  from op_association opa 
                                  left join products pp
                                  on opa.product_id = pp.id
@@ -109,8 +119,7 @@ get_request_pickup_orders_data_query = """select aa.channel_order_id, aa.order_d
                                 on aa.id=ee.order_id
                                 left join shipping_address ff
                                 on aa.delivery_address_id=ff.id
-                                where aa.status='READY TO SHIP'
-                                and aa.id>%s
+                                where aa.status in ('READY TO SHIP', 'PICKUP REQUESTED', 'NOT PICKED')
                                 and bb.pickup_id=%s
                                 and aa.order_date<%s
                                 order by aa.id;"""
@@ -118,7 +127,7 @@ get_request_pickup_orders_data_query = """select aa.channel_order_id, aa.order_d
 update_order_status_query = """UPDATE orders SET status='PICKUP REQUESTED' WHERE id=%s"""
 
 insert_manifest_data_query = """INSERT INTO manifests (manifest_id, warehouse_prefix, courier_id, pickup_id, 
-                                no_of_orders, pickup_date, manifest_url, date_created) VALUES (%s,%s,%s,%s,%s,
+                                total_scheduled, pickup_date, manifest_url, date_created) VALUES (%s,%s,%s,%s,%s,
                                 %s,%s,%s)"""
 
 update_pickup_requests_query = """UPDATE pickup_requests SET last_picked_order_id=%s, last_pickup_request_date=%s
@@ -129,12 +138,18 @@ update_pickup_requests_query = """UPDATE pickup_requests SET last_picked_order_i
 
 get_courier_id_and_key_query = """SELECT id, courier_name, api_key FROM master_couriers;"""
 
-get_status_update_orders_query = """select aa.id, bb.awb, aa.status, aa.client_prefix, aa.customer_phone from orders aa
+get_status_update_orders_query = """select aa.id, bb.awb, aa.status, aa.client_prefix, aa.customer_phone, 
+                                    aa.order_id_channel_unique, bb.channel_fulfillment_id, cc.api_key, 
+                                    cc.api_password, cc.shop_url from orders aa
                                     left join shipments bb
                                     on aa.id=bb.order_id
+                                    left join client_channel cc
+                                    on aa.client_channel_id=cc.id
                                     where aa.status not in ('NEW','DELIVERED')
+                                    and aa.status_type is distinct from 'DL'
                                     and bb.awb != ''
                                     and bb.status != 'Fail'
+                                    and bb.status != 'Failure'
                                     and bb.courier_id=%s;"""
 
-order_status_update_query = """UPDATE orders SET status=%s WHERE id=%s;"""
+order_status_update_query = """UPDATE orders SET status=%s, status_type=%s, status_detail=%s WHERE id=%s;"""

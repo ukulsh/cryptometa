@@ -3,6 +3,7 @@
 
 from project import db
 from sqlalchemy.dialects.postgresql import JSON
+from sqlalchemy import UniqueConstraint
 from datetime import datetime
 
 
@@ -115,6 +116,8 @@ class Orders(db.Model):
     customer_email = db.Column(db.String, nullable=True)
     customer_phone = db.Column(db.String, nullable=False)
     status = db.Column(db.String, nullable=False)
+    status_type = db.Column(db.String, nullable=True)
+    status_detail = db.Column(db.String, nullable=True)
     products = db.relationship("OPAssociation", backref="orders", primaryjoin=id == OPAssociation.order_id)
     delivery_address_id = db.Column(db.Integer, db.ForeignKey('shipping_address.id'))
     delivery_address = db.relationship("ShippingAddress", backref=db.backref("orders", uselist=True))
@@ -124,6 +127,8 @@ class Orders(db.Model):
     order_id_channel_unique = db.Column(db.String, nullable=True)
     date_created = db.Column(db.DateTime, default=datetime.now)
     date_updated = db.Column(db.DateTime, onupdate=datetime.now)
+    __table_args__ = (UniqueConstraint('channel_order_id', 'client_prefix', name='id_client_unique'),
+                      )
 
 
 class OrdersPayments(db.Model):
@@ -244,11 +249,26 @@ class Manifests(db.Model):
     courier = db.relationship("MasterCouriers", backref=db.backref("manifests", uselist=True))
     pickup_id = db.Column(db.Integer, db.ForeignKey('pickup_points.id'))
     pickup = db.relationship("PickupPoints", backref=db.backref("manifests", uselist=True))
-    no_of_orders = db.Column(db.Integer, nullable=False)
+    total_scheduled = db.Column(db.Integer, nullable=True)
+    total_picked = db.Column(db.Integer, nullable=True)
     pickup_date = db.Column(db.DateTime, nullable=True)
     manifest_url = db.Column(db.TEXT, nullable=False)
     date_created = db.Column(db.DateTime, default=datetime.now)
     date_updated = db.Column(db.DateTime, onupdate=datetime.now)
+
+
+class OrderStatus(db.Model):
+    __tablename__ = "order_status"
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    order_id = db.Column(db.Integer, db.ForeignKey('orders.id'))
+    order = db.relationship("Orders", backref=db.backref("order_status", uselist=True))
+    courier_id = db.Column(db.Integer, db.ForeignKey('master_couriers.id'))
+    courier = db.relationship("MasterCouriers", backref=db.backref("order_status", uselist=True))
+    status_code = db.Column(db.String, nullable=True)
+    status = db.Column(db.String, nullable=True)
+    status_text = db.Column(db.String, nullable=True)
+    location = db.Column(db.String, nullable=True)
+    status_time = db.Column(db.DateTime, default=datetime.now)
 
 
 

@@ -264,11 +264,25 @@ class OrderStatus(db.Model):
     order = db.relationship("Orders", backref=db.backref("order_status", uselist=True))
     courier_id = db.Column(db.Integer, db.ForeignKey('master_couriers.id'))
     courier = db.relationship("MasterCouriers", backref=db.backref("order_status", uselist=True))
+    shipment_id = db.Column(db.Integer, db.ForeignKey('shipments.id'))
+    shipment = db.relationship("Shipments", backref=db.backref("order_status", uselist=True))
     status_code = db.Column(db.String, nullable=True)
     status = db.Column(db.String, nullable=True)
     status_text = db.Column(db.String, nullable=True)
     location = db.Column(db.String, nullable=True)
+    location_city = db.Column(db.String, nullable=True)
     status_time = db.Column(db.DateTime, default=datetime.now)
+
+
+class CodVerification(db.Model):
+    __tablename__ = "cod_verification"
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    order_id = db.Column(db.Integer, db.ForeignKey('orders.id'))
+    order = db.relationship("Orders", backref=db.backref("exotel_data", uselist=True))
+    call_sid = db.Column(db.String, nullable=True)
+    recording_url = db.Column(db.String, nullable=True)
+    cod_verified = db.Column(db.BOOLEAN, nullable=True, default=None)
+
 
 
 

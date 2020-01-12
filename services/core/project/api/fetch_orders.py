@@ -21,6 +21,23 @@ def lambda_handler():
             products_quantity_dict = dict()
             for order in data['orders']:
                 try:
+                    product_exists = True
+                    if channel[1] == "DAPR": #serving only DAPR available skus, Have to create generic logic for this
+                        for prod in order['line_items']:
+                            product_sku = str(prod['variant_id'])
+                            prod_tuple = (product_sku, channel[1])
+                            cur.execute(select_products_query, prod_tuple)
+                            try:
+                                product_id = cur.fetchone()[0]
+                            except Exception:
+                                if product_sku in ("19675086585915", "30690984558651"):
+                                    continue
+                                product_exists = False
+                                break
+
+                    if not product_exists:
+                        continue
+
                     customer_name = order['customer']['first_name'] + " " + order['customer']['last_name']
                     shipping_tuple = (order['shipping_address']['first_name'],
                                       order['shipping_address']['last_name'],
@@ -39,6 +56,8 @@ def lambda_handler():
                     shipping_address_id = cur.fetchone()[0]
 
                     customer_phone = order['customer']['phone'] if order['customer']['phone'] else order['shipping_address']['phone']
+                    customer_phone = str(customer_phone).replace(" ", "")
+                    customer_phone = "0" + customer_phone[-10:]
 
                     orders_tuple = (str(order['order_number']), order['created_at'], customer_name, order['customer']['email'],
                                     customer_phone if customer_phone else "", shipping_address_id,
@@ -68,6 +87,26 @@ def lambda_handler():
                         try:
                             product_id = cur.fetchone()[0]
                         except Exception:
+                            if product_sku == "19675086585915" and channel[1] == 'DAPR': #DAPR combination sku not present in products
+                                for i in (3204,3206):
+                                    product_id = i
+                                    op_tuple = (product_id, order_id, prod['quantity'])
+                                    cur.execute(insert_op_association_query, op_tuple)
+                                    if product_id not in products_quantity_dict:
+                                        products_quantity_dict[product_id] = prod['quantity']
+                                    else:
+                                        products_quantity_dict[product_id] += prod['quantity']
+                                continue
+                            if product_sku == "30690984558651" and channel[1] == 'DAPR': #DAPR combination sku not present in products
+                                for i in (3249,3250):
+                                    product_id = i
+                                    op_tuple = (product_id, order_id, prod['quantity'])
+                                    cur.execute(insert_op_association_query, op_tuple)
+                                    if product_id not in products_quantity_dict:
+                                        products_quantity_dict[product_id] = prod['quantity']
+                                    else:
+                                        products_quantity_dict[product_id] += prod['quantity']
+                                continue
                             if channel[1] == "KYORIGIN":
                                 dimensions = {"length":1.25, "breadth":30, "height":30}
                                 weight = 0.25

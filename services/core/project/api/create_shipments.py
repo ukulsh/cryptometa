@@ -25,7 +25,8 @@ def lambda_handler():
         'From': 'LM-WAREIQ'
     }
     for courier in cur.fetchall():
-        if courier[10] in ("Delhivery", "Delhivery Surface Standard"):
+        if courier[10] in ("Delhivery", "Delhivery Surface Standard") and courier[1]!='DAPR':
+            continue
             get_orders_data_tuple = (courier[4], courier[1], courier[1], courier[4])
             cur.execute(get_orders_to_ship_query, get_orders_data_tuple)
             shipments = list()
@@ -221,7 +222,200 @@ def lambda_handler():
                     cur.execute(update_orders_status_query, (tuple(order_status_change_ids),))
 
             conn.commit()
+
+        elif courier[10] == "Delhivery" and courier[1]=='DAPR':
+            get_orders_data_tuple = (courier[4], courier[1], courier[1], courier[4])
+            cur.execute(get_orders_to_ship_query, get_orders_data_tuple)
+            all_orders = cur.fetchall()
+            last_shipped_order_id = 0
+
+            order_status_change_ids = list()
+
+            form_data = {"RequestBody": {
+                                        "order_id":"9251",
+                                        "statuses":[""],
+                                        "order_location":"DWH",
+                                        "date_from":"",
+                                        "date_to":"",
+                                        "pageNumber":""
+                                        }}
+            headers = {"Content-Type": "application/x-www-form-urlencoded",
+                       "ApiKey": "8dcbc7d756d64a04afb21e00f4a053b04a38b62de1d3481dadc8b54",
+                       "ApiOwner": "UMBAPI",
+                       "OrgId":'1'
+                       }
+            for order in all_orders:
+                if order[0] > last_shipped_order_id:
+                    last_shipped_order_id = order[0]
+                    requests.post("http://dtdc.vineretail.com/RestWS/api/eretail/v1/order/shipDetail",
+                                  headers=headers,                    data=json.dumps(form_data))
+
+                fulfillment_id = None
+                tracking_link = None
+                try:
+                    # check pincode serviceability
+                    check_url = courier[16]+"/v1/serviceability/?pickup_pincode=%s&delivery_pincode=%s&format=json" % (str(pickup_point[8]),str(order[18]))
+                    req = requests.get(check_url, headers=headers)
+                    if not req.json()['Serviceability']:
+                        insert_shipments_data_query = """INSERT INTO SHIPMENTS (awb, status, order_id, pickup_id, courier_id, 
+                                                                            dimensions, volumetric_weight, weight, remark, return_point_id, routing_code)
+                                                                            VALUES  %s"""
+                        insert_shipments_data_tuple = list()
+                        insert_shipments_data_tuple.append(("", "Fail", order[0], None,
+                                                            None, None, None, None, "Pincode not serviceable", None,
+                                                            None), )
+                        cur.execute(insert_shipments_data_query, tuple(insert_shipments_data_tuple))
+                        continue
+
+                    package_string = ""
+                    for idx, prod in enumerate(order[40]):
+                        package_string += prod + " (" + str(order[35][idx]) + ") + "
+                    package_string += "Shipping"
+
+                    dimensions = order[33][0]
+                    dimensions['length'] = dimensions['length'] * order[35][0]
+                    weight = order[34][0] * order[35][0]
+                    for idx, dim in enumerate(order[33]):
+                        if idx == 0:
+                            continue
+                        dimensions['length'] += dim['length'] * (order[35][idx])
+                        weight += order[34][idx] * (order[35][idx])
+
+                    volumetric_weight = (dimensions['length'] * dimensions['breadth'] * dimensions['height']) / 5000
+
+                    customer_phone = order[21].replace(" ", "")
+                    customer_phone = "0" + customer_phone[-10:]
+
+                    customer_name = order[13]
+                    if order[14]:
+                        customer_name += " "+ order[14]
+
+                    shadowfax_shipment_body = {
+                                               "order_details": {
+                                                    "client_order_id":  order[1],
+                                                    "actual_weight": sum(order[34]) * 1000,
+                                                    "volumetric_weight": volumetric_weight,
+                                                    "product_value": order[27],
+                                                    "payment_mode":  order[26],
+                                                    "total_amount":order[27]
+                                                },
+                                                "customer_details": {
+                                                    "name": customer_name,
+                                                    "contact": customer_phone,
+                                                    "address_line_1": order[15],
+                                                    "address_line_2": order[16],
+                                                    "city": order[17],
+                                                    "state": order[19],
+                                                    "pincode": int(order[18])
+                                                },
+                                                "pickup_details": {
+                                                    "name": pickup_point[11],
+                                                    "contact": pickup_point[3],
+                                                    "address_line_1": pickup_point[4],
+                                                    "address_line_2": pickup_point[5],
+                                                    "city": pickup_point[6],
+                                                    "state": pickup_point[10],
+                                                    "pincode": int(pickup_point[8])
+                                                },
+                                                "rts_details": {
+                                                    "name": pickup_point[20],
+                                                    "contact": pickup_point[12],
+                                                    "address_line_1": pickup_point[13],
+                                                    "address_line_2": pickup_point[14],
+                                                    "city": pickup_point[15],
+                                                    "state": pickup_point[19],
+                                                    "pincode": int(pickup_point[17])
+                                                },
+                                                "product_details": [{
+                                                    "sku_name": package_string,
+                                                    "price":order[27]
+                                                }]
+                                            }
+                    if order[26].lower() == "cod":
+                        shadowfax_shipment_body["order_details"]["cod_amount"]= order[27]
+                    shadowfax_url = courier[16] + "/v1/clients/orders/?format=json"
+                    req = requests.post(shadowfax_url, headers=headers, data=json.dumps(shadowfax_shipment_body))
+                    return_data_raw = req.json()
+                    insert_shipments_data_query = """INSERT INTO SHIPMENTS (awb, status, order_id, pickup_id, courier_id, 
+                                                                                                    dimensions, volumetric_weight, weight, remark, return_point_id, routing_code, 
+                                                                                                    channel_fulfillment_id, tracking_link)
+                                                                                                    VALUES  %s"""
+                    if not return_data_raw['errors']:
+                        order_status_change_ids.append(order[0])
+                        return_data = return_data_raw['data']
+                        data_tuple = tuple([(
+                        return_data['awb_number'], return_data_raw['message'], order[0], pickup_point[1],
+                        courier[9], json.dumps(dimensions), volumetric_weight, weight, "", pickup_point[2],
+                        "", None, None)])
+                        cur_2.execute("select client_name from clients where client_prefix='%s'" % order[9])
+                        client_name = cur_2.fetchone()
+                        customer_phone = order[5].replace(" ", "")
+                        customer_phone = "0" + customer_phone[-10:]
+
+                        sms_to_key = "Messages[%s][To]" % str(exotel_idx)
+                        sms_body_key = "Messages[%s][Body]" % str(exotel_idx)
+
+                        exotel_sms_data[sms_to_key] = customer_phone
+                        exotel_sms_data[
+                            sms_body_key] = "Dear Customer, thank you for ordering from %s. Your order will be shipped by Shadowfax with AWB number %s. " \
+                                            "You can track your order using this AWB number." % (
+                                            client_name[0], str(return_data_raw['data']['awb_number']))
+                        exotel_idx += 1
+
+                        try:
+                            create_fulfillment_url = "https://%s:%s@%s/admin/api/2019-10/orders/%s/fulfillments.json" % (
+                                order[36], order[37],
+                                order[38], order[39])
+                            tracking_link = "https://www.delhivery.com/track/package/%s" % str(return_data_raw['data']['awb_number'])
+                            ful_header = {'Content-Type': 'application/json'}
+                            fulfil_data = {
+                                "fulfillment": {
+                                    "tracking_number": str(return_data_raw['data']['awb_number']),
+                                    "tracking_urls": [
+                                        tracking_link
+                                    ],
+                                    "tracking_company": "Delhivery",
+                                    "location_id": 16721477681,
+                                    "notify_customer": False
+                                }
+                            }
+                            try:
+                                req_ful = requests.post(create_fulfillment_url, data=json.dumps(fulfil_data),
+                                                        headers=ful_header)
+                                fulfillment_id = str(req_ful.json()['fulfillment']['id'])
+                            except Exception as e:
+                                logger.error("Couldn't update shopify for: " + str(order[1])
+                                             + "\nError: " + str(e.args))
+                        except Exception as e:
+                            logger.error("Couldn't update shopify for: " + str(order[1])
+                                         + "\nError: " + str(e.args))
+
+                    else:
+                        data_tuple = tuple([(
+                            None, return_data_raw['message'], order[0], pickup_point[1],
+                            courier[9], json.dumps(dimensions), volumetric_weight, weight, return_data_raw['errors'], pickup_point[2],
+                            "", fulfillment_id, tracking_link)])
+
+                    cur.execute(insert_shipments_data_query, data_tuple)
+
+                except Exception as e:
+                    print("couldn't assign order: " + str(order[1]) + "\nError: " + str(e))
+
+            if last_shipped_order_id:
+                last_shipped_data_tuple = (
+                last_shipped_order_id, datetime.now(tz=pytz.timezone('Asia/Calcutta')), courier[1])
+                cur.execute(update_last_shipped_order_query, last_shipped_data_tuple)
+
+            if order_status_change_ids:
+                if len(order_status_change_ids) == 1:
+                    cur.execute(update_orders_status_query % (("(%s)") % str(order_status_change_ids[0])))
+                else:
+                    cur.execute(update_orders_status_query, (tuple(order_status_change_ids),))
+
+            conn.commit()
+
         elif courier[10] == "Shadowfax":
+            continue
             get_orders_data_tuple = (courier[4], courier[1], courier[1], courier[4])
             cur.execute(get_orders_to_ship_query, get_orders_data_tuple)
             all_orders = cur.fetchall()

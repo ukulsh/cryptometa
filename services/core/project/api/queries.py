@@ -140,7 +140,7 @@ get_courier_id_and_key_query = """SELECT id, courier_name, api_key FROM master_c
 
 get_status_update_orders_query = """select aa.id, bb.awb, aa.status, aa.client_prefix, aa.customer_phone, 
                                     aa.order_id_channel_unique, bb.channel_fulfillment_id, cc.api_key, 
-                                    cc.api_password, cc.shop_url from orders aa
+                                    cc.api_password, cc.shop_url, bb.id from orders aa
                                     left join shipments bb
                                     on aa.id=bb.order_id
                                     left join client_channel cc
@@ -153,3 +153,7 @@ get_status_update_orders_query = """select aa.id, bb.awb, aa.status, aa.client_p
                                     and bb.courier_id=%s;"""
 
 order_status_update_query = """UPDATE orders SET status=%s, status_type=%s, status_detail=%s WHERE id=%s;"""
+
+select_statuses_query = """SELECT  id, status_code, status, status_text, location, status_time, location_city from order_status
+                            WHERE order_id=%s AND shipment_id=%s AND courier_id=%s
+                            ORDER BY status_time DESC"""

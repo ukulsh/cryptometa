@@ -3,6 +3,7 @@
 import requests, json, math, datetime, pytz
 import boto3, os, csv, io
 import pandas as pd
+from flask_cors import cross_origin
 from sqlalchemy import or_, func, not_, and_
 from flask import Blueprint, request, jsonify, make_response
 from flask_restful import Resource, Api
@@ -12,8 +13,8 @@ from reportlab.pdfgen import canvas
 
 from project import db
 from project.api.models import Products, ProductQuantity, \
-    Orders, OrdersPayments, PickupPoints, MasterChannels, ClientPickups, \
-    MasterCouriers, Shipments, OPAssociation, ShippingAddress, Manifests, ClientCouriers
+    Orders, OrdersPayments, PickupPoints, MasterChannels, ClientPickups, CodVerification,\
+    MasterCouriers, Shipments, OPAssociation, ShippingAddress, Manifests, ClientCouriers, OrderStatus
 from project.api.utils import authenticate_restful, get_products_sort_func, \
     get_orders_sort_func, create_shiplabel_blank_page, fill_shiplabel_data
 
@@ -41,6 +42,7 @@ class ProductList(Resource):
         sort_by = data.get('sort_by', 'available_quantity')
         search_key = data.get('search_key', '')
         search_key = '%{}%'.format(search_key)
+        filters = data.get('filters', {})
         auth_data = resp.get('data')
         if not auth_data:
             return {"success": False, "msg": "Auth Failed"}, 404
@@ -50,6 +52,11 @@ class ProductList(Resource):
             products_qs = db.session.query(Products, ProductQuantity)\
                 .filter(Products.id==ProductQuantity.product_id).order_by(sort_func())\
                 .filter(or_(Products.name.ilike(search_key), Products.sku.ilike(search_key)))
+            if filters:
+                if 'warehouse' in filters:
+                    products_qs = products_qs.filter(ProductQuantity.warehouse_prefix.in_(filters['warehouse']))
+                if 'client' in filters:
+                    products_qs = products_qs.filter(Products.client_prefix.in_(filters['client']))
             if auth_data['user_group'] != 'super-admin':
                 products_qs = products_qs.filter(Products.client_prefix==client_prefix)
 
@@ -63,24 +70,30 @@ class ProductList(Resource):
                 return {"success": False, "msg": "Invalid URL"}, 404
 
             products_qs_data = products_qs.limit(per_page).offset((page-1)*per_page).all()
-            response_data = list()
+            response_dict_sku = dict()
             for product in products_qs_data:
                 resp_obj=dict()
-                resp_obj['channel_logo'] = product[0].channel.logo_url
-                resp_obj['product_name'] = product[0].name
-                resp_obj['product_image'] = product[0].product_image
-                resp_obj['price'] = product[0].price
-                resp_obj['master_sku'] = product[0].sku
-                resp_obj['channel_sku'] = product[0].sku
-                resp_obj['total_quantity'] = product[1].approved_quantity
-                resp_obj['available_quantity'] = product[1].available_quantity
-                resp_obj['dimensions'] = product[0].dimensions
-                resp_obj['weight'] = product[0].weight
-                if type == 'inactive':
-                    resp_obj['inactive_reason'] = product[0].inactive_reason
-                response_data.append(resp_obj)
+                if product[0].sku not in response_dict_sku:
+                    resp_obj['channel_logo'] = product[0].channel.logo_url
+                    resp_obj['product_name'] = product[0].name
+                    resp_obj['product_image'] = product[0].product_image
+                    resp_obj['price'] = product[0].price
+                    resp_obj['master_sku'] = product[0].sku
+                    resp_obj['channel_sku'] = product[0].sku
+                    resp_obj['total_quantity'] = product[1].approved_quantity
+                    resp_obj['available_quantity'] = product[1].available_quantity
+                    resp_obj['dimensions'] = product[0].dimensions
+                    resp_obj['weight'] = product[0].weight
+                    if type == 'inactive':
+                        resp_obj['inactive_reason'] = product[0].inactive_reason
+                    response_dict_sku[product[0].sku] = resp_obj
+                else:
+                    response_dict_sku[product[0].sku]['total_quantity'] += product[1].approved_quantity
+                    response_dict_sku[product[0].sku]['available_quantity'] += product[1].available_quantity
 
-            response['data'] = response_data
+            response_data = list(response_dict_sku.values())
+
+            response['data'] = sorted(response_data, key = lambda i: i['available_quantity'])
             total_count = products_qs.count()
 
             total_pages = math.ceil(total_count/per_page)
@@ -93,6 +106,30 @@ class ProductList(Resource):
 
 
 api.add_resource(ProductList, '/products/<type>')
+
+
+@core_blueprint.route('/products/v1/get_filters', methods=['GET'])
+@authenticate_restful
+def get_products_filters(resp):
+    response = {"filters":{}, "success": True}
+    auth_data = resp.get('data')
+    current_tab = request.args.get('tab')
+    client_prefix = auth_data.get('client_prefix')
+    warehouse_qs = db.session.query(ProductQuantity.warehouse_prefix, func.count(ProductQuantity.warehouse_prefix))\
+                .join(Products, Products.id == ProductQuantity.product_id)
+    if auth_data['user_group'] != 'super-admin':
+        warehouse_qs = warehouse_qs.filter(Products.client_prefix == client_prefix)
+    if current_tab == 'active':
+        warehouse_qs = warehouse_qs.filter(Products.active == True)
+    elif current_tab =='inactive':
+        warehouse_qs = warehouse_qs.filter(Products.active == False)
+    warehouse_qs = warehouse_qs.group_by(ProductQuantity.warehouse_prefix)
+    response['filters']['warehouse'] = [{x[0]: x[1]} for x in warehouse_qs]
+    if auth_data['user_group'] == 'super-admin':
+        client_qs = db.session.query(Products.client_prefix, func.count(Products.client_prefix)).group_by(Products.client_prefix)
+        response['filters']['client'] = [{x[0]: x[1]} for x in client_qs]
+
+    return jsonify(response), 200
 
 
 class OrderList(Resource):
@@ -245,8 +282,9 @@ def get_dashboard(resp):
         qs_data = qs_data.filter(Orders.client_prefix == client_prefix)
     qs_data = qs_data.group_by('date').order_by('date').all()
 
-    response['today'] = {"orders": qs_data[-1][1], "revenue": qs_data[-1][2]}
-    response['yesterday'] = {"orders": qs_data[-2][1], "revenue": qs_data[-2][2]}
+    response['today'] = {"orders": qs_data[-1][1] if qs_data else 0, "revenue": qs_data[-1][2] if qs_data else 0}
+    response['yesterday'] = {"orders": qs_data[-2][1] if len(qs_data)>1 else 0, "revenue": qs_data[-2][2] if len(qs_data)>1 else 0}
+
     response['graph_data'] = list()
 
     for dat_obj in qs_data:
@@ -411,11 +449,13 @@ def upload_orders(resp):
                                client_prefix=auth_data.get('client_prefix'),
                                )
 
+            sku = list()
+            sku_quantity = list()
             if row_data.sku:
-                sku = row_data.sku.split('|')
-                sku_quantity = row_data.sku_quantity.split('|')
-                for idx, sku in enumerate(sku):
-                    prod_obj = db.session.query(Products).filter(Products.sku == sku).first()
+                sku = str(row_data.sku).split('|')
+                sku_quantity = str(row_data.sku_quantity).split('|')
+                for idx, sku_str in enumerate(sku):
+                    prod_obj = db.session.query(Products).filter(Products.sku == sku_str).first()
                     if prod_obj:
                         op_association = OPAssociation(order=new_order, product=prod_obj, quantity=int(sku_quantity[idx]))
                         new_order.products.append(op_association)
@@ -430,6 +470,11 @@ def upload_orders(resp):
             )
 
             db.session.add(new_order)
+            for idx, sku_str in enumerate(sku):
+                prod_obj = db.session.query(ProductQuantity).join(Products, ProductQuantity.product_id==Products.id).filter(Products.sku==sku_str).first()
+                if prod_obj:
+                    prod_obj.available_quantity=prod_obj.available_quantity-int(sku_quantity[idx])
+
             db.session.commit()
 
         except Exception as e:
@@ -849,59 +894,268 @@ def ship_order(resp, order_id):
         return jsonify({"success": False, "msg": str(e.args[0])}), 404
 
 
-@core_blueprint.route('/core/ping', methods=['POST'])
-@authenticate_restful
-def ping_pong(resp):
+@core_blueprint.route('/orders/v1/track/<awb>', methods=['GET'])
+@cross_origin()
+def track_order(awb):
+    try:
+        shipment = db.session.query(Shipments).filter(Shipments.awb==awb).first()
+        if not shipment:
+            return jsonify({"success": False, "msg": "tracking id not found"}), 400
 
-    return jsonify({
-        'status': 'success',
-        'message': 'pong!'
-    })
-    from .request_pickups import lambda_handler
-    lambda_handler()
-    return jsonify({
-        'status': 'success',
-        'message': 'pong!'
-    })
-    data = json.loads(request.data)
-    auth_data = resp.get('data')
-    if not auth_data:
-        return {"success": False, "msg": "Auth Failed"}, 404
+        details = request.args.get('details')
+        if details:
+            if shipment.courier_id in (1,2): #Delhivery details of status
+                try:
+                    return_details = list()
+                    delhivery_url = "https://track.delhivery.com/api/status/packages/json/?waybill=%s&token=%s" \
+                                    % (str(awb), shipment.courier.api_key)
+                    req = requests.get(delhivery_url).json()
+                    for each_scan in req['ShipmentData'][0]['Shipment']["Scans"]:
+                        return_details_obj = dict()
+                        return_details_obj['status'] = each_scan['ScanDetail']['Scan'] + \
+                                                       ' - ' + each_scan['ScanDetail']['Instructions']
+                        return_details_obj['city'] = each_scan['ScanDetail']['CityLocation']
+                        status_time = each_scan['ScanDetail']['StatusDateTime']
+                        if status_time:
+                            if len(status_time) == 19:
+                                status_time = datetime.datetime.strptime(status_time, '%Y-%m-%dT%H:%M:%S')
+                            else:
+                                status_time = datetime.datetime.strptime(status_time, '%Y-%m-%dT%H:%M:%S.%f')
+                        return_details_obj['time'] = status_time.strftime("%d %b %Y, %I:%M %p")
+                        return_details.append(return_details_obj)
+                    return jsonify({"success": True, "data": return_details}), 200
+                except Exception as e:
+                    return jsonify({"success": False, "msg": "Details not available"}), 400
+            else:
+                return jsonify({"success": False, "msg": "Data not available"}), 400
+        order_statuses = db.session.query(OrderStatus).filter(OrderStatus.shipment==shipment)\
+            .order_by(OrderStatus.status_time).all()
+        if not order_statuses:
+            return jsonify({"success": False, "msg": "tracking not available for this id"}), 400
 
-    order_ids = data['order_ids']
-    orders_qs = db.session.query(Shipments).join(Orders, Shipments.order_id==Orders.id).filter(
-        Orders.channel_order_id.in_(order_ids), Orders.delivery_address!=None, Shipments.awb!=None)\
-        .order_by(Orders.id).all()
-    if not orders_qs:
-        return {"success": False, "msg": "No valid order ID"}, 404
-
-    manifest_dict = dict()
-    for order in orders_qs:
-        if order.pickup.name not in manifest_dict:
-            manifest_dict[order.pickup.name] = {order.courier.courier_name:[order]}
-        elif order.courier.courier_name not in manifest_dict[order.pickup.name]:
-            manifest_dict[order.pickup.name][order.courier.courier_name] = [order]
+        response = dict()
+        last_status = order_statuses[-1].status
+        response['tracking_id'] = awb
+        response['status'] = last_status
+        response['remark'] = order_statuses[-1].status_text
+        response['order_id'] = order_statuses[-1].order.channel_order_id
+        response['placed_on'] = order_statuses[-1].order.order_date.strftime("%d %b %Y, %I:%M %p")
+        response['order_track'] = list()
+        if shipment.edd:
+            response['arriving_on'] = shipment.edd.strftime("%d %b")
         else:
-            manifest_dict[order.pickup.name][order.courier.courier_name].append(order)
+            response['arriving_on'] = None
+        for order_status in order_statuses:
+            status_dict = dict()
+            status_dict['status'] = order_status.status
+            status_dict['city'] = order_status.location_city
+            status_dict['time'] = order_status.status_time.strftime("%d %b %Y, %I:%M %p")
+            response['order_track'].append(status_dict)
+
+        addition_statuses = list()
+        if last_status == "Received":
+            addition_statuses =  ["Picked", "In Transit", "Out for delivery", "Delivered"]
+        elif last_status == "Picked":
+            addition_statuses =  ["In Transit", "Out for delivery", "Delivered"]
+        elif last_status == "In Transit":
+            addition_statuses =  ["Out for delivery", "Delivered"]
+        elif last_status == "Out for delivery":
+            addition_statuses =  ["Delivered"]
+
+        for add_status in addition_statuses:
+            status_dict = dict()
+            status_dict['status'] = add_status
+            status_dict['city'] = None
+            status_dict['time'] = None
+            response['order_track'].append(status_dict)
+
+        return_response = jsonify({"success": True, "data": response})
+
+        return return_response, 200
+    except Exception as e:
+        return jsonify({"success": False, "msg": str(e.args[0])}), 404
 
 
-    file_name = "MANIFEST_MIRAKKI.pdf"
-    c = canvas.Canvas(file_name, pagesize=A4)
-    create_manifests_blank_page(c)
-    c.save()
+class CodVerificationGather(Resource):
 
-    return jsonify({
-        'status': 'success',
-        'message': 'pong!'
-    })
+    def get(self):
+        try:
+            order_id = request.args.get('CustomField')
+            if order_id:
+                order_id = int(order_id)
+                order = db.session.query(Orders).filter(Orders.id == order_id).first()
+                gather_prompt_text = "Hello %s, You recently placed an order from %s with order ID %s." \
+                                     " Press 1 to confirm your order or 0 to cancel." % (order.customer_name,
+                                                                                         order.client_prefix.lower(),
+                                                                                         order.channel_order_id)
+
+                repeat_prompt_text = "It seems that you have not provided any input, please try again. Order from %s, " \
+                                     "Order ID %s. Press 1 to confirm your order or 0 to cancel." % (
+                                     order.client_prefix.lower(),
+                                     order.channel_order_id)
+                response = {
+                    "gather_prompt": {
+                        "text": gather_prompt_text,
+                    },
+                    "max_input_digits": 1,
+                    "repeat_menu": 2,
+                    "repeat_gather_prompt": {
+                        "text": repeat_prompt_text
+                    }
+                }
+                return response, 200
+            else:
+                return {"success": False, "msg": "Order not found"}, 400
+        except Exception as e:
+            return {'success': False}, 404
+
+
+api.add_resource(CodVerificationGather, '/core/v1/cod_verification_gather')
+
+"""
+@core_blueprint.route('/core/v1/cod_verification_gather', methods=['GET'])
+def cod_verification_gather():
+    try:
+        order_id = request.args.get('CustomField')
+        if order_id:
+            order_id = int(order_id)
+            order = db.session.query(Orders).filter(Orders.id==order_id).first()
+            gather_prompt_text = "Hello %s, You recently placed an order from %s with order ID %s." \
+                                 " Press 1 to confirm your order or 0 to cancel." %(order.customer_name,
+                                                                                   order.client_prefix.lower(),
+                                                                                   order.channel_order_id)
+
+            repeat_prompt_text = "It seems that you have not provided any input, please try again. Order from %s, " \
+                                 "Order ID %s. Press 1 to confirm your order or 0 to cancel."%(order.client_prefix.lower(),
+                                                                                   order.channel_order_id)
+            response = {
+                        "gather_prompt": {
+                            "text": gather_prompt_text,
+                          },
+                        "max_input_digits": 1,
+                        "repeat_menu": 2,
+                        "repeat_gather_prompt": {
+                            "text": repeat_prompt_text
+                          }
+                        }
+            return jsonify(response), 200
+        else:
+            return jsonify({
+                        "gather_prompt": {
+                            "text": "press 1 or 0",
+                          },
+                        "max_input_digits": 1,
+                        "repeat_menu": 2,
+                        "repeat_gather_prompt": {
+                            "text": "press 1 or 0"
+                          }
+                        }), 200
+    except Exception as e:
+        return jsonify({
+            "gather_prompt": {
+                "text": "press 1 or 0",
+            },
+            "max_input_digits": 1,
+            "repeat_menu": 2,
+            "repeat_gather_prompt": {
+                "text": "press 1 or 0"
+            }
+        }), 200
+"""
+
+
+@core_blueprint.route('/core/v1/cod_verification_passthru', methods=['GET'])
+def cod_verification_passthru():
+    try:
+        order_id = request.args.get('CustomField')
+        digits = request.args.get('digits')
+        recording_url = request.args.get('RecordingUrl')
+        call_sid = request.args.get('CallSid')
+        if not digits:
+            return jsonify({"success": False, "msg": "No Input"}), 400
+        digits = digits.replace('"', '')
+        if order_id:
+            order_id = int(order_id)
+            order = db.session.query(Orders).filter(Orders.id==order_id).first()
+            cod_verified = None
+            if digits=="1":
+                cod_verified = True
+            elif digits=="0":
+                cod_verified = False
+            cod_ver = CodVerification(order=order,
+                                      call_sid=call_sid,
+                                      recording_url=recording_url,
+                                      cod_verified=cod_verified)
+
+            db.session.add(cod_ver)
+            db.session.commit()
+
+            return jsonify({"success": True}), 200
+        else:
+            return jsonify({"success": False, "msg": "No Order"}), 400
+    except Exception as e:
+        return jsonify({"success": False, "msg": str(e.args[0])}), 404
+
 
 
 @core_blueprint.route('/core/dev', methods=['GET'])
 def ping_dev():
+    return 0
+
+    exotel_call_data = {"From": "09999503623",
+                        "CallerId": "01141182252",
+                        "CallType": "trans",
+                        "Url":"http://my.exotel.in/exoml/start/262896",
+                        "CustomField": 7277}
+    lad = requests.post(
+        'https://ff2064142bc89ac5e6c52a6398063872f95f759249509009:783fa09c0ba1110309f606c7411889192335bab2e908a079@api.exotel.com/v1/Accounts/wareiq1/Calls/connect',
+        data=exotel_call_data)
+
+    a = "09634814148"
+    import json
+    ful_header = {'Content-Type': 'application/json'}
+    url = "http://114.143.206.69:803/StandardForwardStagingService.svc/GetBulkShipmentStatus"
+    post_body = {
+                  "fulfillment": {
+                    "location_id": 21056061499,
+                    "tracking_number": "3991610014066",
+                    "tracking_company": "Delhivery",
+                    "tracking_urls": ["https://www.delhivery.com/track/package/3991610014066"],
+                    "notify_customer": False
+
+                  }
+                }
+    req = requests.post(url, data=json.dumps(post_body), headers=ful_header)
+
+    from .update_status import lambda_handler
+    lambda_handler()
+    form_data = {"RequestBody": {
+        "order_no": "9251",
+        "statuses": [""],
+        "order_location": "DWH",
+        "date_from": "",
+        "date_to": "",
+        "pageNumber": ""
+    },
+        "ApiKey": "8dcbc7d756d64a04afb21e00f4a053b04a38b62de1d3481dadc8b54",
+        "ApiOwner": "UMBAPI",
+    }
+    # headers = {"Content-Type": "application/x-www-form-urlencoded"
+    #            }
+    # req = requests.post("http://dtdc.vineretail.com/RestWS/api/eretail/v1/order/shipDetail",
+    #               headers=headers, data=json.dumps(form_data))
+    # from .create_shipments import lambda_handler
+    # lambda_handler()
+
+    shopify_url = "https://e35b2c3b1924d686e817b267b5136fe0:a5e60ec3e34451e215ae92f0877dddd0@daprstore.myshopify.com/admin/api/2019-10/orders.json?limit=250"
+    data = requests.get(shopify_url).json()
+    shopify_url = "https://b27f6afd9506d0a07af9a160b1666b74:6c8ca315e01fe612bc997e70c7a21908@mirakki.myshopify.com/admin/api/2019-10/orders.json?since_id=1921601077383&limit=250"
+    data = requests.get(shopify_url).json()
+
+    return 0
 
     # from .create_shipments import lambda_handler
     # lambda_handler()
-    return 0
 
 
     order_qs = db.session.query(Orders).filter(Orders.client_prefix=="KYORIGIN").filter(Orders.status.in_(['READY TO SHIP', 'PICKUP REQUESTED', 'NOT PICKED'])).all()
@@ -1006,8 +1260,7 @@ def ping_dev():
 
     lad = requests.post('https://ff2064142bc89ac5e6c52a6398063872f95f759249509009:783fa09c0ba1110309f606c7411889192335bab2e908a079@api.exotel.com/v1/Accounts/wareiq1/Sms/bulksend', data=data)
 
-    shopify_url = "https://e35b2c3b1924d686e817b267b5136fe0:a5e60ec3e34451e215ae92f0877dddd0@daprstore.myshopify.com/admin/api/2019-10/products.json?limit=250"
-    data = requests.get(shopify_url).json()
+
 
     # for order in data['orders']:
     #     order_qs = db.session.query(Orders).filter(Orders.channel_order_id==str(order['order_number'])).first()
@@ -1082,11 +1335,7 @@ def ping_dev():
         'message': 'pong!'
     })
 
-    from .fetch_orders import create_pdf
-    create_pdf()
 
-    #shopify_url = "https://b27f6afd9506d0a07af9a160b1666b74:6c8ca315e01fe612bc997e70c7a21908@mirakki.myshopify.com/admin/api/2019-10/orders.json?since_id=1873306419335&limit=250"
-    #data = requests.get(shopify_url).json()
     """
 
     for order in data:

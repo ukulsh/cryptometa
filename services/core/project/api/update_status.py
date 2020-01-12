@@ -44,6 +44,81 @@ def lambda_handler():
                     try:
                         new_status = ret_order['Shipment']['Status']['Status']
                         current_awb = ret_order['Shipment']['AWB']
+
+                        try:
+                            order_status_tuple = (orders_dict[current_awb][0], orders_dict[current_awb][10], courier[0])
+                            cur.execute(select_statuses_query, order_status_tuple)
+                            all_scans = cur.fetchall()
+                            all_scans_dict = dict()
+                            for temp_scan in all_scans:
+                                all_scans_dict[temp_scan[2]] = temp_scan
+                            new_status_dict = dict()
+                            for each_scan in ret_order['Shipment']['Scans']:
+                                status_time = each_scan['ScanDetail']['StatusDateTime']
+                                if status_time:
+                                    if len(status_time) == 19:
+                                        status_time = datetime.strptime(status_time, '%Y-%m-%dT%H:%M:%S')
+                                    else:
+                                        status_time = datetime.strptime(status_time, '%Y-%m-%dT%H:%M:%S.%f')
+
+                                to_record_status = ""
+                                if each_scan['ScanDetail']['Scan'] == "Manifested" \
+                                    and each_scan['ScanDetail']['Instructions'] == "Consignment Manifested":
+                                    to_record_status = "Received"
+                                elif each_scan['ScanDetail']['Scan'] == "In Transit" \
+                                        and each_scan['ScanDetail']['Instructions'] == "Shipment Picked Up from Client Location":
+                                    to_record_status = "Picked"
+                                elif each_scan['ScanDetail']['Scan'] == "In Transit" \
+                                        and each_scan['ScanDetail']['ScanType'] == "UD":
+                                    to_record_status = "In Transit"
+                                elif each_scan['ScanDetail']['Scan'] == "Dispatched" \
+                                        and each_scan['ScanDetail']['Instructions'] == "Out for delivery":
+                                    to_record_status = "Out for delivery"
+                                elif each_scan['ScanDetail']['Scan'] == "Delivered" \
+                                     and each_scan['ScanDetail']['Instructions'] == "Delivered to consignee":
+                                    to_record_status = "Delivered"
+                                elif each_scan['ScanDetail']['Scan'] == "Pending" \
+                                     and each_scan['ScanDetail']['Instructions'] == "Customer Refused to accept/Order Cancelled":
+                                    to_record_status = "Cancelled"
+                                elif each_scan['ScanDetail']['ScanType'] == "RT":
+                                    to_record_status = "Returned"
+
+                                if not to_record_status:
+                                    continue
+
+                                if to_record_status not in new_status_dict:
+                                    new_status_dict[to_record_status] = (orders_dict[current_awb][0], courier[0],
+                                                                         orders_dict[current_awb][10],
+                                                                         each_scan['ScanDetail']['ScanType'],
+                                                                         to_record_status,
+                                                                         each_scan['ScanDetail']['Instructions'],
+                                                                         each_scan['ScanDetail']['ScannedLocation'],
+                                                                         each_scan['ScanDetail']['CityLocation'],
+                                                                         status_time)
+                                elif to_record_status=='In Transit' and new_status_dict[to_record_status][8]<status_time:
+                                    new_status_dict[to_record_status] = (orders_dict[current_awb][0], courier[0],
+                                                                         orders_dict[current_awb][10],
+                                                                         each_scan['ScanDetail']['ScanType'],
+                                                                         to_record_status,
+                                                                         each_scan['ScanDetail']['Instructions'],
+                                                                         each_scan['ScanDetail']['ScannedLocation'],
+                                                                         each_scan['ScanDetail']['CityLocation'],
+                                                                         status_time)
+
+                            for status_key, status_value in new_status_dict.items():
+                                if status_key not in all_scans_dict:
+                                    cur.execute("INSERT INTO order_status (order_id, courier_id, shipment_id, "
+                                                "status_code, status, status_text, location, location_city, "
+                                                "status_time) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s);",
+                                                status_value)
+
+                                elif status_key=='In Transit' and status_value[8]>all_scans_dict[status_key][5]:
+                                    cur.execute("UPDATE order_status SET location=%s, location_city=%s, status_time=%s"
+                                                " WHERE id=%s;",(status_value[6], status_value[7], status_value[8], all_scans_dict[status_key][0]))
+
+                        except Exception as e:
+                            logger.error("Open status failed for id: " + str(orders_dict[current_awb][0])+ "\nErr: " + str(e.args[0]))
+
                         if new_status=="Manifested":
                             continue
 
@@ -182,7 +257,7 @@ def lambda_handler():
                                 status_type = "UD"
                                 new_status_temp = new_status_temp.upper()
                                 status_detail = None
-                        if new_status_temp == "READY TO SHIP":
+                        if new_status_temp == "READY TO SHIP" and orders_dict[current_awb][2] == new_status:
                             continue
                         new_status = new_status_temp
                         edd = ret_order['promised_delivery_date']

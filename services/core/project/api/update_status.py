@@ -12,8 +12,8 @@ user = os.environ('DTATBASE_USER')
 password = os.environ('DTATBASE_PASSWORD')
 conn = psycopg2.connect(host=host, database=database, user=user, password=password)
 """
-conn = psycopg2.connect(host="wareiq-core-prod.cvqssxsqruyc.us-east-1.rds.amazonaws.com", database="core_prod", user="postgres", password="postgres")
-conn_2 = psycopg2.connect(host="wareiq-core-prod.cvqssxsqruyc.us-east-1.rds.amazonaws.com", database="users_prod", user="postgres", password="postgres")
+conn = psycopg2.connect(host="wareiq-core-prod2.cvqssxsqruyc.us-east-1.rds.amazonaws.com", database="core_prod", user="postgres", password="aSderRFgd23")
+conn_2 = psycopg2.connect(host="wareiq-core-prod2.cvqssxsqruyc.us-east-1.rds.amazonaws.com", database="users_prod", user="postgres", password="aSderRFgd23")
 
 def lambda_handler():
     cur = conn.cursor()
@@ -21,7 +21,7 @@ def lambda_handler():
     cur.execute(get_courier_id_and_key_query)
     for courier in cur.fetchall():
         try:
-            if courier[1] in ("Delhivery", "Delhivery Surface Standard"):
+            if courier[1] in ("Delhivery", "Delhivery Surface Standard", "Delhivery Bulk"):
                 cur.execute(get_status_update_orders_query%str(courier[0]))
                 all_orders = cur.fetchall()
                 pickup_count = 0
@@ -30,17 +30,22 @@ def lambda_handler():
                     'From': 'LM-WAREIQ'
                 }
                 orders_dict = dict()
-                awb_string = ""
-                for order in all_orders:
-                    orders_dict[order[1]] = order
-                    awb_string += order[1]+","
+                pickup_dict = dict()
+                req_ship_data = list()
+                chunks = [all_orders[x:x + 500] for x in range(0, len(all_orders), 500)]
+                for some_orders in chunks:
+                    awb_string = ""
+                    for order in some_orders:
+                        orders_dict[order[1]] = order
+                        awb_string += order[1]+","
 
-                awb_string = awb_string.rstrip(',')
+                    awb_string = awb_string.rstrip(',')
 
-                check_status_url = "https://track.delhivery.com/api/status/packages/json/?waybill=%s&token=%s" % (awb_string, courier[2])
-                req = requests.get(check_status_url).json()
-                logger.info("Count of delhivery packages: "+str(len(req['ShipmentData'])))
-                for ret_order in req['ShipmentData']:
+                    check_status_url = "https://track.delhivery.com/api/status/packages/json/?waybill=%s&token=%s" % (awb_string, courier[2])
+                    req = requests.get(check_status_url).json()
+                    req_ship_data += req['ShipmentData']
+                logger.info("Count of delhivery packages: "+str(len(req_ship_data)))
+                for ret_order in req_ship_data:
                     try:
                         new_status = ret_order['Shipment']['Status']['Status']
                         current_awb = ret_order['Shipment']['AWB']
@@ -125,6 +130,7 @@ def lambda_handler():
                         new_status = new_status.upper()
                         status_type = ret_order['Shipment']['Status']['StatusType']
                         status_detail = None
+                        status_code = None
                         if new_status == "PENDING":
                             status_code = ret_order['Shipment']['Scans'][-1]['ScanDetail']['StatusCode']
                             if status_code in delhivery_status_code_mapping_dict:
@@ -137,8 +143,15 @@ def lambda_handler():
                             edd = datetime.strptime(edd, '%Y-%m-%dT%H:%M:%S')
                             cur.execute("UPDATE shipments SET edd=%s WHERE awb=%s", (edd, current_awb))
 
+                        if new_status=='DELIVERED' and orders_dict[current_awb][13] and str(orders_dict[current_awb][13]).lower()=='prepaid':
+                            try:  ## Delivery check text
+                                sms_to_key, sms_body_key, customer_phone, sms_body_key_data = verification_text(orders_dict[current_awb], exotel_idx, cur, cur_2)
+                                exotel_sms_data[sms_to_key] = customer_phone
+                                exotel_sms_data[sms_body_key] = sms_body_key_data
+                                exotel_idx += 1
+                            except Exception as e:
+                                logger.error("Delivery confirmation not sent. Order id: "+str(orders_dict[current_awb][0]))
                         """
-                        if new_status=='DELIVERED':
                             if orders_dict[current_awb][6] and orders_dict[current_awb][5]:
                                 complete_fulfillment_url = "https://%s:%s@%s/admin/api/2019-10/orders/%s/fulfillments/%s/complete.json" % (
                                     orders_dict[current_awb][7], orders_dict[current_awb][8],
@@ -154,6 +167,11 @@ def lambda_handler():
 
                         if orders_dict[current_awb][2] in ('READY TO SHIP', 'PICKUP REQUESTED', 'NOT PICKED') and new_status=='IN TRANSIT':
                             pickup_count += 1
+                            if orders_dict[current_awb][11] not in pickup_dict:
+                                pickup_dict[orders_dict[current_awb][11]] = 1
+                            else:
+                                pickup_dict[orders_dict[current_awb][11]] += 1
+                            cur.execute(update_prod_quantity_query_pickup%str(orders_dict[current_awb][0]))
                             """
                             if orders_dict[current_awb][5] and not orders_dict[current_awb][6]:
                                 create_fulfillment_url = "https://%s:%s@%s/admin/api/2019-10/orders/%s/fulfillments.json"  % (
@@ -193,13 +211,38 @@ def lambda_handler():
                                 sms_body_key = "Messages[%s][Body]" % str(exotel_idx)
 
                                 exotel_sms_data[sms_to_key] = customer_phone
-                                exotel_sms_data[sms_body_key] = "Dear Customer, your %s order has been shipped via Delhivery with AWB number %s. It is expected to arrive by %s. Thank you for Ordering." % (
-                                client_name[0], orders_dict[current_awb][1], edd)
+                                try:
+                                    tracking_link_wareiq = "http://webapp.wareiq.com/tracking/" + str(
+                                        orders_dict[current_awb][1])
+                                    short_url = requests.get(
+                                        "https://cutt.ly/api/api.php?key=f445d0bb52699d2f870e1832a1f77ef3f9078&short=%s" % tracking_link_wareiq)
+                                    short_url_track = short_url.json()['url']['shortLink']
+                                    exotel_sms_data[
+                                        sms_body_key] = "Dear Customer, your %s order has been shipped via Delhivery with AWB number %s. " \
+                                                        "It is expected to arrive by %s. You can track your order on this (%s) link." % (
+                                                            client_name[0], str(orders_dict[current_awb][1]), edd,
+                                                            short_url_track)
+                                except Exception:
+                                    exotel_sms_data[sms_body_key] = "Dear Customer, your %s order has been shipped via Delhivery with AWB number %s. It is expected to arrive by %s. Thank you for Ordering." % (
+                                    client_name[0], orders_dict[current_awb][1], edd)
                                 exotel_idx += 1
 
                         if orders_dict[current_awb][2] != new_status:
                             status_update_tuple = (new_status, status_type, status_detail, orders_dict[current_awb][0])
                             cur.execute(order_status_update_query, status_update_tuple)
+                            if new_status=="RTO" and ret_order['Shipment']['Status']['StatusType']=="DL":
+                                cur.execute(update_prod_quantity_query_rto%str(orders_dict[current_awb][0]))
+
+                            if new_status=='PENDING' and status_code in ('EOD-111','EOD-6','FMEOD-118','EOD-69'):
+                                try:  # NDR check text
+                                    sms_to_key, sms_body_key, customer_phone, sms_body_key_data = verification_text(
+                                        orders_dict[current_awb], exotel_idx, cur, cur_2, ndr=True)
+                                    exotel_sms_data[sms_to_key] = customer_phone
+                                    exotel_sms_data[sms_body_key] = sms_body_key_data
+                                    exotel_idx += 1
+                                except Exception as e:
+                                    logger.error(
+                                        "NDR confirmation not sent. Order id: " + str(orders_dict[current_awb][0]))
 
                     except Exception as e:
                         logger.error("status update failed for " + "    err:" + str(e.args[0]))
@@ -214,6 +257,14 @@ def lambda_handler():
                         logger.error("messages not sent." + "   Error: " + str(e.args[0]))
                 if pickup_count:
                     logger.info("Total Picked: " + str(pickup_count) + "  Time: " + str(datetime.utcnow()))
+                    try:
+                        for key, value in pickup_dict.items():
+                            logger.info("picked for pickup_id "+str(key)+": " +str(value))
+                            date_today = datetime.now().strftime('%Y-%m-%d')
+                            pickup_count_tuple = (value, courier[0], key, date_today)
+                            cur.execute(update_pickup_count_query, pickup_count_tuple)
+                    except Exception as e:
+                        logger.error("Couldn't update pickup count for : " + str(e.args[0]))
 
                 conn.commit()
             elif courier[1] == "Shadowfax":
@@ -226,6 +277,8 @@ def lambda_handler():
                 }
                 orders_dict = dict()
                 awb_list = list()
+                pickup_dict = dict()
+
                 for order in all_orders:
                     orders_dict[order[1]] = order
                     awb_list.append(order[1])
@@ -240,6 +293,78 @@ def lambda_handler():
                     try:
                         new_status = ret_order['status']
                         current_awb = ret_order['awb_number']
+
+                        try:
+                            order_status_tuple = (orders_dict[current_awb][0], orders_dict[current_awb][10], courier[0])
+                            cur.execute(select_statuses_query, order_status_tuple)
+                            all_scans = cur.fetchall()
+                            all_scans_dict = dict()
+                            for temp_scan in all_scans:
+                                all_scans_dict[temp_scan[2]] = temp_scan
+                            new_status_dict = dict()
+                            for each_scan in ret_order['tracking_details']:
+                                if not each_scan.get('location'):
+                                    continue
+                                status_time = each_scan['created']
+                                if status_time:
+                                    status_time = datetime.strptime(status_time, '%Y-%m-%dT%H:%M:%SZ')
+
+                                to_record_status = ""
+                                if each_scan['status'] == "New" \
+                                    and each_scan['status_id'] == "new":
+                                    to_record_status = "Received"
+                                elif each_scan['status'] == "Picked" \
+                                        and each_scan['status_id'] == "picked":
+                                    to_record_status = "Picked"
+                                elif each_scan['status'] == "Received at Forward Hub" \
+                                        and each_scan['status_id'] == "recd_at_fwd_hub":
+                                    to_record_status = "In Transit"
+                                elif each_scan['status'] == "Out For Delivery" \
+                                        and each_scan['status_id'] == "ofd":
+                                    to_record_status = "Out for delivery"
+                                elif each_scan['status'] == "Delivered" \
+                                     and each_scan['status_id'] == "delivered":
+                                    to_record_status = "Delivered"
+                                elif each_scan['status'] == "Cancelled":
+                                    to_record_status = "Cancelled"
+                                elif each_scan['status'] == "Returned To Client":
+                                    to_record_status = "Returned"
+
+                                if not to_record_status:
+                                    continue
+
+                                if to_record_status not in new_status_dict:
+                                    new_status_dict[to_record_status] = (orders_dict[current_awb][0], courier[0],
+                                                                         orders_dict[current_awb][10],
+                                                                         shadowfax_status_mapping[each_scan['status_id']][1],
+                                                                         to_record_status,
+                                                                         each_scan['remarks'],
+                                                                         each_scan['location'],
+                                                                         each_scan['location'],
+                                                                         status_time)
+                                elif to_record_status=='In Transit' and new_status_dict[to_record_status][8]<status_time:
+                                    new_status_dict[to_record_status] = (orders_dict[current_awb][0], courier[0],
+                                                                         orders_dict[current_awb][10],
+                                                                         shadowfax_status_mapping[each_scan['status_id']][1],
+                                                                         to_record_status,
+                                                                         each_scan['remarks'],
+                                                                         each_scan['location'],
+                                                                         each_scan['location'],
+                                                                         status_time)
+
+                            for status_key, status_value in new_status_dict.items():
+                                if status_key not in all_scans_dict:
+                                    cur.execute("INSERT INTO order_status (order_id, courier_id, shipment_id, "
+                                                "status_code, status, status_text, location, location_city, "
+                                                "status_time) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s);",
+                                                status_value)
+
+                                elif status_key=='In Transit' and status_value[8]>all_scans_dict[status_key][5]:
+                                    cur.execute("UPDATE order_status SET location=%s, location_city=%s, status_time=%s"
+                                                " WHERE id=%s;",(status_value[6], status_value[7], status_value[8], all_scans_dict[status_key][0]))
+
+                        except Exception as e:
+                            logger.error("Open status failed for id: " + str(orders_dict[current_awb][0])+ "\nErr: " + str(e.args[0]))
 
                         try:
                             status_type = shadowfax_status_mapping[new_status][1]
@@ -265,8 +390,18 @@ def lambda_handler():
                             edd = datetime.strptime(edd, '%Y-%m-%dT%H:%M:%SZ')
                             cur.execute("UPDATE shipments SET edd=%s WHERE awb=%s", (edd, current_awb))
 
+                        if new_status == 'DELIVERED' and orders_dict[current_awb][13] and str(
+                                orders_dict[current_awb][13]).lower() == 'prepaid':
+                            try:  ## Delivery check text
+                                sms_to_key, sms_body_key, customer_phone, sms_body_key_data = verification_text(
+                                    orders_dict[current_awb], exotel_idx, cur, cur_2)
+                                exotel_sms_data[sms_to_key] = customer_phone
+                                exotel_sms_data[sms_body_key] = sms_body_key_data
+                                exotel_idx += 1
+                            except Exception as e:
+                                logger.error(
+                                    "Delivery confirmation not sent. Order id: " + str(orders_dict[current_awb][0]))
                         """
-                        if new_status=='DELIVERED':
                             if orders_dict[current_awb][6] and orders_dict[current_awb][5]:
                                 complete_fulfillment_url = "https://%s:%s@%s/admin/api/2019-10/orders/%s/fulfillments/%s/complete.json" % (
                                     orders_dict[current_awb][7], orders_dict[current_awb][8],
@@ -283,6 +418,11 @@ def lambda_handler():
                         if orders_dict[current_awb][2] in (
                         'READY TO SHIP', 'PICKUP REQUESTED', 'NOT PICKED') and new_status == 'IN TRANSIT':
                             pickup_count += 1
+                            if orders_dict[current_awb][11] not in pickup_dict:
+                                pickup_dict[orders_dict[current_awb][11]] = 1
+                            else:
+                                pickup_dict[orders_dict[current_awb][11]] += 1
+                            cur.execute(update_prod_quantity_query_pickup%str(orders_dict[current_awb][0]))
                             """
                             if orders_dict[current_awb][5] and not orders_dict[current_awb][6]:
                                 create_fulfillment_url = "https://%s:%s@%s/admin/api/2019-10/orders/%s/fulfillments.json" % (
@@ -333,6 +473,19 @@ def lambda_handler():
                         if orders_dict[current_awb][2] != new_status:
                             status_update_tuple = (new_status, status_type, status_detail, orders_dict[current_awb][0])
                             cur.execute(order_status_update_query, status_update_tuple)
+                            if ret_order['status']=="rts_d":
+                                cur.execute(update_prod_quantity_query_rto%str(orders_dict[current_awb][0]))
+
+                            if ret_order['status'] == 'cancelled_by_customer':
+                                try:  # NDR check text
+                                    sms_to_key, sms_body_key, customer_phone, sms_body_key_data = verification_text(
+                                        orders_dict[current_awb], exotel_idx, cur, cur_2, ndr=True)
+                                    exotel_sms_data[sms_to_key] = customer_phone
+                                    exotel_sms_data[sms_body_key] = sms_body_key_data
+                                    exotel_idx += 1
+                                except Exception as e:
+                                    logger.error(
+                                        "NDR confirmation not sent. Order id: " + str(orders_dict[current_awb][0]))
 
                     except Exception as e:
                         logger.error("status update failed for " + "    err:" + str(e.args[0]))
@@ -349,12 +502,61 @@ def lambda_handler():
 
                 if pickup_count:
                     logger.info("Total Picked: " + str(pickup_count) + "  Time: " + str(datetime.utcnow()))
+                    try:
+                        for key, value in pickup_dict.items():
+                            logger.info("picked for pickup_id "+str(key)+": " +str(value))
+                            date_today = datetime.now().strftime('%Y-%m-%d')
+                            pickup_count_tuple = (value, courier[0], key, date_today)
+                            cur.execute(update_pickup_count_query, pickup_count_tuple)
+                    except Exception as e:
+                        logger.error("Couldn't update pickup count for : " + str(e.args[0]))
 
                 conn.commit()
         except Exception as e:
             logger.error("Status update failed: "+str(e.args[0]))
 
     cur.close()
+
+
+def verification_text(current_order, exotel_idx, cur, cur_2, ndr=None):
+    if not ndr:
+        del_confirmation_link = "http://track.wareiq.com/core/v1/passthru/delivery?CustomField=%s&digits=1&verified_via=text" % str(
+            current_order[0])
+    else:
+        del_confirmation_link = "http://track.wareiq.com/core/v1/passthru/ndr?CustomField=%s&digits=1&verified_via=text" % str(
+            current_order[0])
+    short_url = requests.get(
+        "https://cutt.ly/api/api.php?key=f445d0bb52699d2f870e1832a1f77ef3f9078&short=%s" % del_confirmation_link)
+    short_url_track = short_url.json()['url']['shortLink']
+    insert_cod_ver_tuple = (current_order[0], short_url_track, datetime.now())
+    if not ndr:
+        cur.execute(
+            "INSERT INTO delivery_check (order_id, verification_link, date_created) VALUES (%s,%s,%s);",
+            insert_cod_ver_tuple)
+    else:
+        cur.execute(
+            "INSERT INTO ndr_verification (order_id, verification_link, date_created) VALUES (%s,%s,%s);",
+            insert_cod_ver_tuple)
+    cur_2.execute("select client_name from clients where client_prefix='%s'" % current_order[3])
+    client_name = cur_2.fetchone()
+    customer_phone = current_order[4].replace(" ", "")
+    customer_phone = "0" + customer_phone[-10:]
+
+    sms_to_key = "Messages[%s][To]" % str(exotel_idx)
+    sms_body_key = "Messages[%s][Body]" % str(exotel_idx)
+
+    if not ndr:
+        sms_body_key_data = "Dear Customer, your order from %s with order id %s was delivered today." \
+                            " Please click on the link (%s) to report any issue. We'll call you back shortly." % (
+                                client_name[0], str(current_order[12]),
+                                short_url_track)
+    else:
+        sms_body_key_data = "Dear Customer, Delivery for your order from %s with order id %s was attempted today." \
+                            " If you didn't cancel, please click on the link (%s). We'll call you shortly." % (
+                                client_name[0], str(current_order[12]),
+                                short_url_track)
+
+    return sms_to_key, sms_body_key, customer_phone, sms_body_key_data
 
 
 delhivery_status_code_mapping_dict = {
@@ -406,4 +608,5 @@ shadowfax_status_mapping = {"new":("READY TO SHIP", "UD", ""),
                             "rts_d":("RTO", "DL", ""),
                             "lost":("LOST", "UD", ""),
                             "on_hold":("ON HOLD", "UD", ""),
+                            "pickup_on_hold":("NOT PICKED", "UD", ""),
                             }

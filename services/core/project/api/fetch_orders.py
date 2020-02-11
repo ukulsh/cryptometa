@@ -9,7 +9,7 @@ user = os.environ('DTATBASE_USER')
 password = os.environ('DTATBASE_PASSWORD')
 conn = psycopg2.connect(host=host, database=database, user=user, password=password)
 """
-conn = psycopg2.connect(host="wareiq-core-prod.cvqssxsqruyc.us-east-1.rds.amazonaws.com", database="core_prod", user="postgres", password="postgres")
+conn = psycopg2.connect(host="wareiq-core-prod2.cvqssxsqruyc.us-east-1.rds.amazonaws.com", database="core_prod", user="postgres", password="aSderRFgd23")
 
 def lambda_handler():
     cur = conn.cursor()
@@ -38,6 +38,9 @@ def lambda_handler():
                     if not product_exists:
                         continue
 
+                    cur.execute("SELECT id, client_prefix FROM client_pickups WHERE client_prefix='%s';" % str(channel[1]))
+                    pickup_data_id = cur.fetchone()[0] #change this as we move to dynamic pickups
+
                     customer_name = order['customer']['first_name'] + " " + order['customer']['last_name']
                     shipping_tuple = (order['shipping_address']['first_name'],
                                       order['shipping_address']['last_name'],
@@ -52,6 +55,7 @@ def lambda_handler():
                                       order['shipping_address']['longitude'],
                                       order['shipping_address']['country_code']
                                       )
+
                     cur.execute(insert_shipping_address_query, shipping_tuple)
                     shipping_address_id = cur.fetchone()[0]
 
@@ -61,7 +65,7 @@ def lambda_handler():
 
                     orders_tuple = (str(order['order_number']), order['created_at'], customer_name, order['customer']['email'],
                                     customer_phone if customer_phone else "", shipping_address_id,
-                                    datetime.now(), "NEW", channel[1], channel[0], str(order['id']))
+                                    datetime.now(), "NEW", channel[1], channel[0], str(order['id']), pickup_data_id)
 
                     cur.execute(insert_orders_data_query, orders_tuple)
                     order_id = cur.fetchone()[0]
@@ -108,8 +112,12 @@ def lambda_handler():
                                         products_quantity_dict[product_id] += prod['quantity']
                                 continue
                             if channel[1] == "KYORIGIN":
-                                dimensions = {"length":1.25, "breadth":30, "height":30}
-                                weight = 0.25
+                                if 'Hoodie' in prod['name']:
+                                    dimensions = {"length":6.87, "breadth":22.5, "height":27.5}
+                                    weight = 0.51
+                                else:
+                                    dimensions = {"length": 2.5, "breadth": 22.5, "height": 27.5}
+                                    weight = 0.18
                             else:
                                 dimensions = { "length": 9, "breadth": 5, "height": 12 }
                                 weight = 0.13
@@ -137,7 +145,7 @@ def lambda_handler():
                 cur.execute(update_last_fetched_data_query, last_sync_tuple)
 
             for prod_id, quan in products_quantity_dict.items():
-                prod_quan_tuple = (quan, prod_id)
+                prod_quan_tuple = (quan, quan, prod_id)
                 cur.execute(update_product_quantity_query, prod_quan_tuple)
 
         conn.commit()

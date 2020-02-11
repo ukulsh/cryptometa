@@ -204,21 +204,25 @@ def fill_shiplabel_data(c, order, offset):
         pass
 
     try:
-        return_address = order.shipments[0].return_point.address
-        if order.shipments[0].return_point.address_two:
-            return_address += " "+ order.shipments[0].return_point.address_two
+        if order.pickup_data:
+            return_point = order.pickup_data.return_point
+        else:
+            return_point = order.shipments[0].return_point
+        return_address = return_point.address
+        if return_point.address_two:
+            return_address += " "+ return_point.address_two
 
         return_address = split_string(return_address, 30)
 
-        c.drawString((offset - 0.85) * inch, 3.25 * inch, order.shipments[0].return_point.name)
-        c.drawString((offset - 0.85) * inch, 2.10 * inch, "PHONE: " + order.shipments[0].return_point.phone)
+        c.drawString((offset - 0.85) * inch, 3.25 * inch, return_point.name)
+        c.drawString((offset - 0.85) * inch, 2.10 * inch, "PHONE: " + return_point.phone)
         y_axis = 3.05
         for retn in return_address:
             c.drawString((offset - 0.85) * inch, y_axis * inch, retn)
             y_axis -= 0.15
 
-        c.drawString((offset - 0.85) * inch, 2.40 * inch, order.shipments[0].return_point.city + ", " + order.shipments[0].return_point.state)
-        c.drawString((offset - 0.85) * inch, 2.25 * inch, order.shipments[0].return_point.country + ", PIN: " + str(order.shipments[0].return_point.pincode))
+        c.drawString((offset - 0.85) * inch, 2.40 * inch, return_point.city + ", " + return_point.state)
+        c.drawString((offset - 0.85) * inch, 2.25 * inch, return_point.country + ", PIN: " + str(return_point.pincode))
     except Exception:
         pass
 

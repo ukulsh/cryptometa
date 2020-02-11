@@ -15,7 +15,7 @@ session = boto3.Session(
 def fill_manifest_data(orders, courier, store, warehouse):
     file_name = "/tmp/MANIFEST_" + warehouse+"_"+str(datetime.now().strftime("%d_%b_%Y_%H_%M_%S"))+".pdf"
     c = canvas.Canvas(file_name, pagesize=A4)
-    pickup_date = datetime.now() + timedelta(days=1)
+    pickup_date = datetime.now()
     pickup_date = pickup_date.strftime('%d-%m-%Y')
     order_count = len(orders)
     if order_count:

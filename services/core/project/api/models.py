@@ -40,6 +40,9 @@ class ProductQuantity(db.Model):
     total_quantity = db.Column(db.Integer, nullable=False)
     approved_quantity = db.Column(db.Integer, nullable=True)
     available_quantity = db.Column(db.Integer, nullable=True)
+    inline_quantity = db.Column(db.Integer, nullable=True)
+    rto_quantity = db.Column(db.Integer, nullable=True)
+    current_quantity = db.Column(db.Integer, nullable=True)
     warehouse_prefix = db.Column(db.String, nullable=False)
     status = db.Column(db.String, nullable=False)
     date_created = db.Column(db.DateTime, default=datetime.now)
@@ -125,6 +128,8 @@ class Orders(db.Model):
     client_channel_id = db.Column(db.Integer, db.ForeignKey('client_channel.id'))
     client_channel = db.relationship("ClientChannel", backref=db.backref("orders", uselist=True))
     order_id_channel_unique = db.Column(db.String, nullable=True)
+    pickup_data_id = db.Column(db.Integer, db.ForeignKey('client_pickups.id'))
+    pickup_data = db.relationship("ClientPickups", backref=db.backref("orders", uselist=True))
     date_created = db.Column(db.DateTime, default=datetime.now)
     date_updated = db.Column(db.DateTime, onupdate=datetime.now)
     __table_args__ = (UniqueConstraint('channel_order_id', 'client_prefix', name='id_client_unique'),
@@ -204,7 +209,7 @@ class ClientCouriers(db.Model):
     client_prefix = db.Column(db.String, nullable=True)
     courier_id = db.Column(db.Integer, db.ForeignKey('master_couriers.id'))
     courier = db.relationship("MasterCouriers", backref=db.backref("client_couriers", uselist=True))
-    priority = db.Column(db.Integer, nullable=False, default=1)
+    priority = db.Column(db.Integer, nullable=False, default=1) #column to define product by which be ship order
     last_shipped_order_id = db.Column(db.Integer, db.ForeignKey('orders.id'))
     last_shipped_order = db.relationship("Orders", backref=db.backref("client_couriers", uselist=True))
     last_shipped_time = db.Column(db.DateTime, nullable=True)
@@ -282,6 +287,137 @@ class CodVerification(db.Model):
     call_sid = db.Column(db.String, nullable=True)
     recording_url = db.Column(db.String, nullable=True)
     cod_verified = db.Column(db.BOOLEAN, nullable=True, default=None)
+    verified_via = db.Column(db.String, nullable=True)
+    verification_link = db.Column(db.String, nullable=True)
+    verification_time = db.Column(db.DateTime, default=datetime.now)
+    date_created = db.Column(db.DateTime, default=datetime.now)
+    click_browser =  db.Column(db.String, nullable=True)
+    click_platform =  db.Column(db.String, nullable=True)
+    click_string =  db.Column(db.String, nullable=True)
+    click_version =  db.Column(db.String, nullable=True)
+
+
+class NDRVerification(db.Model):
+    __tablename__ = "ndr_verification"
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    order_id = db.Column(db.Integer, db.ForeignKey('orders.id'))
+    order = db.relationship("Orders", backref=db.backref("ndr_verification", uselist=True))
+    call_sid = db.Column(db.String, nullable=True)
+    recording_url = db.Column(db.String, nullable=True)
+    ndr_verified = db.Column(db.BOOLEAN, nullable=True, default=None)
+    verified_via = db.Column(db.String, nullable=True)
+    verification_link = db.Column(db.String, nullable=True)
+    verification_time = db.Column(db.DateTime, default=datetime.now)
+    date_created = db.Column(db.DateTime, default=datetime.now)
+    click_browser = db.Column(db.String, nullable=True)
+    click_platform = db.Column(db.String, nullable=True)
+    click_string = db.Column(db.String, nullable=True)
+    click_version = db.Column(db.String, nullable=True)
+
+
+class DeliveryCheck(db.Model):
+    __tablename__ = "delivery_check"
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    order_id = db.Column(db.Integer, db.ForeignKey('orders.id'))
+    order = db.relationship("Orders", backref=db.backref("delivery_check", uselist=True))
+    call_sid = db.Column(db.String, nullable=True)
+    recording_url = db.Column(db.String, nullable=True)
+    del_verified = db.Column(db.BOOLEAN, nullable=True, default=None)
+    verified_via = db.Column(db.String, nullable=True)
+    verification_link = db.Column(db.String, nullable=True)
+    verification_time = db.Column(db.DateTime, default=datetime.now)
+    date_created = db.Column(db.DateTime, default=datetime.now)
+    click_browser = db.Column(db.String, nullable=True)
+    click_platform = db.Column(db.String, nullable=True)
+    click_string = db.Column(db.String, nullable=True)
+    click_version = db.Column(db.String, nullable=True)
+
+
+class CouriersCosts(db.Model):
+    __tablename__ = "courier_costs"
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    courier_id = db.Column(db.Integer, db.ForeignKey('master_couriers.id'))
+    courier = db.relationship("MasterCouriers", backref=db.backref("courier_costs", uselist=True))
+    zone_a = db.Column(db.FLOAT, nullable=True)
+    zone_b = db.Column(db.FLOAT, nullable=True)
+    zone_c1 = db.Column(db.FLOAT, nullable=True)
+    zone_c2 = db.Column(db.FLOAT, nullable=True)
+    zone_d1 = db.Column(db.FLOAT, nullable=True)
+    zone_d2 = db.Column(db.FLOAT, nullable=True)
+    zone_e = db.Column(db.FLOAT, nullable=True)
+    zone_a_add = db.Column(db.FLOAT, nullable=True)
+    zone_b_add = db.Column(db.FLOAT, nullable=True)
+    zone_c1_add = db.Column(db.FLOAT, nullable=True)
+    zone_c2_add = db.Column(db.FLOAT, nullable=True)
+    zone_d1_add = db.Column(db.FLOAT, nullable=True)
+    zone_d2_add = db.Column(db.FLOAT, nullable=True)
+    zone_e_add = db.Column(db.FLOAT, nullable=True)
+    cod_min = db.Column(db.FLOAT, nullable=True)
+    cod_ratio = db.Column(db.FLOAT, nullable=True)
+    rto_ratio = db.Column(db.FLOAT, nullable=True)
+    date_created = db.Column(db.DateTime, default=datetime.now)
+    date_updated = db.Column(db.DateTime, onupdate=datetime.now)
+
+
+class CostToClients(db.Model):
+    __tablename__ = "cost_to_clients"
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    client_prefix = db.Column(db.String, nullable=True)
+    courier_id = db.Column(db.Integer, db.ForeignKey('master_couriers.id'))
+    courier = db.relationship("MasterCouriers", backref=db.backref("cost_to_clients", uselist=True))
+    zone_a = db.Column(db.FLOAT, nullable=True)
+    zone_b = db.Column(db.FLOAT, nullable=True)
+    zone_c = db.Column(db.FLOAT, nullable=True)
+    zone_d = db.Column(db.FLOAT, nullable=True)
+    zone_e = db.Column(db.FLOAT, nullable=True)
+    cod_min = db.Column(db.FLOAT, nullable=True)
+    cod_ratio = db.Column(db.FLOAT, nullable=True)
+    rto_ratio = db.Column(db.FLOAT, nullable=True)
+    date_created = db.Column(db.DateTime, default=datetime.now)
+    date_updated = db.Column(db.DateTime, onupdate=datetime.now)
+
+
+class ClientRecharges(db.Model):
+    __tablename__ = "client_recharges"
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    client_prefix = db.Column(db.String, nullable=True)
+    recharge_amount = db.Column(db.FLOAT, nullable=True)
+    transaction_id = db.Column(db.String, nullable=True)
+    bank_transaction_id = db.Column(db.String, nullable=True)
+    type = db.Column(db.String, nullable=True)
+    status = db.Column(db.String, nullable=True)
+    recharge_time = db.Column(db.DateTime, default=datetime.now)
+    date_created = db.Column(db.DateTime, default=datetime.now)
+    date_updated = db.Column(db.DateTime, onupdate=datetime.now)
+
+
+class ClientDeductions(db.Model):
+    __tablename__ = "client_deductions"
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    forward_charge = db.Column(db.FLOAT, nullable=True)
+    forward_charge_gst = db.Column(db.FLOAT, nullable=True)
+    rto_charge = db.Column(db.FLOAT, nullable=True)
+    rto_charge_gst = db.Column(db.FLOAT, nullable=True)
+    cod_charge = db.Column(db.FLOAT, nullable=True)
+    cod_charged_gst = db.Column(db.FLOAT, nullable=True)
+    total_charge = db.Column(db.FLOAT, nullable=True)
+    total_charged_gst = db.Column(db.FLOAT, nullable=True)
+    shipment_id = db.Column(db.Integer, db.ForeignKey('shipments.id'))
+    shipment = db.relationship("Shipments", backref=db.backref("client_deductions", uselist=True))
+    weight_charged = db.Column(db.FLOAT, nullable=True)
+    zone = db.Column(db.String, nullable=True)
+    deduction_time = db.Column(db.DateTime, default=datetime.now)
+    date_created = db.Column(db.DateTime, default=datetime.now)
+    date_updated = db.Column(db.DateTime, onupdate=datetime.now)
+
+
+class ClientMapping(db.Model):
+    __tablename__ = "client_mapping"
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    client_prefix = db.Column(db.String, nullable=False)
+    client_name = db.Column(db.String, nullable=False)
+
+
 
 
 

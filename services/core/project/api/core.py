@@ -1147,6 +1147,8 @@ def verification_passthru(type):
         call_sid = request.args.get('CallSid')
         if digits:
             digits = digits.replace('"', '')
+        if request.user_agent.browser == 'safari' and request.user_agent.platform=='iphone' and request.user_agent.version=='13.0.1':
+            return jsonify({"success": True}), 200
         if order_id:
             order_id = int(order_id)
             if type=='cod':
@@ -1198,12 +1200,12 @@ def verification_passthru(type):
 
 @core_blueprint.route('/core/dev', methods=['POST'])
 def ping_dev():
+
+    from .fetch_orders import lambda_handler
+    lambda_handler()
     return 0
 
-    from .update_status import lambda_handler
-    lambda_handler()
-    pick = db.session.query(ClientPickups).filter(ClientPickups.client_prefix=='PAVERS').all()
-    import requests, json
+    pick = db.session.query(ClientPickups).filter(ClientPickups.client_prefix == 'PAVERS').all()
     for location in pick:
         loc_body = {
                   "phone": location.pickup.phone,

@@ -119,14 +119,14 @@ def lambda_handler():
                                     dimensions = {"length": 2.5, "breadth": 22.5, "height": 27.5}
                                     weight = 0.18
                             else:
-                                dimensions = { "length": 9, "breadth": 5, "height": 12 }
-                                weight = 0.13
+                                dimensions = { "length": 2.5, "breadth": 22.5, "height": 27.5}
+                                weight = 0.20
                             product_insert_tuple = (prod['name'], str(prod['variant_id']), True, channel[2],
                                                     channel[1], datetime.now(), json.dumps(dimensions), float(prod['price']), weight)
                             cur.execute(insert_product_query, product_insert_tuple)
                             product_id = cur.fetchone()[0]
 
-                            product_quantity_insert_tuple = (product_id,5000,5000,5000,channel[1],"APPROVED",datetime.now())
+                            product_quantity_insert_tuple = (product_id,100,100,100,channel[1],"APPROVED",datetime.now())
                             cur.execute(insert_product_quantity_query, product_quantity_insert_tuple)
 
                         op_tuple = (product_id, order_id, prod['quantity'])

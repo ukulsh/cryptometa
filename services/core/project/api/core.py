@@ -495,17 +495,27 @@ class AddOrder(Resource):
                         prod_quan_obj.available_quantity = prod_quan_obj.available_quantity - int(prod['quantity'])
                         prod_quan_obj.inline_quantity = prod_quan_obj.inline_quantity + int(prod['quantity'])
 
+            if data.get('shipping_charges'):
+                total_amount=float(data['total'])+float(data['shipping_charges'])
+                shipping_charges = float(data['shipping_charges'])
+            else:
+                total_amount = float(data['total'])
+                shipping_charges = 0
+
             payment = OrdersPayments(
                 payment_mode=data['payment_method'],
                 subtotal=float(data['total']),
-                amount=float(data['total'])+float(data['shipping_charges']),
-                shipping_charges=float(data['shipping_charges']),
+                amount=total_amount,
+                shipping_charges=shipping_charges,
                 currency='INR',
                 order=new_order
             )
 
             db.session.add(new_order)
-            db.session.commit()
+            try:
+                db.session.commit()
+            except Exception:
+                return {"status": "Failed", "msg": "Duplicate order_id"}, 400
             return {'status': 'success', 'msg': "successfully added", "order_id": new_order.channel_order_id}, 200
 
         except Exception as e:
@@ -622,7 +632,11 @@ def download_shiplabels(resp):
 
     order_ids = data['order_ids']
     orders_qs = db.session.query(Orders).filter(Orders.channel_order_id.in_(order_ids), Orders.delivery_address!=None,
-                                                Orders.shipments!=None).order_by(Orders.id).all()
+                                                Orders.shipments!=None)
+
+    if auth_data['user_group'] != 'super-admin':
+        orders_qs = orders_qs.filter(Orders.client_prefix==auth_data.get('client_prefix'))
+    orders_qs = orders_qs.order_by(Orders.id).all()
     if not orders_qs:
         return jsonify({"success": False, "msg": "No valid order ID"}), 404
 
@@ -1200,40 +1214,34 @@ def verification_passthru(type):
 
 @core_blueprint.route('/core/dev', methods=['POST'])
 def ping_dev():
-
-    from .fetch_orders import lambda_handler
-    lambda_handler()
     return 0
-
-    pick = db.session.query(ClientPickups).filter(ClientPickups.client_prefix == 'PAVERS').all()
+    import requests, json
+    pick = db.session.query(ClientPickups).filter(ClientPickups.client_prefix == 'NASHER').all()
     for location in pick:
         loc_body = {
-                  "phone": location.pickup.phone,
-                  "city":location.pickup.phone,
-                  "name": location.pickup.warehouse_prefix,
-                  "pin": str(location.pickup.pincode),
-                  "address": location.pickup.address+" "+location.pickup.address_two,
-                  "country": location.pickup.country,
-                  "registered_name": location.pickup.name,
-                   "return_address": location.return_point.address+location.return_point.address_two,
-                   "return_pin":str(location.return_point.pincode),
-                   "return_city":location.return_point.city,
-                   "return_state":location.return_point.state,
-                   "return_country": location.return_point.country
-                }
+            "phone": location.pickup.phone,
+            "city": location.pickup.city,
+            "name": location.pickup.warehouse_prefix,
+            "pin": str(location.pickup.pincode),
+            "address": location.pickup.address + " " + str(location.pickup.address_two),
+            "country": location.pickup.country,
+            "registered_name": location.pickup.name,
+            "return_address": location.return_point.address +" "+ str(location.return_point.address_two),
+            "return_pin": str(location.return_point.pincode),
+            "return_city": location.return_point.city,
+            "return_state": location.return_point.state,
+            "return_country": location.return_point.country
+        }
 
-        headers = {"Authorization": "Token 1368a2c7e666aeb44068c2cd17d2d2c0e9223d37",
+        headers = {"Authorization": "Token c5fd3514bd4cb65432ce31688b049ca6cf417b28",
                    "Content-Type": "application/json"}
 
         delhivery_url = "https://track.delhivery.com/api/backend/clientwarehouse/create/"
 
         req = requests.post(delhivery_url, headers=headers, data=json.dumps(loc_body))
-
-
-
-
-    from .request_pickups import lambda_handler
-    lambda_handler()
+        headers = {"Authorization": "Token 538ee2e5f226a85e4a97ad3aa0ae097b41bdb89c",
+                   "Content-Type": "application/json"}
+        req = requests.post(delhivery_url, headers=headers, data=json.dumps(loc_body))
 
     myfile = request.files['myfile']
 
@@ -1243,33 +1251,13 @@ def ping_dev():
     import json
     for row in data_xlsx.iterrows():
         try:
+            if row[0]<1800:
+                continue
             row_data = row[1]
-            dimensions = {"length":float(row_data.length), "breadth":float(row_data.breadth), "height":float(row_data.height)}
-            product = Products(name=str(row_data.seller_sku),
-                                               sku=str(row_data.seller_sku),
-                                               price=0,
-                                               dimensions=dimensions,
-                                               weight=float(row_data.weight),
-                                               client_prefix='NASHER',
-                                               active=True,
-                                               inactive_reason=str(row_data.courier),
-                                               channel_id=4
-                                        )
+            product = db.session.query(Products).filter(Products.sku == str(row_data.seller_sku)).first()
 
-            quantity = ProductQuantity(
-                                        product=product,
-                                        total_quantity=1000,
-                                        approved_quantity=1000,
-                                        available_quantity=1000,
-                                        inline_quantity=0,
-                                        rto_quantity=0,
-                                        current_quantity=1000,
-                                        warehouse_prefix="NASHER",
-                                        status="APPROVED",
-                                        date_created=datetime.datetime.now()
-                                        )
+            product.inactive_reason = str(row_data.courier)
 
-            db.session.add(quantity)
             """
             delhivery_url = "https://track.delhivery.com/api/backend/clientwarehouse/create/"
             headers = {"Content-Type": "application/json",
@@ -1280,12 +1268,16 @@ def ping_dev():
                        "Authorization": "Token 5f4c836289121eaabc9484a3a46286290c70e69e"}
             req= requests.post(delhivery_url, headers=headers, data=json.dumps(del_body))
             """
-            if row[0]%100==0 and row[0]!=0:
+            if row[0] % 100 == 0 and row[0] != 0:
                 db.session.commit()
         except Exception as e:
             failed_ids[str(row[1].seller_sku)] = str(e.args[0])
             db.session.rollback()
     db.session.commit()
+    return 0
+
+    from .request_pickups import lambda_handler
+    lambda_handler()
 
     return 0
     import requests, json

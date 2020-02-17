@@ -21,7 +21,7 @@ def lambda_handler():
     cur.execute(get_courier_id_and_key_query)
     for courier in cur.fetchall():
         try:
-            if courier[1] in ("Delhivery", "Delhivery Surface Standard", "Delhivery Bulk"):
+            if courier[1] in ("Delhivery", "Delhivery Surface Standard", "Delhivery Bulk", "Delhivery Heavy", "Delhivery Heavy 2"):
                 cur.execute(get_status_update_orders_query%str(courier[0]))
                 all_orders = cur.fetchall()
                 pickup_count = 0
@@ -512,6 +512,225 @@ def lambda_handler():
                         logger.error("Couldn't update pickup count for : " + str(e.args[0]))
 
                 conn.commit()
+
+            elif courier[1] == "Xpressbees":
+                pickup_count = 0
+                cur.execute(get_status_update_orders_query % str(courier[0]))
+                all_orders = cur.fetchall()
+                exotel_idx = 0
+                exotel_sms_data = {
+                    'From': 'LM-WAREIQ'
+                }
+                orders_dict = dict()
+                awb_str = ""
+                pickup_dict = dict()
+
+                for order in all_orders:
+                    orders_dict[order[1]] = order
+                    awb_str += order[1]+","
+
+                headers = {"Content-Type": "application/json"}
+                xpressbees_body = {"AWBNo": awb_str.rstrip(","), "XBkey": courier[2]}
+                check_status_url = "http://xbclientapi.xbees.in/TrackingService.svc/GetShipmentSummaryDetails"
+                req = requests.post(check_status_url, headers=headers, data=json.dumps(xpressbees_body)).json()
+                logger.info("Count of Xpressbees packages: " + str(len(req)))
+                for ret_order in req:
+                    try:
+                        if not ret_order['ShipmentSummary']:
+                            continue
+                        new_status = ret_order['ShipmentSummary'][0]['StatusCode']
+                        current_awb = ret_order['AWBNo']
+
+                        try:
+                            order_status_tuple = (orders_dict[current_awb][0], orders_dict[current_awb][10], courier[0])
+                            cur.execute(select_statuses_query, order_status_tuple)
+                            all_scans = cur.fetchall()
+                            all_scans_dict = dict()
+                            for temp_scan in all_scans:
+                                all_scans_dict[temp_scan[2]] = temp_scan
+                            new_status_dict = dict()
+                            for each_scan in ret_order['ShipmentSummary']:
+                                if not each_scan.get('Location'):
+                                    continue
+                                status_time = each_scan['StatusDate']+"T"+each_scan['StatusTime']
+                                if status_time:
+                                    status_time = datetime.strptime(status_time, '%d-%m-%YT%H%M')
+
+                                to_record_status = ""
+                                if each_scan['StatusCode'] == "DRC":
+                                    to_record_status = "Received"
+                                elif each_scan['StatusCode'] == "PUD":
+                                    to_record_status = "Picked"
+                                elif each_scan['StatusCode'] in ("IT","RAD"):
+                                    to_record_status = "In Transit"
+                                elif each_scan['StatusCode'] == "OFD":
+                                    to_record_status = "Out for delivery"
+                                elif each_scan['StatusCode'] == "DLVD":
+                                    to_record_status = "Delivered"
+                                elif each_scan['StatusCode'] == "UD" and each_scan['Status'] in \
+                                        ("Consignee Refused To Accept", "Consignee Refused to Pay COD Amount"):
+                                    to_record_status = "Cancelled"
+                                elif each_scan['StatusCode'] == "RTO":
+                                    to_record_status = "Returned"
+                                elif each_scan['StatusCode'] == "RTD":
+                                    to_record_status = "RTO DELIVERED"
+
+                                if not to_record_status:
+                                    continue
+
+                                if to_record_status not in new_status_dict:
+                                    new_status_dict[to_record_status] = (orders_dict[current_awb][0], courier[0],
+                                                                         orders_dict[current_awb][10],
+                                                                         xpressbees_status_mapping[
+                                                                             each_scan['StatusCode']][1],
+                                                                         to_record_status,
+                                                                         each_scan['Status'],
+                                                                         each_scan['Location'],
+                                                                         each_scan['Location'].split(', ')[1],
+                                                                         status_time)
+                                elif to_record_status == 'In Transit' and new_status_dict[to_record_status][
+                                    8] < status_time:
+                                    new_status_dict[to_record_status] = (orders_dict[current_awb][0], courier[0],
+                                                                         orders_dict[current_awb][10],
+                                                                         xpressbees_status_mapping[
+                                                                             each_scan['StatusCode']][1],
+                                                                         to_record_status,
+                                                                         each_scan['Status'],
+                                                                         each_scan['Location'],
+                                                                         each_scan['Location'].split(', ')[1],
+                                                                         status_time)
+
+                            for status_key, status_value in new_status_dict.items():
+                                if status_key not in all_scans_dict:
+                                    cur.execute("INSERT INTO order_status (order_id, courier_id, shipment_id, "
+                                                "status_code, status, status_text, location, location_city, "
+                                                "status_time) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s);",
+                                                status_value)
+
+                                elif status_key == 'In Transit' and status_value[8] > all_scans_dict[status_key][5]:
+                                    cur.execute("UPDATE order_status SET location=%s, location_city=%s, status_time=%s"
+                                                " WHERE id=%s;", (status_value[6], status_value[7], status_value[8],
+                                                                  all_scans_dict[status_key][0]))
+
+                        except Exception as e:
+                            logger.error(
+                                "Open status failed for id: " + str(orders_dict[current_awb][0]) + "\nErr: " + str(
+                                    e.args[0]))
+
+                        try:
+                            status_type = xpressbees_status_mapping[new_status][1]
+                            new_status_temp = xpressbees_status_mapping[new_status][0]
+                            status_detail = None
+                            if new_status_temp == "PENDING":
+                                status_detail = ret_order['ShipmentSummary'][0]['Status']
+                        except KeyError:
+                            new_status_temp = new_status_temp.upper()
+                            status_type = None
+                            status_detail = None
+                        if new_status_temp == "READY TO SHIP" and orders_dict[current_awb][2] == new_status:
+                            continue
+                        new_status = new_status_temp
+
+                        edd = ret_order['ShipmentSummary'][0].get('ExpectedDeliveryDate')
+                        if edd:
+                            edd = datetime.strptime(ret_order['ShipmentSummary'][0]['ExpectedDeliveryDate'], '%m/%d/%Y %I:%M:%S %p')
+                            cur.execute("UPDATE shipments SET edd=%s WHERE awb=%s", (edd, current_awb))
+
+                        if new_status == 'DELIVERED' and orders_dict[current_awb][13] and str(
+                                orders_dict[current_awb][13]).lower() == 'prepaid':
+                            try:  ## Delivery check text
+                                sms_to_key, sms_body_key, customer_phone, sms_body_key_data = verification_text(
+                                    orders_dict[current_awb], exotel_idx, cur, cur_2)
+                                exotel_sms_data[sms_to_key] = customer_phone
+                                exotel_sms_data[sms_body_key] = sms_body_key_data
+                                exotel_idx += 1
+                            except Exception as e:
+                                logger.error(
+                                    "Delivery confirmation not sent. Order id: " + str(orders_dict[current_awb][0]))
+                        if orders_dict[current_awb][2] in (
+                                'READY TO SHIP', 'PICKUP REQUESTED', 'NOT PICKED') and new_status == 'IN TRANSIT':
+                            pickup_count += 1
+                            if orders_dict[current_awb][11] not in pickup_dict:
+                                pickup_dict[orders_dict[current_awb][11]] = 1
+                            else:
+                                pickup_dict[orders_dict[current_awb][11]] += 1
+                            cur.execute(update_prod_quantity_query_pickup % str(orders_dict[current_awb][0]))
+
+                            if edd:
+                                edd = edd.strftime('%-d %b')
+                                cur_2.execute(
+                                    "select client_name from clients where client_prefix='%s'" % orders_dict[current_awb][
+                                        3])
+                                client_name = cur_2.fetchone()
+                                customer_phone = orders_dict[current_awb][4].replace(" ", "")
+                                customer_phone = "0" + customer_phone[-10:]
+
+                                sms_to_key = "Messages[%s][To]" % str(exotel_idx)
+                                sms_body_key = "Messages[%s][Body]" % str(exotel_idx)
+
+                                exotel_sms_data[sms_to_key] = customer_phone
+                                try:
+                                    tracking_link_wareiq = "http://webapp.wareiq.com/tracking/" + str(
+                                        orders_dict[current_awb][1])
+                                    short_url = requests.get(
+                                        "https://cutt.ly/api/api.php?key=f445d0bb52699d2f870e1832a1f77ef3f9078&short=%s" % tracking_link_wareiq)
+                                    short_url_track = short_url.json()['url']['shortLink']
+                                    exotel_sms_data[
+                                        sms_body_key] = "Dear Customer, your %s order has been shipped via Xpressbees with AWB number %s. " \
+                                                        "It is expected to arrive by %s. You can track your order on this (%s) link." % (
+                                                            client_name[0], str(orders_dict[current_awb][1]), edd,
+                                                            short_url_track)
+                                except Exception:
+                                    exotel_sms_data[
+                                        sms_body_key] = "Dear Customer, your %s order has been shipped via Xpressbees with AWB number %s. It is expected to arrive by %s. Thank you for Ordering." % (
+                                        client_name[0], orders_dict[current_awb][1], edd)
+                                exotel_idx += 1
+
+                        if orders_dict[current_awb][2] != new_status:
+                            status_update_tuple = (new_status, status_type, status_detail, orders_dict[current_awb][0])
+                            cur.execute(order_status_update_query, status_update_tuple)
+                            if ret_order['ShipmentSummary'][0]['StatusCode'] == "RTD":
+                                cur.execute(update_prod_quantity_query_rto % str(orders_dict[current_awb][0]))
+
+                            if ret_order['ShipmentSummary'][0]['StatusCode'] == 'UD' \
+                                    and ret_order['ShipmentSummary'][0]['Status'] in \
+                                    ("Consignee Refused To Accept", "Consignee Refused to Pay COD Amount"):
+                                try:  # NDR check text
+                                    sms_to_key, sms_body_key, customer_phone, sms_body_key_data = verification_text(
+                                        orders_dict[current_awb], exotel_idx, cur, cur_2, ndr=True)
+                                    exotel_sms_data[sms_to_key] = customer_phone
+                                    exotel_sms_data[sms_body_key] = sms_body_key_data
+                                    exotel_idx += 1
+                                except Exception as e:
+                                    logger.error(
+                                        "NDR confirmation not sent. Order id: " + str(orders_dict[current_awb][0]))
+
+                    except Exception as e:
+                        logger.error("status update failed for " + "    err:" + str(e.args[0]))
+
+                if exotel_idx:
+                    logger.info("Sending messages...count:" + str(exotel_idx))
+                    logger.info("Total Picked: " + str(exotel_idx) + "  Time: " + str(datetime.utcnow()))
+                    try:
+                        lad = requests.post(
+                            'https://ff2064142bc89ac5e6c52a6398063872f95f759249509009:783fa09c0ba1110309f606c7411889192335bab2e908a079@api.exotel.com/v1/Accounts/wareiq1/Sms/bulksend',
+                            data=exotel_sms_data)
+                    except Exception as e:
+                        logger.error("messages not sent." + "   Error: " + str(e.args[0]))
+
+                if pickup_count:
+                    logger.info("Total Picked: " + str(pickup_count) + "  Time: " + str(datetime.utcnow()))
+                    try:
+                        for key, value in pickup_dict.items():
+                            logger.info("picked for pickup_id " + str(key) + ": " + str(value))
+                            date_today = datetime.now().strftime('%Y-%m-%d')
+                            pickup_count_tuple = (value, courier[0], key, date_today)
+                            cur.execute(update_pickup_count_query, pickup_count_tuple)
+                    except Exception as e:
+                        logger.error("Couldn't update pickup count for : " + str(e.args[0]))
+
+                conn.commit()
+
         except Exception as e:
             logger.error("Status update failed: "+str(e.args[0]))
 
@@ -609,4 +828,28 @@ shadowfax_status_mapping = {"new":("READY TO SHIP", "UD", ""),
                             "lost":("LOST", "UD", ""),
                             "on_hold":("ON HOLD", "UD", ""),
                             "pickup_on_hold":("NOT PICKED", "UD", ""),
+                            }
+
+xpressbees_status_mapping = {"DRC":("READY TO SHIP", "UD", ""),
+                            "PUC":("PICKUP REQUESTED", "UD", ""),
+                            "OFP":("PICKUP REQUESTED", "UD", ""),
+                            "PUD":("PICKUP REQUESTED", "UD", ""),
+                            "PND":("NOT PICKED", "UD", ""),
+                            "PKD":("IN TRANSIT", "UD", ""),
+                            "IT":("IN TRANSIT", "UD", ""),
+                            "RAD":("IN TRANSIT", "UD", ""),
+                            "OFD":("DISPATCHED", "UD", ""),
+                            "RTON":("IN TRANSIT", "RT", ""),
+                            "RTO":("IN TRANSIT", "RT", ""),
+                            "RTO-IT":("IN TRANSIT", "RT", ""),
+                            "RAO":("IN TRANSIT", "RT", ""),
+                            "RTU":("IN TRANSIT", "RT", ""),
+                            "RTO-OFD":("DISPATCHED", "RT", ""),
+                            "STD":("DAMAGED", "UD", ""),
+                            "STG":("SHORTAGE", "UD", ""),
+                            "RTO-STG":("SHORTAGE", "RT", ""),
+                            "DLVD":("DELIVERED", "DL", ""),
+                            "RTD":("RTO", "DL", ""),
+                            "LOST":("LOST", "UD", ""),
+                            "UD":("PENDING", "UD", "")
                             }

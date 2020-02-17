@@ -1,6 +1,6 @@
 import psycopg2, requests, os, json, pytz
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from .queries import *
 
@@ -25,7 +25,7 @@ def lambda_handler():
         'From': 'LM-WAREIQ'
     }
     for courier in cur.fetchall():
-        if courier[10] in ("Delhivery", "Delhivery Surface Standard", "Delhivery Bulk") and courier[1]!='DAPR':
+        if courier[10] in ("Delhivery", "Delhivery Surface Standard", "Delhivery Bulk", "Delhivery Heavy", "Delhivery Heavy 2") and courier[1]!='DAPR':
             get_orders_data_tuple = (courier[1], courier[1])
             if courier[3]==2:
                 orders_to_ship_query = get_orders_to_ship_query.replace('__PRODUCT_FILTER__', "and ship_courier[1]='%s'"%courier[10])
@@ -170,7 +170,7 @@ def lambda_handler():
                 for i in range(len(return_data)-1):
                     insert_shipments_data_query += ",%s"
 
-                insert_shipments_data_query += ";"
+                insert_shipments_data_query += " RETURNING id,awb;"
 
                 orders_dict = dict()
                 for prev_order in all_orders:
@@ -180,6 +180,7 @@ def lambda_handler():
 
                 order_status_change_ids = list()
                 insert_shipments_data_tuple = list()
+                insert_order_status_dict = dict()
                 for package in return_data:
                     fulfillment_id = None
                     tracking_link = None
@@ -214,7 +215,7 @@ def lambda_handler():
                             create_fulfillment_url = "https://%s:%s@%s/admin/api/2019-10/orders/%s/fulfillments.json" % (
                                 orders_dict[package['refnum']][4], orders_dict[package['refnum']][5],
                                 orders_dict[package['refnum']][6], orders_dict[package['refnum']][7])
-                            tracking_link = "https://www.delhivery.com/track/package/%s" % str(package['waybill'])
+                            tracking_link = "http://webapp.wareiq.com/tracking/%s" % str(package['waybill'])
                             ful_header = {'Content-Type': 'application/json'}
                             fulfil_data = {
                                 "fulfillment": {
@@ -222,7 +223,7 @@ def lambda_handler():
                                     "tracking_urls": [
                                         tracking_link
                                     ],
-                                    "tracking_company": "Delhivery",
+                                    "tracking_company": "WareIQ",
                                     "location_id": 16721477681,
                                     "notify_customer": False
                                 }
@@ -257,10 +258,27 @@ def lambda_handler():
                                   courier[9], json.dumps(dimensions), volumetric_weight, weight, remark, pickup_point[2],
                                   package['sort_code'], fulfillment_id, tracking_link)
                     insert_shipments_data_tuple.append(data_tuple)
+                    insert_order_status_dict[package['waybill']] = [orders_dict[package['refnum']][0], courier[9],
+                                                                    None, "UD", "Received", "Consignment Manifested",
+                                                                    pickup_point[6], pickup_point[6],datetime.utcnow()+timedelta(hours=5.5)]
 
                 if insert_shipments_data_tuple:
                     insert_shipments_data_tuple = tuple(insert_shipments_data_tuple)
                     cur.execute(insert_shipments_data_query, insert_shipments_data_tuple)
+                    shipment_ret = cur.fetchall()
+                    order_status_add_query = """INSERT INTO order_status (order_id, courier_id, shipment_id, 
+                                                                    status_code, status, status_text, location, location_city, 
+                                                                    status_time) VALUES """
+                    order_status_tuple_list = list()
+                    for ship_temp in shipment_ret:
+                        insert_order_status_dict[ship_temp[1]][2] = ship_temp[0]
+                        order_status_add_query += "%s,"
+                        order_status_tuple_list.append(tuple(insert_order_status_dict[ship_temp[1]]))
+
+                    order_status_add_query = order_status_add_query.rstrip(',')
+                    order_status_add_query += ";"
+
+                    cur.execute(order_status_add_query, tuple(order_status_tuple_list))
 
                 if last_shipped_order_id:
                     last_shipped_data_tuple = (last_shipped_order_id, datetime.now(tz=pytz.timezone('Asia/Calcutta')), courier[1])
@@ -361,9 +379,10 @@ def lambda_handler():
                             customer_name += " "+ order[14]
 
                         insert_shipments_data_query = """INSERT INTO SHIPMENTS (awb, status, order_id, pickup_id, courier_id, 
-                                                                                                        dimensions, volumetric_weight, weight, remark, return_point_id, routing_code, 
-                                                                                                        channel_fulfillment_id, tracking_link)
-                                                                                                        VALUES  %s"""
+                                                        dimensions, volumetric_weight, weight, remark, return_point_id, routing_code, 
+                                                        channel_fulfillment_id, tracking_link)
+                                                        VALUES  %s RETURNING id;"""
+
                         if return_data_raw.get("responselist"):
                             if order[0] > last_shipped_order_id:
                                 last_shipped_order_id = order[0]
@@ -400,6 +419,16 @@ def lambda_handler():
                             exotel_idx += 1
 
                             cur.execute(insert_shipments_data_query, data_tuple)
+                            ship_temp = cur.fetchone()
+                            order_status_add_query = """INSERT INTO order_status (order_id, courier_id, shipment_id, 
+                                                        status_code, status, status_text, location, location_city, 
+                                                        status_time) VALUES %s"""
+
+                            order_status_add_tuple = [(order[0], courier[9],
+                                                     ship_temp[0], "UD", "Received", "Consignment Manifested",
+                                                     pickup_point[6], pickup_point[6],datetime.utcnow()+timedelta(hours=5.5))]
+
+                            cur.execute(order_status_add_query, tuple(order_status_add_tuple))
 
                     except Exception as e:
                         logger.error("couldn't assign order: " + str(order[1]) + "\nError: " + str(e))
@@ -563,7 +592,7 @@ def lambda_handler():
                         insert_shipments_data_query = """INSERT INTO SHIPMENTS (awb, status, order_id, pickup_id, courier_id, 
                                                                                                         dimensions, volumetric_weight, weight, remark, return_point_id, routing_code, 
                                                                                                         channel_fulfillment_id, tracking_link)
-                                                                                                        VALUES  %s"""
+                                                                                                        VALUES  %s RETURNING id;"""
                         if not return_data_raw['errors']:
                             order_status_change_ids.append(order[0])
                             return_data = return_data_raw['data']
@@ -601,7 +630,7 @@ def lambda_handler():
                                 create_fulfillment_url = "https://%s:%s@%s/admin/api/2019-10/orders/%s/fulfillments.json" % (
                                     order[36], order[37],
                                     order[38], order[39])
-                                tracking_link = "https://www.delhivery.com/track/package/%s" % str(return_data_raw['data']['awb_number'])
+                                tracking_link = "http://webapp.wareiq.com/tracking/%s" % str(return_data_raw['data']['awb_number'])
                                 ful_header = {'Content-Type': 'application/json'}
                                 fulfil_data = {
                                     "fulfillment": {
@@ -609,7 +638,7 @@ def lambda_handler():
                                         "tracking_urls": [
                                             tracking_link
                                         ],
-                                        "tracking_company": "Delhivery",
+                                        "tracking_company": "WareIQ",
                                         "location_id": 16721477681,
                                         "notify_customer": False
                                     }
@@ -632,6 +661,247 @@ def lambda_handler():
                                 "", fulfillment_id, tracking_link)])
 
                         cur.execute(insert_shipments_data_query, data_tuple)
+                        ship_temp = cur.fetchone()
+                        order_status_add_query = """INSERT INTO order_status (order_id, courier_id, shipment_id, 
+                                                                                status_code, status, status_text, location, location_city, 
+                                                                                status_time) VALUES %s"""
+
+                        order_status_add_tuple = [(order[0], courier[9],
+                                                   ship_temp[0], "UD", "Received", "Consignment Manifested",
+                                                   pickup_point[6], pickup_point[6],datetime.utcnow()+timedelta(hours=5.5))]
+
+                        cur.execute(order_status_add_query, tuple(order_status_add_tuple))
+
+                    except Exception as e:
+                        print("couldn't assign order: " + str(order[1]) + "\nError: " + str(e))
+
+                if last_shipped_order_id:
+                    last_shipped_data_tuple = (
+                    last_shipped_order_id, datetime.now(tz=pytz.timezone('Asia/Calcutta')), courier[1])
+                    cur.execute(update_last_shipped_order_query, last_shipped_data_tuple)
+
+                if order_status_change_ids:
+                    if len(order_status_change_ids) == 1:
+                        cur.execute(update_orders_status_query % (("(%s)") % str(order_status_change_ids[0])))
+                    else:
+                        cur.execute(update_orders_status_query, (tuple(order_status_change_ids),))
+
+                conn.commit()
+
+        elif courier[10] == "Xpressbees":
+            get_orders_data_tuple = ( courier[1], courier[1])
+            if courier[3]==2:
+                orders_to_ship_query = get_orders_to_ship_query.replace('__PRODUCT_FILTER__', "and ship_courier[1]='%s'"%courier[10])
+            else:
+                orders_to_ship_query = get_orders_to_ship_query.replace('__PRODUCT_FILTER__', '')
+            cur.execute(orders_to_ship_query, get_orders_data_tuple)
+            all_orders = cur.fetchall()
+            pickup_point_order_dict = dict()
+            for order in all_orders:
+                if order[41]:
+                    if order[41] not in pickup_point_order_dict:
+                        pickup_point_order_dict[order[41]] = [order]
+                    else:
+                        pickup_point_order_dict[order[41]].append(order)
+
+            cur.execute("select max(awb) from shipments where courier_id=5;")
+            last_assigned_awb = cur.fetchone()[0]
+            last_assigned_awb =int(last_assigned_awb)
+
+            for pickup_id, all_new_orders in pickup_point_order_dict.items():
+                last_shipped_order_id = 0
+                headers = {"Content-Type": "application/json"}
+                pickup_points_tuple = (pickup_id,)
+                cur.execute(get_pickup_points_query, pickup_points_tuple)
+                order_status_change_ids = list()
+
+                pickup_point = cur.fetchone()  # change this as we get to dynamic pickups
+
+                for order in all_new_orders:
+                    if order[26].lower()=='cod' and not order[42] and order[43]:
+                        continue
+                    if order[26].lower()=='cod' and not order[43]:
+                        cod_confirmation_link = "http://track.wareiq.com/core/v1/passthru/cod?CustomField=%s&digits=1&verified_via=text"%str(order[0])
+                        short_url = requests.get(
+                            "https://cutt.ly/api/api.php?key=f445d0bb52699d2f870e1832a1f77ef3f9078&short=%s" % cod_confirmation_link)
+                        short_url_track = short_url.json()['url']['shortLink']
+                        insert_cod_ver_tuple = (order[0], short_url_track, datetime.now())
+                        cur.execute(
+                            "INSERT INTO cod_verification (order_id, verification_link, date_created) VALUES (%s,%s,%s);",
+                            insert_cod_ver_tuple)
+                        cur_2.execute("select client_name from clients where client_prefix='%s'" % order[9])
+                        client_name = cur_2.fetchone()
+                        customer_phone = order[5].replace(" ", "")
+                        customer_phone = "0" + customer_phone[-10:]
+
+                        sms_to_key = "Messages[%s][To]" % str(exotel_idx)
+                        sms_body_key = "Messages[%s][Body]" % str(exotel_idx)
+
+                        exotel_sms_data[sms_to_key] = customer_phone
+
+                        exotel_sms_data[
+                            sms_body_key] = "Dear Customer, You recently placed an order from %s with order id %s. " \
+                                            "Please click on the link (%s) to verify. " \
+                                            "Your order will be shipped soon after confirmation." % (
+                                                client_name[0], str(order[1]), short_url_track)
+
+                        exotel_idx += 1
+                        continue
+
+                    if order[0] > last_shipped_order_id:
+                        last_shipped_order_id = order[0]
+
+                    fulfillment_id = None
+                    tracking_link = None
+                    try:
+                        package_string = ""
+                        package_quantity = 0
+                        for idx, prod in enumerate(order[40]):
+                            package_string += prod + " (" + str(order[35][idx]) + ") + "
+                            package_quantity += order[35][idx]
+                        package_string += "Shipping"
+
+                        dimensions = order[33][0]
+                        dimensions['length'] = dimensions['length'] * order[35][0]
+                        weight = order[34][0] * order[35][0]
+                        for idx, dim in enumerate(order[33]):
+                            if idx == 0:
+                                continue
+                            dimensions['length'] += dim['length'] * (order[35][idx])
+                            weight += order[34][idx] * (order[35][idx])
+
+                        volumetric_weight = (dimensions['length'] * dimensions['breadth'] * dimensions['height']) / 5000
+
+                        customer_phone = order[21].replace(" ", "")
+                        customer_phone = "0" + customer_phone[-10:]
+
+                        customer_name = order[13]
+                        if order[14]:
+                            customer_name += " "+ order[14]
+
+                        pickup_address = pickup_point[4]
+                        if pickup_point[5]:
+                            pickup_address += pickup_point[5]
+
+                        customer_address = order[15]
+                        if order[16]:
+                            customer_address += order[16]
+
+                        rto_address = pickup_point[13]
+                        if pickup_point[14]:
+                            rto_address += pickup_point[14]
+                        last_assigned_awb += 1
+                        xpressbees_shipment_body = {
+                                                    "XBkey": courier[14],
+                                                    "VersionNumber": "V6",
+                                                    "ManifestDetails": {
+                                                    "OrderType": order[26],
+                                                    "OrderNo": order[1],
+                                                    "PaymentStatus": order[26],
+                                                    "PickupVendor": pickup_point[11],
+                                                    "PickVendorPhoneNo": pickup_point[3],
+                                                    "PickVendorAddress": pickup_address,
+                                                    "PickVendorCity": pickup_point[6],
+                                                    "PickVendorState": pickup_point[10],
+                                                    "PickVendorPinCode": pickup_point[8],
+                                                    "CustomerName": customer_name,
+                                                    "CustomerCity": order[17],
+                                                    "CustomerState": order[19],
+                                                    "ZipCode": order[18],
+                                                    "CustomerAddressDetails": [{
+                                                    "Type": "Primary",
+                                                    "Address": customer_address
+                                                    }],
+                                                    "CustomerMobileNumberDetails": [{
+                                                    "Type": "Primary",
+                                                    "MobileNo": customer_phone
+                                                    }],
+                                                    "RTOName": pickup_point[20],
+                                                    "RTOMobileNo": pickup_point[12],
+                                                    "RTOAddress": rto_address,
+                                                    "RTOToCity": pickup_point[15],
+                                                    "RTOToState": pickup_point[19],
+                                                    "RTOPinCode": pickup_point[17],
+                                                    "PhyWeight": sum(order[34]),
+                                                    "VolWeight": volumetric_weight,
+                                                    "AirWayBillNO": str(last_assigned_awb),
+                                                    "Quantity": package_quantity,
+                                                    "PickupVendorCode": pickup_point[9],
+                                                    "IsOpenDelivery": "0",
+                                                    "DeclaredValue": order[27],
+                                                    "GSTMultiSellerInfo": [{
+                                                    "ProductDesc": package_string,
+                                                    "SellerName": pickup_point[11],
+                                                    "SellerAddress": pickup_address,
+                                                    "SupplySellerStatePlace": pickup_point[10],
+                                                    "SellerPincode": int(pickup_point[8]),
+                                                    "HSNCode": "3304"
+                                                    }]}}
+
+                        if order[26].lower() == "cod":
+                            xpressbees_shipment_body["CollectibleAmount"]= order[27]
+                        xpressbees_url = courier[16] + "POSTShipmentService.svc/AddManifestDetails"
+                        req = requests.post(xpressbees_url, headers=headers, data=json.dumps(xpressbees_shipment_body))
+                        while req.json()['AddManifestDetails'][0]['ReturnMessage']=='AWB Already Exists':
+                            last_assigned_awb += 1
+                            xpressbees_shipment_body['ManifestDetails']['AirWayBillNO'] = str(last_assigned_awb)
+                            req = requests.post(xpressbees_url, headers=headers,
+                                                data=json.dumps(xpressbees_shipment_body))
+                        return_data_raw = req.json()
+                        insert_shipments_data_query = """INSERT INTO SHIPMENTS (awb, status, order_id, pickup_id, courier_id, 
+                                                                                                        dimensions, volumetric_weight, weight, remark, return_point_id, routing_code, 
+                                                                                                        channel_fulfillment_id, tracking_link)
+                                                                                                        VALUES  %s RETURNING id;"""
+                        if return_data_raw['AddManifestDetails'][0]['ReturnMessage']=='successful':
+                            order_status_change_ids.append(order[0])
+                            data_tuple = tuple([(
+                            return_data_raw['AddManifestDetails'][0]['AWBNo'], return_data_raw['AddManifestDetails'][0]['ReturnMessage'],
+                            order[0], pickup_point[1], courier[9], json.dumps(dimensions), volumetric_weight, weight,
+                            "", pickup_point[2], "", None, None)])
+                            cur_2.execute("select client_name from clients where client_prefix='%s'" % order[9])
+                            client_name = cur_2.fetchone()
+                            customer_phone = order[5].replace(" ", "")
+                            customer_phone = "0" + customer_phone[-10:]
+
+                            sms_to_key = "Messages[%s][To]" % str(exotel_idx)
+                            sms_body_key = "Messages[%s][Body]" % str(exotel_idx)
+
+                            exotel_sms_data[sms_to_key] = customer_phone
+                            try:
+                                tracking_link_wareiq = "http://webapp.wareiq.com/tracking/" + str(return_data_raw['AddManifestDetails'][0]['AWBNo'])
+                                short_url = requests.get(
+                                    "https://cutt.ly/api/api.php?key=f445d0bb52699d2f870e1832a1f77ef3f9078&short=%s" % tracking_link_wareiq)
+                                short_url_track = short_url.json()['url']['shortLink']
+                                exotel_sms_data[
+                                    sms_body_key] = "Dear Customer, thank you for ordering from %s. " \
+                                                    "Your order will be shipped by Xpressbees with AWB number %s. " \
+                                                    "You can track your order on this ( %s ) link." % (
+                                                        client_name[0], str(return_data_raw['AddManifestDetails'][0]['AWBNo']), short_url_track)
+                            except Exception:
+                                exotel_sms_data[
+                                    sms_body_key] = "Dear Customer, thank you for ordering from %s. Your order will be shipped by Xpressbees with AWB number %s. " \
+                                                    "You can track your order using this AWB number." % (
+                                                    client_name[0], str(return_data_raw['AddManifestDetails'][0]['AWBNo']))
+                            exotel_idx += 1
+
+
+                        else:
+                            data_tuple = tuple([(
+                                None, return_data_raw['AddManifestDetails'][0]['ReturnMessage'], order[0], pickup_point[1],
+                                courier[9], json.dumps(dimensions), volumetric_weight, weight, return_data_raw['AddManifestDetails'][0]['ReturnMessage'], pickup_point[2],
+                                "", fulfillment_id, tracking_link)])
+
+                        cur.execute(insert_shipments_data_query, data_tuple)
+                        ship_temp = cur.fetchone()
+                        order_status_add_query = """INSERT INTO order_status (order_id, courier_id, shipment_id, 
+                                                    status_code, status, status_text, location, location_city, 
+                                                    status_time) VALUES %s"""
+
+                        order_status_add_tuple = [(order[0], courier[9],
+                                                   ship_temp[0], "UD", "Received", "Consignment Manifested",
+                                                   pickup_point[6], pickup_point[6],datetime.utcnow()+timedelta(hours=5.5))]
+
+                        cur.execute(order_status_add_query, tuple(order_status_add_tuple))
 
                     except Exception as e:
                         print("couldn't assign order: " + str(order[1]) + "\nError: " + str(e))

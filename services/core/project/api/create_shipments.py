@@ -656,7 +656,7 @@ def lambda_handler():
 
                         else:
                             data_tuple = tuple([(
-                                None, return_data_raw['message'], order[0], pickup_point[1],
+                                "", return_data_raw['message'], order[0], pickup_point[1],
                                 courier[9], json.dumps(dimensions), volumetric_weight, weight, return_data_raw['errors'], pickup_point[2],
                                 "", fulfillment_id, tracking_link)])
 
@@ -688,7 +688,7 @@ def lambda_handler():
 
                 conn.commit()
 
-        elif courier[10] == "Xpressbees":
+        elif courier[10] in ("Xpressbees", "Xpressbees Surface"):
             get_orders_data_tuple = ( courier[1], courier[1])
             if courier[3]==2:
                 orders_to_ship_query = get_orders_to_ship_query.replace('__PRODUCT_FILTER__', "and ship_courier[1]='%s'"%courier[10])
@@ -719,7 +719,7 @@ def lambda_handler():
 
                 for order in all_new_orders:
                     if order[26].lower()=='cod' and not order[42] and order[43]:
-                        continue
+                        pass
                     if order[26].lower()=='cod' and not order[43]:
                         cod_confirmation_link = "http://track.wareiq.com/core/v1/passthru/cod?CustomField=%s&digits=1&verified_via=text"%str(order[0])
                         short_url = requests.get(
@@ -887,7 +887,7 @@ def lambda_handler():
 
                         else:
                             data_tuple = tuple([(
-                                None, return_data_raw['AddManifestDetails'][0]['ReturnMessage'], order[0], pickup_point[1],
+                                "", return_data_raw['AddManifestDetails'][0]['ReturnMessage'], order[0], pickup_point[1],
                                 courier[9], json.dumps(dimensions), volumetric_weight, weight, return_data_raw['AddManifestDetails'][0]['ReturnMessage'], pickup_point[2],
                                 "", fulfillment_id, tracking_link)])
 

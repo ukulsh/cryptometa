@@ -12,7 +12,7 @@ from reportlab.lib.units import inch
 from reportlab.pdfgen import canvas
 
 from project import db
-from .queries import product_count_query
+from .queries import product_count_query, available_warehouse_product_quantity, fetch_warehouse_to_pick_from
 from project.api.models import Products, ProductQuantity, \
     Orders, OrdersPayments, PickupPoints, MasterChannels, ClientPickups, CodVerification, NDRVerification,\
     MasterCouriers, Shipments, OPAssociation, ShippingAddress, Manifests, ClientCouriers, OrderStatus, DeliveryCheck
@@ -28,7 +28,9 @@ session = boto3.Session(
 )
 
 conn = psycopg2.connect(host="wareiq-core-prod2.cvqssxsqruyc.us-east-1.rds.amazonaws.com", database="core_prod", user="postgres", password="aSderRFgd23")
+conn_2 = psycopg2.connect(host="wareiq-core-prod.cvqssxsqruyc.us-east-1.rds.amazonaws.com", database="core_prod", user="postgres", password="aSderRFgd23")
 cur = conn.cursor()
+cur_2 = conn_2.cursor()
 
 ORDERS_DOWNLOAD_HEADERS = ["Order ID", "Customer Name", "Customer Email", "Customer Phone", "Order_Date",
                             "Courier", "Weight", "awb", "Delivery Date", "Status", "Address_one", "Address_two",
@@ -55,8 +57,8 @@ class ProductList(Resource):
             if auth_data.get('user_group') == 'super-admin' or 'client':
                 client_prefix = auth_data.get('client_prefix')
                 sort_func = get_products_sort_func(Products, ProductQuantity, sort, sort_by)
-                products_qs = db.session.query(Products, ProductQuantity)\
-                    .filter(Products.id==ProductQuantity.product_id).order_by(sort_func())\
+                products_qs = db.session.query(Products).outerjoin(ProductQuantity, Products.id==ProductQuantity.product_id)\
+                    .order_by(sort_func())\
                     .filter(or_(Products.name.ilike(search_key), Products.sku.ilike(search_key)))
                 if filters:
                     if 'warehouse' in filters:
@@ -80,28 +82,29 @@ class ProductList(Resource):
                 response_dict_sku = dict()
                 for product in products_qs_data:
                     resp_obj=dict()
-                    if product[0].id not in response_dict_sku:
-                        product_ids_list.append(product[0].id)
-                        resp_obj['channel_logo'] = product[0].channel.logo_url
-                        resp_obj['product_name'] = product[0].name
-                        resp_obj['product_image'] = product[0].product_image
-                        resp_obj['price'] = product[0].price
-                        resp_obj['master_sku'] = product[0].sku
-                        resp_obj['channel_sku'] = product[0].sku
-                        resp_obj['total_quantity'] = product[1].approved_quantity if product[1].approved_quantity else 0
-                        resp_obj['available_quantity'] = product[1].approved_quantity if product[1].approved_quantity else 0
-                        resp_obj['inline_quantity'] = 0
-                        resp_obj['rto_quantity'] = 0
-                        resp_obj['current_quantity'] = product[1].approved_quantity if product[1].approved_quantity else 0
-                        resp_obj['dimensions'] = product[0].dimensions
-                        resp_obj['weight'] = product[0].weight
-                        if type == 'inactive':
-                            resp_obj['inactive_reason'] = product[0].inactive_reason
-                        response_dict_sku[product[0].id] = resp_obj
-                    else:
-                        response_dict_sku[product[0].id]['total_quantity'] += product[1].approved_quantity if product[1].approved_quantity else 0
-                        response_dict_sku[product[0].id]['available_quantity'] += product[1].approved_quantity if product[1].approved_quantity else 0
-                        response_dict_sku[product[0].id]['current_quantity'] += product[1].approved_quantity if product[1].approved_quantity else 0
+                    product_ids_list.append(product.id)
+                    resp_obj['channel_logo'] = product.channel.logo_url
+                    resp_obj['product_name'] = product.name
+                    resp_obj['product_image'] = product.product_image
+                    resp_obj['price'] = product.price
+                    resp_obj['master_sku'] = product.sku
+                    resp_obj['channel_sku'] = product.sku
+                    resp_obj['inline_quantity'] = 0
+                    resp_obj['rto_quantity'] = 0
+                    resp_obj['total_quantity'] = 0
+                    resp_obj['available_quantity'] = 0
+                    resp_obj['current_quantity'] = 0
+                    resp_obj['dimensions'] = product.dimensions
+                    resp_obj['weight'] = product.weight
+                    if type == 'inactive':
+                        resp_obj['inactive_reason'] = product.inactive_reason
+
+                    for quan_obj in product.quantity:
+                        if 'warehouse' in filters and quan_obj.warehouse_prefix in filters['warehouse']:
+                            resp_obj['total_quantity'] += quan_obj.approved_quantity
+                            resp_obj['available_quantity'] += quan_obj.approved_quantity
+                            resp_obj['current_quantity'] += quan_obj.approved_quantity
+                    response_dict_sku[product.id] = resp_obj
 
                 if product_ids_list:
                     if len(product_ids_list) == 1:
@@ -1076,6 +1079,7 @@ def track_order(awb):
         last_status = order_statuses[-1].status
         response['tracking_id'] = awb
         response['status'] = last_status
+        response['logo_url'] = "https://www.google.com/url?sa=i&url=https%3A%2F%2Fwww.linkedin.com%2Fcompany%2Fwareiq&psig=AOvVaw0YvqAql_oPH2DcoCxxEGGc&ust=1582282802313000&source=images&cd=vfe&ved=0CAIQjRxqFwoTCIDO7vb83-cCFQAAAAAdAAAAABAD"
         response['remark'] = order_statuses[-1].status_text
         response['order_id'] = order_statuses[-1].order.channel_order_id
         response['placed_on'] = order_statuses[-1].order.order_date.strftime("%d %b %Y, %I:%M %p")
@@ -1210,6 +1214,130 @@ def verification_passthru(type):
             return jsonify({"success": False, "msg": "No Order"}), 400
     except Exception as e:
         return jsonify({"success": False, "msg": str(e.args[0])}), 404
+
+
+class PincodeServiceabilty(Resource):
+
+    method_decorators = {'post': [authenticate_restful]}
+
+    def post(self, resp):
+        try:
+            auth_data = resp.get('data')
+            data = json.loads(request.data)
+            if not auth_data:
+                return {"success": False, "msg": "Auth Failed"}, 404
+
+            del_pincode = data.get("pincode")
+            sku_list = data.get("sku_list")
+            if not del_pincode:
+                return {"success": False, "msg": "Pincode not provided"}, 404
+            if not sku_list:
+                return {"success": False, "msg": "SKUs not provided"}, 404
+
+            sku_dict = dict()
+            for sku in sku_list:
+                sku_dict[sku['sku']] = sku['quantity']
+
+            sku_string = "('"
+
+            for key, value in sku_dict.items():
+                sku_string += key + "','"
+            sku_string = sku_string.rstrip("'")
+            sku_string = sku_string.rstrip(",")
+            sku_string += ")"
+
+            no_sku = len(sku_list)
+            try:
+                cur.execute(
+                    available_warehouse_product_quantity.replace('__SKU_STR__', sku_string).replace('__CLIENT_PREFIX__',
+                                                                                                    auth_data[
+                                                                                                        'client_prefix']))
+            except Exception:
+                conn.rollback()
+                return {"success": False, "msg": ""}, 404
+
+            prod_wh_tuple = cur.fetchall()
+            wh_dict = dict()
+            courier_id = 2
+            courier_id_weight = 0.0
+            for prod_wh in prod_wh_tuple:
+                if prod_wh[5] > courier_id_weight:
+                    courier_id = prod_wh[4]
+                    courier_id_weight = prod_wh[5]
+                if sku_dict[prod_wh[2]] < prod_wh[3]:
+                    if prod_wh[0] not in wh_dict:
+                        wh_dict[prod_wh[0]] = {"pincode": prod_wh[6], "count": 1}
+                    else:
+                        wh_dict[prod_wh[0]]['count'] += 1
+
+            warehouse_pincode_str = ""
+            for key, value in wh_dict.items():
+                if value['count'] == no_sku:
+                    warehouse_pincode_str += "('" + key + "','" + str(value['pincode']) + "'),"
+
+            warehouse_pincode_str = warehouse_pincode_str.rstrip(',')
+            if not warehouse_pincode_str:
+                return {"success": False, "msg": "One or more SKUs not serviceable"}, 400
+
+            if courier_id in (8, 11, 12):
+                courier_id = 1
+
+            try:
+                cur_2.execute(fetch_warehouse_to_pick_from.replace('__WAREHOUSE_PINCODES__', warehouse_pincode_str).replace(
+                    '__COURIER_ID__', str(courier_id)).replace('__DELIVERY_PINCODE__', str(del_pincode)))
+            except Exception:
+                conn_2.rollback()
+                return {"success": False, "msg": ""}, 404
+
+            final_wh = cur_2.fetchone()
+
+            if not final_wh or final_wh[1] is None:
+                return {"success": False, "msg": "Not serviceable"}, 404
+
+            current_time = datetime.datetime.utcnow() + datetime.timedelta(hours=5.5)
+            order_before = current_time
+            if current_time.hour >= 14:
+                order_before = order_before + datetime.timedelta(days=1)
+                order_before = order_before.replace(hour=14, minute=0, second=0)
+                days_for_delivery = final_wh[1] + 1
+                if days_for_delivery == 1:
+                    days_for_delivery = 2
+            else:
+                order_before = order_before.replace(hour=14, minute=0, second=0)
+                days_for_delivery = final_wh[1]
+                if days_for_delivery == 0:
+                    days_for_delivery = 1
+
+            delivered_by = datetime.datetime.utcnow() + datetime.timedelta(hours=5.5) + datetime.timedelta(
+                days=days_for_delivery)
+
+            delivery_zone = final_wh[2]
+            if delivery_zone in ('D1', 'D2'):
+                delivery_zone = 'D'
+            if delivery_zone in ('C1', 'C2'):
+                delivery_zone = 'C'
+
+            sku_wise_list = list()
+            for key, value in sku_dict.items():
+                sku_wise_list.append({"sku":key, "quantity":value, "warehouse": final_wh[0],
+                                      "delivery_date": delivered_by.strftime('%d-%m-%Y'),
+                                      "delivery_zone": delivery_zone})
+
+            return_data = {"warehouse": final_wh[0],
+                           "delivery_date": delivered_by.strftime('%d-%m-%Y'),
+                           "cod_available": False,
+                           "order_before": order_before.strftime('%d-%m-%Y %H:%M:%S'),
+                           "delivery_zone": delivery_zone,
+                           "label_url": None,
+                           "sku_wise": sku_wise_list}
+
+            return {"success": True, "data": return_data}, 200
+
+        except Exception as e:
+            return {"success": False, "msg": ""}, 404
+
+
+api.add_resource(PincodeServiceabilty, '/orders/v1/serviceability')
 
 
 @core_blueprint.route('/core/dev', methods=['POST'])

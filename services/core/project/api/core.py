@@ -46,7 +46,7 @@ class ProductList(Resource):
             data = json.loads(request.data)
             page = data.get('page', 1)
             per_page = data.get('per_page', 10)
-            sort = data.get('sort', 'asc')
+            sort = data.get('sort', 'desc')
             sort_by = data.get('sort_by', 'available_quantity')
             search_key = data.get('search_key', '')
             search_key = '%{}%'.format(search_key)
@@ -100,10 +100,16 @@ class ProductList(Resource):
                         resp_obj['inactive_reason'] = product.inactive_reason
 
                     for quan_obj in product.quantity:
-                        if 'warehouse' in filters and quan_obj.warehouse_prefix in filters['warehouse']:
+                        if 'warehouse' in filters:
+                            if quan_obj.warehouse_prefix in filters['warehouse']:
+                                resp_obj['total_quantity'] += quan_obj.approved_quantity
+                                resp_obj['available_quantity'] += quan_obj.approved_quantity
+                                resp_obj['current_quantity'] += quan_obj.approved_quantity
+                        else:
                             resp_obj['total_quantity'] += quan_obj.approved_quantity
                             resp_obj['available_quantity'] += quan_obj.approved_quantity
                             resp_obj['current_quantity'] += quan_obj.approved_quantity
+
                     response_dict_sku[product.id] = resp_obj
 
                 if product_ids_list:
@@ -472,7 +478,10 @@ class AddOrder(Resource):
             if pickup_filter:
                 pickup_data = db.session.query(ClientPickups).join(PickupPoints, ClientPickups.pickup_id==PickupPoints.id).filter(PickupPoints.warehouse_prefix==pickup_filter).first()
             else:
-                pickup_data = db.session.query(ClientPickups).filter(ClientPickups.client_prefix==auth_data.get('client_prefix')).first()
+                if auth_data.get('client_prefix')!='NASHER':
+                    pickup_data = db.session.query(ClientPickups).filter(ClientPickups.client_prefix==auth_data.get('client_prefix')).first()
+                else:
+                    pickup_data = None
 
             new_order = Orders(channel_order_id=str(data.get('order_id')),
                            order_date=datetime.datetime.now()+datetime.timedelta(hours=5.5),
@@ -572,8 +581,7 @@ def upload_orders(resp):
                 pickup_data = db.session.query(ClientPickups).join(PickupPoints, ClientPickups.pickup_id==PickupPoints.id).filter(
                     PickupPoints.warehouse_prefix == pickup_filter).first()
             else:
-                pickup_data = db.session.query(ClientPickups).filter(
-                    ClientPickups.client_prefix == auth_data.get('client_prefix')).first()
+                pickup_data = None
 
             new_order = Orders(channel_order_id=str(row_data.order_id),
                                order_date=datetime.datetime.now()+datetime.timedelta(hours=5.5),
@@ -1264,7 +1272,7 @@ class PincodeServiceabilty(Resource):
                 if prod_wh[5] > courier_id_weight:
                     courier_id = prod_wh[4]
                     courier_id_weight = prod_wh[5]
-                if sku_dict[prod_wh[2]] < prod_wh[3]:
+                if sku_dict[prod_wh[2]] <= prod_wh[3]:
                     if prod_wh[0] not in wh_dict:
                         wh_dict[prod_wh[0]] = {"pincode": prod_wh[6], "count": 1}
                     else:
@@ -1308,6 +1316,13 @@ class PincodeServiceabilty(Resource):
                 if days_for_delivery == 0:
                     days_for_delivery = 1
 
+            if days_for_delivery == 1:
+                label_url = "https://logourls.s3.amazonaws.com/wareiq_next_day.jpeg"
+            elif days_for_delivery == 2:
+                label_url = "https://logourls.s3.amazonaws.com/wareiq_two_days.jpeg"
+            else:
+                label_url = "https://logourls.s3.amazonaws.com/wareiq_standard.jpeg"
+
             delivered_by = datetime.datetime.utcnow() + datetime.timedelta(hours=5.5) + datetime.timedelta(
                 days=days_for_delivery)
 
@@ -1323,12 +1338,20 @@ class PincodeServiceabilty(Resource):
                                       "delivery_date": delivered_by.strftime('%d-%m-%Y'),
                                       "delivery_zone": delivery_zone})
 
+            cod_available = False
+            try:
+                cod_req = requests.get("https://track.delhivery.com/c/api/pin-codes/json/?filter_codes=%s&token=d6ce40e10b52b5ca74805a6e2fb45083f0194185"%str(del_pincode)).json()
+                if cod_req['delivery_codes'][0]['postal_code']['cod'].lower()=='y':
+                    cod_available = True
+            except Exception:
+                pass
+
             return_data = {"warehouse": final_wh[0],
                            "delivery_date": delivered_by.strftime('%d-%m-%Y'),
-                           "cod_available": False,
+                           "cod_available": cod_available,
                            "order_before": order_before.strftime('%d-%m-%Y %H:%M:%S'),
                            "delivery_zone": delivery_zone,
-                           "label_url": None,
+                           "label_url": label_url,
                            "sku_wise": sku_wise_list}
 
             return {"success": True, "data": return_data}, 200
@@ -1340,10 +1363,334 @@ class PincodeServiceabilty(Resource):
 api.add_resource(PincodeServiceabilty, '/orders/v1/serviceability')
 
 
+class UpdateInventory(Resource):
+
+    method_decorators = {'post': [authenticate_restful]}
+
+    def post(self, resp):
+        try:
+            auth_data = resp.get('data')
+            data = json.loads(request.data)
+            if not auth_data:
+                return {"success": False, "msg": "Auth Failed"}, 404
+
+            sku_list = data.get("sku_list")
+            failed_list = list()
+            for sku_obj in sku_list:
+                try:
+                    warehouse = sku_obj.get('warehouse')
+                    if not warehouse:
+                        sku_obj['error'] = "Warehouse not provided."
+                        failed_list.append(sku_obj)
+                        continue
+                    sku = sku_obj.get('sku')
+                    if not sku:
+                        sku_obj['error'] = "SKU not provided."
+                        failed_list.append(sku_obj)
+                        continue
+
+                    type = sku_obj.get('type')
+                    if not type or str(type).lower() not in ('add', 'substract', 'replace'):
+                        sku_obj['error'] = "Invalid type"
+                        failed_list.append(sku_obj)
+                        continue
+
+                    quantity = sku_obj.get('quantity')
+                    if not quantity:
+                        sku_obj['error'] = "Invalid Quantity"
+                        failed_list.append(sku_obj)
+                        continue
+
+                    quan_obj = db.session.query(ProductQuantity).join(Products, ProductQuantity.product_id==Products.id)\
+                        .filter(ProductQuantity.warehouse_prefix==warehouse, Products.client_prefix==auth_data['client_prefix'], Products.sku==sku).first()
+
+                    if not quan_obj:
+                        sku_obj['error'] = "Warehouse sku combination not found."
+                        failed_list.append(sku_obj)
+                        continue
+
+                    if str(type).lower() == 'add':
+                        quan_obj.total_quantity = quan_obj.total_quantity+quantity
+                        quan_obj.approved_quantity = quan_obj.approved_quantity+quantity
+                    elif str(type).lower() == 'substract':
+                        quan_obj.total_quantity = quan_obj.total_quantity - quantity
+                        quan_obj.approved_quantity = quan_obj.approved_quantity - quantity
+                    elif str(type).lower() == 'replace':
+                        try:
+                            cur.execute("""  select COALESCE(sum(quantity), 0) from op_association aa
+                                    left join orders bb on aa.order_id=bb.id
+                                    left join client_pickups cc on bb.pickup_data_id=cc.id
+                                    left join pickup_points dd on cc.pickup_id=dd.id
+                                    left join products ee on aa.product_id=ee.id
+                                    where status in ('DELIVERED','DISPATCHED','IN TRANSIT','ON HOLD','PENDING')
+                                    and dd.warehouse_prefix='__WAREHOUSE__'
+                                    and ee.sku='__SKU__';""".replace('__WAREHOUSE__', warehouse).replace('__SKU__', sku))
+                            shipped_quantity = cur.fetchone()
+                            if not shipped_quantity:
+                                sku_obj['error'] = "Replacement failed."
+                                failed_list.append(sku_obj)
+                                continue
+                            shipped_quantity = shipped_quantity[0]
+                            quan_obj.total_quantity = quantity + shipped_quantity
+                            quan_obj.approved_quantity = quantity + shipped_quantity
+                        except Exception:
+                            conn.rollback()
+                    else:
+                        continue
+
+                except Exception:
+                    failed_list.append(sku_obj)
+                    continue
+
+                db.session.commit()
+
+            return {"success": True if not failed_list else False, "failed_list": failed_list}, 200
+
+        except Exception as e:
+            return {"success": False, "msg": ""}, 404
+
+
+api.add_resource(UpdateInventory, '/products/v1/update_inventory')
+
+
 @core_blueprint.route('/core/dev', methods=['POST'])
 def ping_dev():
     return 0
+    myfile = request.files['myfile']
+    data_xlsx = pd.read_excel(myfile)
+    from .models import Products, ProductQuantity
+    for row in data_xlsx.iterrows():
+        row_data = row[1]
+        try:
+            for warehouse in ('NASHER_HYD','NASHER_GUR','NASHER_SDR','NASHER_VADPE','NASHER_BAN','NASHER_MUM'):
+                cur.execute("""select sku, product_id, sum(quantity) from 
+                            (select * from op_association aa
+                            left join orders bb on aa.order_id=bb.id
+                            left join client_pickups cc on bb.pickup_data_id=cc.id
+                            left join pickup_points dd on cc.pickup_id=dd.id
+                            left join products ee on aa.product_id=ee.id
+                            where status in ('DELIVERED','DISPATCHED','IN TRANSIT','ON HOLD','PENDING')
+                            and dd.warehouse_prefix='__WH__'
+                            and ee.sku='__SKU__') xx
+                            group by sku, product_id""".replace('__WH__', warehouse).replace('__SKU__', str(row_data.SKU)))
+                count_tup = cur.fetchone()
+                row_count = 0
+                if warehouse=='NASHER_HYD':
+                    row_count = row_data.NASHER_HYD
+                if warehouse=='NASHER_GUR':
+                    row_count = row_data.NASHER_GUR
+                if warehouse=='NASHER_SDR':
+                    row_count = row_data.NASHER_SDR
+                if warehouse=='NASHER_VADPE':
+                    row_count = row_data.NASHER_VADPE
+                if warehouse=='NASHER_BAN':
+                    row_count = row_data.NASHER_BAN
+                if warehouse=='NASHER_MUM':
+                    row_count = row_data.NASHER_MUM
+
+                row_count = int(row_count)
+                if count_tup:
+                    quan_to_add = count_tup[2]
+                    cur.execute("update products_quantity set total_quantity=%s, approved_quantity=%s WHERE product_id=%s "
+                                "and warehouse_prefix=%s", (row_count+quan_to_add, row_count+quan_to_add, count_tup[1], warehouse))
+                else:
+                    cur.execute("select id from products where sku=%s", (str(row_data.SKU), ))
+                    product_id = cur.fetchone()
+                    if product_id:
+                        product_id = product_id[0]
+                        cur.execute(
+                            "update products_quantity set total_quantity=%s, approved_quantity=%s WHERE product_id=%s "
+                            "and warehouse_prefix=%s",
+                            (row_count , row_count, product_id, warehouse))
+                    else:
+                        print("SKU not found: "+str(row_data.SKU))
+            if row[0]%20==0 and row[0]!=0:
+                conn.commit()
+        except Exception as e:
+            print(row_data.SKU + ": " +str(e.args[0]))
+
+    conn.commit()
+
+    if not myfile:
+        prod_obj = db.session.query(Products).join(ProductQuantity, Products.id == ProductQuantity.product_id) \
+            .filter(Products.sku == str(row[1]['sku'])).first()
+
+        if not prod_obj:
+            prod_obj = Products(name=str(row[1]['sku']),
+                                sku=str(row[1]['sku']),
+                                dimensions={
+                                    "length": 3,
+                                    "breadth": 26,
+                                    "height": 27
+                                },
+                                weight=0.5,
+                                price=0,
+                                client_prefix='LMDOT',
+                                active=True,
+                                channel_id=4,
+                                date_created=datetime.datetime.now()
+                                )
+            prod_quan_obj = ProductQuantity(product=prod_obj,
+                                            total_quantity=100,
+                                            approved_quantity=100,
+                                            available_quantity=100,
+                                            inline_quantity=0,
+                                            rto_quantity=0,
+                                            current_quantity=100,
+                                            warehouse_prefix="LMDOT",
+                                            status="APPROVED",
+                                            date_created=datetime.datetime.now()
+                                            )
+            db.session.add(prod_quan_obj)
+
+    db.session.commit()
+    return 0
+    from .update_status import lambda_handler
+    lambda_handler()
     import requests, json
+    shopify_url = "https://006fce674dc07b96416afb8d7c075545:0d36560ddaf82721bfbb93f909ab5f47@themuwu.myshopify.com/admin/api/2019-10/orders.json?limit=250"
+    data = requests.get(shopify_url).json()
+    all_orders = db.session.query(Orders).filter(Orders.status.in_(["IN TRANSIT","PENDING","DISPATCHED"]))\
+        .filter(Orders.client_prefix=='DAPR').all()
+
+    headers = {"Content-Type": "application/json",
+                "Authorization": "Token 1368a2c7e666aeb44068c2cd17d2d2c0e9223d37"}
+    for order in all_orders:
+        try:
+            shipment_body = {"waybill": order.shipments[0].awb,
+                             "phone": order.customer_phone}
+            req = requests.post("https://track.delhivery.com/api/p/edit", headers=headers, data=json.dumps(shipment_body))
+
+        except Exception as e:
+            print(str(e)+str(order.id))
+
+    return 0
+
+    myfile = request.files['myfile']
+
+    data_xlsx = pd.read_excel(myfile)
+    from .models import Products, ProductQuantity
+    for row in data_xlsx.iterrows():
+        prod_obj = db.session.query(Products).join(ProductQuantity, Products.id == ProductQuantity.product_id) \
+            .filter(Products.sku == str(row[1]['sku'])).first()
+
+        if not prod_obj:
+            prod_obj = Products(name=str(row[1]['sku']),
+                            sku=str(row[1]['sku']),
+                            dimensions={
+                                "length": 3,
+                                "breadth": 26,
+                                "height": 27
+                            },
+                            weight=0.5,
+                            price=0,
+                            client_prefix='LMDOT',
+                            active=True,
+                            channel_id=4,
+                            date_created=datetime.datetime.now()
+                            )
+            prod_quan_obj = ProductQuantity(product=prod_obj,
+                                            total_quantity=100,
+                                            approved_quantity=100,
+                                            available_quantity=100,
+                                            inline_quantity=0,
+                                            rto_quantity=0,
+                                            current_quantity=100,
+                                            warehouse_prefix="LMDOT",
+                                            status="APPROVED",
+                                            date_created=datetime.datetime.now()
+                                            )
+            db.session.add(prod_quan_obj)
+
+
+    db.session.commit()
+    """
+    import requests, json
+
+    shopify_url = "https://006fce674dc07b96416afb8d7c075545:0d36560ddaf82721bfbb93f909ab5f47@themuwu.myshopify.com/admin/api/2019-10/products.json?limit=250"
+    data = requests.get(shopify_url).json()
+
+    myfile = request.files['myfile']
+
+    data_xlsx = pd.read_excel(myfile)
+    from .models import Products, ProductQuantity
+
+    for prod in data['products']:
+        for e_sku in prod['variants']:
+            excel_sku = ""
+            if "This is my" in prod['title']:
+                if "Woman" in prod['title']:
+                    excel_sku = "FIMD"
+                else:
+                    excel_sku = "MIMD"
+            if "I just entered" in prod['title']:
+                if "Woman" in prod['title']:
+                    excel_sku = "FIJE"
+                else:
+                    excel_sku = "MIJE"
+            if "Black Hoodie" in prod['title']:
+                if "Man" in prod['title']:
+                    excel_sku = "MBHM"
+            if "To all my" in prod['title']:
+                if "Woman" in prod['title']:
+                    excel_sku = "FAMH"
+                else:
+                    excel_sku = "MAMH"
+            if e_sku['title'] == 'XS':
+                excel_sku += "1"
+            if e_sku['title'] == 'S':
+                excel_sku += "2"
+            if e_sku['title'] == 'M':
+                excel_sku += "3"
+            if e_sku['title'] == 'L':
+                excel_sku += "4"
+            if e_sku['title'] == 'XL':
+                excel_sku += "5"
+
+            quan = 0
+            for row in data_xlsx.iterrows():
+                if row[1].PID == excel_sku:
+                    quan = row[1].Physical_Qty
+            prod_obj = db.session.query(Products).join(ProductQuantity, Products.id==ProductQuantity.product_id)\
+                .filter(Products.sku==str(e_sku['id'])).first()
+            if prod_obj:
+                prod_obj.dimensions = {
+                                                      "length": 6.87,
+                                                      "breadth": 22.5,
+                                                      "height": 27.5
+                                                    }
+                prod_obj.weight = 0.5
+            else:
+                prod_obj = Products(name = prod['title'] + " - " + e_sku['title'],
+                                    sku = str(e_sku['id']),
+                                    dimensions = {
+                                                      "length": 6.87,
+                                                      "breadth": 22.5,
+                                                      "height": 27.5
+                                                    },
+                                    weight = 0.5,
+                                    price = float(e_sku['price']),
+                                    client_prefix = 'MUWU',
+                                    active = True,
+                                    channel_id=1,
+                                    date_created = datetime.datetime.now()
+                                    )
+            prod_quan_obj = ProductQuantity(product = prod_obj,
+                                            total_quantity=quan,
+                                            approved_quantity = quan,
+                                            available_quantity = quan,
+                                            inline_quantity = 0,
+                                            rto_quantity = 0,
+                                            current_quantity = quan,
+                                            warehouse_prefix = "HOLISOLBW",
+                                            status = "APPROVED",
+                                            date_created = datetime.datetime.now()
+                                            )
+            db.session.add(prod_quan_obj)
+
+    db.session.commit()
+    """
+    return 0
     pick = db.session.query(ClientPickups).filter(ClientPickups.client_prefix == 'NASHER').all()
     for location in pick:
         loc_body = {
@@ -1531,8 +1878,6 @@ def ping_dev():
     # from .create_shipments import lambda_handler
     # lambda_handler()
 
-    shopify_url = "https://e35b2c3b1924d686e817b267b5136fe0:a5e60ec3e34451e215ae92f0877dddd0@daprstore.myshopify.com/admin/api/2019-10/orders.json?limit=250"
-    data = requests.get(shopify_url).json()
     shopify_url = "https://b27f6afd9506d0a07af9a160b1666b74:6c8ca315e01fe612bc997e70c7a21908@mirakki.myshopify.com/admin/api/2019-10/orders.json?since_id=1921601077383&limit=250"
     data = requests.get(shopify_url).json()
 

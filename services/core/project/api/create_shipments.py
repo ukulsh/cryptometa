@@ -56,8 +56,8 @@ def lambda_handler():
                 for order in all_new_orders:
                     if order[17].lower() in ("bengaluru", "bangalore", "banglore") and courier[1] == "MIRAKKI":
                         continue
-                    if order[26].lower()=='cod' and not order[42] and order[43]:
-                        pass #change this to continue later
+                    if order[26].lower()=='cod' and not order[42] and order[43] and order[9]!='KYORIGIN':
+                        continue #change this to continue later
                     if order[26].lower()=='cod' and not order[43]:
                         cod_confirmation_link = "http://track.wareiq.com/core/v1/passthru/cod?CustomField=%s&digits=1&verified_via=text"%str(order[0])
                         short_url = requests.get(
@@ -470,7 +470,7 @@ def lambda_handler():
                 for order in all_new_orders:
                     if order[17].lower() not in ("bengaluru", "bangalore", "banglore") or courier[1] != "MIRAKKI":
                         continue
-                    if order[26].lower()=='cod' and not order[42] and order[43]:
+                    if order[26].lower()=='cod' and not order[42] and order[43] and order[9]!='KYORIGIN':
                         continue
                     if order[26].lower()=='cod' and not order[43]:
                         cod_confirmation_link = "http://track.wareiq.com/core/v1/passthru/cod?CustomField=%s&digits=1&verified_via=text"%str(order[0])
@@ -718,8 +718,8 @@ def lambda_handler():
                 pickup_point = cur.fetchone()  # change this as we get to dynamic pickups
 
                 for order in all_new_orders:
-                    if order[26].lower()=='cod' and not order[42] and order[43]:
-                        pass
+                    if order[26].lower()=='cod' and not order[42] and order[43] and order[9]!='KYORIGIN':
+                        continue
                     if order[26].lower()=='cod' and not order[43]:
                         cod_confirmation_link = "http://track.wareiq.com/core/v1/passthru/cod?CustomField=%s&digits=1&verified_via=text"%str(order[0])
                         short_url = requests.get(

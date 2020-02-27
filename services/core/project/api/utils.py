@@ -215,7 +215,6 @@ def fill_shiplabel_data(c, order, offset):
         return_address = split_string(return_address, 30)
 
         c.drawString((offset - 0.85) * inch, 3.25 * inch, return_point.name)
-        c.drawString((offset - 0.85) * inch, 2.10 * inch, "PHONE: " + return_point.phone)
         y_axis = 3.05
         for retn in return_address:
             c.drawString((offset - 0.85) * inch, y_axis * inch, retn)

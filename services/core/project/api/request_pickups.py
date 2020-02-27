@@ -12,6 +12,7 @@ conn = psycopg2.connect(host=host, database=database, user=user, password=passwo
 """
 conn = psycopg2.connect(host="wareiq-core-prod2.cvqssxsqruyc.us-east-1.rds.amazonaws.com", database="core_prod", user="postgres", password="aSderRFgd23")
 
+
 def lambda_handler():
     cur = conn.cursor()
     cur.execute(get_pickup_requests_query)

@@ -24,8 +24,10 @@ def lambda_handler():
 
     for order in all_orders:
         try:
+            customer_phone = str(order[1]).replace(" ", "")
+            customer_phone = "0" + customer_phone[-10:]
             data = {
-                'From': str(order[1]),
+                'From': customer_phone,
                 'CallerId': '01141182252',
                 'Url': 'http://my.exotel.com/wareiq1/exoml/start_voice/262896',
                 'CustomField': str(order[0])

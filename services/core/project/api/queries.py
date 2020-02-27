@@ -39,6 +39,19 @@ insert_product_quantity_query = """INSERT INTO products_quantity (product_id,tot
                                     available_quantity,warehouse_prefix,status,date_created)
                                     VALUES (%s,%s,%s,%s,%s,%s,%s);"""
 
+get_orders_to_assign_pickups = """select aa.id, aa.client_prefix, bb.pincode, xx.sku_list, xx.quan_list from orders aa
+                                left join shipping_address bb on aa.delivery_address_id=bb.id
+                                left join 
+                                (select order_id, array_agg(mm.sku) as sku_list, array_agg(ll.quantity) as quan_list 
+                                from op_association ll
+                                left join products mm on ll.product_id=mm.id
+                                group by ll.order_id) xx
+                                on aa.id=xx.order_id
+                                where aa.pickup_data_id is null
+                                and aa.status='NEW'
+                                and sku_list is not null
+                                and aa.order_date>%s"""
+
 
 ########################create shipments
 
@@ -160,7 +173,7 @@ get_status_update_orders_query = """select aa.id, bb.awb, aa.status, aa.client_p
                                     on aa.pickup_data_id=dd.id
                                     left join orders_payments ee
                                     on aa.id=ee.order_id
-                                    where aa.status not in ('NEW','DELIVERED','NOT SHIPPED','RTO')
+                                    where aa.status not in ('NEW','DELIVERED','NOT SHIPPED','RTO','CANCELED')
                                     and aa.status_type is distinct from 'DL'
                                     and bb.awb != ''
                                     and bb.status != 'Fail'

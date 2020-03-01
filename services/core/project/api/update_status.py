@@ -522,19 +522,24 @@ def lambda_handler():
                     'From': 'LM-WAREIQ'
                 }
                 orders_dict = dict()
-                awb_str = ""
                 pickup_dict = dict()
-
-                for order in all_orders:
-                    orders_dict[order[1]] = order
-                    awb_str += order[1]+","
-
+                req_ship_data = list()
                 headers = {"Content-Type": "application/json"}
-                xpressbees_body = {"AWBNo": awb_str.rstrip(","), "XBkey": courier[2]}
-                check_status_url = "http://xbclientapi.xbees.in/TrackingService.svc/GetShipmentSummaryDetails"
-                req = requests.post(check_status_url, headers=headers, data=json.dumps(xpressbees_body)).json()
-                logger.info("Count of Xpressbees packages: " + str(len(req)))
-                for ret_order in req:
+                chunks = [all_orders[x:x + 20] for x in range(0, len(all_orders), 20)]
+                for some_orders in chunks:
+                    awb_string = ""
+                    for order in some_orders:
+                        orders_dict[order[1]] = order
+                        awb_string += order[1] + ","
+
+                    xpressbees_body = {"AWBNo": awb_string.rstrip(","), "XBkey": courier[2]}
+
+                    check_status_url = "http://xbclientapi.xbees.in/TrackingService.svc/GetShipmentSummaryDetails"
+                    req = requests.post(check_status_url, headers=headers, data=json.dumps(xpressbees_body)).json()
+                    req_ship_data += req
+
+                logger.info("Count of Xpressbees packages: " + str(len(req_ship_data)))
+                for ret_order in req_ship_data:
                     try:
                         if not ret_order['ShipmentSummary']:
                             continue

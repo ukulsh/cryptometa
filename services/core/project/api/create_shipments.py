@@ -24,8 +24,9 @@ def lambda_handler():
     exotel_sms_data = {
         'From': 'LM-WAREIQ'
     }
-    for courier in cur.fetchall():
-        if courier[10] in ("Delhivery", "Delhivery Surface Standard", "Delhivery Bulk", "Delhivery Heavy", "Delhivery Heavy 2") and courier[1]!='DAPR':
+    all_couriers=cur.fetchall()
+    for courier in all_couriers:
+        if courier[10] in ("Delhivery", "Delhivery Surface Standard", "Delhivery Bulk", "Delhivery Heavy", "Delhivery Heavy 2") and courier[1] not in ('DAPR', 'BEYONDUW'):
             get_orders_data_tuple = (courier[1], courier[1])
             if courier[3]==2:
                 orders_to_ship_query = get_orders_to_ship_query.replace('__PRODUCT_FILTER__', "and ship_courier[1]='%s'"%courier[10])
@@ -56,7 +57,7 @@ def lambda_handler():
                 for order in all_new_orders:
                     if order[17].lower() in ("bengaluru", "bangalore", "banglore") and courier[1] == "MIRAKKI":
                         continue
-                    if order[26].lower()=='cod' and not order[42] and order[43] and order[9]!='KYORIGIN':
+                    if order[26].lower()=='cod' and not order[42] and order[43] and order[9] not in ('KYORIGIN','LMDOT'):
                         continue #change this to continue later
                     if order[26].lower()=='cod' and not order[43]:
                         cod_confirmation_link = "http://track.wareiq.com/core/v1/passthru/cod?CustomField=%s&digits=1&verified_via=text"%str(order[0])
@@ -292,7 +293,7 @@ def lambda_handler():
 
                 conn.commit()
 
-        elif courier[10] == "Delhivery" and courier[1]=='DAPR':
+        elif courier[10] == "Delhivery" and courier[1] in ('DAPR', 'BEYONDUW'):
             get_orders_data_tuple = (courier[1], courier[1])
             if courier[3]==2:
                 orders_to_ship_query = get_orders_to_ship_query.replace('__PRODUCT_FILTER__', "and ship_courier[1]='%s'"%courier[10])
@@ -355,8 +356,8 @@ def lambda_handler():
                             "date_to": "",
                             "pageNumber": ""
                         }),
-                            "ApiKey": "8dcbc7d756d64a04afb21e00f4a053b04a38b62de1d3481dadc8b54",
-                            "ApiOwner": "UMBAPI",
+                            "ApiKey": courier[8].split('|')[0],
+                            "ApiOwner": courier[8].split('|')[1],
                         }
 
                         req = requests.post("https://dtdc.vineretail.com/RestWS/api/eretail/v1/order/shipDetail",
@@ -470,7 +471,7 @@ def lambda_handler():
                 for order in all_new_orders:
                     if order[17].lower() not in ("bengaluru", "bangalore", "banglore") or courier[1] != "MIRAKKI":
                         continue
-                    if order[26].lower()=='cod' and not order[42] and order[43] and order[9]!='KYORIGIN':
+                    if order[26].lower()=='cod' and not order[42] and order[43] and order[9] not in ('KYORIGIN','LMDOT'):
                         continue
                     if order[26].lower()=='cod' and not order[43]:
                         cod_confirmation_link = "http://track.wareiq.com/core/v1/passthru/cod?CustomField=%s&digits=1&verified_via=text"%str(order[0])
@@ -718,7 +719,7 @@ def lambda_handler():
                 pickup_point = cur.fetchone()  # change this as we get to dynamic pickups
 
                 for order in all_new_orders:
-                    if order[26].lower()=='cod' and not order[42] and order[43] and order[9]!='KYORIGIN':
+                    if order[26].lower()=='cod' and not order[42] and order[43] and order[9] not in ('KYORIGIN','LMDOT'):
                         continue
                     if order[26].lower()=='cod' and not order[43]:
                         cod_confirmation_link = "http://track.wareiq.com/core/v1/passthru/cod?CustomField=%s&digits=1&verified_via=text"%str(order[0])
@@ -839,7 +840,7 @@ def lambda_handler():
                                                     }]}}
 
                         if order[26].lower() == "cod":
-                            xpressbees_shipment_body["CollectibleAmount"]= order[27]
+                            xpressbees_shipment_body["ManifestDetails"]["CollectibleAmount"]= order[27]
                         xpressbees_url = courier[16] + "POSTShipmentService.svc/AddManifestDetails"
                         req = requests.post(xpressbees_url, headers=headers, data=json.dumps(xpressbees_shipment_body))
                         while req.json()['AddManifestDetails'][0]['ReturnMessage']=='AWB Already Exists':

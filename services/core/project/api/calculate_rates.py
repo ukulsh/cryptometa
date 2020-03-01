@@ -28,8 +28,11 @@ def lambda_handler():
     for order in all_orders:
         try:
             courier_id = order[2]
-            if courier_id==8:
+            if courier_id in (4,8,11,12,13):
                 courier_id=1
+
+            if courier_id in (5,):
+                courier_id=2
 
             cur_2.execute("SELECT city from city_pin_mapping where pincode='%s';"%order[7])
             pickup_city = cur_2.fetchone()
@@ -57,45 +60,81 @@ def lambda_handler():
                 delivery_zone='C'
 
             charged_weight=order[4] if order[4] else 0
-            if order[3] and order[3]>charged_weight:
-                charged_weight=order[3]
+            if order[6] != 'NASHER':
+                if order[3] and order[3]>charged_weight:
+                    charged_weight=order[3]
+            else:
+                if courier_id==1:
+                    volumetric_weight = (order[14]['length']*order[14]['breadth']*order[14]['height'])/4500
+                else:
+                    volumetric_weight = (order[14]['length']*order[14]['breadth']*order[14]['height'])/5000
+                if volumetric_weight>charged_weight:
+                    charged_weight = volumetric_weight
 
             if not charged_weight:
                 logger.info("charged weight not found: " + str(order[0]))
                 continue
 
-            cost_select_tuple = (order[6], order[2])
-            cur.execute("SELECT __ZONE__, cod_min, cod_ratio, rto_ratio from cost_to_clients WHERE client_prefix=%s and courier_id=%s;".replace(
-                '__ZONE__', zone_column_mapping[delivery_zone]), cost_select_tuple)
-            charge_rate_values = cur.fetchone()
-            if not charge_rate_values:
-                logger.info("charge_rate_values not found: " + str(order[0]))
-                continue
+            if order[6] != 'NASHER' or (order[6] == 'NASHER' and charged_weight<10.0):
+                cost_select_tuple = (order[6], order[2])
+                cur.execute("SELECT __ZONE__, cod_min, cod_ratio, rto_ratio from cost_to_clients WHERE client_prefix=%s and courier_id=%s;".replace(
+                    '__ZONE__', zone_column_mapping[delivery_zone]), cost_select_tuple)
+                charge_rate_values = cur.fetchone()
+                if not charge_rate_values:
+                    logger.info("charge_rate_values not found: " + str(order[0]))
+                    continue
 
-            charge_rate = charge_rate_values[0]
+                charge_rate = charge_rate_values[0]
 
-            multiple = ceil(charged_weight/0.5)
+                multiple = ceil(charged_weight/0.5)
 
-            forward_charge = charge_rate*multiple
-            forward_charge_gst = forward_charge*1.18
+                forward_charge = charge_rate*multiple
+                forward_charge_gst = forward_charge*1.18
 
-            rto_charge = 0
-            rto_charge_gst = 0
-            cod_charge = 0
-            cod_charged_gst = 0
-            if order[13] == 'RTO':
-                rto_charge = forward_charge*charge_rate_values[3]
-                rto_charge_gst = forward_charge_gst*charge_rate_values[3]
-            else:
-                if order[11] and order[11].lower() == 'cod':
-                    if order[12]:
-                        cod_charge = order[12]*(charge_rate_values[2]/100)
-                        if charge_rate_values[1]>cod_charge:
+                rto_charge = 0
+                rto_charge_gst = 0
+                cod_charge = 0
+                cod_charged_gst = 0
+                if order[13] == 'RTO':
+                    rto_charge = forward_charge*charge_rate_values[3]
+                    rto_charge_gst = forward_charge_gst*charge_rate_values[3]
+                else:
+                    if order[11] and order[11].lower() == 'cod':
+                        if order[12]:
+                            cod_charge = order[12]*(charge_rate_values[2]/100)
+                            if charge_rate_values[1]>cod_charge:
+                                cod_charge = charge_rate_values[1]
+                        else:
                             cod_charge = charge_rate_values[1]
-                    else:
-                        cod_charge = charge_rate_values[1]
 
-                    cod_charged_gst = cod_charge*1.18
+                        cod_charged_gst = cod_charge*1.18
+            else:
+                charge_rate_values = (None, 32, 1.5, 1)
+                intial_charge = nasher_zonal_mapping[delivery_zone][0]
+                next_weight = charged_weight-10.0
+                charge_rate = nasher_zonal_mapping[delivery_zone][1]
+                multiple = ceil(next_weight / 1.0)
+
+                forward_charge = charge_rate * multiple + intial_charge
+                forward_charge_gst = forward_charge * 1.18
+
+                rto_charge = 0
+                rto_charge_gst = 0
+                cod_charge = 0
+                cod_charged_gst = 0
+                if order[13] == 'RTO':
+                    rto_charge = forward_charge * charge_rate_values[3]
+                    rto_charge_gst = forward_charge_gst * charge_rate_values[3]
+                else:
+                    if order[11] and order[11].lower() == 'cod':
+                        if order[12]:
+                            cod_charge = order[12] * (charge_rate_values[2] / 100)
+                            if charge_rate_values[1] > cod_charge:
+                                cod_charge = charge_rate_values[1]
+                        else:
+                            cod_charge = charge_rate_values[1]
+
+                        cod_charged_gst = cod_charge * 1.18
 
             if order[9]:
                 deduction_time=order[9]
@@ -126,4 +165,12 @@ zone_column_mapping = {
                        'C': 'zone_c',
                        'D': 'zone_d',
                        'E': 'zone_e',
+                       }
+
+nasher_zonal_mapping = {
+                       'A': [74, 9],
+                       'B': [107, 13],
+                       'C': [126, 15],
+                       'D': [144, 17],
+                       'E': [149, 17],
                        }

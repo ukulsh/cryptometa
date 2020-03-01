@@ -1376,6 +1376,7 @@ class UpdateInventory(Resource):
 
             sku_list = data.get("sku_list")
             failed_list = list()
+            current_quantity = list()
             for sku_obj in sku_list:
                 try:
                     warehouse = sku_obj.get('warehouse')
@@ -1396,7 +1397,7 @@ class UpdateInventory(Resource):
                         continue
 
                     quantity = sku_obj.get('quantity')
-                    if not quantity:
+                    if quantity is None:
                         sku_obj['error'] = "Invalid Quantity"
                         failed_list.append(sku_obj)
                         continue
@@ -1461,53 +1462,81 @@ def ping_dev():
     from .models import Products, ProductQuantity
     for row in data_xlsx.iterrows():
         row_data = row[1]
-        try:
-            for warehouse in ('NASHER_HYD','NASHER_GUR','NASHER_SDR','NASHER_VADPE','NASHER_BAN','NASHER_MUM'):
-                cur.execute("""select sku, product_id, sum(quantity) from 
-                            (select * from op_association aa
-                            left join orders bb on aa.order_id=bb.id
-                            left join client_pickups cc on bb.pickup_data_id=cc.id
-                            left join pickup_points dd on cc.pickup_id=dd.id
-                            left join products ee on aa.product_id=ee.id
-                            where status in ('DELIVERED','DISPATCHED','IN TRANSIT','ON HOLD','PENDING')
-                            and dd.warehouse_prefix='__WH__'
-                            and ee.sku='__SKU__') xx
-                            group by sku, product_id""".replace('__WH__', warehouse).replace('__SKU__', str(row_data.SKU)))
-                count_tup = cur.fetchone()
-                row_count = 0
-                if warehouse=='NASHER_HYD':
-                    row_count = row_data.NASHER_HYD
-                if warehouse=='NASHER_GUR':
-                    row_count = row_data.NASHER_GUR
-                if warehouse=='NASHER_SDR':
-                    row_count = row_data.NASHER_SDR
-                if warehouse=='NASHER_VADPE':
-                    row_count = row_data.NASHER_VADPE
-                if warehouse=='NASHER_BAN':
-                    row_count = row_data.NASHER_BAN
-                if warehouse=='NASHER_MUM':
-                    row_count = row_data.NASHER_MUM
+        prod_obj = Products(name=str(row_data.SKU_name),
+                            sku=str(row_data.SKU),
+                            dimensions={
+                                "length": 1,
+                                "breadth": 5.5,
+                                "height": 6.5
+                            },
+                            weight=0.095,
+                            price=699,
+                            client_prefix='BEYONDUW',
+                            active=True,
+                            channel_id=4,
+                            date_created=datetime.datetime.now()
+                            )
+        prod_quan_obj = ProductQuantity(product=prod_obj,
+                                        total_quantity=int(row_data.quantity),
+                                        approved_quantity=int(row_data.quantity),
+                                        available_quantity=int(row_data.quantity),
+                                        inline_quantity=0,
+                                        rto_quantity=0,
+                                        current_quantity=int(row_data.quantity),
+                                        warehouse_prefix="DTDCKS",
+                                        status="APPROVED",
+                                        date_created=datetime.datetime.now()
+                                        )
+        db.session.add(prod_quan_obj)
 
-                row_count = int(row_count)
-                if count_tup:
-                    quan_to_add = count_tup[2]
-                    cur.execute("update products_quantity set total_quantity=%s, approved_quantity=%s WHERE product_id=%s "
-                                "and warehouse_prefix=%s", (row_count+quan_to_add, row_count+quan_to_add, count_tup[1], warehouse))
+    db.session.commit()
+    try:
+        for warehouse in ('NASHER_HYD','NASHER_GUR','NASHER_SDR','NASHER_VADPE','NASHER_BAN','NASHER_MUM'):
+            cur.execute("""select sku, product_id, sum(quantity) from 
+                        (select * from op_association aa
+                        left join orders bb on aa.order_id=bb.id
+                        left join client_pickups cc on bb.pickup_data_id=cc.id
+                        left join pickup_points dd on cc.pickup_id=dd.id
+                        left join products ee on aa.product_id=ee.id
+                        where status in ('DELIVERED','DISPATCHED','IN TRANSIT','ON HOLD','PENDING')
+                        and dd.warehouse_prefix='__WH__'
+                        and ee.sku='__SKU__') xx
+                        group by sku, product_id""".replace('__WH__', warehouse).replace('__SKU__', str(row_data.SKU)))
+            count_tup = cur.fetchone()
+            row_count = 0
+            if warehouse=='NASHER_HYD':
+                row_count = row_data.NASHER_HYD
+            if warehouse=='NASHER_GUR':
+                row_count = row_data.NASHER_GUR
+            if warehouse=='NASHER_SDR':
+                row_count = row_data.NASHER_SDR
+            if warehouse=='NASHER_VADPE':
+                row_count = row_data.NASHER_VADPE
+            if warehouse=='NASHER_BAN':
+                row_count = row_data.NASHER_BAN
+            if warehouse=='NASHER_MUM':
+                row_count = row_data.NASHER_MUM
+
+            row_count = int(row_count)
+            if count_tup:
+                quan_to_add = count_tup[2]
+                cur.execute("update products_quantity set total_quantity=%s, approved_quantity=%s WHERE product_id=%s "
+                            "and warehouse_prefix=%s", (row_count+quan_to_add, row_count+quan_to_add, count_tup[1], warehouse))
+            else:
+                cur.execute("select id from products where sku=%s", (str(row_data.SKU), ))
+                product_id = cur.fetchone()
+                if product_id:
+                    product_id = product_id[0]
+                    cur.execute(
+                        "update products_quantity set total_quantity=%s, approved_quantity=%s WHERE product_id=%s "
+                        "and warehouse_prefix=%s",
+                        (row_count , row_count, product_id, warehouse))
                 else:
-                    cur.execute("select id from products where sku=%s", (str(row_data.SKU), ))
-                    product_id = cur.fetchone()
-                    if product_id:
-                        product_id = product_id[0]
-                        cur.execute(
-                            "update products_quantity set total_quantity=%s, approved_quantity=%s WHERE product_id=%s "
-                            "and warehouse_prefix=%s",
-                            (row_count , row_count, product_id, warehouse))
-                    else:
-                        print("SKU not found: "+str(row_data.SKU))
-            if row[0]%20==0 and row[0]!=0:
-                conn.commit()
-        except Exception as e:
-            print(row_data.SKU + ": " +str(e.args[0]))
+                    print("SKU not found: "+str(row_data.SKU))
+        if row[0]%20==0 and row[0]!=0:
+            conn.commit()
+    except Exception as e:
+        print(row_data.SKU + ": " +str(e.args[0]))
 
     conn.commit()
 
@@ -1515,35 +1544,7 @@ def ping_dev():
         prod_obj = db.session.query(Products).join(ProductQuantity, Products.id == ProductQuantity.product_id) \
             .filter(Products.sku == str(row[1]['sku'])).first()
 
-        if not prod_obj:
-            prod_obj = Products(name=str(row[1]['sku']),
-                                sku=str(row[1]['sku']),
-                                dimensions={
-                                    "length": 3,
-                                    "breadth": 26,
-                                    "height": 27
-                                },
-                                weight=0.5,
-                                price=0,
-                                client_prefix='LMDOT',
-                                active=True,
-                                channel_id=4,
-                                date_created=datetime.datetime.now()
-                                )
-            prod_quan_obj = ProductQuantity(product=prod_obj,
-                                            total_quantity=100,
-                                            approved_quantity=100,
-                                            available_quantity=100,
-                                            inline_quantity=0,
-                                            rto_quantity=0,
-                                            current_quantity=100,
-                                            warehouse_prefix="LMDOT",
-                                            status="APPROVED",
-                                            date_created=datetime.datetime.now()
-                                            )
-            db.session.add(prod_quan_obj)
 
-    db.session.commit()
     return 0
     from .update_status import lambda_handler
     lambda_handler()

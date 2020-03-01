@@ -229,12 +229,12 @@ update_pickup_count_query = """UPDATE manifests SET total_picked=COALESCE(total_
 select_orders_to_calculate_query = """select aa.id, aa.awb, aa.courier_id, aa.volumetric_weight, aa.weight, 
                                         bb.channel_order_id, bb.client_prefix, cc.pincode as pickup_pincode,
                                         dd.pincode as delivery_pincode, ff.status_time, bb.order_date, gg.payment_mode, 
-                                        gg.amount, bb.status from shipments aa
+                                        gg.amount, bb.status, aa.dimensions from shipments aa
                                         left join orders bb on aa.order_id=bb.id
                                         left join pickup_points cc on aa.pickup_id=cc.id
                                         left join shipping_address dd on bb.delivery_address_id=dd.id
                                         left join client_deductions ee on ee.shipment_id=aa.id
-                                        left join (select * from order_status where status='Delivered') ff
+                                        left join (select * from order_status where status in ('Delivered', 'Returned')) ff
                                         on aa.id = ff.shipment_id
                                         left join orders_payments gg on bb.id=gg.order_id
                                         where bb.status in ('DELIVERED', 'RTO')

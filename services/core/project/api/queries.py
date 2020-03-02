@@ -256,6 +256,12 @@ get_details_cod_verify_ivr = """select aa.order_id, bb.customer_phone from cod_v
                             and cod_verified is null
                             order by bb.id"""
 
+get_details_ndr_verify_ivr = """select aa.order_id, bb.customer_phone from ndr_verification aa
+                            left join orders bb on aa.order_id=bb.id
+                            where bb.status='PENDING'
+                            and aa.date_created>'__ORDER_TIME__'
+                            and ndr_verified is null
+                            order by bb.id"""
 
 ################## app queries
 

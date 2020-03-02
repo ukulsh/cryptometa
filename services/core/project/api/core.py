@@ -661,19 +661,19 @@ def download_shiplabels(resp):
             if not order.shipments or not order.shipments[0].awb:
                 continue
             if auth_data['client_prefix'] in ("KYORIGIN", "NASHER"):
-                offset = 3.863
+                offset = 3.913
                 try:
                     fill_shiplabel_data(c, order, offset)
                 except Exception:
                     pass
                 c.setFillColorRGB(1, 1, 1)
-                c.rect(6.730 * inch, -1.0 * inch, 10 * inch, 10 * inch, fill=1)
-                c.rect(-1.0 * inch, -1.0 * inch, 3.857 * inch, 10 * inch, fill=1)
+                c.rect(6.680 * inch, -1.0 * inch, 10 * inch, 10 * inch, fill=1)
+                c.rect(-1.0 * inch, -1.0 * inch, 3.907 * inch, 10 * inch, fill=1)
                 if idx != len(orders_qs) - 1:
                     c.showPage()
                     create_shiplabel_blank_page(c)
             else:
-                offset_dict = {0:0.0, 1:3.863, 2:7.726}
+                offset_dict = {0:0.20, 1:3.913, 2:7.676}
                 try:
                     fill_shiplabel_data(c, order, offset_dict[idx%3])
                 except Exception:
@@ -688,9 +688,9 @@ def download_shiplabels(resp):
     if auth_data['client_prefix'] not in ("KYORIGIN", "NASHER"):
         c.setFillColorRGB(1, 1, 1)
         if idx%3==1:
-            c.rect(2.867 * inch, -1.0 * inch, 10 * inch, 10*inch, fill=1)
+            c.rect(2.917 * inch, -1.0 * inch, 10 * inch, 10*inch, fill=1)
         if idx%3==2:
-            c.rect(6.730 * inch, -1.0 * inch, 10 * inch, 10*inch, fill=1)
+            c.rect(6.680 * inch, -1.0 * inch, 10 * inch, 10*inch, fill=1)
 
     c.save()
     s3 = session.resource('s3')
@@ -1476,9 +1476,7 @@ api.add_resource(UpdateInventory, '/products/v1/update_inventory')
 
 @core_blueprint.route('/core/dev', methods=['POST'])
 def ping_dev():
-    from .ivr_verification import lambda_handler
-    lambda_handler()
-
+    return 0
     myfile = request.files['myfile']
     data_xlsx = pd.read_excel(myfile)
     from .models import Products, ProductQuantity

@@ -120,45 +120,45 @@ def create_shiplabel_blank_page(canvas):
     canvas.setLineWidth(.8)
     canvas.setFont('Helvetica', 12)
     canvas.translate(inch, inch)
-    canvas.rect(-0.95 * inch, -0.95 * inch, 11.59 * inch, 8.17 * inch, fill=0)
+    canvas.rect(-0.80 * inch, -0.80 * inch, 11.29 * inch, 7.87 * inch, fill=0)
     canvas.setLineWidth(.05 * inch)
-    canvas.line(2.863 * inch, -0.95 * inch, 2.863 * inch, 7.22 * inch)
-    canvas.line(6.726 * inch, -0.95 * inch, 6.726 * inch, 7.22 * inch)
+    canvas.line(2.913 * inch, -0.80 * inch, 2.913 * inch, 7.07 * inch)
+    canvas.line(6.676 * inch, -0.80 * inch, 6.676 * inch, 7.07 * inch)
     canvas.setLineWidth(0.8)
     for i in (5.42, 3.62, 2.02):
-        canvas.line(-0.95 * inch, i * inch, 10.64 * inch, i * inch)
+        canvas.line(-0.80 * inch, i * inch, 10.49 * inch, i * inch)
     for i in (1.72, 0.35, 0.05):
-        canvas.line(-0.95 * inch, i * inch, 10.64 * inch, i * inch)
-    for i in (1.58, 5.47, 9.36):
+        canvas.line(-0.80 * inch, i * inch, 10.49 * inch, i * inch)
+    for i in (1.73, 5.47, 9.21):
         canvas.line(i * inch, 3.62 * inch, i * inch, 5.42 * inch)  # upper vertcal
         canvas.line(i * inch, 2.02 * inch, i * inch, 0.05 * inch)  # lower vertcal
-    for i in (1.18, 5.07, 8.96):
+    for i in (1.33, 5.07, 8.81):
         canvas.line(i * inch, 3.62 * inch, i * inch, 2.02 * inch)  # middle vertcal
-    for i in (-0.9, 2.963, 6.826):
+    for i in (-0.70, 3.013, 6.776):
         canvas.drawString(i * inch, 1.80 * inch, "Product(s)")
-        canvas.drawString(i * inch, 7.05 * inch, "COURIER: ")
-    for i in (1.67, 5.543, 9.416):
+        canvas.drawString(i * inch, 6.90 * inch, "COURIER: ")
+    for i in (1.82, 5.543, 9.266):
         canvas.drawString(i * inch, 1.80 * inch, "Price")
-    for i in (1.25, 5.14, 9.03):
+    for i in (1.40, 5.14, 8.88):
         canvas.drawString(i * inch, 3.45 * inch, "Dimensions:")
-    for i in (1.25, 5.14, 9.03):
         canvas.drawString(i * inch, 2.65 * inch, "Weight:")
+
     canvas.setFont('Helvetica-Bold', 12)
-    for i in (-0.9, 2.963, 6.826):
+    for i in (-0.70, 3.013, 6.776):
         canvas.drawString(i * inch, 0.13 * inch, "Total")
         canvas.drawString(i * inch, 5.25 * inch, "Deliver To:")
     canvas.setFont('Helvetica-Bold', 9)
-    for i in (-0.9, 2.963, 6.826):
+    for i in (-0.70, 3.013, 6.776):
         canvas.drawString(i * inch, 3.45 * inch, "Shipped By (Return Address):")
     canvas.setFont('Helvetica', 10)
 
 
 def fill_shiplabel_data(c, order, offset):
-    c.drawString(offset * inch, 7.05 * inch, order.shipments[0].courier.courier_name)
+    c.drawString(offset * inch, 6.90 * inch, order.shipments[0].courier.courier_name)
     c.setFont('Helvetica-Bold', 14)
-    c.drawString((offset + 2.0) * inch, 4.90 * inch, order.payments[0].payment_mode)
+    c.drawString((offset + 1.8) * inch, 4.90 * inch, order.payments[0].payment_mode)
     if order.payments[0].payment_mode.lower()=="cod":
-        c.drawString((offset + 2.0) * inch, 4.40 * inch, str(order.payments[0].amount))
+        c.drawString((offset + 1.8) * inch, 4.40 * inch, str(order.payments[0].amount))
     full_name = order.delivery_address.first_name
     c.setFont('Helvetica-Bold', 12)
     if order.delivery_address.last_name:
@@ -171,7 +171,7 @@ def fill_shiplabel_data(c, order, offset):
     awb_barcode = code128.Code128(awb_string,barHeight=0.8*inch, barWidth=0.5*mm)
     temp_param = float((awb_barcode.width/165)-0.7)
 
-    awb_barcode.drawOn(c, (offset-temp_param)*inch, 6.00*inch)
+    awb_barcode.drawOn(c, (offset-temp_param)*inch, 5.90*inch)
 
     try:
         order_id_string = order.channel_order_id
@@ -181,11 +181,11 @@ def fill_shiplabel_data(c, order, offset):
     except Exception:
         pass
 
-    c.drawString((offset+0.3) * inch, 5.85*inch, awb_string)
+    c.drawString((offset+0.3) * inch, 5.75*inch, awb_string)
     routing_code = "N/A"
     if order.shipments[0].routing_code:
         routing_code = str(order.shipments[0].routing_code)
-    c.drawString((offset+2.0) * inch, 5.50*inch, routing_code)
+    c.drawString((offset+1.8) * inch, 5.50*inch, routing_code)
 
     c.setFont('Helvetica', 10)
     full_address = order.delivery_address.address_one

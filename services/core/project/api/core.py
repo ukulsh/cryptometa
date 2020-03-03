@@ -33,8 +33,8 @@ cur = conn.cursor()
 cur_2 = conn_2.cursor()
 
 ORDERS_DOWNLOAD_HEADERS = ["Order ID", "Customer Name", "Customer Email", "Customer Phone", "Order_Date",
-                            "Courier", "Weight", "awb", "Delivery Date", "Status", "Address_one", "Address_two",
-                           "City", "State", "Country", "Pincode", "Pickup Point", "Products", "Quantity"]
+                            "Courier", "Weight", "awb", "Expected Delivery Date", "Status", "Address_one", "Address_two",
+                           "City", "State", "Country", "Pincode", "Pickup Point", "Products", "Quantity", "Delivered Date"]
 
 class ProductList(Resource):
 
@@ -275,6 +275,11 @@ class OrderList(Resource):
                             prod_quan.append(prod.quantity)
                         new_row.append(prod_list)
                         new_row.append(prod_quan)
+                        delivered_date = "N/A"
+                        for order_status in order.order_status:
+                            if order_status.status == 'Delivered':
+                                delivered_date = order_status.status_time.strftime("%Y-%m-%d %H:%M:%S")
+                        new_row.append(delivered_date)
                         cw.writerow(new_row)
                     except Exception as e:
                         pass
@@ -600,9 +605,9 @@ def upload_orders(resp):
                 sku = str(row_data.sku).split('|')
                 sku_quantity = str(row_data.sku_quantity).split('|')
                 for idx, sku_str in enumerate(sku):
-                    prod_obj = db.session.query(Products).filter(Products.sku == sku_str).first()
+                    prod_obj = db.session.query(Products).filter(Products.sku == sku_str.strip()).first()
                     if prod_obj:
-                        op_association = OPAssociation(order=new_order, product=prod_obj, quantity=int(sku_quantity[idx]))
+                        op_association = OPAssociation(order=new_order, product=prod_obj, quantity=int(sku_quantity[idx].strip()))
                         new_order.products.append(op_association)
 
             payment = OrdersPayments(
@@ -1480,6 +1485,7 @@ def ping_dev():
     myfile = request.files['myfile']
     data_xlsx = pd.read_excel(myfile)
     from .models import Products, ProductQuantity
+    uri = """requests.get("https://www.nyor.in/wp-json/wc/v3/orders?oauth_consumer_key=ck_1e1ab8542c4f22b20f1b9810cd670716bf421ba8&oauth_timestamp=1583243314&oauth_nonce=kYjzVBB8Y0ZFabxSWbWovY3uYSQ2pTgmZeNu2VS4cg&oauth_signature=d07a4be56681016434803eb054cfd8b45a8a2749&oauth_signature_method=HMAC-SHA1")"""
     for row in data_xlsx.iterrows():
 
         cur_2.execute("select city from city_pin_mapping where pincode='%s'"%str(row[1].destinaton_pincode))

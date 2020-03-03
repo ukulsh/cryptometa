@@ -1,5 +1,6 @@
 import psycopg2, requests, os, json
 from datetime import datetime, timedelta
+from requests_oauthlib.oauth1_session import OAuth1Session
 import logging
 
 from .queries import *
@@ -77,7 +78,7 @@ def lambda_handler():
 
                     customer_phone = order['customer']['phone'] if order['customer']['phone'] else \
                     order['shipping_address']['phone']
-                    customer_phone = str(customer_phone).replace(" ", "")
+                    customer_phone = ''.join(e for e in str(customer_phone) if e.isalnum())
                     customer_phone = "0" + customer_phone[-10:]
 
                     orders_tuple = (
@@ -162,17 +163,127 @@ def lambda_handler():
                         else:
                             products_quantity_dict[product_id] += prod['quantity']
                 except Exception as e:
-                    print("order fetch failed for" + str(order['order_number']) + "\nError:" + str(e))
+                    logger.error("order fetch failed for" + str(order['order_number']) + "\nError:" + str(e))
 
             if data['orders']:
-                last_sync_tuple = (str(data['orders'][-1]['id']), datetime.now(), channel[0])
+                last_sync_tuple = (str(data['orders'][-1]['id']), datetime.utcnow()+timedelta(hours=5.5), channel[0])
                 cur.execute(update_last_fetched_data_query, last_sync_tuple)
 
             for prod_id, quan in products_quantity_dict.items():
                 prod_quan_tuple = (quan, quan, prod_id)
                 cur.execute(update_product_quantity_query, prod_quan_tuple)
 
-        conn.commit()
+            conn.commit()
+
+        if channel[11] == "WooCommerce":
+            auth_session = OAuth1Session(channel[3],
+                                 client_secret=channel[4])
+            url = '%s/wp-json/wc/v3/orders?per_page=100&after=%s&order=asc'%(channel[5], channel[7].isoformat())
+            r = auth_session.get(url)
+            data = list()
+            try:
+                data = r.json()
+            except Exception as e:
+                logger.error("Client order fetch failed for: " + str(channel[0]) +"\nError: " + str(e.args[0]))
+            products_quantity_dict = dict()
+            for order in data:
+                try:
+                    if order['status'] in ('failed',):
+                        continue
+                    cur.execute("SELECT count(*) FROM client_pickups WHERE client_prefix='%s';" % str(channel[1]))
+                    pickup_count = cur.fetchone()[0]
+                    if pickup_count == 1:
+                        cur.execute(
+                            "SELECT id, client_prefix FROM client_pickups WHERE client_prefix='%s';" % str(channel[1]))
+                        pickup_data_id = cur.fetchone()[0]
+                    else:
+                        pickup_data_id = None  # change this as we move to dynamic pickups
+
+                    customer_name = order['shipping']['first_name'] + " " + order['shipping']['last_name']
+                    shipping_tuple = (order['shipping']['first_name'],
+                                      order['shipping']['last_name'],
+                                      order['shipping']['address_1'],
+                                      order['shipping']['address_2'],
+                                      order['shipping']['city'],
+                                      order['shipping']['postcode'],
+                                      order['shipping']['state'],
+                                      order['shipping']['country'],
+                                      order['billing']['phone'],
+                                      None,
+                                      None,
+                                      order['shipping']['country']
+                                      )
+
+                    cur.execute(insert_shipping_address_query, shipping_tuple)
+                    shipping_address_id = cur.fetchone()[0]
+
+                    customer_phone = order['billing']['phone']
+                    customer_phone = ''.join(e for e in str(customer_phone) if e.isalnum())
+                    customer_phone = "0" + customer_phone[-10:]
+
+                    orders_tuple = (
+                    str(order['number']), order['date_created'], customer_name, order['billing']['email'],
+                    customer_phone if customer_phone else "", shipping_address_id,
+                    datetime.now(), "NEW", channel[1], channel[0], str(order['id']), pickup_data_id)
+
+                    cur.execute(insert_orders_data_query, orders_tuple)
+                    order_id = cur.fetchone()[0]
+
+                    total_amount = float(order['total']) + float(order['shipping_total'])
+
+                    if order['payment_method'].lower() != 'cod' and order['date_paid']:
+                        financial_status = 'prepaid'
+                    else:
+                        financial_status = 'cod'
+
+                    payments_tuple = (financial_status, total_amount, float(order['total']),
+                                      float(order['shipping_total']), order["currency"], order_id)
+
+                    cur.execute(insert_payments_data_query, payments_tuple)
+
+                    for prod in order['line_items']:
+                        product_sku = str(prod['sku'])
+                        prod_tuple = (product_sku, channel[1])
+                        cur.execute(select_products_query, prod_tuple)
+                        try:
+                            product_id = cur.fetchone()[0]
+                        except Exception:
+                            if channel[1] == "NYOR":
+                                dimensions = {"length": 5, "breadth": 11.43, "height": 11.43}
+                                weight = 0.20
+                            else:
+                                dimensions = {"length": 2.5, "breadth": 22.5, "height": 27.5}
+                                weight = 0.20
+                            product_insert_tuple = (prod['name'], str(prod['sku']), True, channel[2],
+                                                    channel[1], datetime.now(), json.dumps(dimensions),
+                                                    float(prod['price']), weight)
+                            cur.execute(insert_product_query, product_insert_tuple)
+                            product_id = cur.fetchone()[0]
+
+                            product_quantity_insert_tuple = (
+                            product_id, 100, 100, 100, channel[1], "APPROVED", datetime.now())
+                            cur.execute(insert_product_quantity_query, product_quantity_insert_tuple)
+
+                        op_tuple = (product_id, order_id, prod['quantity'])
+
+                        cur.execute(insert_op_association_query, op_tuple)
+
+                        if product_id not in products_quantity_dict:
+                            products_quantity_dict[product_id] = prod['quantity']
+                        else:
+                            products_quantity_dict[product_id] += prod['quantity']
+                except Exception as e:
+                    logger.error("order fetch failed for" + str(order['order_number']) + "\nError:" + str(e))
+
+            if data:
+                last_sync_tuple = (str(data[-1]['id']), datetime.utcnow()+timedelta(hours=5.5), channel[0])
+                cur.execute(update_last_fetched_data_query, last_sync_tuple)
+
+            for prod_id, quan in products_quantity_dict.items():
+                prod_quan_tuple = (quan, quan, prod_id)
+                cur.execute(update_product_quantity_query, prod_quan_tuple)
+
+            conn.commit()
 
     assign_pickup_points_for_unassigned(cur, cur_2)
 

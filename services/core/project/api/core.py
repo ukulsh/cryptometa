@@ -1482,6 +1482,8 @@ api.add_resource(UpdateInventory, '/products/v1/update_inventory')
 @core_blueprint.route('/core/dev', methods=['POST'])
 def ping_dev():
     return 0
+    import requests, json
+    prod_list = requests.get("https://640e8be5fbd672844636885fc3f02d6b:07d941b140370c8c975d8e83ee13e524@clean-canvass.myshopify.com/admin/api/2019-10/products.json?limit=250").json()
     myfile = request.files['myfile']
     data_xlsx = pd.read_excel(myfile)
     from .models import Products, ProductQuantity

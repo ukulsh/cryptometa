@@ -212,33 +212,48 @@ def lambda_handler():
                                                 "You can track your order using this AWB number." % (client_name[0], str(package['waybill']))
                         exotel_idx += 1
 
-                        try:
-                            create_fulfillment_url = "https://%s:%s@%s/admin/api/2019-10/orders/%s/fulfillments.json" % (
-                                orders_dict[package['refnum']][4], orders_dict[package['refnum']][5],
-                                orders_dict[package['refnum']][6], orders_dict[package['refnum']][7])
-                            tracking_link = "http://webapp.wareiq.com/tracking/%s" % str(package['waybill'])
-                            ful_header = {'Content-Type': 'application/json'}
-                            fulfil_data = {
-                                "fulfillment": {
-                                    "tracking_number": str(package['waybill']),
-                                    "tracking_urls": [
-                                        tracking_link
-                                    ],
-                                    "tracking_company": "WareIQ",
-                                    "location_id": 16721477681,
-                                    "notify_customer": False
-                                }
-                            }
+                        if orders_dict[package['refnum']][9] == "KYORIGIN":
                             try:
-                                req_ful = requests.post(create_fulfillment_url, data=json.dumps(fulfil_data),
-                                                        headers=ful_header)
-                                fulfillment_id = str(req_ful.json()['fulfillment']['id'])
+                                create_fulfillment_url = "https://%s:%s@%s/admin/api/2019-10/orders/%s/fulfillments.json" % (
+                                    orders_dict[package['refnum']][4], orders_dict[package['refnum']][5],
+                                    orders_dict[package['refnum']][6], orders_dict[package['refnum']][7])
+                                tracking_link = "http://webapp.wareiq.com/tracking/%s" % str(package['waybill'])
+                                ful_header = {'Content-Type': 'application/json'}
+                                fulfil_data = {
+                                    "fulfillment": {
+                                        "tracking_number": str(package['waybill']),
+                                        "tracking_urls": [
+                                            tracking_link
+                                        ],
+                                        "tracking_company": "WareIQ",
+                                        "location_id": 16721477681,
+                                        "notify_customer": False
+                                    }
+                                }
+                                try:
+                                    req_ful = requests.post(create_fulfillment_url, data=json.dumps(fulfil_data),
+                                                            headers=ful_header)
+                                    fulfillment_id = str(req_ful.json()['fulfillment']['id'])
+                                except Exception as e:
+                                    logger.error("Couldn't update shopify for: " + str(package['refnum'])
+                                                 + "\nError: " + str(e.args))
                             except Exception as e:
                                 logger.error("Couldn't update shopify for: " + str(package['refnum'])
                                              + "\nError: " + str(e.args))
-                        except Exception as e:
-                            logger.error("Couldn't update shopify for: " + str(package['refnum'])
-                                         + "\nError: " + str(e.args))
+
+                        if orders_dict[package['refnum']][9] == "NASHER":
+                            try:
+                                nasher_url = "https://www.nashermiles.com/alexandria/api/v1/shipment/create"
+                                nasher_headers = {"Content-Type": "application/x-www-form-urlencoded",
+                                                  "Authorization": "Basic c2VydmljZS5hcGl1c2VyOllQSGpBQXlXY3RWYzV5MWg="}
+                                nasher_body = {
+                                    "order_id": package['refnum'],
+                                    "awb_number": str(package['waybill']),
+                                    "tracking_link": "http://webapp.wareiq.com/tracking/" + str(package['waybill'])}
+                                req = requests.post(nasher_url, headers=nasher_headers, data=json.dumps(nasher_body))
+                            except Exception as e:
+                                logger.error("Couldn't update shopify for: " + str(package['refnum'])
+                                             + "\nError: " + str(e.args))
 
                     dimensions = orders_dict[package['refnum']][1][0]
                     dimensions['length'] = dimensions['length']*orders_dict[package['refnum']][3][0]
@@ -705,7 +720,7 @@ def lambda_handler():
                     else:
                         pickup_point_order_dict[order[41]].append(order)
 
-            cur.execute("select max(awb) from shipments where courier_id=5;")
+            cur.execute("select max(awb) from shipments where courier_id=%s;"%str(courier[9]))
             last_assigned_awb = cur.fetchone()[0]
             last_assigned_awb =int(last_assigned_awb)
 

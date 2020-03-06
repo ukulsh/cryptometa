@@ -143,7 +143,7 @@ get_request_pickup_orders_data_query = """select aa.channel_order_id, aa.order_d
                                 on aa.id=ee.order_id
                                 left join shipping_address ff
                                 on aa.delivery_address_id=ff.id
-                                where aa.status in ('READY TO SHIP', 'PICKUP REQUESTED')
+                                where aa.status in __ORDER_STATUS__
                                 and aa.pickup_data_id=%s
                                 and aa.order_date<%s
                                 order by aa.id;"""

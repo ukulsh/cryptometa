@@ -26,7 +26,13 @@ def lambda_handler():
         time_before = time_before.strftime("%Y-%m-%d %H:%M")
 
         get_orders_data_tuple = (pick_req[0], time_before)
-        cur.execute(get_request_pickup_orders_data_query, get_orders_data_tuple)
+        if time_now.hour<7:
+            time_string = "14:00:00"
+            cur.execute(get_request_pickup_orders_data_query.replace("__ORDER_STATUS__", "('READY TO SHIP', 'PICKUP REQUESTED')"), get_orders_data_tuple)
+        else:
+            time_string = "16:00:00"
+            cur.execute(get_request_pickup_orders_data_query.replace("__ORDER_STATUS__", "('READY TO SHIP')"), get_orders_data_tuple)
+
         all_orders = cur.fetchall()
         if not all_orders:
             continue
@@ -51,13 +57,14 @@ def lambda_handler():
             current_time = datetime.now()
             pickup_date = datetime.today()
             manifest_id = current_time.strftime('%Y_%m_%d_%H_%M_%S_') + pick_req[1]
-            pickup_date_string = pickup_date.strftime("%Y-%m-%d ")+ "14:00:00"
+            pickup_date_string = pickup_date.strftime("%Y-%m-%d ")+ time_string
             manifest_data_tuple = (manifest_id, pick_req[2], values['courier_id'], pick_req[3], len(values['orders']),
                                    pickup_date_string, manifest_url, current_time)
-            cur.execute(insert_manifest_data_query, manifest_data_tuple)
+            if time_now.hour < 7:
+                cur.execute(insert_manifest_data_query, manifest_data_tuple)
 
             if courier in ("Delhivery", "Delhivery Surface Standard", "Delhivery Bulk", "Delhivery Heavy", "Delhivery Heavy 2"):
-                pickup_request_api_body = json.dumps({ "pickup_time": "14:00:00",
+                pickup_request_api_body = json.dumps({ "pickup_time": time_string,
                                             "pickup_date": pickup_date.strftime("%Y-%m-%d"),
                                             "pickup_location": pick_req[2],
                                             "expected_package_count": len(values['orders'])})

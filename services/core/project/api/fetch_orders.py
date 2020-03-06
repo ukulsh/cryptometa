@@ -186,6 +186,9 @@ def lambda_handler():
             except Exception as e:
                 logger.error("Client order fetch failed for: " + str(channel[0]) +"\nError: " + str(e.args[0]))
             products_quantity_dict = dict()
+            if type(data) != list:
+                logger.error("Client order fetch failed for: " + str(channel[0]))
+                continue
             for order in data:
                 try:
                     if order['status'] in ('failed',):

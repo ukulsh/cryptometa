@@ -32,9 +32,9 @@ conn_2 = psycopg2.connect(host="wareiq-core-prod.cvqssxsqruyc.us-east-1.rds.amaz
 cur = conn.cursor()
 cur_2 = conn_2.cursor()
 
-ORDERS_DOWNLOAD_HEADERS = ["Order ID", "Customer Name", "Customer Email", "Customer Phone", "Order_Date",
+ORDERS_DOWNLOAD_HEADERS = ["Order ID", "Customer Name", "Customer Email", "Customer Phone", "Order Date",
                             "Courier", "Weight", "awb", "Expected Delivery Date", "Status", "Address_one", "Address_two",
-                           "City", "State", "Country", "Pincode", "Pickup Point", "Products", "Quantity", "Delivered Date"]
+                           "City", "State", "Country", "Pincode", "Pickup Point", "Products", "Quantity", "Order Type", "Amount", "Delivered Date"]
 
 class ProductList(Resource):
 
@@ -59,7 +59,7 @@ class ProductList(Resource):
                 sort_func = get_products_sort_func(Products, ProductQuantity, sort, sort_by)
                 products_qs = db.session.query(Products).outerjoin(ProductQuantity, Products.id==ProductQuantity.product_id)\
                     .order_by(sort_func())\
-                    .filter(or_(Products.name.ilike(search_key), Products.sku.ilike(search_key)))
+                    .filter(or_(Products.name.ilike(search_key), Products.sku.ilike(search_key), Products.master_sku.ilike(search_key)))
                 if filters:
                     if 'warehouse' in filters:
                         products_qs = products_qs.filter(ProductQuantity.warehouse_prefix.in_(filters['warehouse']))
@@ -87,7 +87,7 @@ class ProductList(Resource):
                     resp_obj['product_name'] = product.name
                     resp_obj['product_image'] = product.product_image
                     resp_obj['price'] = product.price
-                    resp_obj['master_sku'] = product.sku
+                    resp_obj['master_sku'] = product.master_sku
                     resp_obj['channel_sku'] = product.sku
                     resp_obj['inline_quantity'] = 0
                     resp_obj['rto_quantity'] = 0
@@ -192,6 +192,7 @@ class OrderList(Resource):
         sort = data.get('sort', 'desc')
         sort_by = data.get('sort_by', 'order_date')
         search_key = data.get('search_key', '')
+        since_id = data.get('since_id', None)
         filters = data.get('filters', {})
         search_key = '%{}%'.format(search_key)
         download_flag = request.args.get("download", None)
@@ -206,6 +207,8 @@ class OrderList(Resource):
                 CodVerification, Orders.id==CodVerification.order_id, isouter=True)
             if auth_data['user_group'] != 'super-admin':
                 orders_qs = orders_qs.filter(Orders.client_prefix==client_prefix)
+            if since_id:
+                orders_qs = orders_qs.filter(Orders.id>int(since_id))
             orders_qs = orders_qs.order_by(sort_func())\
                 .filter(or_(Orders.channel_order_id.ilike(search_key), Orders.customer_name.ilike(search_key),
                             Shipments.awb.ilike(search_key)))
@@ -276,6 +279,8 @@ class OrderList(Resource):
                         new_row.append(prod_list)
                         new_row.append(prod_quan)
                         delivered_date = "N/A"
+                        new_row.append(str(order.payments[0].payment_mode))
+                        new_row.append(order.payments[0].amount)
                         for order_status in order.order_status:
                             if order_status.status == 'Delivered':
                                 delivered_date = order_status.status_time.strftime("%Y-%m-%d %H:%M:%S")
@@ -294,9 +299,17 @@ class OrderList(Resource):
             for order in orders_qs_data:
                 resp_obj=dict()
                 resp_obj['order_id'] = order.channel_order_id
+                resp_obj['unique_id'] = order.id
                 resp_obj['customer_details'] = {"name":order.customer_name,
                                                 "email":order.customer_email,
-                                                "phone":order.customer_phone}
+                                                "phone":order.customer_phone,
+                                                "address_one":order.delivery_address.address_one,
+                                                "address_two":order.delivery_address.address_two,
+                                                "city":order.delivery_address.city,
+                                                "state":order.delivery_address.state,
+                                                "country":order.delivery_address.country,
+                                                "pincode":order.delivery_address.pincode,
+                                                }
                 resp_obj['order_date'] = order.order_date.strftime("%d %b %Y, %I:%M %p")
                 if order.payments:
                     resp_obj['payment'] = {"mode": order.payments[0].payment_mode,
@@ -321,17 +334,25 @@ class OrderList(Resource):
                 if not order.exotel_data:
                     pass
                 elif order.exotel_data[0].cod_verified == None:
-                    resp_obj['cod_verification'] = "Order not confirmed yet"
+                    resp_obj['cod_verification'] = {"confirmed": None, "via": None}
                 elif order.exotel_data[0].cod_verified == False:
-                    resp_obj['cod_verification'] = "Customer cancelled (Verified via %s)" % str(
-                        order.exotel_data[0].verified_via)
+                    resp_obj['cod_verification'] = {"confirmed": False, "via": order.exotel_data[0].verified_via}
                 else:
-                    resp_obj['cod_verification'] = "Customer confirmed (Verified via %s)" % str(
-                        order.exotel_data[0].verified_via)
+                    resp_obj['cod_verification'] = {"confirmed": True, "via": order.exotel_data[0].verified_via}
+
+                if not order.ndr_verification:
+                    pass
+                elif order.ndr_verification[0].ndr_verified == None:
+                    resp_obj['ndr_verification'] = {"confirmed": None, "via": None}
+                elif order.ndr_verification[0].ndr_verified == False:
+                    resp_obj['ndr_verification'] = {"confirmed": False, "via": order.ndr_verification[0].verified_via}
+                else:
+                    resp_obj['ndr_verification'] = {"confirmed": True, "via": order.ndr_verification[0].verified_via}
 
                 if order.shipments and order.shipments[0].courier:
                     resp_obj['shipping_details'] = {"courier": order.shipments[0].courier.courier_name,
-                                                    "awb":order.shipments[0].awb}
+                                                    "awb":order.shipments[0].awb,
+                                                    "tracking_link": "http://webapp.wareiq.com/tracking/"+str(order.shipments[0].awb)}
                     resp_obj['dimensions'] = order.shipments[0].dimensions
                     resp_obj['weight'] = order.shipments[0].weight
                     resp_obj['volumetric'] = order.shipments[0].volumetric_weight
@@ -368,12 +389,58 @@ def get_dashboard(resp):
     response = dict()
     auth_data = resp.get('data')
     client_prefix = auth_data.get('client_prefix')
+    from_date = datetime.datetime.utcnow() + datetime.timedelta(hours=5.5)
+    from_date = datetime.datetime(from_date.year, from_date.month, from_date.day)
+    from_date = from_date - datetime.timedelta(hours=5.5)
     qs_data = db.session.query(func.date_trunc('day', Orders.order_date).label('date'), func.count(Orders.id), func.sum(OrdersPayments.amount))\
         .join(OrdersPayments, Orders.id==OrdersPayments.order_id)\
         .filter(Orders.order_date >= datetime.datetime.today()- datetime.timedelta(days=30))
+    cod_verification = db.session.query(CodVerification).join(Orders, Orders.id==CodVerification.order_id).filter(CodVerification.date_created >= from_date)
+    ndr_verification = db.session.query(NDRVerification).join(Orders, Orders.id==NDRVerification.order_id).filter(NDRVerification.date_created >= from_date)
     if auth_data['user_group'] != 'super-admin':
         qs_data = qs_data.filter(Orders.client_prefix == client_prefix)
+        cod_verification = cod_verification.filter(Orders.client_prefix == client_prefix)
+        ndr_verification = ndr_verification.filter(Orders.client_prefix == client_prefix)
     qs_data = qs_data.group_by('date').order_by('date').all()
+    cod_verification = cod_verification.all()
+    ndr_verification = ndr_verification.all()
+
+    cod_check = {"total_checked": len(cod_verification),
+                 "confirmed_via_text": 0,
+                 "confirmed_via_call": 0,
+                 "total_cancelled": 0,
+                 "not_confirmed_yet": 0}
+    for cod_data in cod_verification:
+        if cod_data.cod_verified is True:
+            if cod_data.verified_via == 'text':
+                cod_check['confirmed_via_text'] += 1
+            elif cod_data.verified_via == 'call':
+                cod_check['confirmed_via_call'] += 1
+        elif cod_data.cod_verified is False:
+            cod_check['total_cancelled'] += 1
+
+        else:
+            cod_check['not_confirmed_yet'] += 1
+
+    ndr_check = {"total_checked": len(ndr_verification),
+                 "confirmed_via_text": 0,
+                 "confirmed_via_call": 0,
+                 "reattempt_requested": 0,
+                 "not_confirmed_yet": 0}
+    for ndr_data in ndr_verification:
+        if ndr_data.ndr_verified is True:
+            if ndr_data.verified_via == 'text':
+                ndr_check['confirmed_via_text'] += 1
+            elif ndr_data.verified_via == 'call':
+                ndr_check['confirmed_via_call'] += 1
+        elif ndr_data.ndr_verified is False:
+            ndr_check['reattempt_requested'] += 1
+
+        else:
+            ndr_check['not_confirmed_yet'] += 1
+
+    response['cod_verification'] = cod_check
+    response['ndr_verification'] = ndr_check
 
     date_today = datetime.datetime.utcnow()
     date_today = date_today + datetime.timedelta(hours=5.5)
@@ -1061,7 +1128,7 @@ def track_order(awb):
         if details:
             if shipment.courier_id in (1,2,8): #Delhivery details of status
                 try:
-                    return_details = list()
+                    return_details = dict()
                     delhivery_url = "https://track.delhivery.com/api/status/packages/json/?waybill=%s&token=%s" \
                                     % (str(awb), shipment.courier.api_key)
                     req = requests.get(delhivery_url).json()
@@ -1076,8 +1143,12 @@ def track_order(awb):
                                 status_time = datetime.datetime.strptime(status_time, '%Y-%m-%dT%H:%M:%S')
                             else:
                                 status_time = datetime.datetime.strptime(status_time, '%Y-%m-%dT%H:%M:%S.%f')
-                        return_details_obj['time'] = status_time.strftime("%d %b %Y, %I:%M %p")
-                        return_details.append(return_details_obj)
+                        time_str = status_time.strftime("%d %b %Y, %I:%M %p")
+                        return_details_obj['time'] = time_str
+                        if time_str[:11] not in return_details:
+                            return_details[time_str[:11]] = [return_details_obj]
+                        else:
+                            return_details[time_str[:11]].append(return_details_obj)
                     return jsonify({"success": True, "data": return_details}), 200
                 except Exception as e:
                     return jsonify({"success": False, "msg": "Details not available"}), 400
@@ -1088,14 +1159,21 @@ def track_order(awb):
         if not order_statuses:
             return jsonify({"success": False, "msg": "tracking not available for this id"}), 400
 
+        client_obj = db.session.query(ClientMapping).filter(ClientMapping.client_prefix==order_statuses[-1].order.client_prefix).first()
+
         response = dict()
         last_status = order_statuses[-1].status
         response['tracking_id'] = awb
         response['status'] = last_status
-        response['logo_url'] = "https://www.google.com/url?sa=i&url=https%3A%2F%2Fwww.linkedin.com%2Fcompany%2Fwareiq&psig=AOvVaw0YvqAql_oPH2DcoCxxEGGc&ust=1582282802313000&source=images&cd=vfe&ved=0CAIQjRxqFwoTCIDO7vb83-cCFQAAAAAdAAAAABAD"
+        response['logo_url'] = None
+        response['theme_color'] = None
+        if client_obj:
+            response['logo_url'] = client_obj.client_logo
+            response['theme_color'] = client_obj.theme_color
         response['remark'] = order_statuses[-1].status_text
         response['order_id'] = order_statuses[-1].order.channel_order_id
         response['placed_on'] = order_statuses[-1].order.order_date.strftime("%d %b %Y, %I:%M %p")
+        response['get_details'] = True
         response['order_track'] = list()
         if shipment.edd:
             response['arriving_on'] = shipment.edd.strftime("%d %b")
@@ -1147,22 +1225,22 @@ class CodVerificationGather(Resource):
                     client_name = order.client_prefix.lower()
                 if ver_type=="cod":
                     gather_prompt_text = "Hello %s, You recently placed an order from %s with order ID %s." \
-                                     " Press 1 to confirm your order or 0 to cancel." % (order.customer_name,
+                                     " Press 1 to confirm your order or, 0 to cancel." % (order.customer_name,
                                                                                          client_name,
                                                                                          order.channel_order_id)
 
                     repeat_prompt_text = "It seems that you have not provided any input, please try again. Order from %s, " \
-                                     "Order ID %s. Press 1 to confirm your order or 0 to cancel." % (
+                                     "Order ID %s. Press 1 to confirm your order or, 0 to cancel." % (
                                      client_name,
                                      order.channel_order_id)
                 elif ver_type=="ndr":
                     gather_prompt_text = "Hello %s, You recently cancelled your order from %s with order ID %s." \
-                                         " Press 1 to confirm cancellation or 0 to re-attempt." % (order.customer_name,
+                                         " Press 1 to confirm cancellation or, 0 to re-attempt." % (order.customer_name,
                                                                                              client_name,
                                                                                              order.channel_order_id)
 
                     repeat_prompt_text = "It seems that you have not provided any input, please try again. Order from %s, " \
-                                         "Order ID %s. Press 1 to confirm cancellation or 0 to re-attempt." % (
+                                         "Order ID %s. Press 1 to confirm cancellation or, 0 to re-attempt." % (
                                              client_name,
                                              order.channel_order_id)
                 else:
@@ -1302,14 +1380,21 @@ class PincodeServiceabilty(Resource):
                     else:
                         wh_dict[prod_wh[0]]['count'] += 1
 
+            if not wh_dict:
+                return {"success": False, "msg": "One or more SKUs not serviceable"}, 400
+
             warehouse_pincode_str = ""
+            highest_num_loc = list()
             for key, value in wh_dict.items():
+                if not highest_num_loc or value['count'] > highest_num_loc[1]:
+                    highest_num_loc = [key, value['count'], value['pincode']]
                 if value['count'] == no_sku:
                     warehouse_pincode_str += "('" + key + "','" + str(value['pincode']) + "'),"
 
-            warehouse_pincode_str = warehouse_pincode_str.rstrip(',')
             if not warehouse_pincode_str:
-                return {"success": False, "msg": "One or more SKUs not serviceable"}, 400
+                warehouse_pincode_str = "('" + str(highest_num_loc[0]) + "','" + str(str(highest_num_loc[2])) + "'),"
+
+            warehouse_pincode_str = warehouse_pincode_str.rstrip(',')
 
             if courier_id in (8, 11, 12):
                 courier_id = 1
@@ -1369,6 +1454,30 @@ class PincodeServiceabilty(Resource):
                     cod_available = True
             except Exception:
                 pass
+
+            cod_disabled_sku = ["NM_CSK_H8012_Amsterdam_Yellow_20",
+                                "NM_CSK_H8012_Amsterdam_Yellow_24",
+                                "NM_CSK_H8012_Amsterdam_Yellow_28",
+                                "NM_CSK_H8012_Amsterdam_Yellow_S3",
+                                "NM_CSK_H8012_Amsterdam_Yellow_20-24",
+                                "NM_CSK_H8012_Amsterdam_Yellow_24-28",
+                                "NM_CSK_A849_Bruges_Yellow_20",
+                                "NM_CSK_A849_Bruges_Yellow_24",
+                                "NM_CSK_A849_Bruges_Yellow_28",
+                                "NM_CSK_A849_Bruges_Yellow_S3",
+                                "NM_CSK_A849_Bruges_Yellow_20-24",
+                                "NM_CSK_A849_Bruges_Yellow_24-28",
+                                "NM_CSK_PP03_Nicobar_Yellow & Navy Blue_20",
+                                "NM_CSK_PP03_Nicobar_Yellow & Navy Blue_24",
+                                "NM_CSK_PP03_Nicobar_Yellow & Navy Blue_28",
+                                "NM_CSK_PP03_Nicobar_Yellow & Navy Blue_S3",
+                                "NM_CSK_PP03_Nicobar_Yellow & Navy Blue_20-24",
+                                "NM_CSK_PP03_Nicobar_Yellow & Navy Blue_24-28"]
+
+            for sku_ob in sku_wise_list:
+                if sku_ob['sku'] in cod_disabled_sku:
+                    cod_available = False
+                    break
 
             return_data = {"warehouse": final_wh[0],
                            "delivery_date": delivered_by.strftime('%d-%m-%Y'),
@@ -1481,6 +1590,200 @@ api.add_resource(UpdateInventory, '/products/v1/update_inventory')
 
 @core_blueprint.route('/core/dev', methods=['POST'])
 def ping_dev():
+    return 0
+    import requests, json
+    from .models import Products, ProductQuantity
+    from requests_oauthlib.oauth1_session import OAuth1Session
+    from woocommerce import API
+    wcapi = API(
+        url="https://andnothingelse.in/stag",
+        consumer_key="ck_48b2a03de2cc5906951ff783c6c0cf83d0fa6af4",
+        consumer_secret="cs_5d401d8aeaa8a16f5f82c81089290b392420891d",
+        version="wc/v3"
+    )
+
+
+
+    auth_session = OAuth1Session("ck_48b2a03de2cc5906951ff783c6c0cf83d0fa6af4",
+                                 client_secret="cs_5d401d8aeaa8a16f5f82c81089290b392420891d")
+    url = '%s/wp-json/wc/v3/shipping_methods?per_page=100&order=asc' % ("https://andnothingelse.in/stag")
+    r = auth_session.get(url)
+
+    for prod in r.json():
+        try:
+            prod_obj = db.session.query(Products).filter(Products.sku == str(prod['id'])).first()
+            if prod_obj:
+                prod_obj.sku = str(prod['id'])
+                prod_obj.master_sku = str(prod['sku'])
+
+            db.session.commit()
+        except Exception as e:
+            print(str(e.args[0]))
+
+
+
+    shopify_url = "https://006fce674dc07b96416afb8d7c075545:0d36560ddaf82721bfbb93f909ab5f47@themuwu.myshopify.com/admin/api/2019-10/products.json?limit=250"
+    data = requests.get(shopify_url).json()
+
+    myfile = request.files['myfile']
+
+    data_xlsx = pd.read_excel(myfile)
+    from .models import Products, ProductQuantity
+    count = 0
+    iter_rw = data_xlsx.iterrows()
+    for row in iter_rw:
+        try:
+            sku_name = row[1].PID
+            prod = db.session.query(Products).filter(Products.master_sku==sku_name).first()
+            prod.quantity[0].total_quantity = int(row[1].PhysicalQt)
+            prod.quantity[0].approved_quantity = int(row[1].PhysicalQt)
+            prod.quantity[0].available_quantity = int(row[1].PhysicalQt)
+            """
+            if 'S3' in sku_name:
+                dimensions = {"length": 48,"breadth": 35,"height": 79}
+                weight = 11
+            elif '24-28' in sku_name:
+                dimensions = {"length": 48, "breadth": 35, "height": 79}
+                weight = 8.31
+            elif '20-24' in sku_name:
+                dimensions = {"length": 42, "breadth": 34, "height": 69}
+                weight = 6.19
+            elif '28' in sku_name:
+                dimensions = {"length": 48,"breadth": 35,"height": 79}
+                weight = 4.71
+            elif '24' in sku_name:
+                dimensions = {"length": 42, "breadth": 34, "height": 69}
+                weight = 3.6
+            elif '20' in sku_name:
+                dimensions = {"length": 41, "breadth": 28, "height": 61}
+                weight = 2.59
+
+            prod_obj = Products(name=sku_name,
+                                sku=sku_name,
+                                master_sku=sku_name,
+                                dimensions=dimensions,
+                                weight=weight,
+                                price=0,
+                                client_prefix='NASHER',
+                                active=True,
+                                channel_id=4,
+                                date_created=datetime.datetime.now()
+                                )
+            for warehouse in ('NASHER_HYD','NASHER_GUR','NASHER_SDR','NASHER_VADPE','NASHER_BAN','NASHER_MUM'):
+                prod_quan_obj = ProductQuantity(product=prod_obj,
+                                                total_quantity=0,
+                                                approved_quantity=0,
+                                                available_quantity=0,
+                                                inline_quantity=0,
+                                                rto_quantity=0,
+                                                current_quantity=0,
+                                                warehouse_prefix=warehouse,
+                                                status="APPROVED",
+                                                date_created=datetime.datetime.now()
+                                                )
+                db.session.add(prod_quan_obj)
+            """
+            db.session.commit()
+        except Exception as e:
+            print(str(row[1].PID)+"\n"+str(e.args[0]))
+
+    for prod in data['products']:
+        for e_sku in prod['variants']:
+            try:
+                count += 1
+                prod_title = prod['title'] + "-" +e_sku['title']
+                """
+                excel_sku = ""
+                if "This is my" in prod['title']:
+                    if "Woman" in prod['title']:
+                        excel_sku = "FIMD"
+                    else:
+                        excel_sku = "MIMD"
+                if "I just entered" in prod['title']:
+                    if "Woman" in prod['title']:
+                        excel_sku = "FIJE"
+                    else:
+                        excel_sku = "MIJE"
+                if "Black Hoodie" in prod['title']:
+                    if "Man" in prod['title']:
+                        excel_sku = "MBHM"
+                    else:
+                        excel_sku = "FBHM"
+    
+                if "White Hoodie" in prod['title']:
+                    if "Man" in prod['title']:
+                        excel_sku = "MWHM"
+                    else:
+                        excel_sku = "FWHM"
+    
+                if "To all my" in prod['title']:
+                    if "Woman" in prod['title']:
+                        excel_sku = "FAMH"
+                    else:
+                        excel_sku = "MAMH"
+                if "Blue Hoodie" in prod['title']:
+                    if "Woman" in prod['title']:
+                        excel_sku = "FBHD"
+                    else:
+                        excel_sku = "MBHD"
+                if e_sku['title'] == 'XS':
+                    excel_sku += "1"
+                if e_sku['title'] == 'S':
+                    excel_sku += "2"
+                if e_sku['title'] == 'M':
+                    excel_sku += "3"
+                if e_sku['title'] == 'L':
+                    excel_sku += "4"
+                if e_sku['title'] == 'XL':
+                    excel_sku += "5"
+                """
+                excel_sku =""
+                iter_rw = data_xlsx.iterrows()
+                for row in iter_rw:
+                    if row[1].description == prod_title:
+                        excel_sku = row[1].master_sku
+                prod_obj = db.session.query(Products).join(ProductQuantity, Products.id == ProductQuantity.product_id) \
+                    .filter(Products.sku == str(e_sku['id'])).first()
+                prod_obj.master_sku = excel_sku
+                """
+                if prod_obj:
+                    prod_obj.dimensions = {
+                        "length": 6.87,
+                        "breadth": 22.5,
+                        "height": 27.5
+                    }
+                    prod_obj.weight = 0.5
+                else:
+                    prod_obj = Products(name=prod['title'] + " - " + e_sku['title'],
+                                        sku=str(e_sku['id']),
+                                        dimensions={
+                                            "length": 6.87,
+                                            "breadth": 22.5,
+                                            "height": 27.5
+                                        },
+                                        weight=0.5,
+                                        price=float(e_sku['price']),
+                                        client_prefix='MUWU',
+                                        active=True,
+                                        channel_id=1,
+                                        date_created=datetime.datetime.now()
+                                        )
+                prod_quan_obj = ProductQuantity(product=prod_obj,
+                                                total_quantity=quan,
+                                                approved_quantity=quan,
+                                                available_quantity=quan,
+                                                inline_quantity=0,
+                                                rto_quantity=0,
+                                                current_quantity=quan,
+                                                warehouse_prefix="HOLISOLBW",
+                                                status="APPROVED",
+                                                date_created=datetime.datetime.now()
+                                                )
+                """
+                db.session.commit()
+            except Exception as e:
+                print(str(e))
+
     return 0
     import requests, json
     prod_list = requests.get("https://640e8be5fbd672844636885fc3f02d6b:07d941b140370c8c975d8e83ee13e524@clean-canvass.myshopify.com/admin/api/2019-10/products.json?limit=250").json()
@@ -1920,105 +2223,6 @@ def ping_dev():
         awb_dict[order.shipments[0].awb] = customer_phone
 
     req = requests.get("https://track.delhivery.com/api/status/packages/json/?waybill=%s&token=1368a2c7e666aeb44068c2cd17d2d2c0e9223d37"%awb_str).json()
-    """import requests, json
-
-    shopify_url = "https://006fce674dc07b96416afb8d7c075545:0d36560ddaf82721bfbb93f909ab5f47@themuwu.myshopify.com/admin/api/2019-10/products.json?limit=250"
-    data = requests.get(shopify_url).json()
-
-    myfile = request.files['myfile']
-
-    data_xlsx = pd.read_excel(myfile)
-    from .models import Products, ProductQuantity
-
-    for prod in data['products']:
-        for e_sku in prod['variants']:
-            excel_sku = ""
-            if "This is my" in prod['title']:
-                if "Woman" in prod['title']:
-                    excel_sku = "FIMD"
-                else:
-                    excel_sku = "MIMD"
-            if "I just entered" in prod['title']:
-                if "Woman" in prod['title']:
-                    excel_sku = "FIJE"
-                else:
-                    excel_sku = "MIJE"
-            if "Black Hoodie" in prod['title']:
-                if "Man" in prod['title']:
-                    excel_sku = "MBHM"
-                else:
-                    excel_sku = "FBHM"
-
-            if "White Hoodie" in prod['title']:
-                if "Man" in prod['title']:
-                    excel_sku = "MWHM"
-                else:
-                    excel_sku = "FWHM"
-
-            if "To all my" in prod['title']:
-                if "Woman" in prod['title']:
-                    excel_sku = "FAMH"
-                else:
-                    excel_sku = "MAMH"
-            if "Blue Hoodie" in prod['title']:
-                if "Woman" in prod['title']:
-                    excel_sku = "FBHD"
-                else:
-                    excel_sku = "MBHD"
-            if e_sku['title'] == 'XS':
-                excel_sku += "1"
-            if e_sku['title'] == 'S':
-                excel_sku += "2"
-            if e_sku['title'] == 'M':
-                excel_sku += "3"
-            if e_sku['title'] == 'L':
-                excel_sku += "4"
-            if e_sku['title'] == 'XL':
-                excel_sku += "5"
-
-            quan = 0
-            for row in data_xlsx.iterrows():
-                if row[1].PID == excel_sku:
-                    quan = row[1].Physical_Qty
-            prod_obj = db.session.query(Products).join(ProductQuantity, Products.id == ProductQuantity.product_id) \
-                .filter(Products.sku == str(e_sku['id'])).first()
-            if prod_obj:
-                prod_obj.dimensions = {
-                    "length": 6.87,
-                    "breadth": 22.5,
-                    "height": 27.5
-                }
-                prod_obj.weight = 0.5
-            else:
-                prod_obj = Products(name=prod['title'] + " - " + e_sku['title'],
-                                    sku=str(e_sku['id']),
-                                    dimensions={
-                                        "length": 6.87,
-                                        "breadth": 22.5,
-                                        "height": 27.5
-                                    },
-                                    weight=0.5,
-                                    price=float(e_sku['price']),
-                                    client_prefix='MUWU',
-                                    active=True,
-                                    channel_id=1,
-                                    date_created=datetime.datetime.now()
-                                    )
-            prod_quan_obj = ProductQuantity(product=prod_obj,
-                                            total_quantity=quan,
-                                            approved_quantity=quan,
-                                            available_quantity=quan,
-                                            inline_quantity=0,
-                                            rto_quantity=0,
-                                            current_quantity=quan,
-                                            warehouse_prefix="HOLISOLBW",
-                                            status="APPROVED",
-                                            date_created=datetime.datetime.now()
-                                            )
-            db.session.add(prod_quan_obj)
-
-    db.session.commit()"""
-
 
     exotel_sms_data = {
       'From': 'LM-WAREIQ'

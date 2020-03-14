@@ -79,7 +79,8 @@ get_orders_to_ship_query = """select aa.id,aa.channel_order_id,aa.order_date,aa.
                                 cc.id,cc.first_name,cc.last_name,cc.address_one,cc.address_two,cc.city,cc.pincode,cc.state,cc.country,cc.phone,
                                 cc.latitude,cc.longitude,cc.country_code,dd.id,dd.payment_mode,dd.amount,dd.currency,dd.order_id,dd.shipping_charges,
                                 dd.subtotal,dd.order_id,ee.dimensions,ee.weights,ee.quan, ff.api_key, ff.api_password, 
-                                ff.shop_url, aa.order_id_channel_unique, ee.products_name, aa.pickup_data_id, xx.cod_verified, xx.id, ee.ship_courier
+                                ff.shop_url, aa.order_id_channel_unique, ee.products_name, aa.pickup_data_id, xx.cod_verified, 
+                                xx.id, ee.ship_courier, gg.location_id, ff.channel_id
                                 from orders aa
                                 left join shipping_address cc
                                 on aa.delivery_address_id=cc.id
@@ -99,6 +100,9 @@ get_orders_to_ship_query = """select aa.id,aa.channel_order_id,aa.order_date,aa.
                                 on aa.client_channel_id=ff.id
                                 left join shipments ll
                                 on ll.order_id=aa.id
+                                left join client_channel_locations gg
+                                on aa.client_channel_id=gg.client_channel_id
+                                and aa.pickup_data_id=gg.pickup_data_id
                                 left join cod_verification xx
                                 on aa.id=xx.order_id
                                 where aa.client_prefix=%s
@@ -110,6 +114,10 @@ get_orders_to_ship_query = """select aa.id,aa.channel_order_id,aa.order_date,aa.
 update_last_shipped_order_query = """UPDATE client_couriers SET last_shipped_order_id=%s, last_shipped_time=%s WHERE client_prefix=%s"""
 
 update_orders_status_query = """UPDATE orders SET status='READY TO SHIP' WHERE id in %s;"""
+
+delete_failed_shipments_query = """DELETE FROM 	order_status where shipment_id in 
+                                    (select id  from shipments where remark like 'Crashing while saving package%');
+                                    delete  from shipments where remark like 'Crashing while saving package%';"""
 
 #########################request pickups
 
@@ -245,6 +253,10 @@ insert_into_deduction_query = """INSERT INTO client_deductions (weight_charged,z
                                 cod_charged_gst,forward_charge,forward_charge_gst,rto_charge,
                                 rto_charge_gst,shipment_id,total_charge,total_charged_gst,date_created,date_updated) VALUES (%s,%s,%s,%s,%s,
                                 %s,%s,%s,%s,%s,%s,%s,%s,%s);"""
+
+insert_into_courier_cost_query = """INSERT INTO courier_charges (weight_charged,zone,deduction_time,cod_charge,
+                                forward_charge,rto_charge,shipment_id,total_charge,date_created,date_updated) VALUES 
+                                (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s);"""
 
 
 ######################### Ivr verification

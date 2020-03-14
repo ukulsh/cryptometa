@@ -513,7 +513,7 @@ def lambda_handler():
 
                 conn.commit()
 
-            elif courier[1] == "Xpressbees":
+            elif courier[1] in ("Xpressbees", "Xpressbees Surface"):
                 pickup_count = 0
                 cur.execute(get_status_update_orders_query % str(courier[0]))
                 all_orders = cur.fetchall()

@@ -12,6 +12,7 @@ class Products(db.Model):
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     name = db.Column(db.String, nullable=False)
     sku = db.Column(db.String, nullable=False, unique=True)
+    master_sku = db.Column(db.String, nullable=True)
     dimensions = db.Column(JSON)
     weight = db.Column(db.FLOAT, nullable=True)
     product_image = db.Column(db.String, nullable=True)
@@ -355,6 +356,8 @@ class CouriersCosts(db.Model):
     cod_min = db.Column(db.FLOAT, nullable=True)
     cod_ratio = db.Column(db.FLOAT, nullable=True)
     rto_ratio = db.Column(db.FLOAT, nullable=True)
+    first_step = db.Column(db.FLOAT, nullable=True)
+    next_step = db.Column(db.FLOAT, nullable=True)
     date_created = db.Column(db.DateTime, default=datetime.now)
     date_updated = db.Column(db.DateTime, onupdate=datetime.now)
 
@@ -411,20 +414,36 @@ class ClientDeductions(db.Model):
     date_updated = db.Column(db.DateTime, onupdate=datetime.now)
 
 
+class CourierCharges(db.Model):
+    __tablename__ = "courier_charges"
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    forward_charge = db.Column(db.FLOAT, nullable=True)
+    rto_charge = db.Column(db.FLOAT, nullable=True)
+    cod_charge = db.Column(db.FLOAT, nullable=True)
+    total_charge = db.Column(db.FLOAT, nullable=True)
+    shipment_id = db.Column(db.Integer, db.ForeignKey('shipments.id'))
+    shipment = db.relationship("Shipments", backref=db.backref("courier_charges", uselist=True))
+    weight_charged = db.Column(db.FLOAT, nullable=True)
+    zone = db.Column(db.String, nullable=True)
+    deduction_time = db.Column(db.DateTime, default=datetime.now)
+    date_created = db.Column(db.DateTime, default=datetime.now)
+    date_updated = db.Column(db.DateTime, onupdate=datetime.now)
+
+
 class ClientMapping(db.Model):
     __tablename__ = "client_mapping"
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     client_prefix = db.Column(db.String, nullable=False)
     client_name = db.Column(db.String, nullable=False)
+    client_logo = db.Column(db.String, nullable=True)
+    theme_color = db.Column(db.String, nullable=True)
 
 
-
-
-
-
-
-
-
-
-
-
+class ClientChannelLocations(db.Model):
+    __tablename__ = "client_channel_locations"
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    pickup_data_id = db.Column(db.Integer, db.ForeignKey('client_pickups.id'))
+    pickup_data = db.relationship("ClientPickups", backref=db.backref("client_channel_locations"))
+    client_channel_id = db.Column(db.Integer, db.ForeignKey('client_channel.id'))
+    client_channel = db.relationship("ClientChannel", backref=db.backref("client_channel_locations"))
+    location_id = db.Column(db.String, nullable=False)

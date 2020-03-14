@@ -245,7 +245,7 @@ def lambda_handler():
                     cur.execute(insert_payments_data_query, payments_tuple)
 
                     for prod in order['line_items']:
-                        product_sku = str(prod['sku'])
+                        product_sku = str(prod['product_id'])
                         prod_tuple = (product_sku, channel[1])
                         cur.execute(select_products_query, prod_tuple)
                         try:
@@ -257,7 +257,7 @@ def lambda_handler():
                             else:
                                 dimensions = {"length": 2.5, "breadth": 22.5, "height": 27.5}
                                 weight = 0.20
-                            product_insert_tuple = (prod['name'], str(prod['sku']), True, channel[2],
+                            product_insert_tuple = (prod['name'], str(prod['product_id']), True, channel[2],
                                                     channel[1], datetime.now(), json.dumps(dimensions),
                                                     float(prod['price']), weight)
                             cur.execute(insert_product_query, product_insert_tuple)
@@ -294,8 +294,8 @@ def lambda_handler():
 
 
 def assign_pickup_points_for_unassigned(cur, cur_2):
-    time_after = datetime.utcnow() + timedelta(hours=4.5)
-    cur.execute(get_orders_to_assign_pickups, (time_after,))
+    time_after = datetime.utcnow() - timedelta(hours=6.5)
+    cur.execute(get_orders_to_assign_pickups)
     all_orders = cur.fetchall()
     for order in all_orders:
         try:

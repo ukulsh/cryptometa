@@ -19,6 +19,8 @@ conn_2 = psycopg2.connect(host="wareiq-core-prod2.cvqssxsqruyc.us-east-1.rds.ama
 def lambda_handler():
     cur = conn.cursor()
     cur_2 = conn_2.cursor()
+    cur.execute(delete_failed_shipments_query)
+    conn.commit()
     cur.execute(fetch_client_couriers_query)
     exotel_idx = 0
     exotel_sms_data = {
@@ -177,7 +179,7 @@ def lambda_handler():
                 for prev_order in all_orders:
                     orders_dict[prev_order[1]] = (prev_order[0], prev_order[33], prev_order[34], prev_order[35],
                                                   prev_order[36], prev_order[37], prev_order[38], prev_order[39],
-                                                  prev_order[5], prev_order[9])
+                                                  prev_order[5], prev_order[9], prev_order[45], prev_order[46])
 
                 order_status_change_ids = list()
                 insert_shipments_data_tuple = list()
@@ -212,31 +214,11 @@ def lambda_handler():
                                                 "You can track your order using this AWB number." % (client_name[0], str(package['waybill']))
                         exotel_idx += 1
 
-                        if orders_dict[package['refnum']][9] == "KYORIGIN":
+                        if orders_dict[package['refnum']][10] and orders_dict[package['refnum']][11]==1: #shopify
                             try:
-                                create_fulfillment_url = "https://%s:%s@%s/admin/api/2019-10/orders/%s/fulfillments.json" % (
-                                    orders_dict[package['refnum']][4], orders_dict[package['refnum']][5],
-                                    orders_dict[package['refnum']][6], orders_dict[package['refnum']][7])
-                                tracking_link = "http://webapp.wareiq.com/tracking/%s" % str(package['waybill'])
-                                ful_header = {'Content-Type': 'application/json'}
-                                fulfil_data = {
-                                    "fulfillment": {
-                                        "tracking_number": str(package['waybill']),
-                                        "tracking_urls": [
-                                            tracking_link
-                                        ],
-                                        "tracking_company": "WareIQ",
-                                        "location_id": 16721477681,
-                                        "notify_customer": False
-                                    }
-                                }
-                                try:
-                                    req_ful = requests.post(create_fulfillment_url, data=json.dumps(fulfil_data),
-                                                            headers=ful_header)
-                                    fulfillment_id = str(req_ful.json()['fulfillment']['id'])
-                                except Exception as e:
-                                    logger.error("Couldn't update shopify for: " + str(package['refnum'])
-                                                 + "\nError: " + str(e.args))
+                                order_ls = [orders_dict[package['refnum']][4],orders_dict[package['refnum']][5],
+                                            orders_dict[package['refnum']][6],orders_dict[package['refnum']][7]]
+                                fulfillment_id, tracking_link = shopify_fulfillment(order_ls, str(package['waybill']), orders_dict[package['refnum']][10])
                             except Exception as e:
                                 logger.error("Couldn't update shopify for: " + str(package['refnum'])
                                              + "\nError: " + str(e.args))
@@ -484,7 +466,7 @@ def lambda_handler():
                 pickup_point = cur.fetchone()  # change this as we get to dynamic pickups
 
                 for order in all_new_orders:
-                    if order[17].lower() not in ("bengaluru", "bangalore", "banglore") or courier[1] != "MIRAKKI":
+                    if order[17].lower() not in ("bengaluru", "bangalore", "banglore") and courier[1] == "MIRAKKI":
                         continue
                     if order[26].lower()=='cod' and not order[42] and order[43] and order[9] not in ('KYORIGIN','LMDOT'):
                         continue
@@ -612,10 +594,6 @@ def lambda_handler():
                         if not return_data_raw['errors']:
                             order_status_change_ids.append(order[0])
                             return_data = return_data_raw['data']
-                            data_tuple = tuple([(
-                            return_data['awb_number'], return_data_raw['message'], order[0], pickup_point[1],
-                            courier[9], json.dumps(dimensions), volumetric_weight, weight, "", pickup_point[2],
-                            "", None, None)])
                             cur_2.execute("select client_name from clients where client_prefix='%s'" % order[9])
                             client_name = cur_2.fetchone()
                             customer_phone = order[5].replace(" ", "")
@@ -642,33 +620,20 @@ def lambda_handler():
                                                     client_name[0], str(return_data_raw['data']['awb_number']))
                             exotel_idx += 1
 
-                            try:
-                                create_fulfillment_url = "https://%s:%s@%s/admin/api/2019-10/orders/%s/fulfillments.json" % (
-                                    order[36], order[37],
-                                    order[38], order[39])
-                                tracking_link = "http://webapp.wareiq.com/tracking/%s" % str(return_data_raw['data']['awb_number'])
-                                ful_header = {'Content-Type': 'application/json'}
-                                fulfil_data = {
-                                    "fulfillment": {
-                                        "tracking_number": str(return_data_raw['data']['awb_number']),
-                                        "tracking_urls": [
-                                            tracking_link
-                                        ],
-                                        "tracking_company": "WareIQ",
-                                        "location_id": 16721477681,
-                                        "notify_customer": False
-                                    }
-                                }
+                            if order[45] and order[46] == 1:  # shopify
                                 try:
-                                    req_ful = requests.post(create_fulfillment_url, data=json.dumps(fulfil_data),
-                                                            headers=ful_header)
-                                    fulfillment_id = str(req_ful.json()['fulfillment']['id'])
+                                    order_ls = [order[36], order[37], order[38], order[39]]
+                                    fulfillment_id, tracking_link = shopify_fulfillment(order_ls,
+                                                                         str(return_data_raw['data']['awb_number']),
+                                                                         order[45])
                                 except Exception as e:
                                     logger.error("Couldn't update shopify for: " + str(order[1])
                                                  + "\nError: " + str(e.args))
-                            except Exception as e:
-                                logger.error("Couldn't update shopify for: " + str(order[1])
-                                             + "\nError: " + str(e.args))
+
+                            data_tuple = tuple([(
+                                return_data['awb_number'], return_data_raw['message'], order[0], pickup_point[1],
+                                courier[9], json.dumps(dimensions), volumetric_weight, weight, "", pickup_point[2],
+                                "", fulfillment_id, tracking_link)])
 
                         else:
                             data_tuple = tuple([(
@@ -870,10 +835,19 @@ def lambda_handler():
                                                                                                         VALUES  %s RETURNING id;"""
                         if return_data_raw['AddManifestDetails'][0]['ReturnMessage']=='successful':
                             order_status_change_ids.append(order[0])
+                            if order[45] and order[46] == 1:  # shopify
+                                try:
+                                    order_ls = [order[36], order[37], order[38], order[39]]
+                                    fulfillment_id, tracking_link = shopify_fulfillment(order_ls,
+                                                                         str(return_data_raw['AddManifestDetails'][0]['AWBNo']),
+                                                                         order[45])
+                                except Exception as e:
+                                    logger.error("Couldn't update shopify for: " + str(order[1])
+                                                 + "\nError: " + str(e.args))
                             data_tuple = tuple([(
                             return_data_raw['AddManifestDetails'][0]['AWBNo'], return_data_raw['AddManifestDetails'][0]['ReturnMessage'],
                             order[0], pickup_point[1], courier[9], json.dumps(dimensions), volumetric_weight, weight,
-                            "", pickup_point[2], "", None, None)])
+                            "", pickup_point[2], "", fulfillment_id, tracking_link)])
                             cur_2.execute("select client_name from clients where client_prefix='%s'" % order[9])
                             client_name = cur_2.fetchone()
                             customer_phone = order[5].replace(" ", "")
@@ -945,3 +919,26 @@ def lambda_handler():
             logger.error("messages not sent." + "   Error: " + str(e.args[0]))
 
     cur.close()
+
+
+def shopify_fulfillment(order, awb_no, location_id):
+    create_fulfillment_url = "https://%s:%s@%s/admin/api/2019-10/orders/%s/fulfillments.json" % (
+        order[0], order[1],
+        order[2], order[3])
+    tracking_link = "http://webapp.wareiq.com/tracking/%s" % str(awb_no)
+    ful_header = {'Content-Type': 'application/json'}
+    fulfil_data = {
+        "fulfillment": {
+            "tracking_number": str(awb_no),
+            "tracking_urls": [
+                tracking_link
+            ],
+            "tracking_company": "WareIQ",
+            "location_id": int(location_id),
+            "notify_customer": False
+        }
+    }
+    req_ful = requests.post(create_fulfillment_url, data=json.dumps(fulfil_data),
+                                headers=ful_header)
+    fulfillment_id = str(req_ful.json()['fulfillment']['id'])
+    return fulfillment_id, tracking_link

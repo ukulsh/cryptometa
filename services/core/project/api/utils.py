@@ -231,6 +231,9 @@ def fill_shiplabel_data(c, order, offset):
             products_string += prod.product.name + " (" + str(prod.quantity) + ") + "
         products_string += "Shipping"
         products_string = split_string(products_string, 35)
+        if len(products_string) > 7:
+            products_string = products_string[:7]
+            products_string[6] += "..."
 
         y_axis = 1.42
         for prod in products_string:

@@ -16,6 +16,7 @@ conn = psycopg2.connect(host=host, database=database, user=user, password=passwo
 conn = psycopg2.connect(host="wareiq-core-prod2.cvqssxsqruyc.us-east-1.rds.amazonaws.com", database="core_prod", user="postgres", password="aSderRFgd23")
 conn_2 = psycopg2.connect(host="wareiq-core-prod.cvqssxsqruyc.us-east-1.rds.amazonaws.com", database="core_prod", user="postgres", password="aSderRFgd23")
 
+
 def lambda_handler():
     cur = conn.cursor()
     cur_2 =conn_2.cursor()
@@ -53,6 +54,11 @@ def lambda_handler():
                 logger.info("deliver zone not found: " + str(order[0]))
                 continue
             delivery_zone = delivery_zone[0]
+            if not delivery_zone:
+                logger.info("deliver zone not found: " + str(order[0]))
+                continue
+
+            calculate_courier_cost(cur, delivery_zone, order)
 
             if delivery_zone in ('D1', 'D2'):
                 delivery_zone='D'
@@ -159,11 +165,112 @@ def lambda_handler():
     cur_2.close()
 
 
+def calculate_courier_cost(cur, delivery_zone, order):
+    try:
+        charged_weight = order[4] if order[4] else 0
+        volumetric_weight = (order[14]['length'] * order[14]['breadth'] * order[14]['height']) / 5000
+        if volumetric_weight > charged_weight:
+            charged_weight = volumetric_weight
+
+        cost_select_tuple = (order[2], )
+        cur.execute(
+            "SELECT __ZONE__, __ZONE___add, cod_min, cod_ratio, rto_ratio, first_step, next_step from courier_costs WHERE courier_id=%s;".replace(
+                '__ZONE__', zone_column_mapping_courier[delivery_zone]), cost_select_tuple)
+        charge_rate_values = cur.fetchone()
+        if not charge_rate_values:
+            logger.info("courier cost not found: " + str(order[0]))
+            return None
+
+        if order[2] != 8:
+            first_step_cost = charge_rate_values[0]
+            next_step_cost = 0
+            if (charged_weight - charge_rate_values[5])>0:
+                next_step_cost = ceil((charged_weight - charge_rate_values[5])/charge_rate_values[6])*charge_rate_values[1]
+
+            forward_charge = first_step_cost + next_step_cost
+
+            rto_charge = 0
+            cod_charge = 0
+            if order[13] == 'RTO':
+                if order[2] not in (11,12):
+                    rto_charge = forward_charge * charge_rate_values[4]
+                else:
+                    rto_multiple = ceil(charged_weight)
+                    if order[2] == 11:
+                        rto_charge = rto_multiple*rto_heavy_2[delivery_zone]
+                    else:
+                        rto_charge = rto_multiple*rto_heavy_1[delivery_zone]
+
+            else:
+                if order[11] and order[11].lower() == 'cod':
+                    if order[12]:
+                        cod_charge = order[12] * (charge_rate_values[3] / 100)
+                        if charge_rate_values[2] > cod_charge:
+                            cod_charge = charge_rate_values[2]
+                    else:
+                        cod_charge = charge_rate_values[2]
+        else:
+            first_step_cost = charge_rate_values[0]
+            next_step_cost = 0
+            if (charged_weight - charge_rate_values[5]) > 3:
+                second_step_cost = 3*bulk_second_step[delivery_zone]
+                next_step_cost = ceil((charged_weight - 5) / charge_rate_values[6]) * \
+                                 charge_rate_values[1]
+            else:
+                second_step_cost = ceil((charged_weight - charge_rate_values[5]))*bulk_second_step[delivery_zone]
+
+            forward_charge = first_step_cost + second_step_cost+ next_step_cost
+
+            rto_charge = 0
+            cod_charge = 0
+            if order[13] == 'RTO':
+                rto_multiple = ceil(charged_weight)
+                rto_charge = rto_multiple * rto_bulk[delivery_zone]
+            else:
+                if order[11] and order[11].lower() == 'cod':
+                    if order[12]:
+                        cod_charge = order[12] * (charge_rate_values[3] / 100)
+                        if charge_rate_values[2] > cod_charge:
+                            cod_charge = charge_rate_values[2]
+                    else:
+                        cod_charge = charge_rate_values[2]
+
+        total_charge = forward_charge+rto_charge+cod_charge
+
+        if order[9]:
+            deduction_time=order[9]
+        elif order[10]:
+            deduction_time=order[10]
+        else:
+            deduction_time=datetime.now()
+
+        insert_rates_tuple = (charged_weight, delivery_zone, deduction_time, cod_charge, forward_charge, rto_charge, order[0],
+                              total_charge, datetime.now(), datetime.now())
+
+        cur.execute(insert_into_courier_cost_query, insert_rates_tuple)
+        conn.commit()
+
+    except Exception as e:
+        logger.error("couldn't calculate courier cost order: " + str(order[0]) + "\nError: " + str(e))
+
+
 zone_column_mapping = {
                        'A': 'zone_a',
                        'B': 'zone_b',
                        'C': 'zone_c',
                        'D': 'zone_d',
+                       'E': 'zone_e',
+                       }
+
+zone_column_mapping_courier = {
+                       'A': 'zone_a',
+                       'B': 'zone_b',
+                       'C1': 'zone_c1',
+                       'C': 'zone_c1',
+                       'C2': 'zone_c2',
+                       'D1': 'zone_d1',
+                       'D': 'zone_d1',
+                       'D2': 'zone_d2',
                        'E': 'zone_e',
                        }
 
@@ -174,3 +281,52 @@ nasher_zonal_mapping = {
                        'D': [144, 17],
                        'E': [149, 17],
                        }
+
+rto_heavy_1 = {
+               'A': 11,
+               'B': 12,
+               'C1': 15,
+               'C': 15,
+               'C2': 15,
+               'D1': 18,
+               'D': 18,
+               'D2': 18,
+               'E': 21,
+               }
+
+rto_heavy_2 = {
+               'A': 10,
+               'B': 12,
+               'C1': 17,
+               'C': 17,
+               'C2': 17,
+               'D1': 18,
+               'D': 18,
+               'D2': 18,
+               'E': 22,
+               }
+
+rto_bulk = {
+               'A': 20,
+               'B': 23,
+               'C1': 24,
+               'C': 24,
+               'C2': 26,
+               'D1': 28,
+               'D': 28,
+               'D2': 30,
+               'E': 34,
+               }
+
+bulk_second_step = {
+               'A': 26,
+               'B': 28,
+               'C1': 30,
+               'C': 30,
+               'C2': 32,
+               'D1': 36,
+               'D': 36,
+               'D2': 38,
+               'E': 52,
+               }
+

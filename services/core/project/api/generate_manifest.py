@@ -1,5 +1,5 @@
 
-import boto3, os
+import boto3, os, string, random
 from datetime import datetime, timedelta
 from reportlab.lib.units import inch, mm
 from reportlab.lib.pagesizes import A4
@@ -13,7 +13,7 @@ session = boto3.Session(
 
 
 def fill_manifest_data(orders, courier, store, warehouse):
-    file_name = "/tmp/MANIFEST_" + warehouse+"_"+str(datetime.now().strftime("%d_%b_%Y_%H_%M_%S"))+".pdf"
+    file_name = "/tmp/MANIFEST_" + warehouse+"_"+str(datetime.now().strftime("%d_%b_%Y_"))+''.join(random.choices(string.ascii_uppercase, k=8))+".pdf"
     c = canvas.Canvas(file_name, pagesize=A4)
     pickup_date = datetime.now()
     pickup_date = pickup_date.strftime('%d-%m-%Y')

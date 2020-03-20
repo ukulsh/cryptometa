@@ -437,6 +437,8 @@ class ClientMapping(db.Model):
     client_name = db.Column(db.String, nullable=False)
     client_logo = db.Column(db.String, nullable=True)
     theme_color = db.Column(db.String, nullable=True)
+    api_token = db.Column(db.String, nullable=True)
+    verify_cod = db.Column(db.BOOLEAN, nullable=True, default=True)
 
 
 class ClientChannelLocations(db.Model):

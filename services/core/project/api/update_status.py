@@ -15,6 +15,7 @@ conn = psycopg2.connect(host=host, database=database, user=user, password=passwo
 conn = psycopg2.connect(host="wareiq-core-prod2.cvqssxsqruyc.us-east-1.rds.amazonaws.com", database="core_prod", user="postgres", password="aSderRFgd23")
 conn_2 = psycopg2.connect(host="wareiq-core-prod2.cvqssxsqruyc.us-east-1.rds.amazonaws.com", database="users_prod", user="postgres", password="aSderRFgd23")
 
+
 def lambda_handler():
     cur = conn.cursor()
     cur_2 =conn_2.cursor()
@@ -79,14 +80,15 @@ def lambda_handler():
                                 elif each_scan['ScanDetail']['Scan'] == "Dispatched" \
                                         and each_scan['ScanDetail']['Instructions'] == "Out for delivery":
                                     to_record_status = "Out for delivery"
-                                elif each_scan['ScanDetail']['Scan'] == "Delivered" \
-                                     and each_scan['ScanDetail']['Instructions'] == "Delivered to consignee":
+                                elif each_scan['ScanDetail']['Scan'] == "Delivered":
                                     to_record_status = "Delivered"
                                 elif each_scan['ScanDetail']['Scan'] == "Pending" \
                                      and each_scan['ScanDetail']['Instructions'] == "Customer Refused to accept/Order Cancelled":
                                     to_record_status = "Cancelled"
                                 elif each_scan['ScanDetail']['ScanType'] == "RT":
                                     to_record_status = "Returned"
+                                elif each_scan['ScanDetail']['Scan'] == "RTO":
+                                    to_record_status = "RTO"
 
                                 if not to_record_status:
                                     continue
@@ -233,7 +235,7 @@ def lambda_handler():
                             if new_status=="RTO" and ret_order['Shipment']['Status']['StatusType']=="DL":
                                 cur.execute(update_prod_quantity_query_rto%str(orders_dict[current_awb][0]))
 
-                            if new_status=='PENDING' and status_code in ('EOD-111','EOD-6','FMEOD-118','EOD-69'):
+                            if new_status=='PENDING' and status_code in ('EOD-111','EOD-6','FMEOD-118','EOD-69','EOD-11'):
                                 try:  # NDR check text
                                     sms_to_key, sms_body_key, customer_phone, sms_body_key_data = verification_text(
                                         orders_dict[current_awb], exotel_idx, cur, cur_2, ndr=True)
@@ -327,8 +329,8 @@ def lambda_handler():
                                     to_record_status = "Delivered"
                                 elif each_scan['status'] == "Cancelled":
                                     to_record_status = "Cancelled"
-                                elif each_scan['status'] == "Returned To Client":
-                                    to_record_status = "Returned"
+                                elif each_scan['status_id'] == "rts_d":
+                                    to_record_status = "RTO"
 
                                 if not to_record_status:
                                     continue
@@ -476,7 +478,7 @@ def lambda_handler():
                             if ret_order['status']=="rts_d":
                                 cur.execute(update_prod_quantity_query_rto%str(orders_dict[current_awb][0]))
 
-                            if ret_order['status'] == 'cancelled_by_customer':
+                            if ret_order['status'] in ('cancelled_by_customer', 'nc'):
                                 try:  # NDR check text
                                     sms_to_key, sms_body_key, customer_phone, sms_body_key_data = verification_text(
                                         orders_dict[current_awb], exotel_idx, cur, cur_2, ndr=True)
@@ -578,7 +580,7 @@ def lambda_handler():
                                 elif each_scan['StatusCode'] == "RTO":
                                     to_record_status = "Returned"
                                 elif each_scan['StatusCode'] == "RTD":
-                                    to_record_status = "RTO DELIVERED"
+                                    to_record_status = "RTO"
 
                                 if not to_record_status:
                                     continue
@@ -699,7 +701,8 @@ def lambda_handler():
 
                             if ret_order['ShipmentSummary'][0]['StatusCode'] == 'UD' \
                                     and ret_order['ShipmentSummary'][0]['Status'] in \
-                                    ("Consignee Refused To Accept", "Consignee Refused to Pay COD Amount"):
+                                    ("Customer Refused To Accept", "Customer Refused to Pay COD Amount",
+                                     "Add Incomplete/ Incorrect & Mobile Not Reachable", "Customer Not Available & Mobile Not Reachable"):
                                 try:  # NDR check text
                                     sms_to_key, sms_body_key, customer_phone, sms_body_key_data = verification_text(
                                         orders_dict[current_awb], exotel_idx, cur, cur_2, ndr=True)
@@ -747,7 +750,7 @@ def verification_text(current_order, exotel_idx, cur, cur_2, ndr=None):
         del_confirmation_link = "http://track.wareiq.com/core/v1/passthru/delivery?CustomField=%s&digits=1&verified_via=text" % str(
             current_order[0])
     else:
-        del_confirmation_link = "http://track.wareiq.com/core/v1/passthru/ndr?CustomField=%s&digits=1&verified_via=text" % str(
+        del_confirmation_link = "http://track.wareiq.com/core/v1/passthru/ndr?CustomField=%s&digits=0&verified_via=text" % str(
             current_order[0])
     short_url = requests.get(
         "https://cutt.ly/api/api.php?key=f445d0bb52699d2f870e1832a1f77ef3f9078&short=%s" % del_confirmation_link)

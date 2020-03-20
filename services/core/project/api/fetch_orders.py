@@ -224,10 +224,19 @@ def lambda_handler():
                     customer_phone = ''.join(e for e in str(customer_phone) if e.isalnum())
                     customer_phone = "0" + customer_phone[-10:]
 
+                    if order['status'] == 'completed':
+                        insert_status = "NEW"
+                    elif order['status'] == 'cancelled':
+                        insert_status = "CANCELED"
+                    elif order['status'] == 'pending':
+                        insert_status = "PENDING PAYMENT"
+                    else:
+                        insert_status = "NEW - " + order['status'].upper()
+
                     orders_tuple = (
                     str(order['number']), order['date_created'], customer_name, order['billing']['email'],
                     customer_phone if customer_phone else "", shipping_address_id,
-                    datetime.now(), "NEW", channel[1], channel[0], str(order['id']), pickup_data_id)
+                    datetime.now(), insert_status, channel[1], channel[0], str(order['id']), pickup_data_id)
 
                     cur.execute(insert_orders_data_query, orders_tuple)
                     order_id = cur.fetchone()[0]
@@ -288,6 +297,35 @@ def lambda_handler():
 
             conn.commit()
 
+            cur.execute("SELECT order_id_channel_unique, id from orders where client_channel_id=%s and status='PENDING PAYMENT';", (channel[0],))
+            update_orders = cur.fetchall()
+            auth_session = OAuth1Session(channel[3],
+                                         client_secret=channel[4])
+            url = '%s/wp-json/wc/v3/orders/' % (channel[5])
+
+            for order in update_orders:
+                url += str(order[0])
+                r = auth_session.get(url)
+                data = None
+                try:
+                    data = r.json()
+                except Exception as e:
+                    logger.error("Client order update status failed for: " + str(channel[0]) + "\nError: " + str(e.args[0]))
+
+                if data:
+                    if data['status'] == 'pending':
+                        continue
+                    elif data['status'] == 'completed':
+                        new_status = 'NEW'
+                    elif data['status'] == 'cancelled':
+                        new_status = 'CANCELED'
+                    else:
+                        new_status = 'NEW - '+data['status'].upper()
+
+                cur.execute("UPDATE orders SET status=%s WHERE id=%s", (new_status, order[1]))
+
+            conn.commit()
+
     assign_pickup_points_for_unassigned(cur, cur_2)
 
     cur.close()
@@ -295,7 +333,7 @@ def lambda_handler():
 
 def assign_pickup_points_for_unassigned(cur, cur_2):
     time_after = datetime.utcnow() - timedelta(hours=6.5)
-    cur.execute(get_orders_to_assign_pickups)
+    cur.execute(get_orders_to_assign_pickups, (time_after,))
     all_orders = cur.fetchall()
     for order in all_orders:
         try:

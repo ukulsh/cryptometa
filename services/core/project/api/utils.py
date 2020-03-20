@@ -10,7 +10,6 @@ from reportlab.graphics.barcode import code39, code128, code93
 from reportlab.graphics.shapes import Drawing
 from flask import request, jsonify, current_app
 
-
 from reportlab.graphics.barcode import code39, code128, code93
 from reportlab.graphics.barcode import eanbc, qr, usps
 from reportlab.graphics.shapes import Drawing
@@ -18,6 +17,8 @@ from reportlab.lib.pagesizes import letter
 from reportlab.lib.units import mm
 from reportlab.pdfgen import canvas
 from reportlab.graphics import renderPDF
+
+from .models import ClientMapping
 
 
 def authenticate(f):
@@ -56,6 +57,15 @@ def authenticate_restful(f):
             code = 403
             return response_object, code
         auth_token = auth_header.split(" ")[1]
+        if auth_header.split(" ")[0]=='Token':
+            client = ClientMapping.query.filter_by(api_token=auth_token).first()
+            if not client:
+                response_object['message'] = 'Provide a valid auth token.'
+                code = 403
+                return response_object, code
+            response = {
+                "data": {"user_group": "client", "client_prefix": client.client_prefix}}
+            return f(response, *args, **kwargs)
         response = ensure_authenticated(auth_token)
         if not response:
             response_object['message'] = 'Invalid token.'
@@ -95,7 +105,7 @@ def get_products_sort_func(Products, ProductsQuantity, sort, sort_by):
         x = ProductsQuantity.available_quantity
 
     if sort.lower() == 'desc':
-        x = x.desc
+        x = x.desc().nullslast
     else:
         x = x.asc
     return x

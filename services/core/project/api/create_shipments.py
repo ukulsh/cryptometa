@@ -59,33 +59,34 @@ def lambda_handler():
                 for order in all_new_orders:
                     if order[17].lower() in ("bengaluru", "bangalore", "banglore") and courier[1] == "MIRAKKI":
                         continue
-                    if order[26].lower()=='cod' and not order[42] and order[43] and order[9] not in ('KYORIGIN','LMDOT'):
-                        continue #change this to continue later
-                    if order[26].lower()=='cod' and not order[43]:
-                        cod_confirmation_link = "http://track.wareiq.com/core/v1/passthru/cod?CustomField=%s&digits=1&verified_via=text"%str(order[0])
-                        short_url = requests.get(
-                            "https://cutt.ly/api/api.php?key=f445d0bb52699d2f870e1832a1f77ef3f9078&short=%s" % cod_confirmation_link)
-                        short_url_track = short_url.json()['url']['shortLink']
-                        insert_cod_ver_tuple = (order[0], short_url_track, datetime.now())
-                        cur.execute("INSERT INTO cod_verification (order_id, verification_link, date_created) VALUES (%s,%s,%s);", insert_cod_ver_tuple)
-                        cur_2.execute("select client_name from clients where client_prefix='%s'" % order[9])
-                        client_name = cur_2.fetchone()
-                        customer_phone = order[5].replace(" ", "")
-                        customer_phone = "0" + customer_phone[-10:]
+                    if order[47]:
+                        if order[26].lower()=='cod' and not order[42] and order[43]:
+                            continue #change this to continue later
+                        if order[26].lower()=='cod' and not order[43]:
+                            cod_confirmation_link = "http://track.wareiq.com/core/v1/passthru/cod?CustomField=%s&digits=1&verified_via=text"%str(order[0])
+                            short_url = requests.get(
+                                "https://cutt.ly/api/api.php?key=f445d0bb52699d2f870e1832a1f77ef3f9078&short=%s" % cod_confirmation_link)
+                            short_url_track = short_url.json()['url']['shortLink']
+                            insert_cod_ver_tuple = (order[0], short_url_track, datetime.now())
+                            cur.execute("INSERT INTO cod_verification (order_id, verification_link, date_created) VALUES (%s,%s,%s);", insert_cod_ver_tuple)
+                            cur_2.execute("select client_name from clients where client_prefix='%s'" % order[9])
+                            client_name = cur_2.fetchone()
+                            customer_phone = order[5].replace(" ", "")
+                            customer_phone = "0" + customer_phone[-10:]
 
-                        sms_to_key = "Messages[%s][To]" % str(exotel_idx)
-                        sms_body_key = "Messages[%s][Body]" % str(exotel_idx)
+                            sms_to_key = "Messages[%s][To]" % str(exotel_idx)
+                            sms_body_key = "Messages[%s][Body]" % str(exotel_idx)
 
-                        exotel_sms_data[sms_to_key] = customer_phone
+                            exotel_sms_data[sms_to_key] = customer_phone
 
-                        exotel_sms_data[
-                            sms_body_key] = "Dear Customer, You recently placed an order from %s with order id %s. " \
-                                            "Please click on the link (%s) to verify. " \
-                                            "Your order will be shipped soon after confirmation." % (
-                                                client_name[0], str(order[1]), short_url_track)
+                            exotel_sms_data[
+                                sms_body_key] = "Dear Customer, You recently placed an order from %s with order id %s. " \
+                                                "Please click on the link (%s) to verify. " \
+                                                "Your order will be shipped soon after confirmation." % (
+                                                    client_name[0], str(order[1]), short_url_track)
 
-                        exotel_idx += 1
-                        continue
+                            exotel_idx += 1
+                            continue
                     if order[0]>last_shipped_order_id:
                         last_shipped_order_id = order[0]
                     try:
@@ -468,35 +469,36 @@ def lambda_handler():
                 for order in all_new_orders:
                     if order[17].lower() not in ("bengaluru", "bangalore", "banglore") and courier[1] == "MIRAKKI":
                         continue
-                    if order[26].lower()=='cod' and not order[42] and order[43] and order[9] not in ('KYORIGIN','LMDOT'):
-                        continue
-                    if order[26].lower()=='cod' and not order[43]:
-                        cod_confirmation_link = "http://track.wareiq.com/core/v1/passthru/cod?CustomField=%s&digits=1&verified_via=text"%str(order[0])
-                        short_url = requests.get(
-                            "https://cutt.ly/api/api.php?key=f445d0bb52699d2f870e1832a1f77ef3f9078&short=%s" % cod_confirmation_link)
-                        short_url_track = short_url.json()['url']['shortLink']
-                        insert_cod_ver_tuple = (order[0], short_url_track, datetime.now())
-                        cur.execute(
-                            "INSERT INTO cod_verification (order_id, verification_link, date_created) VALUES (%s,%s,%s);",
-                            insert_cod_ver_tuple)
-                        cur_2.execute("select client_name from clients where client_prefix='%s'" % order[9])
-                        client_name = cur_2.fetchone()
-                        customer_phone = order[5].replace(" ", "")
-                        customer_phone = "0" + customer_phone[-10:]
+                    if order[47]:
+                        if order[26].lower()=='cod' and not order[42] and order[43]:
+                            continue
+                        if order[26].lower()=='cod' and not order[43]:
+                            cod_confirmation_link = "http://track.wareiq.com/core/v1/passthru/cod?CustomField=%s&digits=1&verified_via=text"%str(order[0])
+                            short_url = requests.get(
+                                "https://cutt.ly/api/api.php?key=f445d0bb52699d2f870e1832a1f77ef3f9078&short=%s" % cod_confirmation_link)
+                            short_url_track = short_url.json()['url']['shortLink']
+                            insert_cod_ver_tuple = (order[0], short_url_track, datetime.now())
+                            cur.execute(
+                                "INSERT INTO cod_verification (order_id, verification_link, date_created) VALUES (%s,%s,%s);",
+                                insert_cod_ver_tuple)
+                            cur_2.execute("select client_name from clients where client_prefix='%s'" % order[9])
+                            client_name = cur_2.fetchone()
+                            customer_phone = order[5].replace(" ", "")
+                            customer_phone = "0" + customer_phone[-10:]
 
-                        sms_to_key = "Messages[%s][To]" % str(exotel_idx)
-                        sms_body_key = "Messages[%s][Body]" % str(exotel_idx)
+                            sms_to_key = "Messages[%s][To]" % str(exotel_idx)
+                            sms_body_key = "Messages[%s][Body]" % str(exotel_idx)
 
-                        exotel_sms_data[sms_to_key] = customer_phone
+                            exotel_sms_data[sms_to_key] = customer_phone
 
-                        exotel_sms_data[
-                            sms_body_key] = "Dear Customer, You recently placed an order from %s with order id %s. " \
-                                            "Please click on the link (%s) to verify. " \
-                                            "Your order will be shipped soon after confirmation." % (
-                                                client_name[0], str(order[1]), short_url_track)
+                            exotel_sms_data[
+                                sms_body_key] = "Dear Customer, You recently placed an order from %s with order id %s. " \
+                                                "Please click on the link (%s) to verify. " \
+                                                "Your order will be shipped soon after confirmation." % (
+                                                    client_name[0], str(order[1]), short_url_track)
 
-                        exotel_idx += 1
-                        continue
+                            exotel_idx += 1
+                            continue
 
                     if order[0] > last_shipped_order_id:
                         last_shipped_order_id = order[0]
@@ -699,35 +701,36 @@ def lambda_handler():
                 pickup_point = cur.fetchone()  # change this as we get to dynamic pickups
 
                 for order in all_new_orders:
-                    if order[26].lower()=='cod' and not order[42] and order[43] and order[9] not in ('KYORIGIN','LMDOT'):
-                        continue
-                    if order[26].lower()=='cod' and not order[43]:
-                        cod_confirmation_link = "http://track.wareiq.com/core/v1/passthru/cod?CustomField=%s&digits=1&verified_via=text"%str(order[0])
-                        short_url = requests.get(
-                            "https://cutt.ly/api/api.php?key=f445d0bb52699d2f870e1832a1f77ef3f9078&short=%s" % cod_confirmation_link)
-                        short_url_track = short_url.json()['url']['shortLink']
-                        insert_cod_ver_tuple = (order[0], short_url_track, datetime.now())
-                        cur.execute(
-                            "INSERT INTO cod_verification (order_id, verification_link, date_created) VALUES (%s,%s,%s);",
-                            insert_cod_ver_tuple)
-                        cur_2.execute("select client_name from clients where client_prefix='%s'" % order[9])
-                        client_name = cur_2.fetchone()
-                        customer_phone = order[5].replace(" ", "")
-                        customer_phone = "0" + customer_phone[-10:]
+                    if order[47]:
+                        if order[26].lower()=='cod' and not order[42] and order[43]:
+                            continue
+                        if order[26].lower()=='cod' and not order[43]:
+                            cod_confirmation_link = "http://track.wareiq.com/core/v1/passthru/cod?CustomField=%s&digits=1&verified_via=text"%str(order[0])
+                            short_url = requests.get(
+                                "https://cutt.ly/api/api.php?key=f445d0bb52699d2f870e1832a1f77ef3f9078&short=%s" % cod_confirmation_link)
+                            short_url_track = short_url.json()['url']['shortLink']
+                            insert_cod_ver_tuple = (order[0], short_url_track, datetime.now())
+                            cur.execute(
+                                "INSERT INTO cod_verification (order_id, verification_link, date_created) VALUES (%s,%s,%s);",
+                                insert_cod_ver_tuple)
+                            cur_2.execute("select client_name from clients where client_prefix='%s'" % order[9])
+                            client_name = cur_2.fetchone()
+                            customer_phone = order[5].replace(" ", "")
+                            customer_phone = "0" + customer_phone[-10:]
 
-                        sms_to_key = "Messages[%s][To]" % str(exotel_idx)
-                        sms_body_key = "Messages[%s][Body]" % str(exotel_idx)
+                            sms_to_key = "Messages[%s][To]" % str(exotel_idx)
+                            sms_body_key = "Messages[%s][Body]" % str(exotel_idx)
 
-                        exotel_sms_data[sms_to_key] = customer_phone
+                            exotel_sms_data[sms_to_key] = customer_phone
 
-                        exotel_sms_data[
-                            sms_body_key] = "Dear Customer, You recently placed an order from %s with order id %s. " \
-                                            "Please click on the link (%s) to verify. " \
-                                            "Your order will be shipped soon after confirmation." % (
-                                                client_name[0], str(order[1]), short_url_track)
+                            exotel_sms_data[
+                                sms_body_key] = "Dear Customer, You recently placed an order from %s with order id %s. " \
+                                                "Please click on the link (%s) to verify. " \
+                                                "Your order will be shipped soon after confirmation." % (
+                                                    client_name[0], str(order[1]), short_url_track)
 
-                        exotel_idx += 1
-                        continue
+                            exotel_idx += 1
+                            continue
 
                     if order[0] > last_shipped_order_id:
                         last_shipped_order_id = order[0]

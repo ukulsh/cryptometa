@@ -80,7 +80,7 @@ get_orders_to_ship_query = """select aa.id,aa.channel_order_id,aa.order_date,aa.
                                 cc.latitude,cc.longitude,cc.country_code,dd.id,dd.payment_mode,dd.amount,dd.currency,dd.order_id,dd.shipping_charges,
                                 dd.subtotal,dd.order_id,ee.dimensions,ee.weights,ee.quan, ff.api_key, ff.api_password, 
                                 ff.shop_url, aa.order_id_channel_unique, ee.products_name, aa.pickup_data_id, xx.cod_verified, 
-                                xx.id, ee.ship_courier, gg.location_id, ff.channel_id
+                                xx.id, ee.ship_courier, gg.location_id, ff.channel_id, yy.verify_cod
                                 from orders aa
                                 left join shipping_address cc
                                 on aa.delivery_address_id=cc.id
@@ -105,6 +105,8 @@ get_orders_to_ship_query = """select aa.id,aa.channel_order_id,aa.order_date,aa.
                                 and aa.pickup_data_id=gg.pickup_data_id
                                 left join cod_verification xx
                                 on aa.id=xx.order_id
+                                left join client_mapping yy
+                                on aa.client_prefix=yy.client_prefix
                                 where aa.client_prefix=%s
                                 and aa.status='NEW'
                                 and ll.id is null

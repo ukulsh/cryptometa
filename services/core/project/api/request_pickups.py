@@ -1,4 +1,4 @@
-import psycopg2, requests, os, json
+import psycopg2, requests, os, json, random, string
 from datetime import datetime, timedelta
 
 from .queries import *
@@ -51,12 +51,11 @@ def lambda_handler():
         else:
             continue
 
-
         for courier, values in pickup_request_dict.items():
             manifest_url = fill_manifest_data(values['orders'], courier, pick_req[2], pick_req[2])
             current_time = datetime.now()
             pickup_date = datetime.today()
-            manifest_id = current_time.strftime('%Y_%m_%d_%H_%M_%S_') + pick_req[1]
+            manifest_id = current_time.strftime('%Y_%m_%d_') +''.join(random.choices(string.ascii_uppercase, k=8)) +"_"+ pick_req[1]
             pickup_date_string = pickup_date.strftime("%Y-%m-%d ")+ time_string
             manifest_data_tuple = (manifest_id, pick_req[2], values['courier_id'], pick_req[3], len(values['orders']),
                                    pickup_date_string, manifest_url, current_time)

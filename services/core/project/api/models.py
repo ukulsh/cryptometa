@@ -67,6 +67,7 @@ class MasterCouriers(db.Model):
     api_password = db.Column(db.String, nullable=True)
     api_url = db.Column(db.String, nullable=True)
     logo_url = db.Column(db.String, nullable=True)
+    integrated = db.Column(db.BOOLEAN, nullable=True, default=None)
     date_created = db.Column(db.DateTime, default=datetime.now)
     date_updated = db.Column(db.DateTime, onupdate=datetime.now)
 
@@ -107,6 +108,7 @@ class OPAssociation(db.Model):
     order_id = db.Column('order_id', db.Integer, db.ForeignKey('orders.id'))
     product_id = db.Column('product_id', db.Integer, db.ForeignKey('products.id'))
     quantity = db.Column(db.Integer)
+    amount = db.Column(db.FLOAT, nullable=True)
     order = db.relationship("Orders")
     product = db.relationship("Products")
 
@@ -170,6 +172,8 @@ class Shipments(db.Model):
     channel_fulfillment_id = db.Column(db.String, nullable=True)
     tracking_link = db.Column(db.TEXT, nullable=True)
     remark = db.Column(db.Text, nullable=True)
+    __table_args__ = (UniqueConstraint('order_id', name='order_id_unique'),
+                      )
 
 
 class ClientChannel(db.Model):
@@ -215,6 +219,7 @@ class ClientCouriers(db.Model):
     last_shipped_order = db.relationship("Orders", backref=db.backref("client_couriers", uselist=True))
     last_shipped_time = db.Column(db.DateTime, nullable=True)
     unique_parameter = db.Column(db.String, nullable=True)
+    active = db.Column(db.BOOLEAN, nullable=True, default=None)
     date_created = db.Column(db.DateTime, default=datetime.now)
     date_updated = db.Column(db.DateTime, onupdate=datetime.now)
 
@@ -255,6 +260,8 @@ class Manifests(db.Model):
     courier = db.relationship("MasterCouriers", backref=db.backref("manifests", uselist=True))
     pickup_id = db.Column(db.Integer, db.ForeignKey('pickup_points.id'))
     pickup = db.relationship("PickupPoints", backref=db.backref("manifests", uselist=True))
+    client_pickup_id = db.Column(db.Integer, db.ForeignKey('client_pickups.id'))
+    client_pickup = db.relationship("ClientPickups", backref=db.backref("manifests", uselist=True))
     total_scheduled = db.Column(db.Integer, nullable=True)
     total_picked = db.Column(db.Integer, nullable=True)
     pickup_date = db.Column(db.DateTime, nullable=True)
@@ -376,6 +383,7 @@ class CostToClients(db.Model):
     cod_min = db.Column(db.FLOAT, nullable=True)
     cod_ratio = db.Column(db.FLOAT, nullable=True)
     rto_ratio = db.Column(db.FLOAT, nullable=True)
+    management_fee = db.Column(db.FLOAT, nullable=True)
     date_created = db.Column(db.DateTime, default=datetime.now)
     date_updated = db.Column(db.DateTime, onupdate=datetime.now)
 
@@ -439,6 +447,8 @@ class ClientMapping(db.Model):
     theme_color = db.Column(db.String, nullable=True)
     api_token = db.Column(db.String, nullable=True)
     verify_cod = db.Column(db.BOOLEAN, nullable=True, default=True)
+    custom_email = db.Column(db.Text, nullable=True)
+    custom_email_subject = db.Column(db.String, nullable=True)
 
 
 class ClientChannelLocations(db.Model):

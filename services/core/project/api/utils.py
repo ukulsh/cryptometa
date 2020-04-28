@@ -96,7 +96,7 @@ def get_products_sort_func(Products, ProductsQuantity, sort, sort_by):
     elif sort_by == 'price':
         x = Products.price
     elif sort_by == 'master_sku':
-        x = Products.sku
+        x = Products.master_sku
     elif sort_by == 'total_quantity':
         x = ProductsQuantity.approved_quantity
     elif sort_by == 'weight':
@@ -239,7 +239,9 @@ def fill_shiplabel_data(c, order, offset):
         products_string = ""
         for prod in order.products:
             products_string += prod.product.name + " (" + str(prod.quantity) + ") + "
-        products_string += "Shipping"
+        products_string = products_string.rstrip(" + ")
+        if order.payments[0].shipping_charges:
+            products_string += " + Shipping"
         products_string = split_string(products_string, 35)
         if len(products_string) > 7:
             products_string = products_string[:7]

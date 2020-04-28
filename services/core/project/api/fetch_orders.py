@@ -30,6 +30,8 @@ def lambda_handler():
             channel[3], channel[4], channel[5], channel[6])
             data = requests.get(shopify_orders_url).json()
             products_quantity_dict = dict()
+            if 'orders' not in data:
+                continue
             for order in data['orders']:
                 try:
                     product_exists = True
@@ -116,7 +118,7 @@ def lambda_handler():
                                 1] == 'DAPR':  # DAPR combination sku not present in products
                                 for i in (3204, 3206):
                                     product_id = i
-                                    op_tuple = (product_id, order_id, prod['quantity'])
+                                    op_tuple = (product_id, order_id, prod['quantity'], float(prod['quantity']*float(prod['price'])))
                                     cur.execute(insert_op_association_query, op_tuple)
                                     if product_id not in products_quantity_dict:
                                         products_quantity_dict[product_id] = prod['quantity']
@@ -127,26 +129,18 @@ def lambda_handler():
                                 1] == 'DAPR':  # DAPR combination sku not present in products
                                 for i in (3249, 3250):
                                     product_id = i
-                                    op_tuple = (product_id, order_id, prod['quantity'])
+                                    op_tuple = (product_id, order_id, prod['quantity'], float(prod['quantity']*float(prod['price'])))
                                     cur.execute(insert_op_association_query, op_tuple)
                                     if product_id not in products_quantity_dict:
                                         products_quantity_dict[product_id] = prod['quantity']
                                     else:
                                         products_quantity_dict[product_id] += prod['quantity']
                                 continue
-                            if channel[1] == "KYORIGIN":
-                                if 'Hoodie' in prod['name']:
-                                    dimensions = {"length": 6.87, "breadth": 22.5, "height": 27.5}
-                                    weight = 0.51
-                                else:
-                                    dimensions = {"length": 2.5, "breadth": 22.5, "height": 27.5}
-                                    weight = 0.18
-                            else:
-                                dimensions = {"length": 2.5, "breadth": 22.5, "height": 27.5}
-                                weight = 0.20
+                            dimensions = None
+                            weight = None
                             product_insert_tuple = (prod['name'], str(prod['variant_id']), True, channel[2],
-                                                    channel[1], datetime.now(), json.dumps(dimensions),
-                                                    float(prod['price']), weight)
+                                                    channel[1], datetime.now(), dimensions,
+                                                    float(prod['price']), weight, str(prod['variant_id']))
                             cur.execute(insert_product_query, product_insert_tuple)
                             product_id = cur.fetchone()[0]
 
@@ -154,8 +148,7 @@ def lambda_handler():
                             product_id, 100, 100, 100, channel[1], "APPROVED", datetime.now())
                             cur.execute(insert_product_quantity_query, product_quantity_insert_tuple)
 
-                        op_tuple = (product_id, order_id, prod['quantity'])
-
+                        op_tuple = (product_id, order_id, prod['quantity'], float(prod['quantity']*float(prod['price'])))
                         cur.execute(insert_op_association_query, op_tuple)
 
                         if product_id not in products_quantity_dict:
@@ -178,7 +171,8 @@ def lambda_handler():
         if channel[11] == "WooCommerce":
             auth_session = OAuth1Session(channel[3],
                                  client_secret=channel[4])
-            url = '%s/wp-json/wc/v3/orders?per_page=100&after=%s&order=asc'%(channel[5], channel[7].isoformat())
+            url = '%s/wp-json/wc/v3/orders?per_page=100&after=%s&order=asc&consumer_key=%s&consumer_secret=%s'%(channel[5],
+                                                                                                                channel[7].isoformat(), channel[3], channel[4])
             r = auth_session.get(url)
             data = list()
             try:
@@ -202,6 +196,11 @@ def lambda_handler():
                     else:
                         pickup_data_id = None  # change this as we move to dynamic pickups
 
+                    if order['payment_method'].lower() == 'cod':
+                        financial_status = 'cod'
+                    else:
+                        financial_status = 'prepaid'
+
                     customer_name = order['shipping']['first_name'] + " " + order['shipping']['last_name']
                     shipping_tuple = (order['shipping']['first_name'],
                                       order['shipping']['last_name'],
@@ -224,11 +223,11 @@ def lambda_handler():
                     customer_phone = ''.join(e for e in str(customer_phone) if e.isalnum())
                     customer_phone = "0" + customer_phone[-10:]
 
-                    if order['status'] == 'completed':
+                    if order['status'] in ('completed', 'processing'):
                         insert_status = "NEW"
                     elif order['status'] == 'cancelled':
                         insert_status = "CANCELED"
-                    elif order['status'] == 'pending':
+                    elif order['status'] in ('pending') or (not order['date_paid'] and order['payment_method'].lower() != 'cod'):
                         insert_status = "PENDING PAYMENT"
                     else:
                         insert_status = "NEW - " + order['status'].upper()
@@ -243,32 +242,26 @@ def lambda_handler():
 
                     total_amount = float(order['total']) + float(order['shipping_total'])
 
-                    if order['payment_method'].lower() != 'cod' and order['date_paid']:
-                        financial_status = 'prepaid'
-                    else:
-                        financial_status = 'cod'
-
                     payments_tuple = (financial_status, total_amount, float(order['total']),
                                       float(order['shipping_total']), order["currency"], order_id)
 
                     cur.execute(insert_payments_data_query, payments_tuple)
 
                     for prod in order['line_items']:
-                        product_sku = str(prod['product_id'])
+                        sku_id = prod['variation_id']
+                        if not sku_id:
+                            sku_id = prod['product_id']
+                        product_sku = str(sku_id)
                         prod_tuple = (product_sku, channel[1])
                         cur.execute(select_products_query, prod_tuple)
                         try:
                             product_id = cur.fetchone()[0]
                         except Exception:
-                            if channel[1] == "NYOR":
-                                dimensions = {"length": 5, "breadth": 11.43, "height": 11.43}
-                                weight = 0.20
-                            else:
-                                dimensions = {"length": 2.5, "breadth": 22.5, "height": 27.5}
-                                weight = 0.20
-                            product_insert_tuple = (prod['name'], str(prod['product_id']), True, channel[2],
-                                                    channel[1], datetime.now(), json.dumps(dimensions),
-                                                    float(prod['price']), weight)
+                            dimensions = None
+                            weight = None
+                            product_insert_tuple = (prod['name'], str(sku_id), True, channel[2],
+                                                    channel[1], datetime.now(), dimensions,
+                                                    float(prod['price']), weight, str(sku_id))
                             cur.execute(insert_product_query, product_insert_tuple)
                             product_id = cur.fetchone()[0]
 
@@ -276,7 +269,7 @@ def lambda_handler():
                             product_id, 100, 100, 100, channel[1], "APPROVED", datetime.now())
                             cur.execute(insert_product_quantity_query, product_quantity_insert_tuple)
 
-                        op_tuple = (product_id, order_id, prod['quantity'])
+                        op_tuple = (product_id, order_id, prod['quantity'], float(prod['quantity']*float(prod['price'])))
 
                         cur.execute(insert_op_association_query, op_tuple)
 
@@ -285,7 +278,7 @@ def lambda_handler():
                         else:
                             products_quantity_dict[product_id] += prod['quantity']
                 except Exception as e:
-                    logger.error("order fetch failed for" + str(order['order_number']) + "\nError:" + str(e))
+                    logger.error("order fetch failed for" + str(order['number']) + "\nError:" + str(e))
 
             if data:
                 last_sync_tuple = (str(data[-1]['id']), datetime.utcnow()+timedelta(hours=5.5), channel[0])
@@ -301,10 +294,11 @@ def lambda_handler():
             update_orders = cur.fetchall()
             auth_session = OAuth1Session(channel[3],
                                          client_secret=channel[4])
-            url = '%s/wp-json/wc/v3/orders/' % (channel[5])
 
             for order in update_orders:
+                url = '%s/wp-json/wc/v3/orders/' % (channel[5])
                 url += str(order[0])
+                url += "?consumer_key=%s&consumer_secret=%s"%(channel[3], channel[4])
                 r = auth_session.get(url)
                 data = None
                 try:
@@ -312,21 +306,22 @@ def lambda_handler():
                 except Exception as e:
                     logger.error("Client order update status failed for: " + str(channel[0]) + "\nError: " + str(e.args[0]))
 
-                if data:
-                    if data['status'] == 'pending':
+                if data and 'status' in data:
+                    if data['status'] in ('pending'):
                         continue
-                    elif data['status'] == 'completed':
+                    elif data['status'] in ('completed', 'processing'):
                         new_status = 'NEW'
                     elif data['status'] == 'cancelled':
                         new_status = 'CANCELED'
                     else:
                         new_status = 'NEW - '+data['status'].upper()
 
-                cur.execute("UPDATE orders SET status=%s WHERE id=%s", (new_status, order[1]))
+                    cur.execute("UPDATE orders SET status=%s WHERE id=%s", (new_status, order[1]))
 
             conn.commit()
 
     assign_pickup_points_for_unassigned(cur, cur_2)
+    update_available_quantity(cur)
 
     cur.close()
 
@@ -367,9 +362,10 @@ def assign_pickup_points_for_unassigned(cur, cur_2):
                     courier_id_weight = prod_wh[5]
                 if sku_dict[prod_wh[2]] <= prod_wh[3]:
                     if prod_wh[0] not in wh_dict:
-                        wh_dict[prod_wh[0]] = {"pincode": prod_wh[6], "count": 1}
+                        wh_dict[prod_wh[0]] = {"pincode": prod_wh[6], "count": 1, "prod_list": [prod_wh[1]]}
                     else:
                         wh_dict[prod_wh[0]]['count'] += 1
+                        wh_dict[prod_wh[0]]['prod_list'].append(prod_wh[1])
 
             warehouse_pincode_str = ""
             for key, value in wh_dict.items():
@@ -378,6 +374,14 @@ def assign_pickup_points_for_unassigned(cur, cur_2):
 
             warehouse_pincode_str = warehouse_pincode_str.rstrip(',')
             if not warehouse_pincode_str:
+                total_count = 0
+                prod_list = list()
+                for key, value in wh_dict.items():
+                    total_count+=value['count']
+                    prod_list.append(value['prod_list'])
+                if total_count == no_sku:
+                    prod_list.sort(key=len, reverse=True)
+                    split_order(cur, order[0], prod_list)
                 logger.info(str(order[0]) + ": One or more SKUs not serviceable")
                 continue
 
@@ -412,5 +416,87 @@ def assign_pickup_points_for_unassigned(cur, cur_2):
 
         except Exception as e:
             logger.error("couldn't assign pickup for order " + str(order[0]) + "\nError: " + str(e))
+
+    conn.commit()
+
+
+def split_order(cur, order_id, prod_list):
+    try:
+        sub_id = 'A'
+        cur.execute("SELECT shipping_charges, payment_mode, currency from orders_payments WHERE order_id=%s" % str(order_id))
+        fetched_tuple = cur.fetchone()
+        shipping_cost_each = fetched_tuple[0]/len(prod_list)
+        payment_mode = fetched_tuple[1]
+        currency = fetched_tuple[2]
+        for idx, prods in enumerate(prod_list):
+            if len(prods)==1:
+                prods_tuple = "("+str(prods[0])+")"
+            else:
+                prods_tuple = str(tuple(prods))
+            cur.execute("SELECT sum(amount) FROM op_association WHERE order_id=%s and product_id in %s"%(str(order_id), prods_tuple))
+            prod_amount = cur.fetchone()[0]
+            if idx==0: #first order remains same
+                cur.execute("UPDATE orders_payments SET subtotal=%s, shipping_charges=%s, amount=%s WHERE order_id=%s",
+                            (prod_amount, shipping_cost_each, prod_amount+shipping_cost_each, order_id))
+
+                continue
+
+            sub_id_str = '-' + sub_id
+            duplicate_order_query = """INSERT INTO orders (channel_order_id, order_date, customer_name, customer_email, 
+                                customer_phone, delivery_address_id, date_created, status, client_prefix, client_channel_id, 
+                                order_id_channel_unique, pickup_data_id)
+                                SELECT CONCAT(channel_order_id, '%s'), order_date, customer_name, customer_email, 
+                                customer_phone, delivery_address_id, date_created, status, client_prefix, client_channel_id, 
+                                order_id_channel_unique, pickup_data_id FROM orders WHERE id=%s 
+                                RETURNING id;"""%(sub_id_str, str(order_id))
+            cur.execute(duplicate_order_query)
+            new_order_id = cur.fetchone()[0]
+
+            cur.execute("UPDATE op_association SET order_id=%s WHERE order_id=%s and product_id in %s"%
+                        (str(new_order_id), str(order_id), prods_tuple))
+
+            cur.execute("""INSERT INTO orders_payments (payment_mode, amount, currency, order_id, shipping_charges, subtotal)
+                            VALUES (%s,%s,%s,%s,%s,%s)""", (payment_mode, prod_amount+shipping_cost_each, currency,
+                                                            new_order_id, shipping_cost_each, prod_amount))
+
+            sub_id = chr(ord(sub_id) + 1)
+        conn.commit()
+    except Exception as e:
+        logger.error("couldn't split order " + str(order_id) + "\nError: " + str(e))
+
+
+def update_available_quantity(cur):
+    cur.execute(fetch_inventory_quantity_query)
+    all_prods_status = cur.fetchall()
+    quantity_dict = dict()
+
+    for prod_status in all_prods_status:
+        if not prod_status[2]:
+            continue
+        if prod_status[0] not in quantity_dict:
+            quantity_dict[prod_status[0]] = {prod_status[2]: {"available_quantity": 0,
+                                                              "current_quantity": 0,
+                                                              "inline_quantity": 0,
+                                                              "rto_quantity": 0}}
+        elif prod_status[2] not in quantity_dict[prod_status[0]]:
+            quantity_dict[prod_status[0]][prod_status[2]] = {"available_quantity": 0,
+                                                              "current_quantity": 0,
+                                                              "inline_quantity": 0,
+                                                              "rto_quantity": 0}
+
+        if prod_status[1] in ('DELIVERED','DISPATCHED','IN TRANSIT','ON HOLD','PENDING'):
+            quantity_dict[prod_status[0]][prod_status[2]]['current_quantity'] -= prod_status[3]
+            quantity_dict[prod_status[0]][prod_status[2]]['available_quantity'] -= prod_status[3]
+        elif prod_status[1] in ('NEW','PICKUP REQUESTED','READY TO SHIP', 'PENDING PAYMENT'):
+            quantity_dict[prod_status[0]][prod_status[2]]['inline_quantity'] += prod_status[3]
+            quantity_dict[prod_status[0]][prod_status[2]]['available_quantity'] -= prod_status[3]
+        elif prod_status[1] in ('RTO'):
+            quantity_dict[prod_status[0]][prod_status[2]]['rto_quantity'] += prod_status[3]
+
+    for prod_id, wh_dict in quantity_dict.items():
+        for warehouse, quan_values in wh_dict.items():
+            update_tuple = (quan_values['available_quantity'], quan_values['current_quantity'], quan_values['inline_quantity'],
+                            quan_values['rto_quantity'], prod_id, warehouse)
+            cur.execute(update_inventory_quantity_query, update_tuple)
 
     conn.commit()

@@ -2,6 +2,7 @@ import psycopg2, requests, os, json
 import logging
 from datetime import datetime
 from .queries import *
+from requests_oauthlib.oauth1_session import OAuth1Session
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -72,7 +73,7 @@ def lambda_handler():
                                     and each_scan['ScanDetail']['Instructions'] == "Consignment Manifested":
                                     to_record_status = "Received"
                                 elif each_scan['ScanDetail']['Scan'] == "In Transit" \
-                                        and each_scan['ScanDetail']['Instructions'] == "Shipment Picked Up from Client Location":
+                                        and "Picked Up" in each_scan['ScanDetail']['Instructions']:
                                     to_record_status = "Picked"
                                 elif each_scan['ScanDetail']['Scan'] == "In Transit" \
                                         and each_scan['ScanDetail']['ScanType'] == "UD":
@@ -174,6 +175,12 @@ def lambda_handler():
                             else:
                                 pickup_dict[orders_dict[current_awb][11]] += 1
                             cur.execute(update_prod_quantity_query_pickup%str(orders_dict[current_awb][0]))
+                            if orders_dict[current_awb][14] == 5:
+                                try:
+                                    woocommerce_fulfillment(orders_dict[current_awb])
+                                except Exception as e:
+                                    logger.error("Couldn't update woocommerce for: " + str(orders_dict[current_awb][0])
+                                                 + "\nError: " + str(e.args))
                             """
                             if orders_dict[current_awb][5] and not orders_dict[current_awb][6]:
                                 create_fulfillment_url = "https://%s:%s@%s/admin/api/2019-10/orders/%s/fulfillments.json"  % (
@@ -425,6 +432,12 @@ def lambda_handler():
                             else:
                                 pickup_dict[orders_dict[current_awb][11]] += 1
                             cur.execute(update_prod_quantity_query_pickup%str(orders_dict[current_awb][0]))
+                            if orders_dict[current_awb][14] == 5:
+                                try:
+                                    woocommerce_fulfillment(orders_dict[current_awb])
+                                except Exception as e:
+                                    logger.error("Couldn't update woocommerce for: " + str(orders_dict[current_awb][0])
+                                                 + "\nError: " + str(e.args))
                             """
                             if orders_dict[current_awb][5] and not orders_dict[current_awb][6]:
                                 create_fulfillment_url = "https://%s:%s@%s/admin/api/2019-10/orders/%s/fulfillments.json" % (
@@ -662,6 +675,12 @@ def lambda_handler():
                             else:
                                 pickup_dict[orders_dict[current_awb][11]] += 1
                             cur.execute(update_prod_quantity_query_pickup % str(orders_dict[current_awb][0]))
+                            if orders_dict[current_awb][14] == 5:
+                                try:
+                                    woocommerce_fulfillment(orders_dict[current_awb])
+                                except Exception as e:
+                                    logger.error("Couldn't update woocommerce for: " + str(orders_dict[current_awb][0])
+                                                 + "\nError: " + str(e.args))
 
                             if edd:
                                 edd = edd.strftime('%-d %b')
@@ -861,3 +880,12 @@ xpressbees_status_mapping = {"DRC":("READY TO SHIP", "UD", ""),
                             "LOST":("LOST", "UD", ""),
                             "UD":("PENDING", "UD", "")
                             }
+
+
+def woocommerce_fulfillment(order):
+    auth_session = OAuth1Session(order[7],
+                                 client_secret=order[8])
+    url = '%s/wp-json/wc/v3/orders/%s' % (order[9], str(order[5]))
+    r = auth_session.post(url, data={"status": "shipped"})
+    if r.status_code == 400:
+        r = auth_session.post(url, data={"status": "completed"})

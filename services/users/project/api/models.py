@@ -4,6 +4,7 @@ import datetime
 import jwt
 
 from sqlalchemy.sql import func
+from sqlalchemy.dialects.postgresql import ARRAY
 from flask import current_app
 
 from project import db, bcrypt
@@ -27,6 +28,7 @@ class User(db.Model):
     warehouse = db.relationship("Warehouse", backref=db.backref("warehouses", uselist=True))
     group_id = db.Column(db.Integer, db.ForeignKey('usergroups.id'))
     group = db.relationship("UserGroups", backref=db.backref("usergroups", uselist=True))
+    tabs = db.Column(ARRAY(db.String(20)))
     admin = db.Column(db.Boolean, default=False, nullable=False)
 
     def __init__(self, username, email, password):
@@ -48,6 +50,7 @@ class User(db.Model):
             'user_group': self.group.group,
             'client_prefix': self.client.client_prefix if self.client else None,
             'warehouse_prefix': self.warehouse.warehouse_prefix if self.client else None,
+            'tabs': self.tabs,
         }
 
     def encode_auth_token(self, user_id):

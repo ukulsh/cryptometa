@@ -22,8 +22,8 @@ insert_payments_data_query = """INSERT INTO orders_payments (payment_mode, amoun
 
 select_products_query = """SELECT id from products where sku=%s and client_prefix=%s;"""
 
-insert_op_association_query = """INSERT INTO op_association (product_id, order_id, quantity)
-                                    VALUES (%s,%s,%s) RETURNING id"""
+insert_op_association_query = """INSERT INTO op_association (product_id, order_id, quantity, amount)
+                                    VALUES (%s,%s,%s,%s) RETURNING id"""
 
 update_last_fetched_data_query = """UPDATE client_channel SET last_synced_order=%s, last_synced_time=%s WHERE id=%s"""
 
@@ -33,7 +33,7 @@ update_product_quantity_query = """UPDATE products_quantity
                                     WHERE product_id=%s;"""
 
 insert_product_query = """INSERT INTO products (name, sku, active, channel_id, client_prefix, date_created, 
-                          dimensions, price, weight) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id;"""
+                          dimensions, price, weight, master_sku) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id;"""
 
 insert_product_quantity_query = """INSERT INTO products_quantity (product_id,total_quantity,approved_quantity,
                                     available_quantity,warehouse_prefix,status,date_created)
@@ -52,6 +52,19 @@ get_orders_to_assign_pickups = """select aa.id, aa.client_prefix, bb.pincode, xx
                                 and sku_list is not null
                                 and aa.order_date>%s"""
 
+fetch_inventory_quantity_query = """select product_id, status, warehouse_prefix, sum(quantity) from 
+                                    (select * from op_association aa
+                                    left join orders bb on aa.order_id=bb.id
+                                    left join client_pickups cc on bb.pickup_data_id=cc.id
+                                    left join pickup_points dd on cc.pickup_id=dd.id
+                                    where status not in  ('CANCELED', 'NOT PICKED', 'NOT SHIPPED')) xx
+                                    group by product_id, status, warehouse_prefix
+                                    order by product_id, status, warehouse_prefix"""
+
+update_inventory_quantity_query = """UPDATE products_quantity SET available_quantity=COALESCE(approved_quantity, 0)+%s,
+									current_quantity=COALESCE(approved_quantity, 0)+%s, inline_quantity=%s, rto_quantity=%s
+                                    WHERE product_id=%s and warehouse_prefix=%s;"""
+
 
 ########################create shipments
 
@@ -60,7 +73,8 @@ fetch_client_couriers_query = """select aa.id,aa.client_prefix,aa.courier_id,aa.
                                 bb.courier_name,bb.logo_url,bb.date_created,bb.date_updated,bb.api_key,bb.api_password,bb.api_url
 		                        from client_couriers aa
                                 left join master_couriers bb
-                                on aa.courier_id=bb.id"""
+                                on aa.courier_id=bb.id
+                                where aa.active=true;"""
 
 get_pickup_points_query = """select aa.id, aa.pickup_id, aa.return_point_id, 
                                 bb.phone, bb.address, bb.address_two, bb.city,
@@ -108,8 +122,7 @@ get_orders_to_ship_query = """select aa.id,aa.channel_order_id,aa.order_date,aa.
                                 left join client_mapping yy
                                 on aa.client_prefix=yy.client_prefix
                                 where aa.client_prefix=%s
-                                and aa.status='NEW'
-                                and ll.id is null
+                                __ORDER_SELECT_FILTERS__
                                 __PRODUCT_FILTER__
                                 order by order_date"""
 
@@ -174,7 +187,8 @@ get_courier_id_and_key_query = """SELECT id, courier_name, api_key FROM master_c
 
 get_status_update_orders_query = """select aa.id, bb.awb, aa.status, aa.client_prefix, aa.customer_phone, 
                                     aa.order_id_channel_unique, bb.channel_fulfillment_id, cc.api_key, 
-                                    cc.api_password, cc.shop_url, bb.id, dd.pickup_id, aa.channel_order_id, ee.payment_mode from orders aa
+                                    cc.api_password, cc.shop_url, bb.id, dd.pickup_id, aa.channel_order_id, ee.payment_mode, 
+                                    cc.channel_id from orders aa
                                     left join shipments bb
                                     on aa.id=bb.order_id
                                     left join client_channel cc
@@ -321,3 +335,73 @@ fetch_warehouse_to_pick_from = """with temp_table (warehouse, pincode) as (VALUE
                                     on yy.city=xx.zone
                                     order by tat,zone_value
                                     limit 1"""
+
+select_product_list_query = """SELECT aa.id, aa.name as product_name, aa.product_image, aa.sku as channel_sku, aa.master_sku, price, bb.total_quantity,  bb.available_quantity,
+                             bb.current_quantity, bb.inline_quantity, bb.rto_quantity,dimensions, weight, null as channel_logo FROM products aa
+                            LEFT JOIN (select product_id, sum(approved_quantity) as total_quantity, sum(available_quantity) as available_quantity,
+                                       sum(current_quantity) as current_quantity, sum(inline_quantity) as inline_quantity, sum(rto_quantity) as rto_quantity
+                                      FROM products_quantity __WAREHOUSE_FILTER__ 
+                                      GROUP BY product_id) bb
+                            ON aa.id=bb.product_id
+                            WHERE (aa.name ilike '%__SEARCH_KEY__%' or aa.sku ilike '%__SEARCH_KEY__%' or aa.master_sku ilike '%__SEARCH_KEY__%')
+                            __CLIENT_FILTER__
+                            ORDER BY __ORDER_BY__ __ORDER_TYPE__ 
+                            __PAGINATION__
+                            """
+
+select_orders_list_query = """select distinct on (aa.order_date, aa.id) aa.channel_order_id as order_id, aa.id as unique_id, aa.order_date, aa.status, bb.remark, aa.status_detail, bb.awb, 
+                             CONCAT('http://webapp.wareiq.com/tracking/', bb.awb) as tracking_link, cc.courier_name, bb.edd, bb.weight, bb.dimensions,
+                             bb.volumetric_weight,bb.remark, aa.customer_name, aa.customer_phone, aa.customer_email, dd.address_one, dd.address_two, 
+                             dd.city, dd.state, dd.country, dd.pincode, ee.delivered_time, ff.pickup_time, gg.payment_mode, gg.amount, ii.warehouse_prefix,
+                             ll.product_names, ll.skus, ll.quantity,mm.id,  mm.cod_verified, mm.verified_via, nn.id,  nn.ndr_verified, nn.verified_via
+                             from orders aa
+                             left join shipments bb
+                             on aa.id=bb.order_id
+                             left join master_couriers cc on bb.courier_id=cc.id
+                             left join shipping_address dd on aa.delivery_address_id=dd.id
+                             left join (select order_id, status_time as delivered_time from order_status where status='Delivered') ee
+                             on aa.id=ee.order_id
+                             left join (select order_id, status_time as pickup_time from order_status where status='Picked') ff
+                             on aa.id=ff.order_id
+                             left join orders_payments gg on aa.id=gg.order_id
+                             left join client_pickups hh on aa.pickup_data_id=hh.id
+                             left join pickup_points ii on hh.pickup_id=ii.id
+                             left join op_association jj on aa.id=jj.order_id
+                             left join products kk on jj.product_id=kk.id
+                             left join (SELECT order_id, array_agg(name) as product_names, array_agg(master_sku) as skus, 
+                                        array_agg(quantity) as quantity from op_association jj 
+                                       left join products kk on jj.product_id=kk.id
+                                       group by order_id) ll on aa.id=ll.order_id
+                             left join cod_verification mm on mm.order_id=aa.id
+                             left join ndr_verification nn on nn.order_id=aa.id
+                                                                 
+                             WHERE (aa.channel_order_id ilike '%__SEARCH_KEY__%' or awb ilike '%__SEARCH_KEY__%' or customer_name ilike '%__SEARCH_KEY__%')
+                             __ORDER_DATE_FILTER__
+                             __PICKUP_TIME_FILTER__
+                             __DELIVERED_TIME_FILTER__
+                             __COURIER_FILTER__
+                             __STATUS_FILTER__
+                             __PICKUP_FILTER__
+                             __TYPE_FILTER__
+                             __CLIENT_FILTER__
+                             __SINCE_ID_FILTER__
+                             order by order_date DESC
+                             __PAGINATION__"""
+
+
+select_wallet_deductions_query = """SELECT aa.status_time, aa.status, bb.courier_name, cc.awb, dd.channel_order_id, dd.id, ee.cod_charge, 
+                                    ee.forward_charge, ee.rto_charge, ee.total_charge, ee.zone, ee.weight_charged, 
+                                    COALESCE((ff.management_fee/100)*ee.total_charge, 0) as tot_amount from order_status aa
+                                    LEFT JOIN master_couriers bb on aa.courier_id=bb.id
+                                    LEFT JOIN shipments cc on aa.shipment_id=cc.id
+                                    LEFT JOIN orders dd on aa.order_id=dd.id
+                                    LEFT JOIN client_deductions ee on ee.shipment_id=aa.shipment_id
+                                    LEFT JOIN cost_to_clients ff on dd.client_prefix=ff.client_prefix and bb.id=ff.courier_id
+                                    WHERE aa.status in ('Delivered', 'RTO')
+                                    AND (cc.awb ilike '%__SEARCH_KEY__%' or dd.channel_order_id ilike '%__SEARCH_KEY__%')
+                                    __CLIENT_FILTER__
+                                    __COURIER_FILTER__
+                                    __DATE_TIME_FILTER__
+                                    AND aa.status_time>'2020-04-01'
+                                    ORDER BY status_time DESC
+                                    __PAGINATION__"""

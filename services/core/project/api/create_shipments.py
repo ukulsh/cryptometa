@@ -1,6 +1,7 @@
 import psycopg2, requests, os, json, pytz
 import logging
 from datetime import datetime, timedelta
+from requests_oauthlib.oauth1_session import OAuth1Session
 
 from .queries import *
 
@@ -16,24 +17,49 @@ conn = psycopg2.connect(host=host, database=database, user=user, password=passwo
 conn = psycopg2.connect(host="wareiq-core-prod2.cvqssxsqruyc.us-east-1.rds.amazonaws.com", database="core_prod", user="postgres", password="aSderRFgd23")
 conn_2 = psycopg2.connect(host="wareiq-core-prod2.cvqssxsqruyc.us-east-1.rds.amazonaws.com", database="users_prod", user="postgres", password="aSderRFgd23")
 
-def lambda_handler():
+
+def lambda_handler(courier_name=None, order_ids=None):
     cur = conn.cursor()
     cur_2 = conn_2.cursor()
-    cur.execute(delete_failed_shipments_query)
-    conn.commit()
-    cur.execute(fetch_client_couriers_query)
+    if courier_name and order_ids: #creating courier details list for manual shipping
+        if len(order_ids)==1:
+            order_id_tuple = "('"+str(order_ids[0])+"')"
+        else:
+            order_id_tuple = str(tuple(order_ids))
+        cur.execute("""DELETE FROM 	order_status where order_id in %s;
+                       DELETE FROM shipments where order_id in %s;"""%(order_id_tuple, order_id_tuple))
+        conn.commit()
+        cur.execute("SELECT DISTINCT(client_prefix) from orders where id in %s"%order_id_tuple)
+        client_list  = cur.fetchall()
+        cur.execute("""SELECT bb.id,bb.courier_name,bb.logo_url,bb.date_created,bb.date_updated,bb.api_key,bb.api_password,
+                    bb.api_url FROM master_couriers bb WHERE courier_name='%s'"""%courier_name)
+        courier_details = cur.fetchone()
+        all_couriers = list()
+        for client in client_list:
+            all_couriers.append((None, client[0], None, 1, None, None, None, None, "")+courier_details)
+
+    else:
+        cur.execute(delete_failed_shipments_query)
+        conn.commit()
+        cur.execute(fetch_client_couriers_query)
+        all_couriers=cur.fetchall()
+
     exotel_idx = 0
     exotel_sms_data = {
         'From': 'LM-WAREIQ'
     }
-    all_couriers=cur.fetchall()
     for courier in all_couriers:
-        if courier[10] in ("Delhivery", "Delhivery Surface Standard", "Delhivery Bulk", "Delhivery Heavy", "Delhivery Heavy 2") and courier[1] not in ('DAPR', 'BEYONDUW'):
+        if courier[10] in ("Delhivery", "Delhivery Surface Standard", "Delhivery Bulk", "Delhivery Heavy", "Delhivery Heavy 2") and courier[1] not in ('BEYONDUW'):
+            if courier_name and order_ids:
+                orders_to_ship_query = get_orders_to_ship_query.replace("__ORDER_SELECT_FILTERS__", """and aa.id in %s"""%order_id_tuple)
+            else:
+                orders_to_ship_query = get_orders_to_ship_query.replace("__ORDER_SELECT_FILTERS__", """and aa.status='NEW'
+                                                                                                    and ll.id is null""")
             get_orders_data_tuple = (courier[1], courier[1])
             if courier[3]==2:
-                orders_to_ship_query = get_orders_to_ship_query.replace('__PRODUCT_FILTER__', "and ship_courier[1]='%s'"%courier[10])
+                orders_to_ship_query = orders_to_ship_query.replace('__PRODUCT_FILTER__', "and ship_courier[1]='%s'"%courier[10])
             else:
-                orders_to_ship_query = get_orders_to_ship_query.replace('__PRODUCT_FILTER__', '')
+                orders_to_ship_query = orders_to_ship_query.replace('__PRODUCT_FILTER__', '')
 
             cur.execute(orders_to_ship_query, get_orders_data_tuple)
             all_orders = cur.fetchall()
@@ -57,8 +83,10 @@ def lambda_handler():
                 headers = {"Authorization": "Token " + courier[14],
                            "Content-Type": "application/json"}
                 for order in all_new_orders:
+                    """
                     if order[17].lower() in ("bengaluru", "bangalore", "banglore") and courier[1] == "MIRAKKI":
                         continue
+                    """
                     if order[47]:
                         if order[26].lower()=='cod' and not order[42] and order[43]:
                             continue #change this to continue later
@@ -190,6 +218,7 @@ def lambda_handler():
                     tracking_link = None
                     if package['waybill']:
                         order_status_change_ids.append(orders_dict[package['refnum']][0])
+                        """
                         cur_2.execute(
                             "select client_name from clients where client_prefix='%s'" % orders_dict[package['refnum']][9])
                         client_name = cur_2.fetchone()
@@ -214,6 +243,7 @@ def lambda_handler():
                                 sms_body_key] = "Dear Customer, thank you for ordering from %s. Your order will be shipped by Delhivery with AWB number %s. " \
                                                 "You can track your order using this AWB number." % (client_name[0], str(package['waybill']))
                         exotel_idx += 1
+                        """
 
                         if orders_dict[package['refnum']][10] and orders_dict[package['refnum']][11]==1: #shopify
                             try:
@@ -223,7 +253,16 @@ def lambda_handler():
                             except Exception as e:
                                 logger.error("Couldn't update shopify for: " + str(package['refnum'])
                                              + "\nError: " + str(e.args))
-
+                        """
+                        if orders_dict[package['refnum']][11] == 5: #woocommerce
+                            try:
+                                order_ls = [orders_dict[package['refnum']][4],orders_dict[package['refnum']][5],
+                                            orders_dict[package['refnum']][6],orders_dict[package['refnum']][7]]
+                                woocommerce_fulfillment(order_ls)
+                            except Exception as e:
+                                logger.error("Couldn't update woocommerce for: " + str(package['refnum'])
+                                             + "\nError: " + str(e.args))
+                        """
                         if orders_dict[package['refnum']][9] == "NASHER":
                             try:
                                 nasher_url = "https://www.nashermiles.com/alexandria/api/v1/shipment/create"
@@ -291,7 +330,7 @@ def lambda_handler():
 
                 conn.commit()
 
-        elif courier[10] == "Delhivery" and courier[1] in ('DAPR', 'BEYONDUW'):
+        elif courier[10] == "Delhivery" and courier[1] in ('BEYONDUW'):
             get_orders_data_tuple = (courier[1], courier[1])
             if courier[3]==2:
                 orders_to_ship_query = get_orders_to_ship_query.replace('__PRODUCT_FILTER__', "and ship_courier[1]='%s'"%courier[10])
@@ -441,11 +480,19 @@ def lambda_handler():
                 conn.commit()
 
         elif courier[10] == "Shadowfax":
-            get_orders_data_tuple = ( courier[1], courier[1])
-            if courier[3]==2:
-                orders_to_ship_query = get_orders_to_ship_query.replace('__PRODUCT_FILTER__', "and ship_courier[1]='%s'"%courier[10])
+            if courier_name and order_ids:
+                orders_to_ship_query = get_orders_to_ship_query.replace("__ORDER_SELECT_FILTERS__",
+                                                                        """and aa.id in %s""" % order_id_tuple)
             else:
-                orders_to_ship_query = get_orders_to_ship_query.replace('__PRODUCT_FILTER__', '')
+                orders_to_ship_query = get_orders_to_ship_query.replace("__ORDER_SELECT_FILTERS__", """and aa.status='NEW'
+                                                                                                    and ll.id is null""")
+            get_orders_data_tuple = (courier[1], courier[1])
+            if courier[3] == 2:
+                orders_to_ship_query = orders_to_ship_query.replace('__PRODUCT_FILTER__',
+                                                                    "and ship_courier[1]='%s'" % courier[10])
+            else:
+                orders_to_ship_query = orders_to_ship_query.replace('__PRODUCT_FILTER__', '')
+
             cur.execute(orders_to_ship_query, get_orders_data_tuple)
             all_orders = cur.fetchall()
             pickup_point_order_dict = dict()
@@ -631,6 +678,15 @@ def lambda_handler():
                                 except Exception as e:
                                     logger.error("Couldn't update shopify for: " + str(order[1])
                                                  + "\nError: " + str(e.args))
+                            """
+                            if order[46] == 5:  # Woocommerce
+                                try:
+                                    order_ls = [order[36], order[37], order[38], order[39]]
+                                    woocommerce_fulfillment(order_ls)
+                                except Exception as e:
+                                    logger.error("Couldn't update woocommerce for: " + str(order[1])
+                                                 + "\nError: " + str(e.args))
+                            """
 
                             data_tuple = tuple([(
                                 return_data['awb_number'], return_data_raw['message'], order[0], pickup_point[1],
@@ -672,11 +728,18 @@ def lambda_handler():
                 conn.commit()
 
         elif courier[10] in ("Xpressbees", "Xpressbees Surface"):
-            get_orders_data_tuple = ( courier[1], courier[1])
-            if courier[3]==2:
-                orders_to_ship_query = get_orders_to_ship_query.replace('__PRODUCT_FILTER__', "and ship_courier[1]='%s'"%courier[10])
+            if courier_name and order_ids:
+                orders_to_ship_query = get_orders_to_ship_query.replace("__ORDER_SELECT_FILTERS__",
+                                                                        """and aa.id in %s""" % order_id_tuple)
             else:
-                orders_to_ship_query = get_orders_to_ship_query.replace('__PRODUCT_FILTER__', '')
+                orders_to_ship_query = get_orders_to_ship_query.replace("__ORDER_SELECT_FILTERS__", """and aa.status='NEW'
+                                                                                                    and ll.id is null""")
+            get_orders_data_tuple = (courier[1], courier[1])
+            if courier[3] == 2:
+                orders_to_ship_query = orders_to_ship_query.replace('__PRODUCT_FILTER__',
+                                                                    "and ship_courier[1]='%s'" % courier[10])
+            else:
+                orders_to_ship_query = orders_to_ship_query.replace('__PRODUCT_FILTER__', '')
             cur.execute(orders_to_ship_query, get_orders_data_tuple)
             all_orders = cur.fetchall()
             pickup_point_order_dict = dict()
@@ -847,6 +910,16 @@ def lambda_handler():
                                 except Exception as e:
                                     logger.error("Couldn't update shopify for: " + str(order[1])
                                                  + "\nError: " + str(e.args))
+
+                            """
+                            if order[46] == 1:  # Woocommerce
+                                try:
+                                    order_ls = [order[36], order[37], order[38], order[39]]
+                                    woocommerce_fulfillment(order_ls)
+                                except Exception as e:
+                                    logger.error("Couldn't update Woocommerce for: " + str(order[1])
+                                                 + "\nError: " + str(e.args))
+                            """
                             data_tuple = tuple([(
                             return_data_raw['AddManifestDetails'][0]['AWBNo'], return_data_raw['AddManifestDetails'][0]['ReturnMessage'],
                             order[0], pickup_point[1], courier[9], json.dumps(dimensions), volumetric_weight, weight,
@@ -945,3 +1018,12 @@ def shopify_fulfillment(order, awb_no, location_id):
                                 headers=ful_header)
     fulfillment_id = str(req_ful.json()['fulfillment']['id'])
     return fulfillment_id, tracking_link
+
+
+def woocommerce_fulfillment(order):
+    auth_session = OAuth1Session(order[0],
+                                 client_secret=order[1])
+    url = '%s/wp-json/wc/v3/orders/%s' % (order[2], str(order[3]))
+    r = auth_session.post(url, data={"status": "shipped"})
+    if r.status_code == 400:
+        r = auth_session.post(url, data={"status": "completed"})

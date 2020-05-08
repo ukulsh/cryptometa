@@ -5,6 +5,7 @@ from project import db
 from sqlalchemy.dialects.postgresql import JSON
 from sqlalchemy import UniqueConstraint
 from datetime import datetime
+from sqlalchemy.dialects.postgresql import ARRAY
 
 
 class Products(db.Model):
@@ -46,6 +47,20 @@ class ProductQuantity(db.Model):
     current_quantity = db.Column(db.Integer, nullable=True)
     warehouse_prefix = db.Column(db.String, nullable=False)
     status = db.Column(db.String, nullable=False)
+    date_created = db.Column(db.DateTime, default=datetime.now)
+    date_updated = db.Column(db.DateTime, onupdate=datetime.now)
+
+
+class InventoryUpdate(db.Model):
+    __tablename__ = "inventory_update"
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    product_id = db.Column(db.Integer, db.ForeignKey('products.id'))
+    product = db.relationship("Products", backref=db.backref("inventory_update", uselist=True))
+    warehouse_prefix = db.Column(db.String, nullable=False)
+    user = db.Column(db.String, nullable=False)
+    remark = db.Column(db.String, nullable=True)
+    quantity = db.Column(db.Integer, nullable=False)
+    type = db.Column(db.String, nullable=False)
     date_created = db.Column(db.DateTime, default=datetime.now)
     date_updated = db.Column(db.DateTime, onupdate=datetime.now)
 
@@ -127,6 +142,8 @@ class Orders(db.Model):
     products = db.relationship("OPAssociation", backref="orders", primaryjoin=id == OPAssociation.order_id)
     delivery_address_id = db.Column(db.Integer, db.ForeignKey('shipping_address.id'))
     delivery_address = db.relationship("ShippingAddress", backref=db.backref("orders", uselist=True))
+    billing_address_id = db.Column(db.Integer, db.ForeignKey('billing_address.id'))
+    billing_address = db.relationship("BillingAddress", backref=db.backref("orders", uselist=True))
     client_prefix = db.Column(db.String, nullable=True)
     client_channel_id = db.Column(db.Integer, db.ForeignKey('client_channel.id'))
     client_channel = db.relationship("ClientChannel", backref=db.backref("orders", uselist=True))
@@ -187,12 +204,30 @@ class ClientChannel(db.Model):
     shop_url = db.Column(db.String, nullable=True)
     last_synced_order = db.Column(db.String, nullable=True)
     last_synced_time = db.Column(db.DateTime, nullable=True)
+    fetch_status = db.Column(ARRAY(db.String(20)))
     date_created = db.Column(db.DateTime, default=datetime.now)
     date_updated = db.Column(db.DateTime, onupdate=datetime.now)
 
 
 class ShippingAddress(db.Model):
     __tablename__ = "shipping_address"
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    first_name = db.Column(db.String, nullable=True)
+    last_name = db.Column(db.String, nullable=True)
+    address_one = db.Column(db.Text, nullable=True)
+    address_two = db.Column(db.Text, nullable=True)
+    city = db.Column(db.String, nullable=True)
+    pincode = db.Column(db.String, nullable=True)
+    state = db.Column(db.String, nullable=True)
+    country = db.Column(db.String, nullable=True)
+    phone = db.Column(db.String, nullable=True)
+    latitude = db.Column(db.FLOAT, nullable=True)
+    longitude = db.Column(db.FLOAT, nullable=True)
+    country_code = db.Column(db.String, nullable=True)
+
+
+class BillingAddress(db.Model):
+    __tablename__ = "billing_address"
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     first_name = db.Column(db.String, nullable=True)
     last_name = db.Column(db.String, nullable=True)
@@ -447,6 +482,7 @@ class ClientMapping(db.Model):
     theme_color = db.Column(db.String, nullable=True)
     api_token = db.Column(db.String, nullable=True)
     verify_cod = db.Column(db.BOOLEAN, nullable=True, default=True)
+    essential = db.Column(db.BOOLEAN, nullable=True, default=True)
     custom_email = db.Column(db.Text, nullable=True)
     custom_email_subject = db.Column(db.String, nullable=True)
 

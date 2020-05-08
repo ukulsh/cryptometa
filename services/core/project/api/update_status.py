@@ -44,8 +44,20 @@ def lambda_handler():
                     awb_string = awb_string.rstrip(',')
 
                     check_status_url = "https://track.delhivery.com/api/status/packages/json/?waybill=%s&token=%s" % (awb_string, courier[2])
-                    req = requests.get(check_status_url).json()
-                    req_ship_data += req['ShipmentData']
+                    req = requests.get(check_status_url)
+                    try:
+                        req_ship_data += req.json()['ShipmentData']
+                    except Exception as e:
+                        logger.error("Status Tracking Failed for: "+awb_string + "\nError: "+str(e.args[0]))
+                        if e.args[0] == 'ShipmentData':
+                            sms_to_key = "Messages[%s][To]" % str(exotel_idx)
+                            sms_body_key = "Messages[%s][Body]" % str(exotel_idx)
+                            sms_body_key_data = "Status Update Fail Alert"
+                            customer_phone = "08750108744"
+                            exotel_sms_data[sms_to_key] = customer_phone
+                            exotel_sms_data[sms_body_key] = sms_body_key_data
+                            exotel_idx += 1
+                        continue
                 logger.info("Count of delhivery packages: "+str(len(req_ship_data)))
                 for ret_order in req_ship_data:
                     try:
@@ -174,12 +186,24 @@ def lambda_handler():
                                 pickup_dict[orders_dict[current_awb][11]] = 1
                             else:
                                 pickup_dict[orders_dict[current_awb][11]] += 1
-                            cur.execute(update_prod_quantity_query_pickup%str(orders_dict[current_awb][0]))
+                            #cur.execute(update_prod_quantity_query_pickup%str(orders_dict[current_awb][0]))
                             if orders_dict[current_awb][14] == 5:
                                 try:
                                     woocommerce_fulfillment(orders_dict[current_awb])
                                 except Exception as e:
                                     logger.error("Couldn't update woocommerce for: " + str(orders_dict[current_awb][0])
+                                                 + "\nError: " + str(e.args))
+                            elif orders_dict[current_awb][14] == 1 and orders_dict[current_awb][15]:
+                                try:
+                                    shopify_fulfillment(orders_dict[current_awb], cur)
+                                except Exception as e:
+                                    logger.error("Couldn't update shopify for: " + str(orders_dict[current_awb][0])
+                                                 + "\nError: " + str(e.args))
+                            elif orders_dict[current_awb][14] == 6: #Magento fulfilment
+                                try:
+                                    magento_fulfillment(orders_dict[current_awb], cur)
+                                except Exception as e:
+                                    logger.error("Couldn't update Magento for: " + str(orders_dict[current_awb][0])
                                                  + "\nError: " + str(e.args))
                             """
                             if orders_dict[current_awb][5] and not orders_dict[current_awb][6]:
@@ -223,14 +247,16 @@ def lambda_handler():
                                 try:
                                     tracking_link_wareiq = "http://webapp.wareiq.com/tracking/" + str(
                                         orders_dict[current_awb][1])
+                                    """
                                     short_url = requests.get(
                                         "https://cutt.ly/api/api.php?key=f445d0bb52699d2f870e1832a1f77ef3f9078&short=%s" % tracking_link_wareiq)
                                     short_url_track = short_url.json()['url']['shortLink']
+                                    """
                                     exotel_sms_data[
                                         sms_body_key] = "Dear Customer, your %s order has been shipped via Delhivery with AWB number %s. " \
                                                         "It is expected to arrive by %s. You can track your order on this (%s) link." % (
                                                             client_name[0], str(orders_dict[current_awb][1]), edd,
-                                                            short_url_track)
+                                                            tracking_link_wareiq)
                                 except Exception:
                                     exotel_sms_data[sms_body_key] = "Dear Customer, your %s order has been shipped via Delhivery with AWB number %s. It is expected to arrive by %s. Thank you for Ordering." % (
                                     client_name[0], orders_dict[current_awb][1], edd)
@@ -239,8 +265,6 @@ def lambda_handler():
                         if orders_dict[current_awb][2] != new_status:
                             status_update_tuple = (new_status, status_type, status_detail, orders_dict[current_awb][0])
                             cur.execute(order_status_update_query, status_update_tuple)
-                            if new_status=="RTO" and ret_order['Shipment']['Status']['StatusType']=="DL":
-                                cur.execute(update_prod_quantity_query_rto%str(orders_dict[current_awb][0]))
 
                             if new_status=='PENDING' and status_code in ('EOD-111','EOD-6','FMEOD-118','EOD-69','EOD-11'):
                                 try:  # NDR check text
@@ -264,6 +288,7 @@ def lambda_handler():
                             data=exotel_sms_data)
                     except Exception as e:
                         logger.error("messages not sent." + "   Error: " + str(e.args[0]))
+
                 if pickup_count:
                     logger.info("Total Picked: " + str(pickup_count) + "  Time: " + str(datetime.utcnow()))
                     try:
@@ -431,12 +456,25 @@ def lambda_handler():
                                 pickup_dict[orders_dict[current_awb][11]] = 1
                             else:
                                 pickup_dict[orders_dict[current_awb][11]] += 1
-                            cur.execute(update_prod_quantity_query_pickup%str(orders_dict[current_awb][0]))
+                            #cur.execute(update_prod_quantity_query_pickup%str(orders_dict[current_awb][0]))
                             if orders_dict[current_awb][14] == 5:
                                 try:
                                     woocommerce_fulfillment(orders_dict[current_awb])
                                 except Exception as e:
                                     logger.error("Couldn't update woocommerce for: " + str(orders_dict[current_awb][0])
+                                                 + "\nError: " + str(e.args))
+
+                            elif orders_dict[current_awb][14] == 1 and orders_dict[current_awb][15]:
+                                try:
+                                    shopify_fulfillment(orders_dict[current_awb], cur)
+                                except Exception as e:
+                                    logger.error("Couldn't update shopify for: " + str(orders_dict[current_awb][0])
+                                                 + "\nError: " + str(e.args))
+                            elif orders_dict[current_awb][14] == 6: #Magento fulfilment
+                                try:
+                                    magento_fulfillment(orders_dict[current_awb], cur)
+                                except Exception as e:
+                                    logger.error("Couldn't update Magento for: " + str(orders_dict[current_awb][0])
                                                  + "\nError: " + str(e.args))
                             """
                             if orders_dict[current_awb][5] and not orders_dict[current_awb][6]:
@@ -488,8 +526,6 @@ def lambda_handler():
                         if orders_dict[current_awb][2] != new_status:
                             status_update_tuple = (new_status, status_type, status_detail, orders_dict[current_awb][0])
                             cur.execute(order_status_update_query, status_update_tuple)
-                            if ret_order['status']=="rts_d":
-                                cur.execute(update_prod_quantity_query_rto%str(orders_dict[current_awb][0]))
 
                             if ret_order['status'] in ('cancelled_by_customer', 'nc'):
                                 try:  # NDR check text
@@ -674,12 +710,26 @@ def lambda_handler():
                                 pickup_dict[orders_dict[current_awb][11]] = 1
                             else:
                                 pickup_dict[orders_dict[current_awb][11]] += 1
-                            cur.execute(update_prod_quantity_query_pickup % str(orders_dict[current_awb][0]))
+                            #cur.execute(update_prod_quantity_query_pickup % str(orders_dict[current_awb][0]))
                             if orders_dict[current_awb][14] == 5:
                                 try:
                                     woocommerce_fulfillment(orders_dict[current_awb])
                                 except Exception as e:
                                     logger.error("Couldn't update woocommerce for: " + str(orders_dict[current_awb][0])
+                                                 + "\nError: " + str(e.args))
+
+                            elif orders_dict[current_awb][14] == 1 and orders_dict[current_awb][15]:
+                                try:
+                                    shopify_fulfillment(orders_dict[current_awb], cur)
+                                except Exception as e:
+                                    logger.error("Couldn't update shopify for: " + str(orders_dict[current_awb][0])
+                                                 + "\nError: " + str(e.args))
+
+                            elif orders_dict[current_awb][14] == 6: #Magento fulfilment
+                                try:
+                                    magento_fulfillment(orders_dict[current_awb], cur)
+                                except Exception as e:
+                                    logger.error("Couldn't update Magento for: " + str(orders_dict[current_awb][0])
                                                  + "\nError: " + str(e.args))
 
                             if edd:
@@ -698,14 +748,16 @@ def lambda_handler():
                                 try:
                                     tracking_link_wareiq = "http://webapp.wareiq.com/tracking/" + str(
                                         orders_dict[current_awb][1])
+                                    """
                                     short_url = requests.get(
                                         "https://cutt.ly/api/api.php?key=f445d0bb52699d2f870e1832a1f77ef3f9078&short=%s" % tracking_link_wareiq)
                                     short_url_track = short_url.json()['url']['shortLink']
+                                    """
                                     exotel_sms_data[
                                         sms_body_key] = "Dear Customer, your %s order has been shipped via Xpressbees with AWB number %s. " \
                                                         "It is expected to arrive by %s. You can track your order on this (%s) link." % (
                                                             client_name[0], str(orders_dict[current_awb][1]), edd,
-                                                            short_url_track)
+                                                            tracking_link_wareiq)
                                 except Exception:
                                     exotel_sms_data[
                                         sms_body_key] = "Dear Customer, your %s order has been shipped via Xpressbees with AWB number %s. It is expected to arrive by %s. Thank you for Ordering." % (
@@ -715,8 +767,6 @@ def lambda_handler():
                         if orders_dict[current_awb][2] != new_status:
                             status_update_tuple = (new_status, status_type, status_detail, orders_dict[current_awb][0])
                             cur.execute(order_status_update_query, status_update_tuple)
-                            if ret_order['ShipmentSummary'][0]['StatusCode'] == "RTD":
-                                cur.execute(update_prod_quantity_query_rto % str(orders_dict[current_awb][0]))
 
                             if ret_order['ShipmentSummary'][0]['StatusCode'] == 'UD' \
                                     and ret_order['ShipmentSummary'][0]['Status'] in \
@@ -766,15 +816,17 @@ def lambda_handler():
 
 def verification_text(current_order, exotel_idx, cur, cur_2, ndr=None):
     if not ndr:
-        del_confirmation_link = "http://track.wareiq.com/core/v1/passthru/delivery?CustomField=%s&digits=1&verified_via=text" % str(
+        del_confirmation_link = "http://track.wareiq.com/core/v1/passthru/delivery?CustomField=%s" % str(
             current_order[0])
     else:
-        del_confirmation_link = "http://track.wareiq.com/core/v1/passthru/ndr?CustomField=%s&digits=0&verified_via=text" % str(
+        del_confirmation_link = "http://track.wareiq.com/core/v1/passthru/ndr?CustomField=%s" % str(
             current_order[0])
+    """
     short_url = requests.get(
         "https://cutt.ly/api/api.php?key=f445d0bb52699d2f870e1832a1f77ef3f9078&short=%s" % del_confirmation_link)
     short_url_track = short_url.json()['url']['shortLink']
-    insert_cod_ver_tuple = (current_order[0], short_url_track, datetime.now())
+    """
+    insert_cod_ver_tuple = (current_order[0], del_confirmation_link, datetime.now())
     if not ndr:
         cur.execute(
             "INSERT INTO delivery_check (order_id, verification_link, date_created) VALUES (%s,%s,%s);",
@@ -795,12 +847,12 @@ def verification_text(current_order, exotel_idx, cur, cur_2, ndr=None):
         sms_body_key_data = "Dear Customer, your order from %s with order id %s was delivered today." \
                             " Please click on the link (%s) to report any issue. We'll call you back shortly." % (
                                 client_name[0], str(current_order[12]),
-                                short_url_track)
+                                del_confirmation_link)
     else:
         sms_body_key_data = "Dear Customer, Delivery for your order from %s with order id %s was attempted today." \
                             " If you didn't cancel, please click on the link (%s). We'll call you shortly." % (
                                 client_name[0], str(current_order[12]),
-                                short_url_track)
+                                del_confirmation_link)
 
     return sms_to_key, sms_body_key, customer_phone, sms_body_key_data
 
@@ -889,3 +941,66 @@ def woocommerce_fulfillment(order):
     r = auth_session.post(url, data={"status": "shipped"})
     if r.status_code == 400:
         r = auth_session.post(url, data={"status": "completed"})
+
+
+def shopify_fulfillment(order, cur):
+    create_fulfillment_url = "https://%s:%s@%s/admin/api/2019-10/orders/%s/fulfillments.json" % (
+        order[7], order[8],
+        order[9], order[5])
+    tracking_link = "http://webapp.wareiq.com/tracking/%s" % str(order[1])
+    ful_header = {'Content-Type': 'application/json'}
+    fulfil_data = {
+        "fulfillment": {
+            "tracking_number": str(order[1]),
+            "tracking_urls": [
+                tracking_link
+            ],
+            "tracking_company": "WareIQ",
+            "location_id": int(order[15]),
+            "notify_customer": False
+        }
+    }
+    req_ful = requests.post(create_fulfillment_url, data=json.dumps(fulfil_data),
+                                headers=ful_header)
+    fulfillment_id = str(req_ful.json()['fulfillment']['id'])
+    if fulfillment_id and tracking_link:
+        cur.execute("UPDATE shipments SET channel_fulfillment_id=%s, tracking_link=%s WHERE id=%s", (fulfillment_id, tracking_link, order[10]))
+    return fulfillment_id, tracking_link
+
+
+def magento_fulfillment(order, cur):
+    create_fulfillment_url = "%s/rest/V1/order/%s/ship" % (order[9], order[5])
+    tracking_link = "http://webapp.wareiq.com/tracking/%s" % str(order[1])
+    ful_header = {'Content-Type': 'application/json',
+                  'Authorization': 'Bearer '+order[7]}
+
+    items_list = list()
+    for idx, sku in enumerate(order[16]):
+        items_list.append({
+                      "extension_attributes": {},
+                      "order_item_id": int(sku),
+                      "qty": int(order[17][idx])
+                    })
+    fulfil_data = {
+                  "items": items_list,
+                  "notify": False,
+                  "tracks": [
+                    {
+                      "extension_attributes": {},
+                      "track_number": str(order[1]),
+                      "title": "WareIQ",
+                      "carrier_code": "WareIQ"
+                    }
+                  ],
+                  "arguments": {
+                    "extension_attributes": {
+                      "ext_tracking_url": tracking_link,
+                      "ext_tracking_reference": str(order[1])
+                    }
+                  }
+                }
+    req_ful = requests.post(create_fulfillment_url, data=json.dumps(fulfil_data),
+                            headers=ful_header, verify=False)
+    if type(req_ful.json()) == str:
+        cur.execute("UPDATE shipments SET channel_fulfillment_id=%s, tracking_link=%s WHERE id=%s", (req_ful.json(), tracking_link, order[10]))
+    return req_ful.json(), tracking_link

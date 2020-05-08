@@ -91,11 +91,13 @@ def lambda_handler(courier_name=None, order_ids=None):
                         if order[26].lower()=='cod' and not order[42] and order[43]:
                             continue #change this to continue later
                         if order[26].lower()=='cod' and not order[43]:
-                            cod_confirmation_link = "http://track.wareiq.com/core/v1/passthru/cod?CustomField=%s&digits=1&verified_via=text"%str(order[0])
+                            cod_confirmation_link = "http://track.wareiq.com/core/v1/passthru/cod?CustomField=%s"%str(order[0])
+                            """
                             short_url = requests.get(
                                 "https://cutt.ly/api/api.php?key=f445d0bb52699d2f870e1832a1f77ef3f9078&short=%s" % cod_confirmation_link)
                             short_url_track = short_url.json()['url']['shortLink']
-                            insert_cod_ver_tuple = (order[0], short_url_track, datetime.now())
+                            """
+                            insert_cod_ver_tuple = (order[0], cod_confirmation_link, datetime.now())
                             cur.execute("INSERT INTO cod_verification (order_id, verification_link, date_created) VALUES (%s,%s,%s);", insert_cod_ver_tuple)
                             cur_2.execute("select client_name from clients where client_prefix='%s'" % order[9])
                             client_name = cur_2.fetchone()
@@ -111,7 +113,7 @@ def lambda_handler(courier_name=None, order_ids=None):
                                 sms_body_key] = "Dear Customer, You recently placed an order from %s with order id %s. " \
                                                 "Please click on the link (%s) to verify. " \
                                                 "Your order will be shipped soon after confirmation." % (
-                                                    client_name[0], str(order[1]), short_url_track)
+                                                    client_name[0], str(order[1]), cod_confirmation_link)
 
                             exotel_idx += 1
                             continue
@@ -130,6 +132,18 @@ def lambda_handler(courier_name=None, order_ids=None):
                                   None, None, None, None, "Pincode not serviceable", None, None),)
                             cur.execute(insert_shipments_data_query, tuple(insert_shipments_data_tuple))
                             continue
+                        elif 'covid_zone' in req.json()['delivery_codes'][0]['postal_code']:
+                            if not order[48] and req.json()['delivery_codes'][0]['postal_code']['covid_zone'].upper()=='R':
+                                insert_shipments_data_query = """INSERT INTO SHIPMENTS (awb, status, order_id, pickup_id, courier_id, 
+                                                                                                    dimensions, volumetric_weight, weight, remark, return_point_id, routing_code)
+                                                                                                    VALUES  %s"""
+                                insert_shipments_data_tuple = list()
+                                insert_shipments_data_tuple.append(("", "Fail", order[0], None,
+                                                                    None, None, None, None, "Non essential in Red Zone(COVID)",
+                                                                    None, None), )
+                                cur.execute(insert_shipments_data_query, tuple(insert_shipments_data_tuple))
+                                continue
+
 
                         package_string = ""
                         for idx, prod in enumerate(order[40]):
@@ -218,7 +232,6 @@ def lambda_handler(courier_name=None, order_ids=None):
                     tracking_link = None
                     if package['waybill']:
                         order_status_change_ids.append(orders_dict[package['refnum']][0])
-                        """
                         cur_2.execute(
                             "select client_name from clients where client_prefix='%s'" % orders_dict[package['refnum']][9])
                         client_name = cur_2.fetchone()
@@ -231,25 +244,26 @@ def lambda_handler(courier_name=None, order_ids=None):
                         exotel_sms_data[sms_to_key] = customer_phone
                         try:
                             tracking_link_wareiq = "http://webapp.wareiq.com/tracking/"+str(package['waybill'])
+                            """
                             short_url = requests.get("https://cutt.ly/api/api.php?key=f445d0bb52699d2f870e1832a1f77ef3f9078&short=%s"%tracking_link_wareiq)
                             short_url_track = short_url.json()['url']['shortLink']
+                            """
                             exotel_sms_data[
                                 sms_body_key] = "Dear Customer, thank you for ordering from %s. " \
                                                 "Your order will be shipped by Delhivery with AWB number %s. " \
                                                 "You can track your order on this ( %s ) link." % (
-                                                client_name[0], str(package['waybill']), short_url_track)
+                                                client_name[0], str(package['waybill']), tracking_link_wareiq)
                         except Exception:
                             exotel_sms_data[
                                 sms_body_key] = "Dear Customer, thank you for ordering from %s. Your order will be shipped by Delhivery with AWB number %s. " \
                                                 "You can track your order using this AWB number." % (client_name[0], str(package['waybill']))
                         exotel_idx += 1
-                        """
 
                         if orders_dict[package['refnum']][10] and orders_dict[package['refnum']][11]==1: #shopify
                             try:
                                 order_ls = [orders_dict[package['refnum']][4],orders_dict[package['refnum']][5],
                                             orders_dict[package['refnum']][6],orders_dict[package['refnum']][7]]
-                                fulfillment_id, tracking_link = shopify_fulfillment(order_ls, str(package['waybill']), orders_dict[package['refnum']][10])
+                                fulfillment_id, tracking_link = None, None #shopify_fulfillment(order_ls, str(package['waybill']), orders_dict[package['refnum']][10])
                             except Exception as e:
                                 logger.error("Couldn't update shopify for: " + str(package['refnum'])
                                              + "\nError: " + str(e.args))
@@ -277,6 +291,10 @@ def lambda_handler(courier_name=None, order_ids=None):
                                 logger.error("Couldn't update shopify for: " + str(package['refnum'])
                                              + "\nError: " + str(e.args))
 
+                    remark = ''
+                    if package['remarks']:
+                        remark = package['remarks'][0]
+
                     dimensions = orders_dict[package['refnum']][1][0]
                     dimensions['length'] = dimensions['length']*orders_dict[package['refnum']][3][0]
                     weight = orders_dict[package['refnum']][2][0]*orders_dict[package['refnum']][3][0]
@@ -287,10 +305,6 @@ def lambda_handler(courier_name=None, order_ids=None):
                         weight += orders_dict[package['refnum']][2][idx]*(orders_dict[package['refnum']][3][idx])
 
                     volumetric_weight = (dimensions['length']*dimensions['breadth']*dimensions['height'])/5000
-
-                    remark = ''
-                    if package['remarks']:
-                        remark = package['remarks'][0]
 
                     data_tuple = (package['waybill'], package['status'], orders_dict[package['refnum']][0], pickup_point[1],
                                   courier[9], json.dumps(dimensions), volumetric_weight, weight, remark, pickup_point[2],
@@ -358,12 +372,14 @@ def lambda_handler(courier_name=None, order_ids=None):
                 for order in all_new_orders:
                     try:
                         if order[26].lower()=='cod' and not order[43]:
-                            cod_confirmation_link = "http://track.wareiq.com/core/v1/passthru/cod?CustomField=%s&digits=1&verified_via=text" % str(
+                            cod_confirmation_link = "http://track.wareiq.com/core/v1/passthru/cod?CustomField=%s" % str(
                                 order[0])
+                            """
                             short_url = requests.get(
                                 "https://cutt.ly/api/api.php?key=f445d0bb52699d2f870e1832a1f77ef3f9078&short=%s" % cod_confirmation_link)
                             short_url_track = short_url.json()['url']['shortLink']
-                            insert_cod_ver_tuple = (order[0], short_url_track, datetime.now())
+                            """
+                            insert_cod_ver_tuple = (order[0], cod_confirmation_link, datetime.now())
                             cur.execute(
                                 "INSERT INTO cod_verification (order_id, verification_link, date_created) VALUES (%s,%s,%s);",
                                 insert_cod_ver_tuple)
@@ -381,7 +397,7 @@ def lambda_handler(courier_name=None, order_ids=None):
                                 sms_body_key] = "Dear Customer, You recently placed an order from %s with order id %s. " \
                                                 "Please click on the link (%s) to verify. " \
                                                 "Your order will be shipped soon after confirmation." % (
-                                                    client_name[0], str(order[1]), short_url_track)
+                                                    client_name[0], str(order[1]), cod_confirmation_link)
 
                             exotel_idx += 1
 
@@ -441,14 +457,16 @@ def lambda_handler(courier_name=None, order_ids=None):
                             exotel_sms_data[sms_to_key] = customer_phone
                             try:
                                 tracking_link_wareiq = "http://webapp.wareiq.com/tracking/" + str(return_data['awbno'])
+                                """
                                 short_url = requests.get(
                                     "https://cutt.ly/api/api.php?key=f445d0bb52699d2f870e1832a1f77ef3f9078&short=%s" % tracking_link_wareiq)
                                 short_url_track = short_url.json()['url']['shortLink']
+                                """
                                 exotel_sms_data[
                                     sms_body_key] = "Dear Customer, thank you for ordering from %s. " \
                                                     "Your order will be shipped by Delhivery with AWB number %s. " \
                                                     "You can track your order on this ( %s ) link." % (
-                                                        client_name[0], str(return_data['awbno']), short_url_track)
+                                                        client_name[0], str(return_data['awbno']), tracking_link_wareiq)
                             except Exception:
                                 exotel_sms_data[
                                     sms_body_key] = "Dear Customer, thank you for ordering from %s. Your order will be shipped by Delhivery with AWB number %s. " \
@@ -520,11 +538,13 @@ def lambda_handler(courier_name=None, order_ids=None):
                         if order[26].lower()=='cod' and not order[42] and order[43]:
                             continue
                         if order[26].lower()=='cod' and not order[43]:
-                            cod_confirmation_link = "http://track.wareiq.com/core/v1/passthru/cod?CustomField=%s&digits=1&verified_via=text"%str(order[0])
+                            cod_confirmation_link = "http://track.wareiq.com/core/v1/passthru/cod?CustomField=%s"%str(order[0])
+                            """
                             short_url = requests.get(
                                 "https://cutt.ly/api/api.php?key=f445d0bb52699d2f870e1832a1f77ef3f9078&short=%s" % cod_confirmation_link)
                             short_url_track = short_url.json()['url']['shortLink']
-                            insert_cod_ver_tuple = (order[0], short_url_track, datetime.now())
+                            """
+                            insert_cod_ver_tuple = (order[0], cod_confirmation_link, datetime.now())
                             cur.execute(
                                 "INSERT INTO cod_verification (order_id, verification_link, date_created) VALUES (%s,%s,%s);",
                                 insert_cod_ver_tuple)
@@ -542,7 +562,7 @@ def lambda_handler(courier_name=None, order_ids=None):
                                 sms_body_key] = "Dear Customer, You recently placed an order from %s with order id %s. " \
                                                 "Please click on the link (%s) to verify. " \
                                                 "Your order will be shipped soon after confirmation." % (
-                                                    client_name[0], str(order[1]), short_url_track)
+                                                    client_name[0], str(order[1]), cod_confirmation_link)
 
                             exotel_idx += 1
                             continue
@@ -654,14 +674,16 @@ def lambda_handler(courier_name=None, order_ids=None):
                             exotel_sms_data[sms_to_key] = customer_phone
                             try:
                                 tracking_link_wareiq = "http://webapp.wareiq.com/tracking/" + str(return_data_raw['data']['awb_number'])
+                                """
                                 short_url = requests.get(
                                     "https://cutt.ly/api/api.php?key=f445d0bb52699d2f870e1832a1f77ef3f9078&short=%s" % tracking_link_wareiq)
                                 short_url_track = short_url.json()['url']['shortLink']
+                                """
                                 exotel_sms_data[
                                     sms_body_key] = "Dear Customer, thank you for ordering from %s. " \
                                                     "Your order will be shipped by Shadowfax with AWB number %s. " \
                                                     "You can track your order on this ( %s ) link." % (
-                                                        client_name[0], str(return_data_raw['data']['awb_number']), short_url_track)
+                                                        client_name[0], str(return_data_raw['data']['awb_number']), tracking_link_wareiq)
                             except Exception:
                                 exotel_sms_data[
                                     sms_body_key] = "Dear Customer, thank you for ordering from %s. Your order will be shipped by Shadowfax with AWB number %s. " \
@@ -672,9 +694,9 @@ def lambda_handler(courier_name=None, order_ids=None):
                             if order[45] and order[46] == 1:  # shopify
                                 try:
                                     order_ls = [order[36], order[37], order[38], order[39]]
-                                    fulfillment_id, tracking_link = shopify_fulfillment(order_ls,
-                                                                         str(return_data_raw['data']['awb_number']),
-                                                                         order[45])
+                                    fulfillment_id, tracking_link = None, None #shopify_fulfillment(order_ls,
+                                    #                                      str(return_data_raw['data']['awb_number']),
+                                    #                                      order[45])
                                 except Exception as e:
                                     logger.error("Couldn't update shopify for: " + str(order[1])
                                                  + "\nError: " + str(e.args))
@@ -768,11 +790,13 @@ def lambda_handler(courier_name=None, order_ids=None):
                         if order[26].lower()=='cod' and not order[42] and order[43]:
                             continue
                         if order[26].lower()=='cod' and not order[43]:
-                            cod_confirmation_link = "http://track.wareiq.com/core/v1/passthru/cod?CustomField=%s&digits=1&verified_via=text"%str(order[0])
+                            cod_confirmation_link = "http://track.wareiq.com/core/v1/passthru/cod?CustomField=%s"%str(order[0])
+                            """
                             short_url = requests.get(
                                 "https://cutt.ly/api/api.php?key=f445d0bb52699d2f870e1832a1f77ef3f9078&short=%s" % cod_confirmation_link)
                             short_url_track = short_url.json()['url']['shortLink']
-                            insert_cod_ver_tuple = (order[0], short_url_track, datetime.now())
+                            """
+                            insert_cod_ver_tuple = (order[0], cod_confirmation_link, datetime.now())
                             cur.execute(
                                 "INSERT INTO cod_verification (order_id, verification_link, date_created) VALUES (%s,%s,%s);",
                                 insert_cod_ver_tuple)
@@ -790,7 +814,7 @@ def lambda_handler(courier_name=None, order_ids=None):
                                 sms_body_key] = "Dear Customer, You recently placed an order from %s with order id %s. " \
                                                 "Please click on the link (%s) to verify. " \
                                                 "Your order will be shipped soon after confirmation." % (
-                                                    client_name[0], str(order[1]), short_url_track)
+                                                    client_name[0], str(order[1]), cod_confirmation_link)
 
                             exotel_idx += 1
                             continue
@@ -904,9 +928,9 @@ def lambda_handler(courier_name=None, order_ids=None):
                             if order[45] and order[46] == 1:  # shopify
                                 try:
                                     order_ls = [order[36], order[37], order[38], order[39]]
-                                    fulfillment_id, tracking_link = shopify_fulfillment(order_ls,
-                                                                         str(return_data_raw['AddManifestDetails'][0]['AWBNo']),
-                                                                         order[45])
+                                    fulfillment_id, tracking_link = None, None #shopify_fulfillment(order_ls,
+                                                                         #str(return_data_raw['AddManifestDetails'][0]['AWBNo']),
+                                                                         #order[45])
                                 except Exception as e:
                                     logger.error("Couldn't update shopify for: " + str(order[1])
                                                  + "\nError: " + str(e.args))
@@ -935,14 +959,16 @@ def lambda_handler(courier_name=None, order_ids=None):
                             exotel_sms_data[sms_to_key] = customer_phone
                             try:
                                 tracking_link_wareiq = "http://webapp.wareiq.com/tracking/" + str(return_data_raw['AddManifestDetails'][0]['AWBNo'])
+                                """
                                 short_url = requests.get(
                                     "https://cutt.ly/api/api.php?key=f445d0bb52699d2f870e1832a1f77ef3f9078&short=%s" % tracking_link_wareiq)
                                 short_url_track = short_url.json()['url']['shortLink']
+                                """
                                 exotel_sms_data[
                                     sms_body_key] = "Dear Customer, thank you for ordering from %s. " \
                                                     "Your order will be shipped by Xpressbees with AWB number %s. " \
                                                     "You can track your order on this ( %s ) link." % (
-                                                        client_name[0], str(return_data_raw['AddManifestDetails'][0]['AWBNo']), short_url_track)
+                                                        client_name[0], str(return_data_raw['AddManifestDetails'][0]['AWBNo']), tracking_link_wareiq)
                             except Exception:
                                 exotel_sms_data[
                                     sms_body_key] = "Dear Customer, thank you for ordering from %s. Your order will be shipped by Xpressbees with AWB number %s. " \

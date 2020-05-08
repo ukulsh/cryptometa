@@ -58,7 +58,7 @@ def lambda_handler():
             manifest_id = current_time.strftime('%Y_%m_%d_') +''.join(random.choices(string.ascii_uppercase, k=8)) +"_"+ pick_req[1]
             pickup_date_string = pickup_date.strftime("%Y-%m-%d ")+ time_string
             manifest_data_tuple = (manifest_id, pick_req[2], values['courier_id'], pick_req[3], len(values['orders']),
-                                   pickup_date_string, manifest_url, current_time)
+                                   pickup_date_string, manifest_url, current_time, pick_req[0])
             if time_now.hour < 7:
                 cur.execute(insert_manifest_data_query, manifest_data_tuple)
 
@@ -74,6 +74,7 @@ def lambda_handler():
                            "Content-Type": "application/json"}
 
                 req = requests.post(pickup_request_api_url, headers=headers, data=pickup_request_api_body)
+
         if last_picked_update_id:
             update_pickup_requests_tuple = (last_picked_update_id, datetime.now(), pick_req[1])
             cur.execute(update_pickup_requests_query, update_pickup_requests_tuple)

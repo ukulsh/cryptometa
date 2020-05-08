@@ -1,7 +1,7 @@
 
 fetch_client_channels_query = """select aa.id,aa.client_prefix,aa.channel_id,aa.api_key,aa.api_password,aa.shop_url,
                                 aa.last_synced_order,aa.last_synced_time,aa.date_created,aa.date_updated,
-                                bb.id,bb.channel_name,bb.logo_url,bb.date_created,bb.date_updated 
+                                bb.id,bb.channel_name,bb.logo_url,bb.date_created,bb.date_updated,aa.fetch_status
                                 from client_channel aa
                                 left join master_channels bb
                                 on aa.channel_id=bb.id"""
@@ -11,10 +11,15 @@ insert_shipping_address_query = """INSERT INTO shipping_address (first_name, las
                                 VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id;
                             """
 
-insert_orders_data_query = """INSERT INTO orders (channel_order_id, order_date, customer_name, customer_email, 
-                                customer_phone, delivery_address_id, date_created, status, client_prefix, client_channel_id, 
-                                order_id_channel_unique, pickup_data_id)
+insert_billing_address_query = """INSERT INTO billing_address (first_name, last_name, address_one, address_two, city,	
+                                            pincode, state, country, phone, latitude, longitude, country_code)
                                 VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id;
+                            """
+
+insert_orders_data_query = """INSERT INTO orders (channel_order_id, order_date, customer_name, customer_email, 
+                                customer_phone, delivery_address_id, billing_address_id, date_created, status, client_prefix, client_channel_id, 
+                                order_id_channel_unique, pickup_data_id)
+                                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id;
                             """
 
 insert_payments_data_query = """INSERT INTO orders_payments (payment_mode, amount, subtotal, shipping_charges, currency, order_id)
@@ -94,7 +99,7 @@ get_orders_to_ship_query = """select aa.id,aa.channel_order_id,aa.order_date,aa.
                                 cc.latitude,cc.longitude,cc.country_code,dd.id,dd.payment_mode,dd.amount,dd.currency,dd.order_id,dd.shipping_charges,
                                 dd.subtotal,dd.order_id,ee.dimensions,ee.weights,ee.quan, ff.api_key, ff.api_password, 
                                 ff.shop_url, aa.order_id_channel_unique, ee.products_name, aa.pickup_data_id, xx.cod_verified, 
-                                xx.id, ee.ship_courier, gg.location_id, ff.channel_id, yy.verify_cod
+                                xx.id, ee.ship_courier, gg.location_id, ff.channel_id, yy.verify_cod, yy.essential
                                 from orders aa
                                 left join shipping_address cc
                                 on aa.delivery_address_id=cc.id
@@ -174,8 +179,8 @@ get_request_pickup_orders_data_query = """select aa.channel_order_id, aa.order_d
 update_order_status_query = """UPDATE orders SET status='PICKUP REQUESTED' WHERE id=%s"""
 
 insert_manifest_data_query = """INSERT INTO manifests (manifest_id, warehouse_prefix, courier_id, pickup_id, 
-                                total_scheduled, pickup_date, manifest_url, date_created) VALUES (%s,%s,%s,%s,%s,
-                                %s,%s,%s)"""
+                                total_scheduled, pickup_date, manifest_url, date_created, client_pickup_id) VALUES 
+                                (%s,%s,%s,%s,%s,%s,%s,%s,%s)"""
 
 update_pickup_requests_query = """UPDATE pickup_requests SET last_picked_order_id=%s, last_pickup_request_date=%s
                                   WHERE client_prefix=%s"""
@@ -188,20 +193,28 @@ get_courier_id_and_key_query = """SELECT id, courier_name, api_key FROM master_c
 get_status_update_orders_query = """select aa.id, bb.awb, aa.status, aa.client_prefix, aa.customer_phone, 
                                     aa.order_id_channel_unique, bb.channel_fulfillment_id, cc.api_key, 
                                     cc.api_password, cc.shop_url, bb.id, dd.pickup_id, aa.channel_order_id, ee.payment_mode, 
-                                    cc.channel_id from orders aa
+                                    cc.channel_id, gg.location_id, mm.sku_list, mm.sku_quan_list from orders aa
                                     left join shipments bb
                                     on aa.id=bb.order_id
+                                    left join (select order_id, array_agg(sku) as sku_list, array_agg(quantity) as sku_quan_list from
+                                      		  (select kk.order_id, ll.sku, kk.quantity
+                                              from op_association kk
+                                              left join products ll on kk.product_id=ll.id) nn
+                                              group by order_id) mm
+                                    on aa.id=mm.order_id
                                     left join client_channel cc
                                     on aa.client_channel_id=cc.id
                                     left join client_pickups dd
                                     on aa.pickup_data_id=dd.id
                                     left join orders_payments ee
                                     on aa.id=ee.order_id
+                                    left join client_channel_locations gg
+                                    on aa.client_channel_id=gg.client_channel_id
+                                    and aa.pickup_data_id=gg.pickup_data_id
                                     where aa.status not in ('NEW','DELIVERED','NOT SHIPPED','RTO','CANCELED')
                                     and aa.status_type is distinct from 'DL'
                                     and bb.awb != ''
-                                    and bb.status != 'Fail'
-                                    and bb.status != 'Failure'
+                                    and bb.awb is not null
                                     and bb.courier_id=%s;"""
 
 order_status_update_query = """UPDATE orders SET status=%s, status_type=%s, status_detail=%s WHERE id=%s;"""
@@ -258,7 +271,7 @@ select_orders_to_calculate_query = """select aa.id, aa.awb, aa.courier_id, aa.vo
                                         left join pickup_points cc on aa.pickup_id=cc.id
                                         left join shipping_address dd on bb.delivery_address_id=dd.id
                                         left join client_deductions ee on ee.shipment_id=aa.id
-                                        left join (select * from order_status where status in ('Delivered', 'Returned')) ff
+                                        left join (select * from order_status where status in ('Delivered', 'RTO')) ff
                                         on aa.id = ff.shipment_id
                                         left join orders_payments gg on bb.id=gg.order_id
                                         where bb.status in ('DELIVERED', 'RTO')

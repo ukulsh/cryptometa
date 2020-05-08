@@ -122,7 +122,7 @@ def create_manifests_blank_page(canvas, courier, date, store, shipments):
     canvas.drawString(4.70 * inch, 9.65 * inch, "AWB #")
 
     canvas.setFont('Helvetica', 10)
-    canvas.drawString(-0.75 * inch, 10.05 * inch, "Courier: "+courier)
+    canvas.drawString(-0.75 * inch, 10.05 * inch, "Courier: "+str(courier))
     canvas.drawString(5.55 * inch, 10.05 * inch, "No. of Shipments: "+str(shipments))
     canvas.drawString(2 * inch, 10.05 * inch, "Date: "+date)
     canvas.drawString(3.30 * inch, 10.05 * inch, "Store: "+store)

@@ -150,7 +150,7 @@ def fetch_shopify_orders(cur, channel):
                         for i in (3204, 3206):
                             product_id = i
                             op_tuple = (
-                            product_id, order_id, prod['quantity'], float(prod['quantity'] * float(prod['price'])))
+                            product_id, order_id, prod['quantity'], float(prod['quantity'] * float(prod['price'])), None)
                             cur.execute(insert_op_association_query, op_tuple)
                         continue
                     if product_sku == "30690984558651" and channel[
@@ -158,7 +158,7 @@ def fetch_shopify_orders(cur, channel):
                         for i in (3249, 3250):
                             product_id = i
                             op_tuple = (
-                            product_id, order_id, prod['quantity'], float(prod['quantity'] * float(prod['price'])))
+                            product_id, order_id, prod['quantity'], float(prod['quantity'] * float(prod['price'])), None)
                             cur.execute(insert_op_association_query, op_tuple)
                         continue
                     dimensions = None
@@ -173,7 +173,7 @@ def fetch_shopify_orders(cur, channel):
                         product_id, 100, 100, 100, channel[1], "APPROVED", datetime.now())
                     cur.execute(insert_product_quantity_query, product_quantity_insert_tuple)
 
-                op_tuple = (product_id, order_id, prod['quantity'], float(prod['quantity'] * float(prod['price'])))
+                op_tuple = (product_id, order_id, prod['quantity'], float(prod['quantity'] * float(prod['price'])), None)
                 cur.execute(insert_op_association_query, op_tuple)
 
         except Exception as e:
@@ -305,7 +305,7 @@ def fetch_woocommerce_orders(cur, channel):
                         product_id, 100, 100, 100, channel[1], "APPROVED", datetime.now())
                     cur.execute(insert_product_quantity_query, product_quantity_insert_tuple)
 
-                op_tuple = (product_id, order_id, prod['quantity'], float(prod['quantity'] * float(prod['price'])))
+                op_tuple = (product_id, order_id, prod['quantity'], float(prod['quantity'] * float(prod['price'])), None)
 
                 cur.execute(insert_op_association_query, op_tuple)
 
@@ -435,7 +435,7 @@ def fetch_magento_orders(cur, channel):
                     already_used_prods.append(prod['item_id'])
                 else:
                     continue
-                product_sku = str(prod['item_id'])
+                product_sku = str(prod['product_id'])
                 prod_tuple = (product_sku, channel[1])
                 cur.execute(select_products_query, prod_tuple)
                 try:
@@ -445,8 +445,8 @@ def fetch_magento_orders(cur, channel):
                     weight = None
                     master_sku = str(prod['sku'])
                     if not master_sku:
-                        master_sku = str(prod['item_id'])
-                    product_insert_tuple = (prod['name'], str(prod['item_id']), True, channel[2],
+                        master_sku = product_sku
+                    product_insert_tuple = (prod['name'], product_sku, True, channel[2],
                                             channel[1], datetime.now(), dimensions, float(prod['original_price']),
                                             weight, master_sku)
                     cur.execute(insert_product_query, product_insert_tuple)
@@ -456,7 +456,7 @@ def fetch_magento_orders(cur, channel):
                         product_id, 100, 100, 100, channel[1], "APPROVED", datetime.now())
                     cur.execute(insert_product_quantity_query, product_quantity_insert_tuple)
 
-                op_tuple = (product_id, order_id, prod['qty_ordered'], float(prod['qty_ordered'] * float(prod['price_incl_tax'])))
+                op_tuple = (product_id, order_id, prod['qty_ordered'], float(prod['qty_ordered'] * float(prod['price_incl_tax'])), str(prod['item_id']))
                 cur.execute(insert_op_association_query, op_tuple)
 
         except Exception as e:

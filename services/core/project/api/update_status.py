@@ -166,6 +166,13 @@ def lambda_handler():
                                 exotel_idx += 1
                             except Exception as e:
                                 logger.error("Delivery confirmation not sent. Order id: "+str(orders_dict[current_awb][0]))
+
+                            if orders_dict[current_awb][14] == 6: #Magento complete
+                                try:
+                                    magento_complete_order(orders_dict[current_awb])
+                                except Exception as e:
+                                    logger.error("Couldn't complete Magento for: " + str(orders_dict[current_awb][0])
+                                                 + "\nError: " + str(e.args))
                         """
                             if orders_dict[current_awb][6] and orders_dict[current_awb][5]:
                                 complete_fulfillment_url = "https://%s:%s@%s/admin/api/2019-10/orders/%s/fulfillments/%s/complete.json" % (
@@ -202,6 +209,7 @@ def lambda_handler():
                             elif orders_dict[current_awb][14] == 6: #Magento fulfilment
                                 try:
                                     magento_fulfillment(orders_dict[current_awb], cur)
+                                    magento_invoice(orders_dict[current_awb])
                                 except Exception as e:
                                     logger.error("Couldn't update Magento for: " + str(orders_dict[current_awb][0])
                                                  + "\nError: " + str(e.args))
@@ -435,6 +443,13 @@ def lambda_handler():
                             except Exception as e:
                                 logger.error(
                                     "Delivery confirmation not sent. Order id: " + str(orders_dict[current_awb][0]))
+
+                            if orders_dict[current_awb][14] == 6: #Magento complete
+                                try:
+                                    magento_complete_order(orders_dict[current_awb])
+                                except Exception as e:
+                                    logger.error("Couldn't complete Magento for: " + str(orders_dict[current_awb][0])
+                                                 + "\nError: " + str(e.args))
                         """
                             if orders_dict[current_awb][6] and orders_dict[current_awb][5]:
                                 complete_fulfillment_url = "https://%s:%s@%s/admin/api/2019-10/orders/%s/fulfillments/%s/complete.json" % (
@@ -473,6 +488,7 @@ def lambda_handler():
                             elif orders_dict[current_awb][14] == 6: #Magento fulfilment
                                 try:
                                     magento_fulfillment(orders_dict[current_awb], cur)
+                                    magento_invoice(orders_dict[current_awb])
                                 except Exception as e:
                                     logger.error("Couldn't update Magento for: " + str(orders_dict[current_awb][0])
                                                  + "\nError: " + str(e.args))
@@ -703,6 +719,14 @@ def lambda_handler():
                             except Exception as e:
                                 logger.error(
                                     "Delivery confirmation not sent. Order id: " + str(orders_dict[current_awb][0]))
+
+                            if orders_dict[current_awb][14] == 6: #Magento complete
+                                try:
+                                    magento_complete_order(orders_dict[current_awb])
+                                except Exception as e:
+                                    logger.error("Couldn't complete Magento for: " + str(orders_dict[current_awb][0])
+                                                 + "\nError: " + str(e.args))
+
                         if orders_dict[current_awb][2] in (
                                 'READY TO SHIP', 'PICKUP REQUESTED', 'NOT PICKED') and new_status == 'IN TRANSIT':
                             pickup_count += 1
@@ -728,6 +752,7 @@ def lambda_handler():
                             elif orders_dict[current_awb][14] == 6: #Magento fulfilment
                                 try:
                                     magento_fulfillment(orders_dict[current_awb], cur)
+                                    magento_invoice(orders_dict[current_awb])
                                 except Exception as e:
                                     logger.error("Couldn't update Magento for: " + str(orders_dict[current_awb][0])
                                                  + "\nError: " + str(e.args))
@@ -976,11 +1001,12 @@ def magento_fulfillment(order, cur):
 
     items_list = list()
     for idx, sku in enumerate(order[16]):
-        items_list.append({
-                      "extension_attributes": {},
-                      "order_item_id": int(sku),
-                      "qty": int(order[17][idx])
-                    })
+        if sku:
+            items_list.append({
+                          "extension_attributes": {},
+                          "order_item_id": int(sku),
+                          "qty": int(order[17][idx])
+                        })
     fulfil_data = {
                   "items": items_list,
                   "notify": False,
@@ -993,14 +1019,80 @@ def magento_fulfillment(order, cur):
                     }
                   ],
                   "arguments": {
-                    "extension_attributes": {
-                      "ext_tracking_url": tracking_link,
-                      "ext_tracking_reference": str(order[1])
-                    }
+                    "extension_attributes": {}
                   }
                 }
     req_ful = requests.post(create_fulfillment_url, data=json.dumps(fulfil_data),
                             headers=ful_header, verify=False)
+
+    create_shipped_url = "%s/rest/V1/orders" % order[9]
+    shipped_data = {
+        "entity": {
+            "entity_id": int(order[5]),
+            "status": "shipped"
+        }
+    }
+
+    req_shipped = requests.post(create_shipped_url, data=json.dumps(shipped_data),
+                                headers=ful_header, verify=False)
     if type(req_ful.json()) == str:
         cur.execute("UPDATE shipments SET channel_fulfillment_id=%s, tracking_link=%s WHERE id=%s", (req_ful.json(), tracking_link, order[10]))
     return req_ful.json(), tracking_link
+
+
+def magento_invoice(order):
+    create_invoice_url = "%s/rest/V1/order/%s/invoice" % (order[9], order[5])
+    ful_header = {'Content-Type': 'application/json',
+                  'Authorization': 'Bearer '+order[7]}
+
+    items_list = list()
+    for idx, sku in enumerate(order[16]):
+        if sku:
+            items_list.append({
+                          "extension_attributes": {},
+                          "order_item_id": int(sku),
+                          "qty": int(order[17][idx])
+                        })
+
+    invoice_data = {
+                      "capture": True,
+                      "items": items_list,
+                      "notify": True,
+                      "appendComment": False,
+                      "comment": {
+                        "extension_attributes": {},
+                        "comment": "",
+                        "is_visible_on_front": 0
+                      },
+                      "arguments": {
+                        "extension_attributes": {}
+                      }
+                    }
+    req_ful = requests.post(create_invoice_url, data=json.dumps(invoice_data),
+                            headers=ful_header, verify=False)
+
+    create_invoice_url = "%s/rest/V1/orders" %order[9]
+    invoice_data = {
+        "entity": {
+            "entity_id": int(order[5]),
+            "status": "invoiced"
+        }
+    }
+
+    req_invoice = requests.post(create_invoice_url, data=json.dumps(invoice_data),
+                            headers=ful_header, verify=False)
+
+
+def magento_complete_order(order):
+    complete_order_url = "%s/rest/V1/orders" %order[9]
+    ful_header = {'Content-Type': 'application/json',
+                  'Authorization': 'Bearer '+order[7]}
+
+    complete_data = {
+            "entity": {
+                "entity_id": int(order[5]),
+                "status": "complete"
+            }
+        }
+    req_ful = requests.post(complete_order_url, data=json.dumps(complete_data),
+                            headers=ful_header, verify=False)

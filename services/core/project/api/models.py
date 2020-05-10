@@ -124,6 +124,7 @@ class OPAssociation(db.Model):
     product_id = db.Column('product_id', db.Integer, db.ForeignKey('products.id'))
     quantity = db.Column(db.Integer)
     amount = db.Column(db.FLOAT, nullable=True)
+    channel_item_id = db.Column(db.String, nullable=True)
     order = db.relationship("Orders")
     product = db.relationship("Products")
 
@@ -485,6 +486,13 @@ class ClientMapping(db.Model):
     essential = db.Column(db.BOOLEAN, nullable=True, default=True)
     custom_email = db.Column(db.Text, nullable=True)
     custom_email_subject = db.Column(db.String, nullable=True)
+
+
+class WarehouseMapping(db.Model):
+    __tablename__ = "warehouse_mapping"
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    warehouse_prefix = db.Column(db.String, nullable=False)
+    shiplabel_type = db.Column(db.String, nullable=True)
 
 
 class ClientChannelLocations(db.Model):

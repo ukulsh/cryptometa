@@ -27,8 +27,8 @@ insert_payments_data_query = """INSERT INTO orders_payments (payment_mode, amoun
 
 select_products_query = """SELECT id from products where sku=%s and client_prefix=%s;"""
 
-insert_op_association_query = """INSERT INTO op_association (product_id, order_id, quantity, amount)
-                                    VALUES (%s,%s,%s,%s) RETURNING id"""
+insert_op_association_query = """INSERT INTO op_association (product_id, order_id, quantity, amount, channel_item_id)
+                                    VALUES (%s,%s,%s,%s,%s) RETURNING id"""
 
 update_last_fetched_data_query = """UPDATE client_channel SET last_synced_order=%s, last_synced_time=%s WHERE id=%s"""
 
@@ -193,11 +193,11 @@ get_courier_id_and_key_query = """SELECT id, courier_name, api_key FROM master_c
 get_status_update_orders_query = """select aa.id, bb.awb, aa.status, aa.client_prefix, aa.customer_phone, 
                                     aa.order_id_channel_unique, bb.channel_fulfillment_id, cc.api_key, 
                                     cc.api_password, cc.shop_url, bb.id, dd.pickup_id, aa.channel_order_id, ee.payment_mode, 
-                                    cc.channel_id, gg.location_id, mm.sku_list, mm.sku_quan_list from orders aa
+                                    cc.channel_id, gg.location_id, mm.item_list, mm.sku_quan_list from orders aa
                                     left join shipments bb
                                     on aa.id=bb.order_id
-                                    left join (select order_id, array_agg(sku) as sku_list, array_agg(quantity) as sku_quan_list from
-                                      		  (select kk.order_id, ll.sku, kk.quantity
+                                    left join (select order_id, array_agg(channel_item_id) as item_list, array_agg(quantity) as sku_quan_list from
+                                      		  (select kk.order_id, kk.channel_item_id, kk.quantity
                                               from op_association kk
                                               left join products ll on kk.product_id=ll.id) nn
                                               group by order_id) mm

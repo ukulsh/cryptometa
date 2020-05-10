@@ -16,11 +16,11 @@ from psycopg2.extras import RealDictCursor
 from project import db
 from .queries import product_count_query, available_warehouse_product_quantity, fetch_warehouse_to_pick_from, \
     select_product_list_query, select_orders_list_query, select_wallet_deductions_query
-from project.api.models import Products, ProductQuantity, InventoryUpdate, \
+from project.api.models import Products, ProductQuantity, InventoryUpdate, WarehouseMapping, \
     Orders, OrdersPayments, PickupPoints, MasterChannels, ClientPickups, CodVerification, NDRVerification,\
     MasterCouriers, Shipments, OPAssociation, ShippingAddress, Manifests, ClientCouriers, OrderStatus, DeliveryCheck, ClientMapping
-from project.api.utils import authenticate_restful, get_products_sort_func, \
-    get_orders_sort_func, create_shiplabel_blank_page, fill_shiplabel_data
+from project.api.utils import authenticate_restful, get_products_sort_func, fill_shiplabel_data_thermal, \
+    get_orders_sort_func, create_shiplabel_blank_page, fill_shiplabel_data, create_shiplabel_blank_page_thermal
 
 core_blueprint = Blueprint('core', __name__)
 api = Api(core_blueprint)
@@ -689,9 +689,13 @@ class AddOrder(Resource):
 
             if data.get('products'):
                 for prod in data.get('products'):
-                    prod_obj = db.session.query(Products).filter(Products.sku == prod['sku']).first()
-                    if not prod_obj:
-                        db.session.query(Products).filter(Products.master_sku == prod['sku']).first()
+                    if 'sku' in prod:
+                        prod_obj = db.session.query(Products).filter(Products.sku == prod['sku']).first()
+                        if not prod_obj:
+                            prod_obj = db.session.query(Products).filter(Products.master_sku == prod['sku']).first()
+                    else:
+                        prod_obj = db.session.query(Products).filter(Products.id == int(prod['id'])).first()
+
                     if prod_obj:
                         op_association = OPAssociation(order=new_order, product=prod_obj, quantity=prod['quantity'])
                         new_order.products.append(op_association)
@@ -724,42 +728,43 @@ class AddOrder(Resource):
 
     def get(self, resp):
         auth_data = resp.get('data')
-        search_key = request.args.get('search_key', None)
+        search_key = request.args.get('search', "")
         if not auth_data:
             return {"success": False, "msg": "Auth Failed"}, 404
 
-        if search_key is not None:
-            cur = conn.cursor()
-            query_to_execute = """SELECT id, name, sku, master_sku FROM products
-                                  WHERE (name ilike '%__SEARCH_KEY__%'
-                                  OR sku ilike '%__SEARCH_KEY__%'
-                                  OR master_sku ilike '%__SEARCH_KEY__%')
-                                  __CLIENT_FILTER__
-                                  LIMIT 10 
-                                  """.replace('__SEARCH_KEY__', search_key)
-            if auth_data['user_group'] != 'super-admin':
-                query_to_execute = query_to_execute.replace('__CLIENT_FILTER__', "AND client_prefix='%s'"%auth_data['client_prefix'])
-            else:
-                query_to_execute = query_to_execute.replace('__CLIENT_FILTER__', "")
+        cur = conn.cursor()
+        query_to_execute = """SELECT id, name, sku, master_sku FROM products
+                              WHERE (name ilike '%__SEARCH_KEY__%'
+                              OR sku ilike '%__SEARCH_KEY__%'
+                              OR master_sku ilike '%__SEARCH_KEY__%')
+                              __CLIENT_FILTER__
+                              ORDER BY master_sku
+                              LIMIT 10 
+                              """.replace('__SEARCH_KEY__', search_key)
+        if auth_data['user_group'] != 'super-admin':
+            query_to_execute = query_to_execute.replace('__CLIENT_FILTER__', "AND client_prefix='%s'"%auth_data['client_prefix'])
+        else:
+            query_to_execute = query_to_execute.replace('__CLIENT_FILTER__', "")
 
-            search_tup = tuple()
-            try:
-                cur.execute(query_to_execute)
-                search_tup = cur.fetchall()
-            except Exception as e:
-                conn.rollback()
+        search_tup = tuple()
+        try:
+            cur.execute(query_to_execute)
+            search_tup = cur.fetchall()
+        except Exception as e:
+            conn.rollback()
 
-            search_list = list()
-            for search_obj in search_tup:
-                search_dict = dict()
-                search_dict['id'] = search_obj[0]
-                search_dict['name'] = search_obj[1]
-                search_dict['channel_sku'] = search_obj[2]
-                search_dict['master_sku'] = search_obj[3]
-                search_list.append(search_dict)
+        search_list = list()
+        for search_obj in search_tup:
+            search_dict = dict()
+            search_dict['id'] = search_obj[0]
+            search_dict['name'] = search_obj[1]
+            search_dict['channel_sku'] = search_obj[2]
+            search_dict['master_sku'] = search_obj[3]
+            search_list.append(search_dict)
 
-            response = {"data": search_list}
+        response = {"search_list": search_list}
 
+        if search_key != "":
             return response, 200
         payment_modes = ['prepaid','COD']
         warehouses = [r.warehouse_prefix for r in db.session.query(PickupPoints.warehouse_prefix)
@@ -767,8 +772,8 @@ class AddOrder(Resource):
             .filter(ClientPickups.client_prefix==auth_data.get('client_prefix'))
             .order_by(PickupPoints.warehouse_prefix)]
 
-        response = {"payment_modes":payment_modes, "warehouses": warehouses}
-
+        response['payment_modes'] = payment_modes
+        response['warehouses'] = warehouses
         return response, 200
 
 
@@ -874,16 +879,31 @@ def download_shiplabels(resp):
     if not orders_qs:
         return jsonify({"success": False, "msg": "No valid order ID"}), 404
 
+    shiplabel_type = db.session.query(WarehouseMapping).filter(WarehouseMapping.warehouse_prefix==auth_data['warehouse_prefix']).first()
     file_name = "shiplabels_"+auth_data['client_prefix']+"_"+str(datetime.datetime.now().strftime("%d_%b_%Y_%H_%M_%S"))+".pdf"
-    c = canvas.Canvas(file_name, pagesize=landscape(A4))
-    create_shiplabel_blank_page(c)
+    if shiplabel_type and shiplabel_type.shiplabel_type=='TH1':
+        c = canvas.Canvas(file_name, pagesize=(288, 432))
+        create_shiplabel_blank_page_thermal(c)
+    else:
+        c = canvas.Canvas(file_name, pagesize=landscape(A4))
+        create_shiplabel_blank_page(c)
     failed_ids = dict()
     idx=0
     for ixx, order in enumerate(orders_qs):
         try:
             if not order.shipments or not order.shipments[0].awb:
                 continue
-            if auth_data['client_prefix'] in ("KYORIGIN", "NASHER"):
+            if shiplabel_type and shiplabel_type.shiplabel_type=='TH1':
+                try:
+                    fill_shiplabel_data_thermal(c, order)
+                except Exception:
+                    pass
+
+                if idx != len(orders_qs) - 1:
+                    c.showPage()
+                    create_shiplabel_blank_page_thermal(c)
+
+            elif shiplabel_type and shiplabel_type.shiplabel_type=='A41':
                 offset = 3.913
                 try:
                     fill_shiplabel_data(c, order, offset)
@@ -908,7 +928,8 @@ def download_shiplabels(resp):
         except Exception as e:
             failed_ids[order.channel_order_id] = str(e.args[0])
             pass
-    if auth_data['client_prefix'] not in ("KYORIGIN", "NASHER"):
+
+    if not (shiplabel_type and shiplabel_type.shiplabel_type in ('A41','TH1')):
         c.setFillColorRGB(1, 1, 1)
         if idx%3==1:
             c.rect(2.917 * inch, -1.0 * inch, 10 * inch, 10*inch, fill=1)
@@ -2243,6 +2264,32 @@ api.add_resource(WalletRecharges, '/wallet/v1/payments')
 @core_blueprint.route('/core/dev', methods=['POST'])
 def ping_dev():
     return 0
+    from .update_status import lambda_handler
+    lambda_handler()
+    import requests, json
+    shopify_url = "https://e67230312f67dd92f62bea398a1c7d38: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@the-organic-riot.myshopify.com/admin/api/2020-04/orders.json"
+    data = requests.get(shopify_url).json()
+    return 0
+    from .models import Orders
+    all_orders = db.session.query(Orders).filter(Orders.client_prefix=='HOMEALONE', Orders.status.in_(['IN TRANSIT','DELIVERED','PENDING'])).all()
+    for order in all_orders:
+        shopify_url = "https://4733f7636c1b220def586b9b2d498bc0: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@home-alone-products.myshopify.com/admin/api/2020-04/orders/%s/fulfillments.json"%order.order_id_channel_unique
+        tracking_link = "http://webapp.wareiq.com/tracking/%s" % str(order.shipments[0].awb)
+        ful_header = {'Content-Type': 'application/json'}
+        fulfil_data = {
+            "fulfillment": {
+                "tracking_number": str(order.shipments[0].awb),
+                "tracking_urls": [
+                    tracking_link
+                ],
+                "tracking_company": "WareIQ",
+                "location_id": 37332025483,
+                "notify_customer": False
+            }
+        }
+        req_ful = requests.post(shopify_url, data=json.dumps(fulfil_data),
+                                headers=ful_header)
+    return 0
     from .fetch_orders import lambda_handler
     lambda_handler()
     import requests
@@ -2259,9 +2306,7 @@ def ping_dev():
     return 0
     from .update_status import lambda_handler
     lambda_handler()
-    import requests, json
-    shopify_url = "https://720247f946e1cb4b64730dc501fc8f75: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@boltcoldbrew.myshopify.com/admin/api/2020-04/orders.json"
-    data = requests.get(shopify_url).json()
+
     from .request_pickups import lambda_handler
     lambda_handler()
     myfile = request.files['myfile']

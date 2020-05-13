@@ -611,9 +611,9 @@ def get_orders_filters(resp):
         courier_qs = courier_qs.filter(Orders.client_prefix == client_prefix)
         pickup_point_qs = pickup_point_qs.filter(Orders.client_prefix == client_prefix)
     if current_tab=="shipped":
-        status_qs = status_qs.filter(not_(Orders.status.in_(["NEW","READY TO SHIP","PICKUP REQUESTED","NOT PICKED","PENDING PAYMENT"])))
-        courier_qs = courier_qs.filter(not_(Orders.status.in_(["NEW","READY TO SHIP","PICKUP REQUESTED","NOT PICKED","PENDING PAYMENT"])))
-        pickup_point_qs = pickup_point_qs.filter(not_(Orders.status.in_(["NEW","READY TO SHIP","PICKUP REQUESTED","NOT PICKED","PENDING PAYMENT"])))
+        status_qs = status_qs.filter(not_(Orders.status.in_(["NEW","READY TO SHIP","PICKUP REQUESTED","NOT PICKED","PENDING PAYMENT","NOT SHIPPED"])))
+        courier_qs = courier_qs.filter(not_(Orders.status.in_(["NEW","READY TO SHIP","PICKUP REQUESTED","NOT PICKED","PENDING PAYMENT","NOT SHIPPED"])))
+        pickup_point_qs = pickup_point_qs.filter(not_(Orders.status.in_(["NEW","READY TO SHIP","PICKUP REQUESTED","NOT PICKED","PENDING PAYMENT","NOT SHIPPED"])))
         if client_qs:
             client_qs = client_qs.filter(not_(Orders.status.in_(["NEW", "READY TO SHIP", "PICKUP REQUESTED", "NOT PICKED","PENDING PAYMENT"])))
     if current_tab=="return":
@@ -1129,7 +1129,7 @@ class OrderDetails(Resource):
                     order.exotel_data[0].verification_time = datetime.datetime.utcnow() + datetime.timedelta(hours=5.5)
                 if data.get('cod_verification') == False:
                     order.status = 'CANCELED'
-                    if order.client_channel.channel_id == 6 and order.order_id_channel_unique: #cancel on magento
+                    if order.client_channel and order.client_channel.channel_id == 6 and order.order_id_channel_unique: #cancel on magento
                         cancel_header = {'Content-Type': 'application/json',
                                       'Authorization': 'Bearer ' + order.client_channel.api_key}
                         cancel_data = {
@@ -1478,26 +1478,6 @@ def verification_passthru(type):
                 else:
                     cod_ver.ndr_verified = cod_verified
 
-            try:
-                if type=="ndr" and cod_ver.ndr_verified == False:
-                    if cod_ver.order.shipments[0].courier_id in (1,2,8,11,12): #Delhivery
-                        headers = {"Authorization": "Token " + cod_ver.order.shipments[0].courier.api_key,
-                                   "Content-Type": "application/json"}
-                        delhivery_url = "https://track.delhivery.com/api/p/update"
-                        delivery_shipments_body = json.dumps({"data": [{"waybill": cod_ver.order.shipments[0].awb,
-                                                                        "act": "RE-ATTEMPT"}]})
-
-                        req = requests.post(delhivery_url, headers=headers, data=delivery_shipments_body)
-                    elif cod_ver.order.shipments[0].courier_id in (5,13): #Xpressbees
-                        headers = {"Content-Type": "application/json",
-                                   "XBKey":cod_ver.order.shipments[0].courier.api_key}
-                        body = {"ShippingID": cod_ver.order.shipments[0].awb}
-                        xpress_url = "http://xbclientapi.xbees.in/POSTShipmentService.svc/UpdateNDRDeferredDeliveryDate"
-                        req = requests.post(xpress_url, headers=headers, data=json.dumps(body))
-
-            except Exception as e:
-                pass
-
             cod_ver.verified_via = verified_via
 
             current_time = datetime.datetime.now()
@@ -1531,9 +1511,8 @@ class PincodeServiceabilty(Resource):
             sku_list = data.get("sku_list")
             if not del_pincode:
                 return {"success": False, "msg": "Pincode not provided"}, 404
-            if not sku_list:
-                return {"success": False, "msg": "SKUs not provided"}, 404
 
+            covid_zone = None
             try:
                 cod_req = requests.get(
                     "https://track.delhivery.com/c/api/pin-codes/json/?filter_codes=%s&token=d6ce40e10b52b5ca74805a6e2fb45083f0194185" % str(
@@ -1543,12 +1522,15 @@ class PincodeServiceabilty(Resource):
 
                 if cod_req['delivery_codes'][0]['postal_code']['cod'].lower() == 'y':
                     cod_available = True
+                covid_zone = cod_req['delivery_codes'][0]['postal_code']['covid_zone']
             except Exception:
                 pass
+            if not sku_list:
+                return {"success": True, "data": {"cod_available": cod_available, "covid_zone": covid_zone}}, 200
 
             sku_dict = dict()
             for sku in sku_list:
-                sku_dict[sku['sku']] = sku['quantity']
+                sku_dict[str(sku['sku'])] = sku['quantity']
 
             sku_string = "('"
 
@@ -1572,10 +1554,10 @@ class PincodeServiceabilty(Resource):
 
             prod_wh_tuple = cur.fetchall()
             wh_dict = dict()
-            courier_id = 2
+            courier_id = 1
             courier_id_weight = 0.0
             for prod_wh in prod_wh_tuple:
-                if prod_wh[5] > courier_id_weight:
+                if auth_data['client_prefix']=='NASHER' and prod_wh[5] > courier_id_weight:
                     courier_id = prod_wh[4]
                     courier_id_weight = prod_wh[5]
                 if sku_dict[prod_wh[2]] <= prod_wh[3]:
@@ -1617,8 +1599,8 @@ class PincodeServiceabilty(Resource):
             final_wh = cur_2.fetchone()
 
             if not final_wh or final_wh[1] is None:
-                return {"success": False, "msg": "Not serviceable", "cod_available": cod_available,
-                        "label_url":"https://logourls.s3.amazonaws.com/wareiq_standard.jpeg"}, 404
+                return {"success": True, "data": {"cod_available": cod_available, "covid_zone": covid_zone,
+                        "label_url":"https://logourls.s3.amazonaws.com/wareiq_standard.jpeg"}}, 200
 
             current_time = datetime.datetime.utcnow() + datetime.timedelta(hours=5.5)
             order_before = current_time
@@ -1686,7 +1668,8 @@ class PincodeServiceabilty(Resource):
                            "order_before": order_before.strftime('%d-%m-%Y %H:%M:%S'),
                            "delivery_zone": delivery_zone,
                            "label_url": label_url,
-                           "sku_wise": sku_wise_list}
+                           "sku_wise": sku_wise_list,
+                           "covid_zone": covid_zone}
 
             return {"success": True, "data": return_data}, 200
 
@@ -1748,6 +1731,8 @@ class UpdateInventory(Resource):
                         sku_obj['error'] = "SKU not provided."
                         failed_list.append(sku_obj)
                         continue
+
+                    sku = str(sku)
 
                     type = sku_obj.get('type')
                     if not type or str(type).lower() not in ('add', 'subtract', 'replace'):
@@ -2264,16 +2249,104 @@ api.add_resource(WalletRecharges, '/wallet/v1/payments')
 @core_blueprint.route('/core/dev', methods=['POST'])
 def ping_dev():
     return 0
-    from .update_status import lambda_handler
-    lambda_handler()
-    import requests, json
-    shopify_url = "https://e67230312f67dd92f62bea398a1c7d38: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@the-organic-riot.myshopify.com/admin/api/2020-04/orders.json"
-    data = requests.get(shopify_url).json()
+    import requests
+    myfile = request.files['myfile']
+
+    data_xlsx = pd.read_excel(myfile)
+    from .models import Products, ProductQuantity
+    count = 0
+    iter_rw = data_xlsx.iterrows()
+    for row in iter_rw:
+        try:
+            sku_name = row[1].SKUCODE
+            prod_obj = db.session.query(Products).filter(Products.master_sku==sku_name).first()
+            if sku_name.startswith('IBA') or sku_name.startswith('DS'):
+                quantity = 2
+            else:
+                quantity = 15
+
+            if prod_obj:
+                prod_obj.dimensions = {"length": float(row[1].Length),
+                                            "breadth": float(row[1].Breadth),
+                                            "height": float(row[1].Height)
+                                            }
+                prod_obj.weight = float(row[1].Weight)/1000
+                prod_obj.price = float(row[1].Price)
+                prod_obj.name = str(row[1].Name)
+                prod_obj.quantity[0].total_quantity=quantity
+                prod_obj.quantity[0].approved_quantity=quantity
+                prod_obj.quantity[0].available_quantity=quantity
+
+            else:
+                magento_url = "https://www.vedaearth.com/rest/V1/products/" + sku_name
+                headers = headers = {'Authorization': "Token zg1j7voibdpswz0yugnt3pfjfbvog335",
+                            'Content-Type': 'application/json'}
+
+                r = requests.get(magento_url, headers=headers)
+                if 'id' in r.json():
+                    master_sku = str(r.json()['id'])
+                else:
+                    master_sku = sku_name
+
+                prod_obj = Products(name=str(row[1].Name),
+                                    sku=sku_name,
+                                    master_sku=master_sku,
+                                    dimensions={"length": float(row[1].Length),
+                                                "breadth": float(row[1].Breadth),
+                                                "height": float(row[1].Height)
+                                                },
+                                    weight=float(row[1].Weight)/1000,
+                                    price=float(row[1].Price),
+                                    client_prefix='VEDAEARTH',
+                                    active=True,
+                                    channel_id=6,
+                                    date_created=datetime.datetime.now()
+                                    )
+                prod_quan_obj = ProductQuantity(product=prod_obj,
+                                                total_quantity=quantity,
+                                                approved_quantity=quantity,
+                                                available_quantity=quantity,
+                                                inline_quantity=0,
+                                                rto_quantity=0,
+                                                current_quantity=0,
+                                                warehouse_prefix='PSGLOBAL',
+                                                status="APPROVED",
+                                                date_created=datetime.datetime.now()
+                                                )
+
+                db.session.add(prod_quan_obj)
+            db.session.commit()
+        except Exception as e:
+            print(str(sku_name) + "\n" + str(e.args[0]))
+            db.session.rollback()
+
+
     return 0
+    from requests_oauthlib.oauth1_session import OAuth1Session
+    auth_session = OAuth1Session("ck_407317b14879d2f71ebf3832768af1a035452473",
+                                 client_secret="cs_534736ce0e9e9c6c98ce88ada68d0769ae792c40")
+    url = '%s/wc-shipment-tracking/v3/orders/34022/shipment-trackings?consumer_key=ck_407317b14879d2f71ebf3832768af1a035452473&consumer_secret=cs_534736ce0e9e9c6c98ce88ada68d0769ae792c40' % (
+        "https://www.alpino.store")
+    r = auth_session.get(url)
+
+    import requests, json
+    customer_phone = "09819368887"
+    data = {
+        'From': customer_phone,
+        'CallerId': '01141182252',
+        'Url': 'http://my.exotel.com/wareiq1/exoml/start_voice/262896',
+        'CustomField': "21205"
+    }
+    req = requests.post(
+        'https://ff2064142bc89ac5e6c52a6398063872f95f759249509009:783fa09c0ba1110309f606c7411889192335bab2e908a079@api.exotel.com/v1/Accounts/wareiq1/Calls/connect',
+        data=data)
+
+    shopify_url = "https://e67230312f67dd92f62bea398a1c7d38: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@the-organic-riot.myshopify.com/admin/api/2020-04/locations.json?limit=100"
+    data = requests.get(shopify_url).json()
     from .models import Orders
-    all_orders = db.session.query(Orders).filter(Orders.client_prefix=='HOMEALONE', Orders.status.in_(['IN TRANSIT','DELIVERED','PENDING'])).all()
+    all_orders = db.session.query(Orders).filter(Orders.client_prefix=='BOLTCOLD', Orders.status.in_(['IN TRANSIT','DELIVERED','PENDING'])).all()
     for order in all_orders:
-        shopify_url = "https://4733f7636c1b220def586b9b2d498bc0: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@home-alone-products.myshopify.com/admin/api/2020-04/orders/%s/fulfillments.json"%order.order_id_channel_unique
+        shopify_url = "https://720247f946e1cb4b64730dc501fc8f75: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@boltcoldbrew.myshopify.com/admin/api/2020-04/orders/%s/fulfillments.json"%order.order_id_channel_unique
         tracking_link = "http://webapp.wareiq.com/tracking/%s" % str(order.shipments[0].awb)
         ful_header = {'Content-Type': 'application/json'}
         fulfil_data = {
@@ -2283,7 +2356,7 @@ def ping_dev():
                     tracking_link
                 ],
                 "tracking_company": "WareIQ",
-                "location_id": 37332025483,
+                "location_id": 33865859124,
                 "notify_customer": False
             }
         }
@@ -2293,10 +2366,6 @@ def ping_dev():
     from .fetch_orders import lambda_handler
     lambda_handler()
     import requests
-    magento_orders_url = """https://www.vedaearth.com/rest/V1/orders?searchCriteria[filter_groups][0][filters][0][field]=created_at&searchCriteria[filter_groups][0][filters][0][value]=2020-05-03 00:00:00&searchCriteria[filter_groups][0][filters][0][condition_type]=gt&searchCriteria[filter_groups][1][filters][0][field]=status&searchCriteria[filter_groups][1][filters][0][value]=processing&searchCriteria[filter_groups][1][filters][0][condition_type]=eq&searchCriteria[filter_groups][1][filters][1][field]=status&searchCriteria[filter_groups][1][filters][1][value]=cod&searchCriteria[filter_groups][1][filters][1][condition_type]=eq"""
-    headers = {'Authorization': "Bearer " + "zg1j7voibdpswz0yugnt3pfjfbvog335",
-               'Content-Type': 'application/json'}
-    data = requests.get(magento_orders_url, headers=headers).json()
     from requests_oauthlib.oauth1_session import OAuth1Session
     auth_session = OAuth1Session("ck_cd462226a5d5c21c5936c7f75e1afca25b9853a6",
                                  client_secret="cs_c897bf3e770e15f518cba5c619b32671b7cc527c")

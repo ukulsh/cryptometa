@@ -161,6 +161,8 @@ def lambda_handler():
         except Exception as e:
             logger.error("couldn't calculate order: " + str(order[0]) + "\nError: " + str(e))
 
+    ndr_push_reattempts(cur)
+
     cur.close()
     cur_2.close()
 
@@ -329,4 +331,34 @@ bulk_second_step = {
                'D2': 38,
                'E': 52,
                }
+
+
+def ndr_push_reattempts(cur):
+    time_after = datetime.utcnow() - timedelta(days=1, hours=5.5)
+    cur.execute("""select cc.awb, dd.id, dd.api_key from ndr_verification aa
+                    left join orders bb on aa.order_id=bb.id
+                    left join shipments cc on cc.order_id=bb.id
+                    left join master_couriers dd on cc.courier_id=dd.id
+                    where aa.ndr_verified=false
+                    and aa.verification_time>%s""", (time_after,))
+
+    all_orders = cur.fetchall()
+    for order in all_orders:
+        try:
+            if order[1] in (1, 2, 8, 11, 12):  # Delhivery
+                headers = {"Authorization": "Token " + order[2],
+                           "Content-Type": "application/json"}
+                delhivery_url = "https://track.delhivery.com/api/p/update"
+                delivery_shipments_body = json.dumps({"data": [{"waybill": order[0],
+                                                                "act": "RE-ATTEMPT"}]})
+
+                req = requests.post(delhivery_url, headers=headers, data=delivery_shipments_body)
+            elif order[1] in (5, 13):  # Xpressbees
+                headers = {"Content-Type": "application/json",
+                           "XBKey": order[2]}
+                body = {"ShippingID": order[0]}
+                xpress_url = "http://xbclientapi.xbees.in/POSTShipmentService.svc/UpdateNDRDeferredDeliveryDate"
+                req = requests.post(xpress_url, headers=headers, data=json.dumps(body))
+        except Exception as e:
+            logger.error("NDR push failed for: " + order[0])
 

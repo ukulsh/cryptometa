@@ -255,6 +255,7 @@ def fill_shiplabel_data(c, order, offset):
     except Exception:
         pass
 
+    c.setFont('Helvetica', 8)
     try:
         products_string = ""
         for prod in order.products:
@@ -263,14 +264,14 @@ def fill_shiplabel_data(c, order, offset):
         if order.payments[0].shipping_charges:
             products_string += " + Shipping"
         products_string = split_string(products_string, 35)
-        if len(products_string) > 7:
-            products_string = products_string[:7]
-            products_string[6] += "..."
+        if len(products_string) > 9:
+            products_string = products_string[:9]
+            products_string[8] += "..."
 
         y_axis = 1.42
         for prod in products_string:
             c.drawString((offset - 0.85) * inch, y_axis * inch, prod)
-            y_axis -= 0.15
+            y_axis -= 0.12
     except Exception:
         pass
 

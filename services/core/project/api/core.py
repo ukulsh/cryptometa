@@ -1030,7 +1030,8 @@ class OrderDetails(Resource):
                     resp_obj['product_details'].append(
                         {"name": prod.product.name,
                          "sku": prod.product.master_sku,
-                         "quantity": prod.quantity}
+                         "quantity": prod.quantity,
+                         "id": prod.product.id}
                     )
 
                 resp_obj['shipping_details'] = dict()
@@ -1160,6 +1161,66 @@ class OrderDetails(Resource):
 
 
 api.add_resource(OrderDetails, '/orders/v1/order/<order_id>')
+
+
+class CreateReturn(Resource):
+
+    method_decorators = [authenticate_restful]
+
+    def post(self, resp, order_id):
+        try:
+            data = json.loads(request.data)
+            auth_data = resp.get('data')
+            if not auth_data:
+                return {"success": False, "msg": "Auth Failed"}, 404
+
+            order = db.session.query(Orders).filter(Orders.id==int(order_id)).first()
+
+            if not order:
+                return {"success": False, "msg": "No order found for given id"}, 400
+
+            new_order = Orders(channel_order_id="R_"+str(order.channel_order_id),
+                               order_date=datetime.datetime.utcnow() + datetime.timedelta(hours=5.5),
+                               customer_name=order.customer_name,
+                               customer_email=order.customer_email,
+                               customer_phone=order.customer_phone,
+                               delivery_address=order.delivery_address,
+                               billing_address=order.billing_address,
+                               status="NEW",
+                               client_prefix=auth_data.get('client_prefix'),
+                               pickup_data=order.pickup_data,
+                               )
+
+            if data.get('products'):
+                for prod in data.get('products'):
+                    prod_obj = db.session.query(Products).filter(Products.id == prod['id']).first()
+
+                    if prod_obj:
+                        op_association = OPAssociation(order=new_order, product=prod_obj, quantity=prod['quantity'])
+                        new_order.products.append(op_association)
+
+            payment = OrdersPayments(
+                payment_mode="Pickup",
+                subtotal=order.payments[0].subtotal,
+                amount=order.payments[0].amount,
+                shipping_charges=order.payments[0].shipping_charges,
+                currency='INR',
+                order=new_order
+            )
+
+            db.session.add(new_order)
+            try:
+                db.session.commit()
+            except Exception:
+                return {"status": "Failed", "msg": "Duplicate order_id"}, 400
+
+            return {"status": "Success", "msg": "Successfully created"}, 201
+
+        except Exception as e:
+            return {'status': 'Failed'}, 200
+
+
+api.add_resource(CreateReturn, '/orders/v1/create_return/<order_id>')
 
 
 class ShipOrders(Resource):
@@ -2250,6 +2311,13 @@ api.add_resource(WalletRecharges, '/wallet/v1/payments')
 def ping_dev():
     return 0
     import requests
+    shopify_url = "https://34e7c8da296cfc636e3d587e4d2974b8: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@blackpatridgefarms.myshopify.com/admin/api/2020-04/orders.json"
+    r = requests.get(shopify_url)
+    magento_url = "https://www.vedaearth.com/rest/V1/orders?searchCriteria[filter_groups][0][filters][0][field]=created_at&searchCriteria[filter_groups][0][filters][0][value]=2020-05-09&searchCriteria[filter_groups][0][filters][0][condition_type]=gt"
+    headers = {'Authorization': "Bearer zg1j7voibdpswz0yugnt3pfjfbvog335",
+                         'Content-Type': 'application/json'}
+    r = requests.get(magento_url, headers=headers)
+
     myfile = request.files['myfile']
 
     data_xlsx = pd.read_excel(myfile)

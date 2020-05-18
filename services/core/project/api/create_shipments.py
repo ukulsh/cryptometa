@@ -178,6 +178,8 @@ def lambda_handler(courier_name=None, order_ids=None):
                         shipment_data['return_pin'] = pickup_point[17]
                         shipment_data['return_name'] = pickup_point[20]
                         shipment_data['return_phone'] = pickup_point[12]
+                        if order[49] and order[49][0]:
+                            shipment_data['category_of_goods'] = order[49][0]
                         if order[26].lower() == "cod":
                             shipment_data['cod_amount'] = order[27]
 

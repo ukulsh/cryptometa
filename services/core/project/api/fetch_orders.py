@@ -150,7 +150,7 @@ def fetch_shopify_orders(cur, channel):
                         for i in (3204, 3206):
                             product_id = i
                             op_tuple = (
-                            product_id, order_id, prod['quantity'], float(prod['quantity'] * float(prod['price'])), None)
+                            product_id, order_id, prod['quantity'], float(prod['quantity'] * float(prod['price'])), None, json.dumps([]))
                             cur.execute(insert_op_association_query, op_tuple)
                         continue
                     if product_sku == "30690984558651" and channel[
@@ -158,7 +158,7 @@ def fetch_shopify_orders(cur, channel):
                         for i in (3249, 3250):
                             product_id = i
                             op_tuple = (
-                            product_id, order_id, prod['quantity'], float(prod['quantity'] * float(prod['price'])), None)
+                            product_id, order_id, prod['quantity'], float(prod['quantity'] * float(prod['price'])), None, json.dumps([]))
                             cur.execute(insert_op_association_query, op_tuple)
                         continue
                     dimensions = None
@@ -173,7 +173,14 @@ def fetch_shopify_orders(cur, channel):
                         product_id, 100, 100, 100, channel[1], "APPROVED", datetime.now())
                     cur.execute(insert_product_quantity_query, product_quantity_insert_tuple)
 
-                op_tuple = (product_id, order_id, prod['quantity'], float(prod['quantity'] * float(prod['price'])), None)
+                tax_lines = list()
+                try:
+                    for tax_line in prod['tax_lines']:
+                        tax_lines.append({'title': tax_line['title'], 'rate': tax_line['rate']})
+                except Exception as e:
+                    logger.error("Couldn't fetch tex for: " + str(order_id))
+
+                op_tuple = (product_id, order_id, prod['quantity'], float(prod['quantity'] * float(prod['price'])), None, json.dumps(tax_lines))
                 cur.execute(insert_op_association_query, op_tuple)
 
         except Exception as e:
@@ -305,7 +312,14 @@ def fetch_woocommerce_orders(cur, channel):
                         product_id, 100, 100, 100, channel[1], "APPROVED", datetime.now())
                     cur.execute(insert_product_quantity_query, product_quantity_insert_tuple)
 
-                op_tuple = (product_id, order_id, prod['quantity'], float(prod['quantity'] * float(prod['price'])), None)
+                tax_lines = list()
+                try:
+                    for tax_line in order['tax_lines']:
+                        tax_lines.append({'title': tax_line['label'], 'rate': tax_line['rate_percent']/100})
+                except Exception as e:
+                    logger.error("Couldn't fetch tex for: " + str(order_id))
+
+                op_tuple = (product_id, order_id, prod['quantity'], float(prod['quantity'] * float(prod['price'])), None, json.dumps(tax_lines))
 
                 cur.execute(insert_op_association_query, op_tuple)
 
@@ -456,7 +470,13 @@ def fetch_magento_orders(cur, channel):
                         product_id, 100, 100, 100, channel[1], "APPROVED", datetime.now())
                     cur.execute(insert_product_quantity_query, product_quantity_insert_tuple)
 
-                op_tuple = (product_id, order_id, prod['qty_ordered'], float(prod['qty_ordered'] * float(prod['price_incl_tax'])), str(prod['item_id']))
+                tax_lines = list()
+                try:
+                    tax_lines.append({'title': "GST", 'rate': prod['tax_percent']/100})
+                except Exception as e:
+                    logger.error("Couldn't fetch tex for: " + str(order_id))
+
+                op_tuple = (product_id, order_id, prod['qty_ordered'], float(prod['qty_ordered'] * float(prod['price_incl_tax'])), str(prod['item_id']), json.dumps(tax_lines))
                 cur.execute(insert_op_association_query, op_tuple)
 
         except Exception as e:

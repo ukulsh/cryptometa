@@ -3,6 +3,7 @@
 
 import json
 from functools import wraps
+from datetime import datetime, timedelta
 
 import requests
 from reportlab.lib.units import inch
@@ -182,6 +183,37 @@ def create_shiplabel_blank_page_thermal(canvas):
     canvas.drawString(-0.8 * inch, 0.75 * inch, "Product(s)")
     canvas.drawString(-0.8 * inch, -0.5 * inch, "Shipped By (Return Address):")
     canvas.setFont('Helvetica', 0)
+
+
+def create_invoice_blank_page(canvas):
+    canvas.setFont('Helvetica', 9)
+    canvas.translate(inch, inch)
+    canvas.setLineWidth(0.4)
+    canvas.line(-0.80 * inch, 6.7 * inch, 6.9 * inch, 6.7 * inch)
+    canvas.line(-0.80 * inch, 6.4 * inch, 6.9 * inch, 6.4 * inch)
+    canvas.line(-0.80 * inch, 9.7 * inch, 2.0 * inch, 9.7 * inch)
+    canvas.line(-0.80 * inch, 9.2 * inch, 2.0 * inch, 9.2 * inch)
+    canvas.setFont('Helvetica', 18)
+    canvas.drawString(-0.75 * inch, 9.35 * inch, "TAX INVOICE")
+    canvas.setFont('Helvetica-Bold', 9)
+    canvas.drawString(-0.75 * inch, 6.5 * inch, "Product(s)")
+    canvas.drawString(2.00 * inch, 6.5 * inch, "Qty")
+    canvas.drawString(2.40 * inch, 6.5 * inch, "Tax Description")
+    canvas.drawString(3.60 * inch, 6.5 * inch, "Taxable value")
+    canvas.drawString(4.80 * inch, 6.5 * inch, "Tax (value | %)")
+    canvas.drawString(6.20 * inch, 6.5 * inch, "Total")
+    canvas.drawString(-0.75 * inch, 8.8 * inch, "SOLD BY:")
+    canvas.drawString(-0.75 * inch, 7.1 * inch, "GSTIN:")
+    canvas.drawString(2.2 * inch, 8.5 * inch, "Billing Address:")
+    canvas.drawString(5.0 * inch, 8.5 * inch, "Shipping Address:")
+    canvas.setFont('Helvetica', 8)
+    canvas.drawString(2.5 * inch, 9.7 * inch, "INVOICE DATE:")
+    canvas.drawString(4.7 * inch, 9.7 * inch, "INVOICE NO.")
+    canvas.drawString(2.5 * inch, 9.45 * inch, "ORDER DATE:")
+    canvas.drawString(4.7 * inch, 9.45 * inch, "ORDER NO.")
+    canvas.drawString(2.5 * inch, 9.2 * inch, "PAYMENT METHOD:")
+    canvas.drawString(4.7 * inch, 9.2 * inch, "AWB NO.")
+    canvas.setLineWidth(0.8)
 
 
 def fill_shiplabel_data(c, order, offset):
@@ -398,6 +430,166 @@ def fill_shiplabel_data_thermal(c, order):
         pass
 
     c.setFont('Helvetica', 10)
+
+
+def fill_invoice_data(c, order, client_name):
+    c.setFont('Helvetica', 20)
+    if client_name and client_name.client_name:
+        c.drawString(-0.80 * inch,10.10 * inch, client_name.client_name)
+
+    c.setFont('Helvetica', 8)
+    order_date = order.order_date.strftime("%d/%m/%Y")
+    invoice_date = datetime.utcnow() + timedelta(hours=5.5)
+    invoice_date = invoice_date.strftime("%d/%m/%Y")
+    c.drawString(3.6 * inch, 9.7 * inch, invoice_date)
+    c.drawString(3.6 * inch, 9.45 * inch, order_date)
+    c.drawString(3.7 * inch, 9.2 * inch, order.payments[0].payment_mode.lower())
+    c.drawString(5.5 * inch, 9.45 * inch, order.channel_order_id)
+    if order.shipments and order.shipments[0].awb:
+        c.drawString(5.5 * inch, 9.2 * inch, order.shipments[0].awb)
+
+    invoice_no = order.client_prefix.lower() + order.channel_order_id
+    c.drawString(5.5 * inch, 9.7 * inch, invoice_no)
+
+    if order.pickup_data.gstin:
+        c.drawString(-0.28 * inch, 7.1 * inch, order.pickup_data.gstin)
+
+    c.setFont('Helvetica', 7)
+
+    try:
+        full_name = order.delivery_address.first_name
+        if order.delivery_address.last_name:
+            full_name += " " + order.delivery_address.last_name
+
+        str_full_address = [full_name]
+        full_address = order.delivery_address.address_one
+        if order.delivery_address.address_two:
+            full_address += " "+order.delivery_address.address_two
+        full_address = split_string(full_address, 33)
+        str_full_address += full_address
+        str_full_address.append(order.delivery_address.city+", "+order.delivery_address.state)
+        str_full_address.append(order.delivery_address.country+", PIN: "+order.delivery_address.pincode)
+        y_axis = 8.3
+        for addr in str_full_address:
+            c.drawString(5.0 * inch, y_axis * inch, addr)
+            y_axis -= 0.15
+
+    except Exception:
+        pass
+
+    try:
+        full_name = order.billing_address.first_name
+        if order.billing_address.last_name:
+            full_name += " " + order.billing_address.last_name
+
+        str_full_address = [full_name]
+        full_address = order.billing_address.address_one
+        if order.billing_address.address_two:
+            full_address += " "+order.billing_address.address_two
+        full_address = split_string(full_address, 33)
+        str_full_address += full_address
+        str_full_address.append(order.billing_address.city+", "+order.billing_address.state)
+        str_full_address.append(order.billing_address.country+", PIN: "+order.billing_address.pincode)
+        y_axis = 8.3
+        for addr in str_full_address:
+            c.drawString(2.2 * inch, y_axis * inch, addr)
+            y_axis -= 0.15
+
+    except Exception:
+        pass
+
+    try:
+        full_name = order.pickup_data.pickup.name
+        str_full_address = [full_name]
+        full_address = order.pickup_data.pickup.address
+        if order.pickup_data.pickup.address_two:
+            full_address += " "+order.delivery_address.address_two
+        full_address = split_string(full_address, 35)
+        str_full_address += full_address
+        str_full_address.append(order.pickup_data.pickup.city+", "+order.pickup_data.pickup.state)
+        str_full_address.append(order.pickup_data.pickup.country+", PIN: "+str(order.pickup_data.pickup.pincode))
+        if order.pickup_data.pickup.phone:
+            str_full_address.append("Ph: "+str(order.pickup_data.pickup.phone))
+        y_axis = 8.6
+        for addr in str_full_address:
+            c.drawString(-0.75 * inch, y_axis * inch, addr)
+            y_axis -= 0.15
+
+    except Exception:
+        pass
+
+    y_axis = 6.1
+    s_no = 1
+    for prod in order.products:
+        try:
+            c.setFont('Helvetica-Bold', 7)
+            product_name = str(s_no) + ". " + prod.product.name
+            product_name = split_string(product_name, 40)
+            for addr in product_name:
+                c.drawString(-0.75 * inch, y_axis * inch, addr)
+                y_axis -= 0.15
+            c.setFont('Helvetica', 7)
+            if prod.product.master_sku:
+                c.drawString(-0.65 * inch, y_axis* inch, "SKU: " + prod.product.master_sku)
+
+            c.drawString(2.02 * inch, (y_axis + 0.08) * inch, str(prod.quantity))
+
+            if order.products[0].tax_lines:
+                des_str = ""
+                total_tax = 0
+                for tax_lines in order.products[0].tax_lines:
+                    des_str += tax_lines['title'] + ": " + str(tax_lines['rate']*100) + "% | "
+                    total_tax += tax_lines['rate']
+
+                des_str = des_str.rstrip('| ')
+
+                c.drawString(2.42 * inch, (y_axis + 0.08) * inch, des_str)
+
+                taxable_val = prod.amount
+
+                taxable_val = taxable_val/(1+total_tax)
+                c.drawString(3.82 * inch, (y_axis + 0.08) * inch, str(round(taxable_val, 2)))
+
+                tax_val = taxable_val*total_tax
+
+                c.drawString(4.82 * inch, (y_axis + 0.08) * inch, str(round(tax_val, 2))+" | "+str(round(total_tax*100)) + "%")
+                c.drawString(6.22 * inch, (y_axis + 0.08) * inch, str(round(prod.amount, 2)))
+
+            else:
+
+                taxable_val = prod.amount
+                c.drawString(3.62 * inch, (y_axis + 0.08) * inch, str(round(taxable_val, 2)))
+                c.drawString(6.22 * inch, (y_axis + 0.08) * inch, str(round(prod.amount, 2)))
+
+        except Exception:
+            pass
+
+        s_no += 1
+        y_axis -= 0.30
+
+    if order.payments[0].shipping_charges:
+        c.drawString(4.82 * inch, y_axis * inch, "Shipping Charges:")
+        c.drawString(6.22 * inch, y_axis * inch, str(round(order.payments[0].shipping_charges, 2)))
+        y_axis -= 0.20
+
+    c.setLineWidth(0.1)
+    c.line(2.02 * inch, y_axis * inch, 6.9 * inch, y_axis * inch)
+    y_axis -= 0.25
+    c.setFont('Helvetica-Bold', 10)
+
+    c.drawString(4.82 * inch, y_axis * inch, "NET TOTAL:")
+    c.drawString(6.12 * inch, y_axis * inch, "Rs. "+ str(round(order.payments[0].amount, 2)))
+
+    y_axis -= 0.175
+
+    c.line(-0.75 * inch, y_axis * inch, 6.9 * inch, y_axis * inch)
+
+    y_axis -= 1.5
+    c.setFont('Helvetica-Bold', 8)
+
+    c.drawString(0*inch, y_axis * inch, "Authorized Signature")
+
+    c.setFont('Helvetica', 8)
 
 
 def split_string(str, limit, sep=" "):

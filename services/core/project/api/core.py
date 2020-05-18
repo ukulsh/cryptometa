@@ -20,7 +20,8 @@ from project.api.models import Products, ProductQuantity, InventoryUpdate, Wareh
     Orders, OrdersPayments, PickupPoints, MasterChannels, ClientPickups, CodVerification, NDRVerification,\
     MasterCouriers, Shipments, OPAssociation, ShippingAddress, Manifests, ClientCouriers, OrderStatus, DeliveryCheck, ClientMapping
 from project.api.utils import authenticate_restful, get_products_sort_func, fill_shiplabel_data_thermal, \
-    get_orders_sort_func, create_shiplabel_blank_page, fill_shiplabel_data, create_shiplabel_blank_page_thermal
+    get_orders_sort_func, create_shiplabel_blank_page, fill_shiplabel_data, create_shiplabel_blank_page_thermal, \
+    create_invoice_blank_page, fill_invoice_data
 
 core_blueprint = Blueprint('core', __name__)
 api = Api(core_blueprint)
@@ -946,6 +947,57 @@ def download_shiplabels(resp):
     return jsonify({
         'status': 'success',
         'url': shiplabel_url,
+        "failed_ids": failed_ids
+    }), 200
+
+
+@core_blueprint.route('/orders/v1/download/invoice', methods=['POST'])
+@authenticate_restful
+def download_invoice(resp):
+    data = json.loads(request.data)
+    auth_data = resp.get('data')
+    if not auth_data:
+        return jsonify({"success": False, "msg": "Auth Failed"}), 404
+
+    order_ids = data['order_ids']
+    orders_qs = db.session.query(Orders, ClientMapping).join(ClientMapping, Orders.client_prefix==ClientMapping.client_prefix,
+          isouter=True).filter(Orders.id.in_(order_ids), Orders.delivery_address != None)
+
+    if auth_data['user_group'] != 'super-admin':
+        orders_qs = orders_qs.filter(Orders.client_prefix==auth_data.get('client_prefix'))
+    orders_qs = orders_qs.order_by(Orders.id).all()
+    if not orders_qs:
+        return jsonify({"success": False, "msg": "No valid order ID"}), 404
+
+    file_name = "invoice_"+auth_data['client_prefix']+"_"+str(datetime.datetime.now().strftime("%d_%b_%Y_%H_%M_%S"))+".pdf"
+    c = canvas.Canvas(file_name, pagesize=A4)
+    create_invoice_blank_page(c)
+    failed_ids = dict()
+    idx=0
+    for order in orders_qs:
+        try:
+            try:
+                fill_invoice_data(c, order[0], order[1])
+            except Exception:
+                pass
+            if idx != len(orders_qs) - 1:
+                c.showPage()
+                create_invoice_blank_page(c)
+            idx += 1
+        except Exception as e:
+            failed_ids[order.channel_order_id] = str(e.args[0])
+            pass
+
+    c.save()
+    s3 = session.resource('s3')
+    bucket = s3.Bucket("wareiqinvoices")
+    bucket.upload_file(file_name, file_name, ExtraArgs={'ACL':'public-read'})
+    invoice_url = "https://wareiqinvoices.s3.us-east-2.amazonaws.com/" + file_name
+    os.remove(file_name)
+
+    return jsonify({
+        'status': 'success',
+        'url': invoice_url,
         "failed_ids": failed_ids
     }), 200
 
@@ -2311,7 +2363,17 @@ api.add_resource(WalletRecharges, '/wallet/v1/payments')
 def ping_dev():
     return 0
     import requests
-    shopify_url = "https://34e7c8da296cfc636e3d587e4d2974b8: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@blackpatridgefarms.myshopify.com/admin/api/2020-04/orders.json"
+    shopify_url = "https://e156f178d7a211b66ae0870942ff32b1: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@trendy-things-2020.myshopify.com/admin/api/2020-04/orders.json?limit=250&created_at_max=2020-04-16T11:00:27+05:30"
+    r = requests.get(shopify_url)
+    from requests_oauthlib.oauth1_session import OAuth1Session
+    auth_session = OAuth1Session("ck_cd462226a5d5c21c5936c7f75e1afca25b9853a6",
+                                 client_secret="cs_c897bf3e770e15f518cba5c619b32671b7cc527c")
+    url = '%s/wp-json/wc/v3/orders?&consumer_key=ck_cd462226a5d5c21c5936c7f75e1afca25b9853a6&consumer_secret=cs_c897bf3e770e15f518cba5c619b32671b7cc527c' % (
+        "https://www.zladeformen.com")
+    r = auth_session.get(url)
+
+    return 0
+    shopify_url = "https://dc8ae0b7f5c1c6558f551d81e1352bcd:00dfeaf8f77b199597e360aa4a50a168@origin-clothing-india.myshopify.com/admin/api/2020-04/orders.json"
     r = requests.get(shopify_url)
     magento_url = "https://www.vedaearth.com/rest/V1/orders?searchCriteria[filter_groups][0][filters][0][field]=created_at&searchCriteria[filter_groups][0][filters][0][value]=2020-05-09&searchCriteria[filter_groups][0][filters][0][condition_type]=gt"
     headers = {'Authorization': "Bearer zg1j7voibdpswz0yugnt3pfjfbvog335",
@@ -2390,12 +2452,7 @@ def ping_dev():
 
 
     return 0
-    from requests_oauthlib.oauth1_session import OAuth1Session
-    auth_session = OAuth1Session("ck_407317b14879d2f71ebf3832768af1a035452473",
-                                 client_secret="cs_534736ce0e9e9c6c98ce88ada68d0769ae792c40")
-    url = '%s/wc-shipment-tracking/v3/orders/34022/shipment-trackings?consumer_key=ck_407317b14879d2f71ebf3832768af1a035452473&consumer_secret=cs_534736ce0e9e9c6c98ce88ada68d0769ae792c40' % (
-        "https://www.alpino.store")
-    r = auth_session.get(url)
+
 
     import requests, json
     customer_phone = "09819368887"

@@ -23,6 +23,9 @@ class Products(db.Model):
     inactive_reason = db.Column(db.String, nullable=True, default="")
     channel_id = db.Column(db.Integer, db.ForeignKey('master_channels.id'))
     channel = db.relationship("MasterChannels", backref=db.backref("products", uselist=True))
+    subcategory_id = db.Column(db.Integer, db.ForeignKey('products_subcategories.id'))
+    subcategory = db.relationship("ProductsSubCategories", backref=db.backref("products"))
+    hsn_code = db.Column(db.String, nullable=True)
     date_created = db.Column(db.DateTime, default=datetime.now)
     date_updated = db.Column(db.DateTime, onupdate=datetime.now)
 
@@ -55,10 +58,28 @@ class ProductsCombos(db.Model):
     __tablename__ = "products_combos"
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     combo_id = db.Column(db.Integer, db.ForeignKey('products.id'))
-    combo = db.relationship("Products", backref=db.backref("combo"))
+    combo = db.relationship("Products", backref=db.backref("combo", uselist=True), foreign_keys=[combo_id])
     combo_prod_id = db.Column(db.Integer, db.ForeignKey('products.id'))
-    combo_prod = db.relationship("Products", backref=db.backref("combo_prod"))
+    combo_prod = db.relationship("Products", backref=db.backref("combo_prod", uselist=True), foreign_keys=[combo_prod_id])
     quantity = db.Column(db.Integer, nullable=False, default=1)
+    date_created = db.Column(db.DateTime, default=datetime.now)
+    date_updated = db.Column(db.DateTime, onupdate=datetime.now)
+
+
+class ProductsCategories(db.Model):
+    __tablename__ = "products_categories"
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    name = db.Column(db.String, nullable=False)
+    date_created = db.Column(db.DateTime, default=datetime.now)
+    date_updated = db.Column(db.DateTime, onupdate=datetime.now)
+
+
+class ProductsSubCategories(db.Model):
+    __tablename__ = "products_subcategories"
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    name = db.Column(db.String, nullable=False)
+    category_id = db.Column(db.Integer, db.ForeignKey('products_categories.id'))
+    category = db.relationship("ProductsCategories", backref=db.backref("subcategory"))
     date_created = db.Column(db.DateTime, default=datetime.now)
     date_updated = db.Column(db.DateTime, onupdate=datetime.now)
 
@@ -137,6 +158,7 @@ class OPAssociation(db.Model):
     quantity = db.Column(db.Integer)
     amount = db.Column(db.FLOAT, nullable=True)
     channel_item_id = db.Column(db.String, nullable=True)
+    tax_lines = db.Column(JSON)
     order = db.relationship("Orders")
     product = db.relationship("Products")
 
@@ -280,6 +302,7 @@ class ClientPickups(db.Model):
     pickup = db.relationship("PickupPoints", backref=db.backref("client_pickups", uselist=True))
     return_point_id = db.Column(db.Integer, db.ForeignKey('return_points.id'))
     return_point = db.relationship("ReturnPoints", backref=db.backref("client_returns", uselist=True))
+    gstin = db.Column(db.String, nullable=True)
     date_created = db.Column(db.DateTime, default=datetime.now)
     date_updated = db.Column(db.DateTime, onupdate=datetime.now)
 

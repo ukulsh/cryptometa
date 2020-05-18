@@ -27,8 +27,8 @@ insert_payments_data_query = """INSERT INTO orders_payments (payment_mode, amoun
 
 select_products_query = """SELECT id from products where sku=%s and client_prefix=%s;"""
 
-insert_op_association_query = """INSERT INTO op_association (product_id, order_id, quantity, amount, channel_item_id)
-                                    VALUES (%s,%s,%s,%s,%s) RETURNING id"""
+insert_op_association_query = """INSERT INTO op_association (product_id, order_id, quantity, amount, channel_item_id, tax_lines)
+                                    VALUES (%s,%s,%s,%s,%s,%s) RETURNING id"""
 
 update_last_fetched_data_query = """UPDATE client_channel SET last_synced_order=%s, last_synced_time=%s WHERE id=%s"""
 
@@ -103,7 +103,7 @@ get_orders_to_ship_query = """select aa.id,aa.channel_order_id,aa.order_date,aa.
                                 cc.latitude,cc.longitude,cc.country_code,dd.id,dd.payment_mode,dd.amount,dd.currency,dd.order_id,dd.shipping_charges,
                                 dd.subtotal,dd.order_id,ee.dimensions,ee.weights,ee.quan, ff.api_key, ff.api_password, 
                                 ff.shop_url, aa.order_id_channel_unique, ee.products_name, aa.pickup_data_id, xx.cod_verified, 
-                                xx.id, ee.ship_courier, gg.location_id, ff.channel_id, yy.verify_cod, yy.essential
+                                xx.id, ee.ship_courier, gg.location_id, ff.channel_id, yy.verify_cod, yy.essential, ee.subcategories
                                 from orders aa
                                 left join shipping_address cc
                                 on aa.delivery_address_id=cc.id
@@ -112,10 +112,13 @@ get_orders_to_ship_query = """select aa.id,aa.channel_order_id,aa.order_date,aa.
                                 left join 
                                 (select order_id, array_agg(dimensions) as dimensions, array_agg(weight) as weights, 
                                 array_agg(quantity) as quan, array_agg(pp.name) as products_name, 
-                                array_agg(pp.inactive_reason ORDER BY pp.weight DESC) as ship_courier
+                                array_agg(pp.inactive_reason ORDER BY pp.weight DESC) as ship_courier,
+                                array_agg(qq.name ORDER BY pp.weight DESC) as subcategories
                                  from op_association opa 
                                  left join products pp
                                  on opa.product_id = pp.id
+                                 left join products_subcategories qq
+                                 on pp.subcategory_id=qq.id
                                  where client_prefix=%s
                                  group by order_id) ee
                                 on aa.id=ee.order_id

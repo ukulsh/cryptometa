@@ -52,6 +52,8 @@ def fetch_shopify_orders(cur, channel):
             if channel[1] == "DAPR":  # serving only DAPR available skus, Have to create generic logic for this
                 for prod in order['line_items']:
                     product_sku = str(prod['variant_id'])
+                    if not product_sku:
+                        product_sku = str(prod['id'])
                     prod_tuple = (product_sku, channel[1])
                     cur.execute(select_products_query, prod_tuple)
                     try:
@@ -74,7 +76,8 @@ def fetch_shopify_orders(cur, channel):
             else:
                 pickup_data_id = None  # change this as we move to dynamic pickups
 
-            customer_name = order['customer']['first_name'] + " " + order['customer']['last_name']
+            customer_name = order['customer']['first_name']
+            customer_name += " " + order['customer']['last_name'] if order['customer']['last_name'] else ""
             shipping_tuple = (order['shipping_address']['first_name'],
                               order['shipping_address']['last_name'],
                               order['shipping_address']['address1'],
@@ -139,7 +142,7 @@ def fetch_shopify_orders(cur, channel):
             cur.execute(insert_payments_data_query, payments_tuple)
 
             for prod in order['line_items']:
-                product_sku = str(prod['variant_id'])
+                product_sku = str(prod['variant_id']) if prod['variant_id'] else str(prod['id'])
                 prod_tuple = (product_sku, channel[1])
                 cur.execute(select_products_query, prod_tuple)
                 try:
@@ -161,16 +164,34 @@ def fetch_shopify_orders(cur, channel):
                             product_id, order_id, prod['quantity'], float(prod['quantity'] * float(prod['price'])), None, json.dumps([]))
                             cur.execute(insert_op_association_query, op_tuple)
                         continue
+
                     dimensions = None
                     weight = None
-                    product_insert_tuple = (prod['name'], str(prod['variant_id']), True, channel[2],
+                    warehouse_prefix = channel[1]
+                    subcategory_id = None
+                    master_sku = prod['sku']
+                    if not master_sku:
+                        master_sku = product_sku
+                    try:
+                        cur.execute("SELECT keywords, warehouse_prefix, dimensions, weight, subcategory_id FROM keyword_weights WHERE client_prefix='%s'"%channel[1])
+                        all_weights = cur.fetchall()
+                        for obj in all_weights:
+                            if all(x in master_sku for x in obj[0]) or all(x in prod['name'] for x in obj[0]):
+                                warehouse_prefix = obj[1]
+                                dimensions = json.dumps(obj[2])
+                                weight = obj[3]
+                                subcategory_id = obj[4]
+                                break
+                    except Exception as e:
+                        logger.error("product weight assignment failed for: " + str(order['order_number']) + "\nError:" + str(e))
+                    product_insert_tuple = (prod['name'], product_sku, True, channel[2],
                                             channel[1], datetime.now(), dimensions,
-                                            float(prod['price']), weight, str(prod['variant_id']))
+                                            float(prod['price']), weight, master_sku, subcategory_id)
                     cur.execute(insert_product_query, product_insert_tuple)
                     product_id = cur.fetchone()[0]
 
                     product_quantity_insert_tuple = (
-                        product_id, 100, 100, 100, channel[1], "APPROVED", datetime.now())
+                        product_id, 100, 100, 100, warehouse_prefix, "APPROVED", datetime.now())
                     cur.execute(insert_product_quantity_query, product_quantity_insert_tuple)
 
                 tax_lines = list()
@@ -185,6 +206,9 @@ def fetch_shopify_orders(cur, channel):
 
         except Exception as e:
             logger.error("order fetch failed for" + str(order['order_number']) + "\nError:" + str(e))
+            conn.rollback()
+
+        conn.commit()
 
     if data['orders']:
         last_sync_tuple = (str(data['orders'][-1]['id']), datetime.utcnow() + timedelta(hours=5.5), channel[0])
@@ -194,7 +218,7 @@ def fetch_shopify_orders(cur, channel):
 
 
 def fetch_woocommerce_orders(cur, channel):
-    time_after = channel[7] - timedelta(days=2)
+    time_after = channel[7] - timedelta(days=5)
     cur.execute("SELECT order_id_channel_unique from orders WHERE order_date>%s "
                 "and client_prefix=%s and order_id_channel_unique is not null;", (time_after, channel[1]))
 
@@ -234,7 +258,8 @@ def fetch_woocommerce_orders(cur, channel):
             else:
                 financial_status = 'prepaid'
 
-            customer_name = order['shipping']['first_name'] + " " + order['shipping']['last_name']
+            customer_name = order['shipping']['first_name']
+            customer_name += " " + order['shipping']['last_name'] if order['shipping']['last_name'] else ""
             shipping_tuple = (order['shipping']['first_name'],
                               order['shipping']['last_name'],
                               order['shipping']['address_1'],
@@ -295,6 +320,10 @@ def fetch_woocommerce_orders(cur, channel):
                 if not sku_id:
                     sku_id = prod['product_id']
                 product_sku = str(sku_id)
+                master_sku = prod['sku']
+                if not master_sku:
+                    master_sku = sku_id
+                warehouse_prefix = channel[1]
                 prod_tuple = (product_sku, channel[1])
                 cur.execute(select_products_query, prod_tuple)
                 try:
@@ -302,14 +331,27 @@ def fetch_woocommerce_orders(cur, channel):
                 except Exception:
                     dimensions = None
                     weight = None
-                    product_insert_tuple = (prod['name'], str(sku_id), True, channel[2],
+                    subcategory_id = None
+                    try:
+                        cur.execute("SELECT keywords, warehouse_prefix, dimensions, weight, subcategory_id FROM keyword_weights WHERE client_prefix='%s'"%channel[1])
+                        all_weights = cur.fetchall()
+                        for obj in all_weights:
+                            if all(x in master_sku for x in obj[0]) or all(x in prod['name'] for x in obj[0]):
+                                warehouse_prefix = obj[1]
+                                dimensions = json.dumps(obj[2])
+                                weight = obj[3]
+                                subcategory_id = obj[4]
+                                break
+                    except Exception as e:
+                        logger.error("product weight assignment failed for: " + str(order['number']) + "\nError:" + str(e))
+                    product_insert_tuple = (prod['name'], product_sku, True, channel[2],
                                             channel[1], datetime.now(), dimensions,
-                                            float(prod['price']), weight, str(sku_id))
+                                            float(prod['price']), weight, master_sku, subcategory_id)
                     cur.execute(insert_product_query, product_insert_tuple)
                     product_id = cur.fetchone()[0]
 
                     product_quantity_insert_tuple = (
-                        product_id, 100, 100, 100, channel[1], "APPROVED", datetime.now())
+                        product_id, 100, 100, 100, warehouse_prefix, "APPROVED", datetime.now())
                     cur.execute(insert_product_quantity_query, product_quantity_insert_tuple)
 
                 tax_lines = list()
@@ -344,7 +386,11 @@ def fetch_magento_orders(cur, channel):
         filter_idx += 1
     headers = {'Authorization': "Bearer "+channel[3],
                'Content-Type': 'application/json'}
-    data = requests.get(magento_orders_url, headers=headers, verify=False).json()
+    data = requests.get(magento_orders_url, headers=headers, verify=False)
+    if data.status_code==200:
+        data = data.json()
+    else:
+        return None
     last_synced_time = datetime.utcnow()
     if 'items' not in data:
         return None
@@ -367,7 +413,8 @@ def fetch_magento_orders(cur, channel):
             else:
                 pickup_data_id = None  # change this as we move to dynamic pickups
 
-            customer_name = order['customer_firstname'] + " " + order['customer_lastname']
+            customer_name = order['customer_firstname']
+            customer_name += " " + order['customer_lastname'] if order['customer_lastname'] else ""
 
             address_1 = ""
             for addr in order['billing_address']['street']:
@@ -457,17 +504,31 @@ def fetch_magento_orders(cur, channel):
                 except Exception:
                     dimensions = None
                     weight = None
+                    subcategory_id = None
+                    warehouse_prefix = channel[1]
                     master_sku = str(prod['sku'])
                     if not master_sku:
                         master_sku = product_sku
+                    try:
+                        cur.execute("SELECT keywords, warehouse_prefix, dimensions, weight, subcategory_id FROM keyword_weights WHERE client_prefix='%s'"%channel[1])
+                        all_weights = cur.fetchall()
+                        for obj in all_weights:
+                            if all(x in master_sku for x in obj[0]) or all(x in prod['name'] for x in obj[0]):
+                                warehouse_prefix = obj[1]
+                                dimensions = json.dumps(obj[2])
+                                weight = obj[3]
+                                subcategory_id = obj[4]
+                                break
+                    except Exception as e:
+                        logger.error("product weight assignment failed for: " + str(order['increment_id']) + "\nError:" + str(e))
                     product_insert_tuple = (prod['name'], product_sku, True, channel[2],
                                             channel[1], datetime.now(), dimensions, float(prod['original_price']),
-                                            weight, master_sku)
+                                            weight, master_sku, subcategory_id)
                     cur.execute(insert_product_query, product_insert_tuple)
                     product_id = cur.fetchone()[0]
 
                     product_quantity_insert_tuple = (
-                        product_id, 100, 100, 100, channel[1], "APPROVED", datetime.now())
+                        product_id, 100, 100, 100, warehouse_prefix, "APPROVED", datetime.now())
                     cur.execute(insert_product_quantity_query, product_quantity_insert_tuple)
 
                 tax_lines = list()
@@ -480,7 +541,7 @@ def fetch_magento_orders(cur, channel):
                 cur.execute(insert_op_association_query, op_tuple)
 
         except Exception as e:
-            logger.error("order fetch failed for" + str(order['entity_id']) + "\nError:" + str(e))
+            logger.error("order fetch failed for" + str(order['increment_id']) + "\nError:" + str(e))
 
     if data['items']:
         last_sync_tuple = (str(data['items'][-1]['entity_id']), last_synced_time, channel[0])
@@ -496,8 +557,22 @@ def assign_pickup_points_for_unassigned(cur, cur_2):
     for order in all_orders:
         try:
             sku_dict = dict()
+            kitted_skus = dict()
             for idx, sku in enumerate(order[3]):
-                sku_dict[sku] = order[4][idx]
+                try:
+                    cur.execute("""select bb.sku, aa.quantity from products_combos aa
+                                    left join products bb on aa.combo_prod_id=bb.id WHERE aa.combo_id in
+                                    (SELECT id from products where sku = %s and client_prefix=%s)""", (sku, order[1]))
+                    combo_skus = cur.fetchall()
+                    if combo_skus:
+                        kitted_skus[sku] = combo_skus
+                        for new_sku in combo_skus:
+                            sku_dict[new_sku[0]] = order[4][idx]*new_sku[1]
+                    else:
+                        sku_dict[sku] = order[4][idx]
+
+                except Exception:
+                    sku_dict[sku] = order[4][idx]
 
             sku_string = "('"
 
@@ -507,7 +582,7 @@ def assign_pickup_points_for_unassigned(cur, cur_2):
             sku_string = sku_string.rstrip(",")
             sku_string += ")"
 
-            no_sku = len(order[3])
+            no_sku = len(sku_dict)
             try:
                 cur.execute(
                     available_warehouse_product_quantity.replace('__SKU_STR__', sku_string).replace('__CLIENT_PREFIX__',
@@ -517,10 +592,10 @@ def assign_pickup_points_for_unassigned(cur, cur_2):
 
             prod_wh_tuple = cur.fetchall()
             wh_dict = dict()
-            courier_id = 2
+            courier_id = 1 #todo: do something generic for this
             courier_id_weight = 0.0
             for prod_wh in prod_wh_tuple:
-                if prod_wh[5] > courier_id_weight:
+                if prod_wh[4] and prod_wh[5] and prod_wh[5] > courier_id_weight:
                     courier_id = prod_wh[4]
                     courier_id_weight = prod_wh[5]
                 if sku_dict[prod_wh[2]] <= prod_wh[3]:
@@ -536,7 +611,7 @@ def assign_pickup_points_for_unassigned(cur, cur_2):
                     warehouse_pincode_str += "('" + key + "','" + str(value['pincode']) + "'),"
 
             warehouse_pincode_str = warehouse_pincode_str.rstrip(',')
-            if not warehouse_pincode_str:
+            if not warehouse_pincode_str and not kitted_skus: #todo: define order split in case of kitting
                 total_count = 0
                 prod_list = list()
                 for key, value in wh_dict.items():
@@ -568,7 +643,7 @@ def assign_pickup_points_for_unassigned(cur, cur_2):
 
             cur.execute("""select aa.id from client_pickups aa
                             left join pickup_points bb on aa.pickup_id=bb.id
-                            where bb.warehouse_prefix=%s""", (final_wh[0],))
+                            where bb.warehouse_prefix=%s and aa.client_prefix=%s""", (final_wh[0],order[1]))
 
             pickup_id = cur.fetchone()
             if not pickup_id:

@@ -15,9 +15,10 @@ from psycopg2.extras import RealDictCursor
 
 from project import db
 from .queries import product_count_query, available_warehouse_product_quantity, fetch_warehouse_to_pick_from, \
-    select_product_list_query, select_orders_list_query, select_wallet_deductions_query
-from project.api.models import Products, ProductQuantity, InventoryUpdate, WarehouseMapping, \
-    Orders, OrdersPayments, PickupPoints, MasterChannels, ClientPickups, CodVerification, NDRVerification,\
+    select_product_list_query, select_orders_list_query, select_wallet_deductions_query, select_wallet_remittance_query, \
+    select_wallet_remittance_orders_query
+from project.api.models import Products, ProductQuantity, InventoryUpdate, WarehouseMapping, NDRReasons, MultiVendor, \
+    Orders, OrdersPayments, PickupPoints, MasterChannels, ClientPickups, CodVerification, NDRVerification, NDRShipments,\
     MasterCouriers, Shipments, OPAssociation, ShippingAddress, Manifests, ClientCouriers, OrderStatus, DeliveryCheck, ClientMapping
 from project.api.utils import authenticate_restful, get_products_sort_func, fill_shiplabel_data_thermal, \
     get_orders_sort_func, create_shiplabel_blank_page, fill_shiplabel_data, create_shiplabel_blank_page_thermal, \
@@ -47,6 +48,8 @@ PRODUCTS_DOWNLOAD_HEADERS = ["S. No.", "Product Name", "Channel SKU", "Master SK
 DEDUCTIONS_DOWNLOAD_HEADERS = ["Time", "Status", "Courier", "AWB", "order ID", "COD cost", "Forward cost", "Return cost",
                               "Management Fee", "Subtotal", "Total", "Zone", "Weight Charged"]
 
+REMITTANCE_DOWNLOAD_HEADERS = ["Order ID", "Order Date", "Courier", "AWB", "Payment Mode", "Amount", "Delivered Date"]
+
 RECHARGES_DOWNLOAD_HEADERS = ["Payment Time", "Amount", "Transaction ID", "status"]
 
 
@@ -71,85 +74,97 @@ class ProductList(Resource):
             auth_data = resp.get('data')
             if not auth_data:
                 return {"success": False, "msg": "Auth Failed"}, 404
-            if auth_data.get('user_group') == 'super-admin' or 'client':
-                client_prefix = auth_data.get('client_prefix')
-                query_to_execute = select_product_list_query
-                if filters:
-                    if 'warehouse' in filters:
-                        if len(filters['warehouse'])==1:
-                            wh_filter = "WHERE warehouse_prefix in ('%s')"%filters['warehouse'][0]
-                        else:
-                            wh_filter = "WHERE warehouse_prefix in %s"%str(tuple(filters['warehouse']))
+            client_prefix = auth_data.get('client_prefix')
+            query_to_execute = select_product_list_query
+            if auth_data['user_group'] == 'client':
+                query_to_execute = query_to_execute.replace('__CLIENT_FILTER__', "AND aa.client_prefix in ('%s')"%client_prefix)
+            if auth_data['user_group'] == 'warehouse':
+                query_to_execute = query_to_execute.replace('__WAREHOUSE_FILTER__', "WHERE warehouse_prefix in ('%s')"%auth_data.get('warehouse_prefix'))
+                query_to_execute = query_to_execute.replace('__JOIN_TYPE__', "JOIN")
+            if auth_data['user_group'] == 'multi-vendor':
+                cur.execute("SELECT vendor_list FROM multi_vendor WHERE client_prefix='%s';"%client_prefix)
+                vendor_list = cur.fetchone()[0]
+                query_to_execute = query_to_execute.replace('__MV_CLIENT_FILTER__', "AND aa.client_prefix in %s"%str(tuple(vendor_list)))
+            else:
+                query_to_execute = query_to_execute.replace('__MV_CLIENT_FILTER__', "")
 
-                        query_to_execute = query_to_execute.replace('__WAREHOUSE_FILTER__', wh_filter)
-                    if 'client' in filters:
-                        if len(filters['client'])==1:
-                            cl_filter = "AND aa.client_prefix in ('%s')"%filters['client'][0]
-                        else:
-                            cl_filter = "AND aa.client_prefix in %s"%str(tuple(filters['client']))
+            if filters:
+                if 'warehouse' in filters:
+                    if len(filters['warehouse'])==1:
+                        wh_filter = "WHERE warehouse_prefix in ('%s')"%filters['warehouse'][0]
+                    else:
+                        wh_filter = "WHERE warehouse_prefix in %s"%str(tuple(filters['warehouse']))
 
-                        query_to_execute = query_to_execute.replace('__CLIENT_FILTER__', cl_filter)
-                if auth_data['user_group'] != 'super-admin':
-                    query_to_execute = query_to_execute.replace('__CLIENT_FILTER__', "AND aa.client_prefix in ('%s')"%client_prefix)
+                    query_to_execute = query_to_execute.replace('__WAREHOUSE_FILTER__', wh_filter)
+                    query_to_execute = query_to_execute.replace('__JOIN_TYPE__', "JOIN")
 
-                if type != 'all':
-                    return {"success": False, "msg": "Invalid URL"}, 404
+                if 'client' in filters:
+                    if len(filters['client'])==1:
+                        cl_filter = "AND aa.client_prefix in ('%s')"%filters['client'][0]
+                    else:
+                        cl_filter = "AND aa.client_prefix in %s"%str(tuple(filters['client']))
 
-                query_to_execute = query_to_execute.replace('__CLIENT_FILTER__',"").replace('__WAREHOUSE_FILTER__', "")
-                if sort.lower() == 'desc':
-                    sort = "DESC NULLS LAST"
-                query_to_execute = query_to_execute.replace('__ORDER_BY__', sort_by).replace('__ORDER_TYPE__', sort)
-                query_to_execute = query_to_execute.replace('__SEARCH_KEY__', search_key)
-                if download_flag:
-                    s_no = 1
-                    query_to_run = query_to_execute.replace('__PAGINATION__', "")
-                    query_to_run = re.sub(r"""__.+?__""", "", query_to_run)
-                    cur.execute(query_to_run)
-                    products_qs_data = cur.fetchall()
-                    si = io.StringIO()
-                    cw = csv.writer(si)
-                    cw.writerow(PRODUCTS_DOWNLOAD_HEADERS)
-                    for product in products_qs_data:
-                        try:
-                            new_row = list()
-                            new_row.append(str(s_no))
-                            new_row.append(str(product['product_name']))
-                            new_row.append(str(product['channel_sku']))
-                            new_row.append(str(product['master_sku']))
-                            new_row.append(str(product['price']))
-                            new_row.append(str(product['total_quantity']))
-                            new_row.append(str(product['available_quantity']))
-                            new_row.append(str(product['current_quantity']))
-                            new_row.append(str(product['inline_quantity']))
-                            new_row.append(str(product['rto_quantity']))
-                            new_row.append(str(product['dimensions']))
-                            new_row.append(str(product['weight']))
-                            cw.writerow(new_row)
-                            s_no += 1
-                        except Exception as e:
-                            pass
+                    query_to_execute = query_to_execute.replace('__CLIENT_FILTER__', cl_filter)
 
-                    output = make_response(si.getvalue())
-                    filename = client_prefix+"_EXPORT.csv"
-                    output.headers["Content-Disposition"] = "attachment; filename="+filename
-                    output.headers["Content-type"] = "text/csv"
-                    return output
+            if type != 'all':
+                return {"success": False, "msg": "Invalid URL"}, 404
 
-                cur.execute(query_to_execute.replace('__PAGINATION__', ""))
-                total_count = cur.rowcount
+            query_to_execute = query_to_execute.replace('__JOIN_TYPE__', "LEFT JOIN")
+            query_to_execute = query_to_execute.replace('__CLIENT_FILTER__',"").replace('__WAREHOUSE_FILTER__', "")
+            if sort.lower() == 'desc':
+                sort = "DESC NULLS LAST"
+            query_to_execute = query_to_execute.replace('__ORDER_BY__', sort_by).replace('__ORDER_TYPE__', sort)
+            query_to_execute = query_to_execute.replace('__SEARCH_KEY__', search_key)
+            if download_flag:
+                s_no = 1
+                query_to_run = query_to_execute.replace('__PAGINATION__', "")
+                query_to_run = re.sub(r"""__.+?__""", "", query_to_run)
+                cur.execute(query_to_run)
+                products_qs_data = cur.fetchall()
+                si = io.StringIO()
+                cw = csv.writer(si)
+                cw.writerow(PRODUCTS_DOWNLOAD_HEADERS)
+                for product in products_qs_data:
+                    try:
+                        new_row = list()
+                        new_row.append(str(s_no))
+                        new_row.append(str(product['product_name']))
+                        new_row.append(str(product['channel_sku']))
+                        new_row.append(str(product['master_sku']))
+                        new_row.append(str(product['price']))
+                        new_row.append(str(product['total_quantity']))
+                        new_row.append(str(product['available_quantity']))
+                        new_row.append(str(product['current_quantity']))
+                        new_row.append(str(product['inline_quantity']))
+                        new_row.append(str(product['rto_quantity']))
+                        new_row.append(str(product['dimensions']))
+                        new_row.append(str(product['weight']))
+                        cw.writerow(new_row)
+                        s_no += 1
+                    except Exception as e:
+                        pass
 
-                query_to_execute = query_to_execute.replace('__PAGINATION__', "OFFSET %s LIMIT %s"%(str((page-1)*per_page), str(per_page)))
+                output = make_response(si.getvalue())
+                filename = str(client_prefix)+"_EXPORT.csv"
+                output.headers["Content-Disposition"] = "attachment; filename="+filename
+                output.headers["Content-type"] = "text/csv"
+                return output
 
-                cur.execute(query_to_execute)
-                response['data'] = cur.fetchall()
+            cur.execute(query_to_execute.replace('__PAGINATION__', ""))
+            total_count = cur.rowcount
 
-                total_pages = math.ceil(total_count/per_page)
-                response['meta']['pagination'] = {'total': total_count,
-                                                  'per_page':per_page,
-                                                  'current_page': page,
-                                                  'total_pages':total_pages}
+            query_to_execute = query_to_execute.replace('__PAGINATION__', "OFFSET %s LIMIT %s"%(str((page-1)*per_page), str(per_page)))
 
-                return response, 200
+            cur.execute(query_to_execute)
+            response['data'] = cur.fetchall()
+
+            total_pages = math.ceil(total_count/per_page)
+            response['meta']['pagination'] = {'total': total_count,
+                                              'per_page':per_page,
+                                              'current_page': page,
+                                              'total_pages':total_pages}
+
+            return response, 200
         except Exception as e:
             return {"success": False, "error":str(e.args[0])}, 404
 
@@ -166,16 +181,20 @@ def get_products_filters(resp):
     client_prefix = auth_data.get('client_prefix')
     warehouse_qs = db.session.query(ProductQuantity.warehouse_prefix, func.count(ProductQuantity.warehouse_prefix))\
                 .join(Products, Products.id == ProductQuantity.product_id)
-    if auth_data['user_group'] != 'super-admin':
+    if auth_data['user_group'] == 'client':
         warehouse_qs = warehouse_qs.filter(Products.client_prefix == client_prefix)
+    if auth_data['user_group'] == 'warehouse':
+        warehouse_qs = warehouse_qs.filter(ProductQuantity.warehouse_prefix == auth_data.get('warehouse_prefix'))
     if current_tab == 'active':
         warehouse_qs = warehouse_qs.filter(Products.active == True)
     elif current_tab =='inactive':
         warehouse_qs = warehouse_qs.filter(Products.active == False)
     warehouse_qs = warehouse_qs.group_by(ProductQuantity.warehouse_prefix)
     response['filters']['warehouse'] = [{x[0]: x[1]} for x in warehouse_qs]
-    if auth_data['user_group'] == 'super-admin':
-        client_qs = db.session.query(Products.client_prefix, func.count(Products.client_prefix)).group_by(Products.client_prefix)
+    if auth_data['user_group'] in ('super-admin','warehouse'):
+        client_qs = db.session.query(Products.client_prefix, func.count(Products.client_prefix)).join(ProductQuantity, ProductQuantity.product_id == Products.id).group_by(Products.client_prefix)
+        if auth_data['user_group'] == 'warehouse':
+            client_qs = client_qs.filter(ProductQuantity.warehouse_prefix == auth_data.get('warehouse_prefix'))
         response['filters']['client'] = [{x[0]: x[1]} for x in client_qs]
 
     return jsonify(response), 200
@@ -304,196 +323,247 @@ class OrderList(Resource):
             search_key = data.get('search_key', '')
             since_id = data.get('since_id', None)
             filters = data.get('filters', {})
-            search_key = '%{}%'.format(search_key)
             download_flag = request.args.get("download", None)
             auth_data = resp.get('data')
             if not auth_data:
                 return {"success": False, "msg": "Auth Failed"}, 404
-            if auth_data.get('user_group') == 'super-admin' or 'client':
-                client_prefix = auth_data.get('client_prefix')
-                query_to_run = select_orders_list_query
-                if auth_data['user_group'] != 'super-admin':
-                    query_to_run = query_to_run.replace("__CLIENT_FILTER__", "AND aa.client_prefix = '%s'"%client_prefix)
-                if since_id:
-                    query_to_run = query_to_run.replace("__SINCE_ID_FILTER__", "AND id>%s"%str(since_id))
-                query_to_run = query_to_run.replace("__SEARCH_KEY__", search_key)
 
-                if type == 'new':
-                    query_to_run = query_to_run.replace("__STATUS_FILTER__", "AND aa.status = 'NEW'")
-                elif type == 'ready_to_ship':
-                    query_to_run = query_to_run.replace("__STATUS_FILTER__", "AND aa.status in ('PICKUP REQUESTED','READY TO SHIP')")
-                elif type == 'shipped':
-                    query_to_run = query_to_run.replace("__STATUS_FILTER__", "AND aa.status not in ('NEW', 'READY TO SHIP', 'PICKUP REQUESTED','NOT PICKED','CANCELED','PENDING PAYMENT','NEW - FAILED')")
-                elif type == "return":
-                    query_to_run = query_to_run.replace("__STATUS_FILTER__", "AND (aa.status_type='RT' or (aa.status_type='DL' and aa.status='RTO'))")
-                elif type == 'all':
-                    pass
-                else:
-                    return {"success": False, "msg": "Invalid URL"}, 404
+            client_prefix = auth_data.get('client_prefix')
+            query_to_run = select_orders_list_query
+            if auth_data['user_group'] == 'client':
+                query_to_run = query_to_run.replace("__CLIENT_FILTER__", "AND aa.client_prefix = '%s'"%client_prefix)
+            if auth_data['user_group'] == 'warehouse':
+                query_to_run = query_to_run.replace("__PICKUP_FILTER__", "AND ii.warehouse_prefix = '%s'" % auth_data.get('warehouse_prefix'))
+            if auth_data['user_group'] == 'multi-vendor':
+                cur.execute("SELECT vendor_list FROM multi_vendor WHERE client_prefix='%s';" % client_prefix)
+                vendor_list = cur.fetchone()[0]
+                query_to_run = query_to_run.replace("__MV_CLIENT_FILTER__", "AND aa.client_prefix in %s"%str(tuple(vendor_list)))
+            else:
+                query_to_run = query_to_run.replace("__MV_CLIENT_FILTER__", "")
 
-                if filters:
-                    if 'status' in filters:
-                        if len(filters['status']) == 1:
-                            status_tuple = "('"+filters['status'][0]+"')"
-                        else:
-                            status_tuple = str(tuple(filters['status']))
-                        query_to_run = query_to_run.replace("__STATUS_FILTER__", "AND aa.status in %s"%status_tuple)
-                    if 'courier' in filters:
-                        if len(filters['courier']) == 1:
-                            courier_tuple = "('"+filters['courier'][0]+"')"
-                        else:
-                            courier_tuple = str(tuple(filters['courier']))
-                        query_to_run = query_to_run.replace("__COURIER_FILTER__", "AND courier_name in %s"%courier_tuple)
-                    if 'client' in filters and auth_data['user_group'] == 'super-admin':
-                        if len(filters['client']) == 1:
-                            client_tuple = "('"+filters['client'][0]+"')"
-                        else:
-                            client_tuple = str(tuple(filters['client']))
-                        query_to_run = query_to_run.replace("__CLIENT_FILTER__", "AND aa.client_prefix in %s" % client_tuple)
+            if since_id:
+                query_to_run = query_to_run.replace("__SINCE_ID_FILTER__", "AND id>%s"%str(since_id))
+            query_to_run = query_to_run.replace("__SEARCH_KEY__", search_key)
 
-                    if 'pickup_point' in filters:
-                        if len(filters['pickup_point']) == 1:
-                            pickup_tuple = "('"+filters['pickup_point'][0]+"')"
-                        else:
-                            pickup_tuple = str(tuple(filters['pickup_point']))
-                        query_to_run = query_to_run.replace("__PICKUP_FILTER__", "AND ii.warehouse_prefix in %s" % pickup_tuple)
+            if type == 'new':
+                query_to_run = query_to_run.replace("__TAB_STATUS_FILTER__", "AND aa.status = 'NEW'")
+            elif type == 'ready_to_ship':
+                query_to_run = query_to_run.replace("__TAB_STATUS_FILTER__", "AND aa.status in ('PICKUP REQUESTED','READY TO SHIP')")
+            elif type == 'shipped':
+                query_to_run = query_to_run.replace("__TAB_STATUS_FILTER__", "AND aa.status not in ('NEW', 'READY TO SHIP', 'PICKUP REQUESTED','NOT PICKED','CANCELED','PENDING PAYMENT','NEW - FAILED')")
+            elif type == "return":
+                query_to_run = query_to_run.replace("__TAB_STATUS_FILTER__", "AND (aa.status_type='RT' or (aa.status_type='DL' and aa.status='RTO'))")
+            elif type == "ndr":
+                query_to_run = query_to_run.replace("__TAB_STATUS_FILTER__", "AND (rr.id is not null AND aa.status='PENDING')")
+            elif type == 'all':
+                pass
+            else:
+                return {"success": False, "msg": "Invalid URL"}, 404
 
-                    if 'order_type' in filters:
-                        if len(filters['order_type']) == 1:
-                            type_tuple = "('"+filters['order_type'][0]+"')"
-                        else:
-                            type_tuple = str(tuple(filters['order_type']))
-                        query_to_run = query_to_run.replace("__TYPE_FILTER__", "AND upper(payment_mode) in %s" %type_tuple)
+            if filters:
+                if 'status' in filters:
+                    if len(filters['status']) == 1:
+                        status_tuple = "('"+filters['status'][0]+"')"
+                    else:
+                        status_tuple = str(tuple(filters['status']))
+                    query_to_run = query_to_run.replace("__STATUS_FILTER__", "AND aa.status in %s"%status_tuple)
+                if 'courier' in filters:
+                    if len(filters['courier']) == 1:
+                        courier_tuple = "('"+filters['courier'][0]+"')"
+                    else:
+                        courier_tuple = str(tuple(filters['courier']))
+                    query_to_run = query_to_run.replace("__COURIER_FILTER__", "AND courier_name in %s"%courier_tuple)
+                if 'client' in filters and auth_data['user_group'] != 'client':
+                    if len(filters['client']) == 1:
+                        client_tuple = "('"+filters['client'][0]+"')"
+                    else:
+                        client_tuple = str(tuple(filters['client']))
+                    query_to_run = query_to_run.replace("__CLIENT_FILTER__", "AND aa.client_prefix in %s" % client_tuple)
 
-                    if 'order_date' in filters:
-                        filter_date_start = filters['order_date'][0][0:19].replace('T',' ')
-                        filter_date_end = filters['order_date'][1][0:19].replace('T',' ')
-                        query_to_run = query_to_run.replace("__ORDER_DATE_FILTER__", "AND order_date between '%s' and '%s'" %(filter_date_start, filter_date_end))
+                if 'pickup_point' in filters:
+                    if len(filters['pickup_point']) == 1:
+                        pickup_tuple = "('"+filters['pickup_point'][0]+"')"
+                    else:
+                        pickup_tuple = str(tuple(filters['pickup_point']))
+                    query_to_run = query_to_run.replace("__PICKUP_FILTER__", "AND ii.warehouse_prefix in %s" % pickup_tuple)
 
-                    if 'pickup_time' in filters:
-                        filter_date_start = filters['pickup_time'][0][0:19].replace('T',' ')
-                        filter_date_end = filters['pickup_time'][1][0:19].replace('T',' ')
-                        query_to_run = query_to_run.replace("__PICKUP_TIME_FILTER__", "AND pickup_time between '%s' and '%s'" %(filter_date_start, filter_date_end))
+                if 'ndr_reason' in filters:
+                    if len(filters['ndr_reason']) == 1:
+                        reason_tuple = "('"+filters['ndr_reason'][0]+"')"
+                    else:
+                        reason_tuple = str(tuple(filters['ndr_reason']))
+                    query_to_run = query_to_run.replace("__NDR_REASON_FILTER__", "AND rr.reason in %s" % reason_tuple)
 
-                    if 'delivered_time' in filters:
-                        filter_date_start = filters['delivered_time'][0][0:19].replace('T',' ')
-                        filter_date_end = filters['delivered_time'][1][0:19].replace('T',' ')
-                        query_to_run = query_to_run.replace("__PICKUP_TIME_FILTER__", "AND delivered_time between '%s' and '%s'" %(filter_date_start, filter_date_end))
+                if 'ndr_type' in filters:
+                    if 'Action Requested' in filters['ndr_type'] and 'Action Required' in filters['ndr_type']:
+                        ndr_type_filter = ""
+                    elif 'Action Requested' in filters['ndr_type']:
+                        ndr_type_filter = "AND nn.ndr_verified in ('true', 'false')"
+                    else:
+                        ndr_type_filter = "AND nn.ndr_verified is null"
 
-                if download_flag:
-                    date_month_ago = datetime.datetime.utcnow() + datetime.timedelta(hours=5.5) - datetime.timedelta(days=31)
-                    date_month_ago = date_month_ago.strftime("%Y-%m-%d %H:%M:%S")
-                    query_to_run = query_to_run.replace('__ORDER_DATE_FILTER__', "AND order_date > '%s' "%date_month_ago)
-                    query_to_run = query_to_run.replace('__PAGINATION__', "")
-                    query_to_run = re.sub(r"""__.+?__""", "", query_to_run)
-                    cur.execute(query_to_run)
-                    orders_qs_data = cur.fetchall()
-                    si = io.StringIO()
-                    cw = csv.writer(si)
-                    cw.writerow(ORDERS_DOWNLOAD_HEADERS)
-                    for order in orders_qs_data:
-                        try:
-                            new_row = list()
-                            new_row.append(str(order[0]))
-                            new_row.append(str(order[14]))
-                            new_row.append(str(order[16]))
-                            new_row.append(str(order[15]))
-                            new_row.append(order[2].strftime("%Y-%m-%d") if order[2] else "N/A")
-                            new_row.append(str(order[8]))
-                            new_row.append(str(order[10]))
-                            new_row.append(str(order[6]))
-                            new_row.append(order[9].strftime("%Y-%m-%d") if order[9] else "N/A")
-                            new_row.append(str(order[3]))
-                            new_row.append(str(order[17]))
-                            new_row.append(str(order[18]))
-                            new_row.append(str(order[19]))
-                            new_row.append(str(order[20]))
-                            new_row.append(str(order[21]))
-                            new_row.append(str(order[22]))
-                            new_row.append(order[27])
-                            new_row.append(order[28])
-                            new_row.append(order[30])
-                            new_row.append(str(order[25]))
-                            new_row.append(order[26])
-                            new_row.append(order[24].strftime("%Y-%m-%d %H:%M:%S") if order[24] else "N/A")
-                            new_row.append(order[23].strftime("%Y-%m-%d %H:%M:%S") if order[23] else "N/A")
-                            cw.writerow(new_row)
-                        except Exception as e:
-                            pass
+                    query_to_run = query_to_run.replace("__NDR_TYPE_FILTER__", ndr_type_filter)
 
-                    output = make_response(si.getvalue())
-                    filename = client_prefix+"_EXPORT.csv"
-                    output.headers["Content-Disposition"] = "attachment; filename="+filename
-                    output.headers["Content-type"] = "text/csv"
-                    return output
+                if 'order_type' in filters:
+                    if len(filters['order_type']) == 1:
+                        type_tuple = "('"+filters['order_type'][0]+"')"
+                    else:
+                        type_tuple = str(tuple(filters['order_type']))
+                    query_to_run = query_to_run.replace("__TYPE_FILTER__", "AND upper(payment_mode) in %s" %type_tuple)
 
-                count_query = "select count(*) from ("+query_to_run.replace('__PAGINATION__', "") +") xx"
-                count_query = re.sub(r"""__.+?__""", "", count_query)
-                cur.execute(count_query)
-                total_count = cur.fetchone()[0]
-                query_to_run = query_to_run.replace('__PAGINATION__', "OFFSET %s LIMIT %s"%(str((page-1)*per_page), str(per_page)))
+                if 'order_date' in filters:
+                    filter_date_start = filters['order_date'][0][0:19].replace('T',' ')
+                    filter_date_end = filters['order_date'][1][0:19].replace('T',' ')
+                    query_to_run = query_to_run.replace("__ORDER_DATE_FILTER__", "AND order_date between '%s' and '%s'" %(filter_date_start, filter_date_end))
+
+                if 'pickup_time' in filters:
+                    filter_date_start = filters['pickup_time'][0][0:19].replace('T',' ')
+                    filter_date_end = filters['pickup_time'][1][0:19].replace('T',' ')
+                    query_to_run = query_to_run.replace("__PICKUP_TIME_FILTER__", "AND pickup_time between '%s' and '%s'" %(filter_date_start, filter_date_end))
+
+                if 'manifest_time' in filters:
+                    filter_date_start = filters['manifest_time'][0][0:19].replace('T',' ')
+                    filter_date_end = filters['manifest_time'][1][0:19].replace('T',' ')
+                    query_to_run = query_to_run.replace("__MANIFEST_DATE_FILTER__", "AND manifest_time between '%s' and '%s'" %(filter_date_start, filter_date_end))
+
+                if 'delivered_time' in filters:
+                    filter_date_start = filters['delivered_time'][0][0:19].replace('T',' ')
+                    filter_date_end = filters['delivered_time'][1][0:19].replace('T',' ')
+                    query_to_run = query_to_run.replace("__PICKUP_TIME_FILTER__", "AND delivered_time between '%s' and '%s'" %(filter_date_start, filter_date_end))
+
+            if download_flag:
+                date_month_ago = datetime.datetime.utcnow() + datetime.timedelta(hours=5.5) - datetime.timedelta(days=31)
+                date_month_ago = date_month_ago.strftime("%Y-%m-%d %H:%M:%S")
+                query_to_run = query_to_run.replace('__ORDER_DATE_FILTER__', "AND order_date > '%s' "%date_month_ago)
+                query_to_run = query_to_run.replace('__PAGINATION__', "")
                 query_to_run = re.sub(r"""__.+?__""", "", query_to_run)
                 cur.execute(query_to_run)
                 orders_qs_data = cur.fetchall()
-
-                response_data = list()
+                si = io.StringIO()
+                cw = csv.writer(si)
+                cw.writerow(ORDERS_DOWNLOAD_HEADERS)
                 for order in orders_qs_data:
-                    resp_obj=dict()
-                    resp_obj['order_id'] = order[0]
-                    resp_obj['unique_id'] = order[1]
-                    resp_obj['pickup_point'] = order[27]
-                    resp_obj['customer_details'] = {"name":order[14],
-                                                    "email":order[16],
-                                                    "phone":order[15],
-                                                    "address_one":order[17],
-                                                    "address_two":order[18],
-                                                    "city":order[19],
-                                                    "state":order[20],
-                                                    "country":order[21],
-                                                    "pincode":order[22],
-                                                    }
-                    resp_obj['order_date'] = order[2].strftime("%d %b %Y, %I:%M %p") if order[2] else None
-                    resp_obj['delivered_time'] = order[23].strftime("%d %b %Y, %I:%M %p") if order[23] else None
-                    resp_obj['payment'] = {"mode": order[25],
-                                               "amount": order[26]}
+                    try:
+                        new_row = list()
+                        new_row.append(str(order[0]))
+                        new_row.append(str(order[14]))
+                        new_row.append(str(order[16]))
+                        new_row.append(str(order[15]))
+                        new_row.append(order[2].strftime("%Y-%m-%d") if order[2] else "N/A")
+                        new_row.append(str(order[8]))
+                        new_row.append(str(order[10]))
+                        new_row.append(str(order[6]))
+                        new_row.append(order[9].strftime("%Y-%m-%d") if order[9] else "N/A")
+                        new_row.append(str(order[3]))
+                        new_row.append(str(order[17]))
+                        new_row.append(str(order[18]))
+                        new_row.append(str(order[19]))
+                        new_row.append(str(order[20]))
+                        new_row.append(str(order[21]))
+                        new_row.append(str(order[22]))
+                        new_row.append(order[27])
+                        new_row.append(order[28])
+                        new_row.append(order[30])
+                        new_row.append(str(order[25]))
+                        new_row.append(order[26])
+                        new_row.append(order[24].strftime("%Y-%m-%d %H:%M:%S") if order[24] else "N/A")
+                        new_row.append(order[23].strftime("%Y-%m-%d %H:%M:%S") if order[23] else "N/A")
+                        cw.writerow(new_row)
+                    except Exception as e:
+                        pass
 
-                    resp_obj['product_details'] = list()
-                    if order[28]:
-                        for idx, prod in enumerate(order[28]):
-                            resp_obj['product_details'].append(
-                                {"name": prod,
-                                 "sku": order[29][idx],
-                                 "quantity": order[30][idx]}
-                            )
+                output = make_response(si.getvalue())
+                filename = str(client_prefix)+"_EXPORT.csv"
+                output.headers["Content-Disposition"] = "attachment; filename="+filename
+                output.headers["Content-type"] = "text/csv"
+                return output
 
-                    if order[31]:
-                        resp_obj['cod_verification'] = {"confirmed": order[32], "via": order[33]}
-                    if order[34]:
-                        resp_obj['ndr_verification'] = {"confirmed": order[35], "via": order[36]}
+            count_query = "select count(*) from ("+query_to_run.replace('__PAGINATION__', "") +") xx"
+            count_query = re.sub(r"""__.+?__""", "", count_query)
+            cur.execute(count_query)
+            total_count = cur.fetchone()[0]
+            query_to_run = query_to_run.replace('__PAGINATION__', "OFFSET %s LIMIT %s"%(str((page-1)*per_page), str(per_page)))
+            query_to_run = re.sub(r"""__.+?__""", "", query_to_run)
+            cur.execute(query_to_run)
+            orders_qs_data = cur.fetchall()
 
-                    resp_obj['shipping_details'] = {"courier": order[8],
-                                                    "awb":order[6],
-                                                    "tracking_link": order[7]}
-                    resp_obj['dimensions'] = order[11]
-                    resp_obj['weight'] = order[10]
-                    resp_obj['volumetric'] = order[12]
-                    if order[9]:
-                        resp_obj['edd'] = order[9].strftime('%-d %b')
-                    if auth_data['user_group'] == 'super-admin':
-                        resp_obj['remark'] = order[13]
-                    if type == "shipped":
-                        resp_obj['status_detail'] = order[5]
+            response_data = list()
+            for order in orders_qs_data:
+                resp_obj=dict()
+                resp_obj['order_id'] = order[0]
+                resp_obj['unique_id'] = order[1]
+                resp_obj['pickup_point'] = order[27]
+                resp_obj['customer_details'] = {"name":order[14],
+                                                "email":order[16],
+                                                "phone":order[15],
+                                                "address_one":order[17],
+                                                "address_two":order[18],
+                                                "city":order[19],
+                                                "state":order[20],
+                                                "country":order[21],
+                                                "pincode":order[22],
+                                                }
+                resp_obj['order_date'] = order[2].strftime("%d %b %Y, %I:%M %p") if order[2] else None
+                resp_obj['delivered_time'] = order[23].strftime("%d %b %Y, %I:%M %p") if order[23] else None
+                resp_obj['manifest_time'] = order[38].strftime("%d %b %Y, %I:%M %p") if order[38] else None
+                resp_obj['payment'] = {"mode": order[25],
+                                           "amount": order[26]}
 
-                    resp_obj['status'] = order[3]
-                    response_data.append(resp_obj)
+                resp_obj['product_details'] = list()
+                if order[28]:
+                    for idx, prod in enumerate(order[28]):
+                        resp_obj['product_details'].append(
+                            {"name": prod,
+                             "sku": order[29][idx],
+                             "quantity": order[30][idx]}
+                        )
 
-                response['data'] = response_data
-                total_pages = math.ceil(total_count/per_page)
-                response['meta']['pagination'] = {'total': total_count,
-                                                  'per_page':per_page,
-                                                  'current_page': page,
-                                                  'total_pages':total_pages}
-                return response, 200
+                if order[31]:
+                    resp_obj['cod_verification'] = {"confirmed": order[32], "via": order[33]}
+                if order[34]:
+                    resp_obj['ndr_verification'] = {"confirmed": order[35], "via": order[36]}
+
+                if type=='ndr':
+                    resp_obj['ndr_reason'] = order[40]
+                    ndr_action = None
+                    if order[39] in (1,3,9,11) and order[34]:
+                        if order[35] == True and order[36] in ('call','text'):
+                            ndr_action = "Cancellation confirmed by customer"
+                        elif order[35] == True and order[36] == 'manual':
+                            ndr_action = "Cancellation confirmed by seller"
+                        elif order[35] == False and order[36] == 'manual':
+                            ndr_action = "Re-attempt requested by seller"
+                        elif order[35] == False and order[36] in ('call','text'):
+                            ndr_action = "Re-attempt requested by customer"
+                        elif order[3]=='PENDING':
+                            ndr_action = 'take_action'
+
+                    resp_obj['ndr_action'] = ndr_action
+
+                resp_obj['shipping_details'] = {"courier": order[8],
+                                                "awb":order[6],
+                                                "tracking_link": order[7]}
+                resp_obj['dimensions'] = order[11]
+                resp_obj['weight'] = order[10]
+                resp_obj['volumetric'] = order[12]
+                resp_obj['channel_logo'] = order[37]
+                if order[9]:
+                    resp_obj['edd'] = order[9].strftime('%-d %b')
+                if auth_data['user_group'] == 'super-admin':
+                    resp_obj['remark'] = order[13]
+                if type == "shipped":
+                    resp_obj['status_detail'] = order[5]
+
+                resp_obj['status'] = order[3]
+                response_data.append(resp_obj)
+
+            response['data'] = response_data
+            total_pages = math.ceil(total_count/per_page)
+            response['meta']['pagination'] = {'total': total_count,
+                                              'per_page':per_page,
+                                              'current_page': page,
+                                              'total_pages':total_pages}
+            return response, 200
 
         except Exception as e:
             conn.rollback()
@@ -523,6 +593,12 @@ def get_dashboard(resp):
         qs_data = qs_data.filter(Orders.client_prefix == client_prefix)
         cod_verification = cod_verification.filter(Orders.client_prefix == client_prefix)
         ndr_verification = ndr_verification.filter(Orders.client_prefix == client_prefix)
+    if auth_data['user_group'] == 'multi-vendor':
+        all_vendors = db.session.query(MultiVendor).filter(MultiVendor.client_prefix==client_prefix).first()
+        qs_data = qs_data.filter(Orders.client_prefix.in_(all_vendors.vendor_list))
+        cod_verification = cod_verification.filter(Orders.client_prefix.in_(all_vendors.vendor_list))
+        ndr_verification = ndr_verification.filter(Orders.client_prefix.in_(all_vendors.vendor_list))
+
     qs_data = qs_data.group_by('date').order_by('date').all()
     cod_verification = cod_verification.all()
     ndr_verification = ndr_verification.all()
@@ -596,27 +672,81 @@ def get_orders_filters(resp):
     auth_data = resp.get('data')
     current_tab = request.args.get('tab')
     client_prefix = auth_data.get('client_prefix')
+    warehouse_prefix = auth_data.get('warehouse_prefix')
     client_qs = None
-    status_qs = db.session.query(Orders.status, func.count(Orders.status)).group_by(Orders.status)
+    if current_tab =='ndr':
+        type = {"Action Requested": 0,
+                "Action Required": 0}
+        cur = conn.cursor()
+        query_for_type = """select ndr_verified, count(*) from
+                            (select * from ndr_shipments aa
+                            left join orders cc on aa.order_id=cc.id
+                            left join ndr_verification bb on cc.id=bb.order_id
+                            where cc.status='PENDING'
+                            __CLIENT_FILTER__) xx
+                            group by ndr_verified"""
+        if auth_data['user_group'] == 'client':
+            query_for_type = query_for_type.replace("__CLIENT_FILTER__", "AND cc.client_prefix='%s'"%auth_data['client_prefix'])
+        else:
+            query_for_type = query_for_type.replace("__CLIENT_FILTER__", "")
+
+        cur.execute(query_for_type)
+        all_types = cur.fetchall()
+
+        for type_val in all_types:
+            if type_val[0] in (True, False):
+                type['Action Requested'] += type_val[1]
+            else:
+                type['Action Required'] += type_val[1]
+
+        type_list = list()
+        for type_val in type:
+            type_list.append({type_val:type[type_val]})
+
+        reason_qs = db.session.query(NDRReasons.reason, func.count(NDRReasons.reason)) \
+        .join(NDRShipments, NDRReasons.id == NDRShipments.reason_id).join(Orders, Orders.id == NDRShipments.order_id).group_by(NDRReasons.reason)
+        if auth_data['user_group'] == 'client':
+            reason_qs = reason_qs.filter(Orders.client_prefix == client_prefix)
+        reason_qs = reason_qs.order_by(NDRReasons.reason).all()
+        response['filters']['ndr_reason'] = [{x[0]: x[1]} for x in reason_qs]
+        response['filters']['ndr_type'] = type_list
+        if auth_data['user_group'] == 'super-admin':
+            client_qs = db.session.query(Orders.client_prefix, func.count(Orders.client_prefix)).join(NDRShipments,
+                        Orders.id==NDRShipments.order_id).filter(NDRShipments.reason_id!=None).group_by(Orders.client_prefix).order_by(Orders.client_prefix).all()
+            response['filters']['client'] = [{x[0]: x[1]} for x in client_qs]
+
+        return jsonify(response), 200
+
+    status_qs = db.session.query(Orders.status, func.count(Orders.status)).join(ClientPickups,
+                        Orders.pickup_data_id==ClientPickups.id).join(PickupPoints, PickupPoints.id==ClientPickups.pickup_id).group_by(Orders.status)
     courier_qs = db.session.query(MasterCouriers.courier_name, func.count(MasterCouriers.courier_name)) \
         .join(Shipments, MasterCouriers.id == Shipments.courier_id).join(Orders, Orders.id == Shipments.order_id) \
-        .group_by(MasterCouriers.courier_name)
+        .join(ClientPickups,Orders.pickup_data_id == ClientPickups.id).join(PickupPoints, PickupPoints.id == ClientPickups.pickup_id).group_by(MasterCouriers.courier_name)
     pickup_point_qs = db.session.query(PickupPoints.warehouse_prefix, func.count(PickupPoints.warehouse_prefix)) \
-        .join(ClientPickups, PickupPoints.id == ClientPickups.pickup_id).join(Orders, ClientPickups.id == Orders.pickup_data_id) \
-        .group_by(PickupPoints.warehouse_prefix)
+        .join(ClientPickups, PickupPoints.id == ClientPickups.pickup_id).join(Orders, ClientPickups.id == Orders.pickup_data_id).group_by(PickupPoints.warehouse_prefix)
+
+    shipped_filters = ["NEW","READY TO SHIP","PICKUP REQUESTED","NOT PICKED","PENDING PAYMENT","NOT SHIPPED"]
     if auth_data['user_group'] == 'super-admin':
         client_qs = db.session.query(Orders.client_prefix, func.count(Orders.client_prefix))
+    elif auth_data['user_group'] == 'warehouse':
+        client_qs = db.session.query(Orders.client_prefix, func.count(Orders.client_prefix)).join(ClientPickups,
+                        Orders.pickup_data_id==ClientPickups.id).join(PickupPoints,
+                        PickupPoints.id==ClientPickups.pickup_id).filter(PickupPoints.warehouse_prefix == warehouse_prefix)
 
-    if auth_data['user_group'] != 'super-admin':
+    if auth_data['user_group'] == 'client':
         status_qs=status_qs.filter(Orders.client_prefix == client_prefix)
         courier_qs = courier_qs.filter(Orders.client_prefix == client_prefix)
         pickup_point_qs = pickup_point_qs.filter(Orders.client_prefix == client_prefix)
+    if auth_data['user_group'] == 'warehouse':
+        status_qs = status_qs.filter(PickupPoints.warehouse_prefix == warehouse_prefix)
+        courier_qs = courier_qs.filter(PickupPoints.warehouse_prefix == warehouse_prefix)
+        pickup_point_qs = pickup_point_qs.filter(PickupPoints.warehouse_prefix == warehouse_prefix)
     if current_tab=="shipped":
-        status_qs = status_qs.filter(not_(Orders.status.in_(["NEW","READY TO SHIP","PICKUP REQUESTED","NOT PICKED","PENDING PAYMENT","NOT SHIPPED"])))
-        courier_qs = courier_qs.filter(not_(Orders.status.in_(["NEW","READY TO SHIP","PICKUP REQUESTED","NOT PICKED","PENDING PAYMENT","NOT SHIPPED"])))
-        pickup_point_qs = pickup_point_qs.filter(not_(Orders.status.in_(["NEW","READY TO SHIP","PICKUP REQUESTED","NOT PICKED","PENDING PAYMENT","NOT SHIPPED"])))
+        status_qs = status_qs.filter(not_(Orders.status.in_(shipped_filters)))
+        courier_qs = courier_qs.filter(not_(Orders.status.in_(shipped_filters)))
+        pickup_point_qs = pickup_point_qs.filter(not_(Orders.status.in_(shipped_filters)))
         if client_qs:
-            client_qs = client_qs.filter(not_(Orders.status.in_(["NEW", "READY TO SHIP", "PICKUP REQUESTED", "NOT PICKED","PENDING PAYMENT"])))
+            client_qs = client_qs.filter(not_(Orders.status.in_(shipped_filters)))
     if current_tab=="return":
         status_qs = status_qs.filter(or_(Orders.status_type == 'RT', and_(Orders.status_type == 'DL', Orders.status == "RTO")))
         courier_qs = courier_qs.filter(or_(Orders.status_type == 'RT', and_(Orders.status_type == 'DL', Orders.status == "RTO")))
@@ -833,6 +963,10 @@ def upload_orders(resp):
                     if prod_obj:
                         op_association = OPAssociation(order=new_order, product=prod_obj, quantity=int(sku_quantity[idx].strip()))
                         new_order.products.append(op_association)
+                    else:
+                        failed_ids[str(row[1].order_id)] = "SKU Not found"
+                        db.session.rollback()
+                        continue
 
             payment = OrdersPayments(
                 payment_mode=str(row_data.payment_mode),
@@ -874,14 +1008,15 @@ def download_shiplabels(resp):
     orders_qs = db.session.query(Orders).filter(Orders.id.in_(order_ids), Orders.delivery_address!=None,
                                                 Orders.shipments!=None)
 
-    if auth_data['user_group'] != 'super-admin':
+    if auth_data['user_group'] == 'client':
         orders_qs = orders_qs.filter(Orders.client_prefix==auth_data.get('client_prefix'))
     orders_qs = orders_qs.order_by(Orders.id).all()
     if not orders_qs:
         return jsonify({"success": False, "msg": "No valid order ID"}), 404
 
     shiplabel_type = db.session.query(WarehouseMapping).filter(WarehouseMapping.warehouse_prefix==auth_data['warehouse_prefix']).first()
-    file_name = "shiplabels_"+auth_data['client_prefix']+"_"+str(datetime.datetime.now().strftime("%d_%b_%Y_%H_%M_%S"))+".pdf"
+    file_pref = auth_data['client_prefix'] if auth_data['client_prefix'] else auth_data['warehouse_prefix']
+    file_name = "shiplabels_"+str(file_pref)+"_"+str(datetime.datetime.now().strftime("%d_%b_%Y_%H_%M_%S"))+".pdf"
     if shiplabel_type and shiplabel_type.shiplabel_type=='TH1':
         c = canvas.Canvas(file_name, pagesize=(288, 432))
         create_shiplabel_blank_page_thermal(c)
@@ -963,13 +1098,14 @@ def download_invoice(resp):
     orders_qs = db.session.query(Orders, ClientMapping).join(ClientMapping, Orders.client_prefix==ClientMapping.client_prefix,
           isouter=True).filter(Orders.id.in_(order_ids), Orders.delivery_address != None)
 
-    if auth_data['user_group'] != 'super-admin':
+    if auth_data['user_group'] == 'client':
         orders_qs = orders_qs.filter(Orders.client_prefix==auth_data.get('client_prefix'))
     orders_qs = orders_qs.order_by(Orders.id).all()
     if not orders_qs:
         return jsonify({"success": False, "msg": "No valid order ID"}), 404
 
-    file_name = "invoice_"+auth_data['client_prefix']+"_"+str(datetime.datetime.now().strftime("%d_%b_%Y_%H_%M_%S"))+".pdf"
+    file_pref = auth_data['client_prefix'] if auth_data['client_prefix'] else auth_data['warehouse_prefix']
+    file_name = "invoice_"+str(file_pref)+"_"+str(datetime.datetime.now().strftime("%d_%b_%Y_%H_%M_%S"))+".pdf"
     c = canvas.Canvas(file_name, pagesize=A4)
     create_invoice_blank_page(c)
     failed_ids = dict()
@@ -1014,9 +1150,14 @@ def get_manifests(resp):
         return jsonify({"success": False, "msg": "Auth Failed"}), 404
 
     return_data = list()
-    manifest_qs = db.session.query(Manifests).join(ClientPickups, Manifests.client_pickup_id==ClientPickups.id)
-    if auth_data['user_group'] != 'super-admin':
+    manifest_qs = db.session.query(Manifests).join(ClientPickups, Manifests.client_pickup_id==ClientPickups.id).join(PickupPoints, Manifests.pickup_id==PickupPoints.id)
+    if auth_data['user_group'] == 'client':
         manifest_qs= manifest_qs.filter(ClientPickups.client_prefix==auth_data['client_prefix'])
+    if auth_data['user_group'] == 'multi-vendor':
+        vendor_list = db.session.query(MultiVendor).filter(MultiVendor.client_prefix==auth_data['client_prefix']).first()
+        manifest_qs= manifest_qs.filter(ClientPickups.client_prefix.in_(vendor_list.vendor_list))
+    if auth_data['user_group'] == 'warehouse':
+        manifest_qs= manifest_qs.filter(PickupPoints.warehouse_prefix==auth_data['warehouse_prefix'])
     manifest_qs = manifest_qs.order_by(Manifests.pickup_date.desc(), Manifests.total_scheduled.desc())
 
     manifest_qs_data = manifest_qs.limit(per_page).offset((page - 1) * per_page).all()
@@ -1056,7 +1197,7 @@ class OrderDetails(Resource):
                 return {"success": False, "msg": "Auth Failed"}, 404
 
             order = db.session.query(Orders).filter(Orders.id == int(order_id))
-            if auth_data['user_group'] != 'super-admin':
+            if auth_data['user_group'] == 'client':
                 order = order.filter(Orders.client_prefix==auth_data['client_prefix'])
 
             order = order.first()
@@ -1101,7 +1242,7 @@ class OrderDetails(Resource):
                 if auth_data['user_group'] == 'super-admin' and order.shipments:
                     resp_obj['remark'] = order.shipments[0].remark
 
-                if not order.exotel_data:
+                if not order.exotel_data or order.status not in ('NEW','CANCELED','PENDING PAYMENT'):
                     pass
                 elif order.exotel_data[0].cod_verified == None:
                     resp_obj['cod_verification'] = None
@@ -1119,7 +1260,7 @@ class OrderDetails(Resource):
                 else:
                     resp_obj['ndr_verification'] = True
 
-                if order.status in ('NEW', 'READY TO SHIP', 'PICKUP REQUESTED','NOT PICKED','CANCELED','PENDING PAYMENT'):
+                if order.status in ('NEW','CANCELED','PENDING PAYMENT','READY TO SHIP','PICKUP REQUESTED','NOT PICKED') or not order.shipments:
                     resp_obj['status_change'] = True
 
                 response['data'] = resp_obj
@@ -1182,6 +1323,14 @@ class OrderDetails(Resource):
                     order.exotel_data[0].verification_time = datetime.datetime.utcnow() + datetime.timedelta(hours=5.5)
                 if data.get('cod_verification') == False:
                     order.status = 'CANCELED'
+                    if order.shipments and order.shipments[0].awb:
+                        if order.shipments[0].courier.id in (1,2,8,11,12):  #Cancel on delhievry #todo: cancel on other platforms too
+                            cancel_body = json.dumps({"waybill": order.shipments[0].awb, "cancellation": "true"})
+                            headers = {"Authorization": "Token " + order.shipments[0].courier.api_key,
+                                        "Content-Type": "application/json"}
+                            req_can = requests.post("https://track.delhivery.com/api/p/edit", headers=headers, data=cancel_body)
+                    db.session.query(OrderStatus).filter(OrderStatus.order_id == int(order_id)).delete()
+                    db.session.query(Shipments).filter(Shipments.order_id == int(order_id)).delete()
                     if order.client_channel and order.client_channel.channel_id == 6 and order.order_id_channel_unique: #cancel on magento
                         cancel_header = {'Content-Type': 'application/json',
                                       'Authorization': 'Bearer ' + order.client_channel.api_key}
@@ -1194,8 +1343,9 @@ class OrderDetails(Resource):
                         cancel_url = order.client_channel.shop_url + "/rest/V1/orders/%s/cancel"%str(order.order_id_channel_unique)
                         req_ful = requests.post(cancel_url, data=json.dumps(cancel_data),
                                                 headers=cancel_header, verify=False)
-                elif data.get('cod_verification') == True and not order.shipments:
-                    if order.shipments and order.shipments[0].awb:
+
+                elif data.get('cod_verification') == True:
+                    if order.shipments and order.shipments and order.shipments[0].awb:
                         order.status = 'READY TO SHIP'
                     else:
                         order.status = 'NEW'
@@ -1239,7 +1389,7 @@ class CreateReturn(Resource):
                                delivery_address=order.delivery_address,
                                billing_address=order.billing_address,
                                status="NEW",
-                               client_prefix=auth_data.get('client_prefix'),
+                               client_prefix=auth_data.get('client_prefix') if auth_data['user_group'] != 'super-admin' else order.client_prefix,
                                pickup_data=order.pickup_data,
                                )
 
@@ -1559,6 +1709,8 @@ def verification_passthru(type):
             order_id = int(order_id)
             if type=='cod':
                 cod_ver = db.session.query(CodVerification).filter(CodVerification.order_id==order_id).first()
+                if digits=="0" and cod_ver.order.status=='NEW':
+                    cod_ver.order.status='CANCELED'
             elif type=='delivery':
                 cod_ver = db.session.query(DeliveryCheck).filter(DeliveryCheck.order_id==order_id).first()
             elif type=='ndr':
@@ -1872,7 +2024,7 @@ class UpdateInventory(Resource):
 
                     update_obj = InventoryUpdate(product_id=quan_obj.product_id,
                                                  warehouse_prefix=warehouse,
-                                                 user=auth_data['email'],
+                                                 user=auth_data['email'] if auth_data.get('email') else auth_data['client_prefix'],
                                                  remark = data.get('remark', None),
                                                  quantity = int(quantity),
                                                  type = str(type).lower(),
@@ -1978,6 +2130,8 @@ class AddSKU(Resource):
             product_name = data.get('name')
             sku = data.get('sku')
             dimensions = data.get('dimensions')
+            if dimensions:
+                dimensions = {"length": float(dimensions['length']), "breadth": float(dimensions['breadth']), "height":  float(dimensions['height'])}
             weight = data.get('weight')
             price = float(data.get('price', 0))
             client = data.get('client')
@@ -2075,7 +2229,8 @@ class WalletDeductions(Resource):
                 query_total_recharge = """select COALESCE(sum(recharge_amount), 0) from client_recharges
                                         WHERE recharge_time>'2020-04-01'
                                         AND lower(status)='successful'
-                                        __CLIENT_FILTER__"""
+                                        __CLIENT_FILTER__
+                                        __MV_CLIENT_FILTER__"""
                 if filters:
                     if 'courier' in filters:
                         if len(filters['courier'])==1:
@@ -2096,9 +2251,19 @@ class WalletDeductions(Resource):
                         filter_date_start = filters['time'][0][0:19].replace('T',' ')
                         filter_date_end = filters['time'][1][0:19].replace('T',' ')
                         query_to_execute = query_to_execute.replace("__DATE_TIME_FILTER__", "AND aa.status_time between '%s' and '%s'" %(filter_date_start, filter_date_end))
-                if auth_data['user_group'] != 'super-admin':
+                if auth_data['user_group'] == 'client':
                     query_to_execute = query_to_execute.replace('__CLIENT_FILTER__', "AND dd.client_prefix = '%s'"%client_prefix)
                     query_total_recharge = query_total_recharge.replace('__CLIENT_FILTER__', "AND client_prefix = '%s'"%client_prefix)
+                if auth_data['user_group'] == 'multi-vendor':
+                    cur.execute("SELECT vendor_list FROM multi_vendor WHERE client_prefix='%s';" % client_prefix)
+                    vendor_list = cur.fetchone()[0]
+                    query_to_execute = query_to_execute.replace("__MV_CLIENT_FILTER__",
+                                                        "AND dd.client_prefix in %s" % str(tuple(vendor_list)))
+                    query_total_recharge = query_total_recharge.replace('__MV_CLIENT_FILTER__', "AND client_prefix in %s"%str(tuple(vendor_list)))
+
+                else:
+                    query_to_execute = query_to_execute.replace("__MV_CLIENT_FILTER__", "")
+                    query_total_recharge = query_total_recharge.replace('__MV_CLIENT_FILTER__', "")
 
                 query_to_execute = query_to_execute.replace('__CLIENT_FILTER__',"").replace('__COURIER_FILTER__', "").replace('__DATE_TIME_FILTER__', '')
                 query_total_recharge = query_total_recharge.replace('__CLIENT_FILTER__', '')
@@ -2133,7 +2298,7 @@ class WalletDeductions(Resource):
                             pass
 
                     output = make_response(si.getvalue())
-                    filename = client_prefix+"_EXPORT.csv"
+                    filename = str(client_prefix)+"_EXPORT.csv"
                     output.headers["Content-Disposition"] = "attachment; filename="+filename
                     output.headers["Content-type"] = "text/csv"
                     return output
@@ -2251,11 +2416,12 @@ class WalletRecharges(Resource):
             auth_data = resp.get('data')
             if not auth_data:
                 return {"success": False, "msg": "Auth Failed"}, 404
-            if auth_data.get('user_group') == 'super-admin' or 'client':
+            if auth_data.get('user_group') in ('super-admin', 'client', 'multi-vendor'):
                 client_prefix = auth_data.get('client_prefix')
                 query_to_execute = """SELECT recharge_time, recharge_amount, transaction_id, status FROM client_recharges aa
                                     WHERE (transaction_id ilike '%__SEARCH_KEY__%' or bank_transaction_id ilike '%__SEARCH_KEY__%')
                                     __CLIENT_FILTER__
+                                    __MV_CLIENT_FILTER__
                                     __DATE_TIME_FILTER__
                                     ORDER BY recharge_time DESC
                                     __PAGINATION__"""
@@ -2272,8 +2438,16 @@ class WalletRecharges(Resource):
                         filter_date_start = filters['recharge_time'][0][0:19].replace('T',' ')
                         filter_date_end = filters['recharge_time'][1][0:19].replace('T',' ')
                         query_to_execute = query_to_execute.replace("__DATE_TIME_FILTER__", "AND recharge_time between '%s' and '%s'" %(filter_date_start, filter_date_end))
-                if auth_data['user_group'] != 'super-admin':
+                if auth_data['user_group'] == 'client':
                     query_to_execute = query_to_execute.replace('__CLIENT_FILTER__', "AND client_prefix = '%s'"%client_prefix)
+                if auth_data['user_group'] == 'multi-vendor':
+                    cur.execute("SELECT vendor_list FROM multi_vendor WHERE client_prefix='%s';" % client_prefix)
+                    vendor_list = cur.fetchone()[0]
+                    query_to_execute = query_to_execute.replace("__MV_CLIENT_FILTER__",
+                                                        "AND client_prefix in %s" % str(tuple(vendor_list)))
+
+                else:
+                    query_to_execute = query_to_execute.replace("__MV_CLIENT_FILTER__", "")
 
                 query_to_execute = query_to_execute.replace('__CLIENT_FILTER__',"").replace('__COURIER_FILTER__', "").replace('__DATE_TIME_FILTER__', '')
                 query_to_execute = query_to_execute.replace('__SEARCH_KEY__',search_key)
@@ -2298,7 +2472,7 @@ class WalletRecharges(Resource):
                             pass
 
                     output = make_response(si.getvalue())
-                    filename = client_prefix+"_EXPORT.csv"
+                    filename = str(client_prefix)+"_EXPORT.csv"
                     output.headers["Content-Disposition"] = "attachment; filename="+filename
                     output.headers["Content-type"] = "text/csv"
                     return output
@@ -2359,99 +2533,232 @@ class WalletRecharges(Resource):
 api.add_resource(WalletRecharges, '/wallet/v1/payments')
 
 
+class WalletRemittance(Resource):
+
+    method_decorators = [authenticate_restful]
+
+    def post(self, resp):
+        try:
+            cur = conn.cursor()
+            response = {'status':'success', 'data': dict(), "meta": dict()}
+            data = json.loads(request.data)
+            page = data.get('page', 1)
+            per_page = data.get('per_page', 10)
+            if int(per_page) > 250:
+                return {"success": False, "error": "upto 250 results allowed per page"}, 401
+            search_key = data.get('search_key', '')
+            filters = data.get('filters', {})
+            unique_id = request.args.get("unique_id", None)
+            auth_data = resp.get('data')
+            if not auth_data:
+                return {"success": False, "msg": "Auth Failed"}, 404
+            if auth_data.get('user_group') in ('super-admin', 'client', 'multi-vendor'):
+                client_prefix = auth_data.get('client_prefix')
+                if unique_id:
+                    query_to_execute = select_wallet_remittance_orders_query.replace('__REMITTANCE_ID__', str(unique_id))
+                    cur.execute(query_to_execute)
+                    remittance_qs_data = cur.fetchall()
+                    si = io.StringIO()
+                    cw = csv.writer(si)
+                    cw.writerow(REMITTANCE_DOWNLOAD_HEADERS)
+                    for remittance in remittance_qs_data:
+                        try:
+                            new_row = list()
+                            new_row.append(str(remittance[1]))
+                            new_row.append(remittance[2].strftime("%Y-%m-%d %H:%M:%S") if remittance[2] else "N/A")
+                            new_row.append(str(remittance[3]))
+                            new_row.append(str(remittance[4]))
+                            new_row.append(str(remittance[5]))
+                            new_row.append(str(remittance[6]))
+                            new_row.append(remittance[7].strftime("%Y-%m-%d %H:%M:%S") if remittance[7] else "N/A")
+                            cw.writerow(new_row)
+                        except Exception as e:
+                            pass
+
+                    output = make_response(si.getvalue())
+                    filename = str(client_prefix) + "_EXPORT.csv"
+                    output.headers["Content-Disposition"] = "attachment; filename=" + filename
+                    output.headers["Content-type"] = "text/csv"
+                    return output
+
+                query_to_execute = select_wallet_remittance_query
+                if filters:
+                    if 'client' in filters:
+                        if len(filters['client'])==1:
+                            cl_filter = "AND client_prefix in ('%s')"%filters['client'][0]
+                        else:
+                            cl_filter = "AND client_prefix in %s"%str(tuple(filters['client']))
+
+                        query_to_execute = query_to_execute.replace('__CLIENT_FILTER__', cl_filter)
+                    if 'remittance_date' in filters:
+                        filter_date_start = filters['remittance_date'][0][0:19].replace('T',' ')
+                        filter_date_end = filters['remittance_date'][1][0:19].replace('T',' ')
+                        query_to_execute = query_to_execute.replace("__REMITTANCE_DATE_FILTER__", "AND remittance_date between '%s' and '%s'" %(filter_date_start, filter_date_end))
+                if auth_data['user_group'] == 'client':
+                    query_to_execute = query_to_execute.replace('__CLIENT_FILTER__', "AND client_prefix = '%s'"%client_prefix)
+
+                if auth_data['user_group'] == 'multi-vendor':
+                    cur.execute("SELECT vendor_list FROM multi_vendor WHERE client_prefix='%s';" % client_prefix)
+                    vendor_list = cur.fetchone()[0]
+                    query_to_execute = query_to_execute.replace("__MV_CLIENT_FILTER__",
+                                                        "AND client_prefix in %s" % str(tuple(vendor_list)))
+
+                else:
+                    query_to_execute = query_to_execute.replace("__MV_CLIENT_FILTER__", "")
+
+                if search_key:
+                    query_to_execute = query_to_execute.replace('__SEARCH_KEY_FILTER__', "AND transaction_id ilike '%__SEARCH_KEY__%'".replace('__SEARCH_KEY__', search_key))
+
+                query_to_execute = query_to_execute.replace('__SEARCH_KEY_FILTER__',"").replace('__CLIENT_FILTER__', "").replace('__REMITTANCE_DATE_FILTER__', '')
+                cur.execute(query_to_execute.replace('__PAGINATION__', ""))
+                total_count = cur.rowcount
+                query_to_execute = query_to_execute.replace('__PAGINATION__', "OFFSET %s LIMIT %s"%(str((page-1)*per_page), str(per_page)))
+
+                cur.execute(query_to_execute)
+                ret_data = list()
+                fetch_data = cur.fetchall()
+                for entry in fetch_data:
+                    ret_obj = dict()
+                    ret_obj['unique_id'] = entry[0]
+                    ret_obj['remittance_id'] = entry[2]
+                    ret_obj['remittance_date'] = entry[3].strftime("%d-%m-%Y")
+                    ret_obj['status'] = entry[4]
+                    ret_obj['transaction_id'] = entry[5]
+                    ret_obj['amount'] = round(entry[6]) if entry[6] else None
+                    ret_data.append(ret_obj)
+                response['data'] = ret_data
+
+                total_pages = math.ceil(total_count/per_page)
+                response['meta']['pagination'] = {'total': total_count,
+                                                  'per_page':per_page,
+                                                  'current_page': page,
+                                                  'total_pages':total_pages}
+
+                return response, 200
+        except Exception as e:
+            return {"success": False, "error":str(e.args[0])}, 404
+
+    def get(self, resp):
+        try:
+            cur = conn.cursor()
+            auth_data = resp.get('data')
+            if not auth_data:
+                return {"success": False, "msg": "Auth Failed"}, 404
+
+            filters = dict()
+            if auth_data['user_group'] == 'super-admin':
+                query_to_run_client = """SELECT client_prefix, count(*) FROM cod_remittance
+                                        GROUP BY client_prefix
+                                        ORDER BY client_prefix"""
+                cur.execute(query_to_run_client)
+                client_data = cur.fetchall()
+                filters['client'] = list()
+                for client in client_data:
+                    if client[0]:
+                        filters['client'].append({client[0]:client[1]})
+
+            return {"success": True, "filters": filters}, 200
+
+        except Exception as e:
+            return {"success": False, "msg": ""}, 404
+
+
+api.add_resource(WalletRemittance, '/wallet/v1/remittance')
+
+
 @core_blueprint.route('/core/dev', methods=['POST'])
 def ping_dev():
     return 0
+    create_fulfillment_url = "https://e156f178d7a211b66ae0870942ff32b1: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@trendy-things-2020.myshopify.com/admin/api/2019-10/locations.json"
     import requests
-    shopify_url = "https://e156f178d7a211b66ae0870942ff32b1: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@trendy-things-2020.myshopify.com/admin/api/2020-04/orders.json?limit=250&created_at_max=2020-04-16T11:00:27+05:30"
-    r = requests.get(shopify_url)
-    from requests_oauthlib.oauth1_session import OAuth1Session
-    auth_session = OAuth1Session("ck_cd462226a5d5c21c5936c7f75e1afca25b9853a6",
-                                 client_secret="cs_c897bf3e770e15f518cba5c619b32671b7cc527c")
-    url = '%s/wp-json/wc/v3/orders?&consumer_key=ck_cd462226a5d5c21c5936c7f75e1afca25b9853a6&consumer_secret=cs_c897bf3e770e15f518cba5c619b32671b7cc527c' % (
-        "https://www.zladeformen.com")
-    r = auth_session.get(url)
+    qs = requests.get(create_fulfillment_url)
+
+    myfile = request.files['myfile']
+
+    data_xlsx = pd.read_excel(myfile)
+    from .models import Products, OrdersPayments
+    import json, re
+    count = 0
+    iter_rw = data_xlsx.iterrows()
+    for row in iter_rw:
+        sku = row[1].MasterSKU
+        try:
+            prod_obj = db.session.query(Products).filter(Products.client_prefix=='NASHER', Products.master_sku=='sku').first()
+            if not prod_obj:
+                dimensions = re.findall(r"[-+]?\d*\.\d+|\d+", str(row[1].Dimensions))
+                inactive_reason = "Delhivery Surface Standard"
+                if float(dimensions[0])>41:
+                    inactive_reason = "Delhivery Heavy 2"
+                elif float(dimensions[0])>40:
+                    inactive_reason = "Delhivery Heavy"
+                elif float(dimensions[0])>19:
+                    inactive_reason = "Delhivery Bulk"
+
+                dimensions = {"length": float(dimensions[0]), "breadth": float(dimensions[1]), "height": float(dimensions[2])}
+                prod_obj_x = Products(name=str(sku),
+                                      sku=str(sku),
+                                      master_sku=str(sku),
+                                      dimensions=dimensions,
+                                      weight=float(row[1].Weight),
+                                      price=float(float(row[1].Price)),
+                                      client_prefix='NASHER',
+                                      active=True,
+                                      channel_id=4,
+                                      inactive_reason = inactive_reason,
+                                      date_created=datetime.datetime.now()
+                                      )
+                db.session.add(prod_obj_x)
+                db.session.commit()
+        except Exception as e:
+            print(str(sku) + "\n" + str(e.args[0]))
+            db.session.rollback()
 
     return 0
-    shopify_url = "https://dc8ae0b7f5c1c6558f551d81e1352bcd:00dfeaf8f77b199597e360aa4a50a168@origin-clothing-india.myshopify.com/admin/api/2020-04/orders.json"
-    r = requests.get(shopify_url)
+    create_fulfillment_url = "https://17146b742aefb92ed627add9e44538a2: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@yo-aatma.myshopify.com/admin/api/2019-10/orders.json?ids=2240736788557,2240813563981,2241321435213,2243709665357,2245366349901,2245868355661,2246144163917,2247595196493&limit=250"
+    import requests
+    qs = requests.get(create_fulfillment_url)
+    from requests_oauthlib.oauth1_session import OAuth1Session
+    auth_session = OAuth1Session("ck_5ed9fb66f9cb3e148403ccd107bfc6806ca22147",
+                                 client_secret="cs_6f1911e69d89ae1ce498be9afaf44117a660bcba")
+    url = '%s/wp-json/wc/v3/products?&consumer_key=ck_5ed9fb66f9cb3e148403ccd107bfc6806ca22147&consumer_secret=cs_6f1911e69d89ae1ce498be9afaf44117a660bcba' % (
+        "https://www.thechasmeesh.com")
+    r = auth_session.get(url)
+    return 0
+
+
+
+    return 0
+
+    import requests, json
+
+    create_fulfillment_url = "https://ef2a4941548279dc7ba487e5e39cb6ce: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@behir.myshopify.com/admin/api/2019-10/orders.json?limit=250"
+
+    tracking_link = "http://webapp.wareiq.com/tracking/%s" % str("3992410212881")
+    ful_header = {'Content-Type': 'application/json'}
+    fulfil_data = {
+        "fulfillment": {
+            "tracking_number": str("3992410212881"),
+            "tracking_urls": [
+                tracking_link
+            ],
+            "tracking_company": "WareIQ",
+            "location_id": int(15879471202),
+            "notify_customer": False
+        }
+    }
+    req_ful = requests.post(create_fulfillment_url, data=json.dumps(fulfil_data),
+                            headers=ful_header)
+
+
+
+    return 0
+
     magento_url = "https://www.vedaearth.com/rest/V1/orders?searchCriteria[filter_groups][0][filters][0][field]=created_at&searchCriteria[filter_groups][0][filters][0][value]=2020-05-09&searchCriteria[filter_groups][0][filters][0][condition_type]=gt"
     headers = {'Authorization': "Bearer zg1j7voibdpswz0yugnt3pfjfbvog335",
                          'Content-Type': 'application/json'}
     r = requests.get(magento_url, headers=headers)
 
-    myfile = request.files['myfile']
 
-    data_xlsx = pd.read_excel(myfile)
-    from .models import Products, ProductQuantity
-    count = 0
-    iter_rw = data_xlsx.iterrows()
-    for row in iter_rw:
-        try:
-            sku_name = row[1].SKUCODE
-            prod_obj = db.session.query(Products).filter(Products.master_sku==sku_name).first()
-            if sku_name.startswith('IBA') or sku_name.startswith('DS'):
-                quantity = 2
-            else:
-                quantity = 15
-
-            if prod_obj:
-                prod_obj.dimensions = {"length": float(row[1].Length),
-                                            "breadth": float(row[1].Breadth),
-                                            "height": float(row[1].Height)
-                                            }
-                prod_obj.weight = float(row[1].Weight)/1000
-                prod_obj.price = float(row[1].Price)
-                prod_obj.name = str(row[1].Name)
-                prod_obj.quantity[0].total_quantity=quantity
-                prod_obj.quantity[0].approved_quantity=quantity
-                prod_obj.quantity[0].available_quantity=quantity
-
-            else:
-                magento_url = "https://www.vedaearth.com/rest/V1/products/" + sku_name
-                headers = headers = {'Authorization': "Token zg1j7voibdpswz0yugnt3pfjfbvog335",
-                            'Content-Type': 'application/json'}
-
-                r = requests.get(magento_url, headers=headers)
-                if 'id' in r.json():
-                    master_sku = str(r.json()['id'])
-                else:
-                    master_sku = sku_name
-
-                prod_obj = Products(name=str(row[1].Name),
-                                    sku=sku_name,
-                                    master_sku=master_sku,
-                                    dimensions={"length": float(row[1].Length),
-                                                "breadth": float(row[1].Breadth),
-                                                "height": float(row[1].Height)
-                                                },
-                                    weight=float(row[1].Weight)/1000,
-                                    price=float(row[1].Price),
-                                    client_prefix='VEDAEARTH',
-                                    active=True,
-                                    channel_id=6,
-                                    date_created=datetime.datetime.now()
-                                    )
-                prod_quan_obj = ProductQuantity(product=prod_obj,
-                                                total_quantity=quantity,
-                                                approved_quantity=quantity,
-                                                available_quantity=quantity,
-                                                inline_quantity=0,
-                                                rto_quantity=0,
-                                                current_quantity=0,
-                                                warehouse_prefix='PSGLOBAL',
-                                                status="APPROVED",
-                                                date_created=datetime.datetime.now()
-                                                )
-
-                db.session.add(prod_quan_obj)
-            db.session.commit()
-        except Exception as e:
-            print(str(sku_name) + "\n" + str(e.args[0]))
-            db.session.rollback()
-
-
-    return 0
 
 
     import requests, json
@@ -3638,3 +3945,145 @@ def send_dev():
         'status': 'success',
         'message': 'pong!'
     })
+
+
+class GetShipmentData(Resource):
+
+    method_decorators = [authenticate_restful]
+
+    def post(self, resp):
+        try:
+            data = json.loads(request.data)
+            auth_data = resp.get('data')
+            if not auth_data:
+                return {"success": False, "msg": "Auth Failed"}, 404
+
+            channel_order_ids = data.get('order_nos')
+            if not channel_order_ids:
+                return {"success": False, "msg": "orders_nos is mandatory"}, 400
+
+            if len(channel_order_ids)>20:
+                return {"success": False, "msg": "Max 20 orders allowed at a time"}, 400
+
+            orders_qs = db.session.query(Orders).filter(Orders.order_id_channel_unique.in_(channel_order_ids), Orders.client_prefix==auth_data.get('client_prefix')).all()
+
+            if not orders_qs:
+                return {"success": False, "msg": "Orders not found for given ids"}, 400
+
+            return_data = list()
+            orders_available_list = list()
+
+            for order in orders_qs:
+                ret_obj = dict()
+                ret_obj['order_no'] = order.order_id_channel_unique
+                if order.shipments and order.shipments[0].courier:
+                    ret_obj['status'] = 'success'
+                    ret_obj['sort_code'] = order.shipments[0].routing_code
+                    ret_obj['awb'] = order.shipments[0].awb
+                    ret_obj['courier'] = order.shipments[0].courier.courier_name
+                else:
+                    ret_obj['status'] = 'failure'
+                    ret_obj['msg'] = 'order not shipped yet'
+
+                ret_obj['WH'] = order.pickup_data.pickup.warehouse_prefix if order.pickup_data else None
+                return_data.append(ret_obj)
+                orders_available_list.append(order.order_id_channel_unique)
+
+            for order_no in channel_order_ids:
+                if order_no not in orders_available_list:
+                    ret_obj = dict()
+                    ret_obj['order_no'] = order_no
+                    ret_obj['status'] = 'failure'
+                    ret_obj['msg'] = 'order not found'
+                    return_data.append(ret_obj)
+
+            return {"success": True, "data": return_data}, 200
+
+        except Exception as e:
+            return {"status":"Failed", "msg":""}, 400
+
+
+api.add_resource(GetShipmentData, '/orders/v1/shipments')
+
+
+class TrackShipments(Resource):
+
+    method_decorators = [authenticate_restful]
+
+    def post(self, resp):
+        try:
+            data = json.loads(request.data)
+            auth_data = resp.get('data')
+            if not auth_data:
+                return {"success": False, "msg": "Auth Failed"}, 404
+
+            return_data = list()
+            awbs = data.get('awbs')
+            if not awbs:
+                return {"status": "Failed", "msg": "awbs value is mandatory"}, 400
+
+            if len(awbs)>50:
+                return {"status": "Failed", "msg": "max allowed awbs 50"}, 400
+
+            shipment_qs = db.session.query(Shipments).filter(Shipments.awb.in_(awbs)).all()
+            found_awbs = list()
+            for shipment in shipment_qs:
+                try:
+                    found_awbs.append(shipment.awb)
+                    order_statuses = db.session.query(OrderStatus).filter(OrderStatus.shipment == shipment) \
+                        .order_by(OrderStatus.status_time).all()
+                    if not order_statuses:
+                        return_data.append({"awb": shipment.awb, "status": "failure", "msg": "tracking not available for this id"})
+
+                    client_obj = db.session.query(ClientMapping).filter(
+                        ClientMapping.client_prefix == order_statuses[-1].order.client_prefix).first()
+
+                    response = dict()
+                    last_status = order_statuses[-1].status
+                    response['awb'] = shipment.awb
+                    response['success'] = True
+                    response['status'] = last_status
+                    response['logo_url'] = None
+                    response['theme_color'] = None
+                    response['products'] = list()
+                    for op_ass in shipment.order.products:
+                        prod_obj = {"name": op_ass.product.name, "quantity": op_ass.quantity}
+                        response['products'].append(prod_obj)
+                    response['destination_city'] = None
+                    if shipment.order.status not in ('DELIVERED', 'RTO') and shipment.order.status_type != 'RT':
+                        response['destination_city'] = shipment.order.delivery_address.city
+                    if client_obj:
+                        response['logo_url'] = client_obj.client_logo
+                        response['theme_color'] = client_obj.theme_color
+                    response['remark'] = order_statuses[-1].status_text
+                    response['order_id'] = order_statuses[-1].order.channel_order_id
+                    response['placed_on'] = order_statuses[-1].order.order_date.strftime("%d %b %Y, %I:%M %p")
+                    response['get_details'] = True
+                    response['order_track'] = list()
+                    if shipment.edd:
+                        response['arriving_on'] = shipment.edd.strftime("%d %b")
+                    else:
+                        response['arriving_on'] = None
+                    for order_status in order_statuses:
+                        status_dict = dict()
+                        status_dict['status'] = order_status.status
+                        status_dict['city'] = order_status.location_city
+                        status_dict['time'] = order_status.status_time.strftime("%d %b %Y, %I:%M %p")
+                        response['order_track'].append(status_dict)
+
+                    return_data.append(response)
+
+                except Exception as e:
+                    return_data.append({"awb": shipment.awb, "success": False, "msg": "something went wrong"})
+
+            for awb in awbs:
+                if awb not in found_awbs:
+                    return_data.append({"awb": awb, "success": False, "msg": "awb not found"})
+
+            return {"success":True, "data":return_data}, 200
+
+        except Exception as e:
+            return {"status":"Failed", "msg":""}, 400
+
+
+api.add_resource(TrackShipments, '/orders/v1/shipments/track')

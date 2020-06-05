@@ -54,6 +54,20 @@ class ProductQuantity(db.Model):
     date_updated = db.Column(db.DateTime, onupdate=datetime.now)
 
 
+class KeywordWeights(db.Model):
+    __tablename__ = "keyword_weights"
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    client_prefix = db.Column(db.String, nullable=True)
+    keywords = db.Column(ARRAY(db.String(20)))
+    warehouse_prefix = db.Column(db.String, nullable=False)
+    dimensions = db.Column(JSON)
+    weight = db.Column(db.FLOAT, nullable=True)
+    subcategory_id = db.Column(db.Integer, db.ForeignKey('products_subcategories.id'))
+    subcategory = db.relationship("ProductsSubCategories", backref=db.backref("keyword_weights"))
+    date_created = db.Column(db.DateTime, default=datetime.now)
+    date_updated = db.Column(db.DateTime, onupdate=datetime.now)
+
+
 class ProductsCombos(db.Model):
     __tablename__ = "products_combos"
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
@@ -203,6 +217,18 @@ class OrdersPayments(db.Model):
     order = db.relationship("Orders", backref=db.backref("payments", uselist=True))
 
 
+class CODRemittance(db.Model):
+    __tablename__ = "cod_remittance"
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    client_prefix = db.Column(db.String, nullable=True)
+    remittance_id = db.Column(db.String, nullable=False)
+    remittance_date = db.Column(db.DateTime)
+    status = db.Column(db.String)
+    transaction_id = db.Column(db.String)
+    date_created = db.Column(db.DateTime, default=datetime.now)
+    date_updated = db.Column(db.DateTime, onupdate=datetime.now)
+
+
 class Shipments(db.Model):
     __tablename__ = "shipments"
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
@@ -226,6 +252,28 @@ class Shipments(db.Model):
     remark = db.Column(db.Text, nullable=True)
     __table_args__ = (UniqueConstraint('order_id', name='order_id_unique'),
                       )
+
+
+class NDRReasons(db.Model):
+    __tablename__ = "ndr_reasons"
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    reason = db.Column(db.String, nullable=False, unique=True)
+
+
+class NDRShipments(db.Model):
+    __tablename__ = "ndr_shipments"
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    order_id = db.Column(db.Integer, db.ForeignKey('orders.id'))
+    order = db.relationship("Orders", backref=db.backref("ndr_shipments"))
+    shipment_id = db.Column(db.Integer, db.ForeignKey('shipments.id'))
+    shipment = db.relationship("Shipments", backref=db.backref("ndr_shipments"))
+    reason_id = db.Column(db.Integer, db.ForeignKey('ndr_reasons.id'))
+    reason = db.relationship("NDRReasons", backref=db.backref("ndr_shipments"))
+    current_status = db.Column(db.String, nullable=True)
+    ndr_remark = db.Column(db.String, nullable=True)
+    request_time = db.Column(db.DateTime, default=datetime.now)
+    date_created = db.Column(db.DateTime, default=datetime.now)
+    date_updated = db.Column(db.DateTime, onupdate=datetime.now)
 
 
 class ClientChannel(db.Model):
@@ -521,6 +569,13 @@ class ClientMapping(db.Model):
     essential = db.Column(db.BOOLEAN, nullable=True, default=True)
     custom_email = db.Column(db.Text, nullable=True)
     custom_email_subject = db.Column(db.String, nullable=True)
+
+
+class MultiVendor(db.Model):
+    __tablename__ = "multi_vendor"
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    client_prefix = db.Column(db.String, nullable=False)
+    vendor_list = db.Column(ARRAY(db.String(50)))
 
 
 class WarehouseMapping(db.Model):

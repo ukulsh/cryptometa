@@ -20,7 +20,6 @@ conn_2 = psycopg2.connect(host="wareiq-core-prod.cvqssxsqruyc.us-east-1.rds.amaz
 def lambda_handler():
     cur = conn.cursor()
     cur_2 =conn_2.cursor()
-
     current_time = datetime.now() - timedelta(days=1)
     current_time = current_time.strftime('%Y-%m-%d')
     cur.execute(select_orders_to_calculate_query.replace('__STATUS_TIME__', current_time))
@@ -334,7 +333,7 @@ bulk_second_step = {
 
 
 def ndr_push_reattempts(cur):
-    time_after = datetime.utcnow() - timedelta(days=1, hours=5.5)
+    time_after = datetime.utcnow() - timedelta(days=2, hours=5.5)
     cur.execute("""select cc.awb, dd.id, dd.api_key from ndr_verification aa
                     left join orders bb on aa.order_id=bb.id
                     left join shipments cc on cc.order_id=bb.id
@@ -361,4 +360,3 @@ def ndr_push_reattempts(cur):
                 req = requests.post(xpress_url, headers=headers, data=json.dumps(body))
         except Exception as e:
             logger.error("NDR push failed for: " + order[0])
-

@@ -1,6 +1,6 @@
 import psycopg2, requests, os, json
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from .queries import *
 from requests_oauthlib.oauth1_session import OAuth1Session
 
@@ -144,35 +144,34 @@ def lambda_handler():
 
                         new_status = new_status.upper()
                         status_type = ret_order['Shipment']['Status']['StatusType']
+                        if new_status=='NOT PICKED':
+                            new_status = "PICKUP REQUESTED"
                         status_detail = None
                         status_code = None
                         if new_status == "PENDING":
                             status_code = ret_order['Shipment']['Scans'][-1]['ScanDetail']['StatusCode']
-                            if status_code in delhivery_status_code_mapping_dict:
-                                status_detail = delhivery_status_code_mapping_dict[status_code]
-                            else:
-                                status_detail = ret_order['Shipment']['Scans'][-1]['ScanDetail']['Instructions']
 
                         edd = ret_order['Shipment']['expectedDate']
                         if edd:
                             edd = datetime.strptime(edd, '%Y-%m-%dT%H:%M:%S')
                             cur.execute("UPDATE shipments SET edd=%s WHERE awb=%s", (edd, current_awb))
 
-                        if new_status=='DELIVERED' and orders_dict[current_awb][13] and str(orders_dict[current_awb][13]).lower()=='prepaid':
-                            try:  ## Delivery check text
-                                sms_to_key, sms_body_key, customer_phone, sms_body_key_data = verification_text(orders_dict[current_awb], exotel_idx, cur, cur_2)
-                                exotel_sms_data[sms_to_key] = customer_phone
-                                exotel_sms_data[sms_body_key] = sms_body_key_data
-                                exotel_idx += 1
-                            except Exception as e:
-                                logger.error("Delivery confirmation not sent. Order id: "+str(orders_dict[current_awb][0]))
-
-                            if orders_dict[current_awb][14] == 6: #Magento complete
+                        if new_status=='DELIVERED':
+                            if orders_dict[current_awb][14] == 6:  # Magento complete
                                 try:
                                     magento_complete_order(orders_dict[current_awb])
                                 except Exception as e:
                                     logger.error("Couldn't complete Magento for: " + str(orders_dict[current_awb][0])
                                                  + "\nError: " + str(e.args))
+                            if orders_dict[current_awb][13] and str(orders_dict[current_awb][13]).lower()=='prepaid':
+                                try:  ## Delivery check text
+                                    sms_to_key, sms_body_key, customer_phone, sms_body_key_data = verification_text(orders_dict[current_awb], exotel_idx, cur, cur_2)
+                                    exotel_sms_data[sms_to_key] = customer_phone
+                                    exotel_sms_data[sms_body_key] = sms_body_key_data
+                                    exotel_idx += 1
+                                except Exception as e:
+                                    logger.error("Delivery confirmation not sent. Order id: "+str(orders_dict[current_awb][0]))
+
                         """
                             if orders_dict[current_awb][6] and orders_dict[current_awb][5]:
                                 complete_fulfillment_url = "https://%s:%s@%s/admin/api/2019-10/orders/%s/fulfillments/%s/complete.json" % (
@@ -274,13 +273,15 @@ def lambda_handler():
                             status_update_tuple = (new_status, status_type, status_detail, orders_dict[current_awb][0])
                             cur.execute(order_status_update_query, status_update_tuple)
 
-                            if new_status=='PENDING' and status_code in ('EOD-111','EOD-6','FMEOD-118','EOD-69','EOD-11'):
+                            if new_status=='PENDING' and status_code in delhivery_status_code_mapping_dict:
                                 try:  # NDR check text
+                                    ndr_reason = delhivery_status_code_mapping_dict[status_code]
                                     sms_to_key, sms_body_key, customer_phone, sms_body_key_data = verification_text(
-                                        orders_dict[current_awb], exotel_idx, cur, cur_2, ndr=True)
-                                    exotel_sms_data[sms_to_key] = customer_phone
-                                    exotel_sms_data[sms_body_key] = sms_body_key_data
-                                    exotel_idx += 1
+                                        orders_dict[current_awb], exotel_idx, cur, cur_2, ndr=True, ndr_reason=ndr_reason)
+                                    if sms_body_key_data:
+                                        exotel_sms_data[sms_to_key] = customer_phone
+                                        exotel_sms_data[sms_body_key] = sms_body_key_data
+                                        exotel_idx += 1
                                 except Exception as e:
                                     logger.error(
                                         "NDR confirmation not sent. Order id: " + str(orders_dict[current_awb][0]))
@@ -412,11 +413,6 @@ def lambda_handler():
                             status_type = shadowfax_status_mapping[new_status][1]
                             new_status_temp = shadowfax_status_mapping[new_status][0]
                             status_detail = None
-                            if new_status_temp == "PENDING":
-                                if new_status in shadowfax_status_mapping:
-                                    status_detail = shadowfax_status_mapping[new_status][2]
-                                else:
-                                    status_detail = ret_order['tracking_details'][-1]['status']
                         except KeyError:
                             if new_status=='seller_initiated_delay':
                                 continue
@@ -432,24 +428,24 @@ def lambda_handler():
                             edd = datetime.strptime(edd, '%Y-%m-%dT%H:%M:%SZ')
                             cur.execute("UPDATE shipments SET edd=%s WHERE awb=%s", (edd, current_awb))
 
-                        if new_status == 'DELIVERED' and orders_dict[current_awb][13] and str(
-                                orders_dict[current_awb][13]).lower() == 'prepaid':
-                            try:  ## Delivery check text
-                                sms_to_key, sms_body_key, customer_phone, sms_body_key_data = verification_text(
-                                    orders_dict[current_awb], exotel_idx, cur, cur_2)
-                                exotel_sms_data[sms_to_key] = customer_phone
-                                exotel_sms_data[sms_body_key] = sms_body_key_data
-                                exotel_idx += 1
-                            except Exception as e:
-                                logger.error(
-                                    "Delivery confirmation not sent. Order id: " + str(orders_dict[current_awb][0]))
-
+                        if new_status == 'DELIVERED':
                             if orders_dict[current_awb][14] == 6: #Magento complete
                                 try:
                                     magento_complete_order(orders_dict[current_awb])
                                 except Exception as e:
                                     logger.error("Couldn't complete Magento for: " + str(orders_dict[current_awb][0])
                                                  + "\nError: " + str(e.args))
+
+                            if orders_dict[current_awb][13] and str(orders_dict[current_awb][13]).lower() == 'prepaid':
+                                try:  ## Delivery check text
+                                    sms_to_key, sms_body_key, customer_phone, sms_body_key_data = verification_text(
+                                        orders_dict[current_awb], exotel_idx, cur, cur_2)
+                                    exotel_sms_data[sms_to_key] = customer_phone
+                                    exotel_sms_data[sms_body_key] = sms_body_key_data
+                                    exotel_idx += 1
+                                except Exception as e:
+                                    logger.error(
+                                        "Delivery confirmation not sent. Order id: " + str(orders_dict[current_awb][0]))
                         """
                             if orders_dict[current_awb][6] and orders_dict[current_awb][5]:
                                 complete_fulfillment_url = "https://%s:%s@%s/admin/api/2019-10/orders/%s/fulfillments/%s/complete.json" % (
@@ -542,14 +538,15 @@ def lambda_handler():
                         if orders_dict[current_awb][2] != new_status:
                             status_update_tuple = (new_status, status_type, status_detail, orders_dict[current_awb][0])
                             cur.execute(order_status_update_query, status_update_tuple)
-
-                            if ret_order['status'] in ('cancelled_by_customer', 'nc'):
+                            if new_status == "PENDING" and ret_order['status'] in shadowfax_status_mapping \
+                                    and shadowfax_status_mapping[new_status][2]:
                                 try:  # NDR check text
                                     sms_to_key, sms_body_key, customer_phone, sms_body_key_data = verification_text(
-                                        orders_dict[current_awb], exotel_idx, cur, cur_2, ndr=True)
-                                    exotel_sms_data[sms_to_key] = customer_phone
-                                    exotel_sms_data[sms_body_key] = sms_body_key_data
-                                    exotel_idx += 1
+                                        orders_dict[current_awb], exotel_idx, cur, cur_2, ndr=True, ndr_reason=shadowfax_status_mapping[new_status][2])
+                                    if sms_body_key_data:
+                                        exotel_sms_data[sms_to_key] = customer_phone
+                                        exotel_sms_data[sms_body_key] = sms_body_key_data
+                                        exotel_idx += 1
                                 except Exception as e:
                                     logger.error(
                                         "NDR confirmation not sent. Order id: " + str(orders_dict[current_awb][0]))
@@ -708,24 +705,24 @@ def lambda_handler():
                             edd = datetime.strptime(ret_order['ShipmentSummary'][0]['ExpectedDeliveryDate'], '%m/%d/%Y %I:%M:%S %p')
                             cur.execute("UPDATE shipments SET edd=%s WHERE awb=%s", (edd, current_awb))
 
-                        if new_status == 'DELIVERED' and orders_dict[current_awb][13] and str(
-                                orders_dict[current_awb][13]).lower() == 'prepaid':
-                            try:  ## Delivery check text
-                                sms_to_key, sms_body_key, customer_phone, sms_body_key_data = verification_text(
-                                    orders_dict[current_awb], exotel_idx, cur, cur_2)
-                                exotel_sms_data[sms_to_key] = customer_phone
-                                exotel_sms_data[sms_body_key] = sms_body_key_data
-                                exotel_idx += 1
-                            except Exception as e:
-                                logger.error(
-                                    "Delivery confirmation not sent. Order id: " + str(orders_dict[current_awb][0]))
-
+                        if new_status == 'DELIVERED':
                             if orders_dict[current_awb][14] == 6: #Magento complete
                                 try:
                                     magento_complete_order(orders_dict[current_awb])
                                 except Exception as e:
                                     logger.error("Couldn't complete Magento for: " + str(orders_dict[current_awb][0])
                                                  + "\nError: " + str(e.args))
+
+                            if orders_dict[current_awb][13] and str(orders_dict[current_awb][13]).lower() == 'prepaid':
+                                try:  ## Delivery check text
+                                    sms_to_key, sms_body_key, customer_phone, sms_body_key_data = verification_text(
+                                        orders_dict[current_awb], exotel_idx, cur, cur_2)
+                                    exotel_sms_data[sms_to_key] = customer_phone
+                                    exotel_sms_data[sms_body_key] = sms_body_key_data
+                                    exotel_idx += 1
+                                except Exception as e:
+                                    logger.error(
+                                        "Delivery confirmation not sent. Order id: " + str(orders_dict[current_awb][0]))
 
                         if orders_dict[current_awb][2] in (
                                 'READY TO SHIP', 'PICKUP REQUESTED', 'NOT PICKED') and new_status == 'IN TRANSIT':
@@ -796,13 +793,17 @@ def lambda_handler():
                             if ret_order['ShipmentSummary'][0]['StatusCode'] == 'UD' \
                                     and ret_order['ShipmentSummary'][0]['Status'] in \
                                     ("Customer Refused To Accept", "Customer Refused to Pay COD Amount",
-                                     "Add Incomplete/ Incorrect & Mobile Not Reachable", "Customer Not Available & Mobile Not Reachable"):
+                                     "Add Incomplete/Incorrect & Mobile Not Reachable", "Customer Not Available & Mobile Not Reachable"):
                                 try:  # NDR check text
+                                    ndr_reason = None
+                                    if ret_order['ShipmentSummary'][0]['Status'] in Xpressbees_ndr_reasons:
+                                        ndr_reason = Xpressbees_ndr_reasons[ret_order['ShipmentSummary'][0]['Status']]
                                     sms_to_key, sms_body_key, customer_phone, sms_body_key_data = verification_text(
-                                        orders_dict[current_awb], exotel_idx, cur, cur_2, ndr=True)
-                                    exotel_sms_data[sms_to_key] = customer_phone
-                                    exotel_sms_data[sms_body_key] = sms_body_key_data
-                                    exotel_idx += 1
+                                        orders_dict[current_awb], exotel_idx, cur, cur_2, ndr=True, ndr_reason=ndr_reason)
+                                    if sms_body_key_data:
+                                        exotel_sms_data[sms_to_key] = customer_phone
+                                        exotel_sms_data[sms_body_key] = sms_body_key_data
+                                        exotel_idx += 1
                                 except Exception as e:
                                     logger.error(
                                         "NDR confirmation not sent. Order id: " + str(orders_dict[current_awb][0]))
@@ -839,7 +840,7 @@ def lambda_handler():
     cur.close()
 
 
-def verification_text(current_order, exotel_idx, cur, cur_2, ndr=None):
+def verification_text(current_order, exotel_idx, cur, cur_2, ndr=None, ndr_reason=None):
     if not ndr:
         del_confirmation_link = "http://track.wareiq.com/core/v1/passthru/delivery?CustomField=%s" % str(
             current_order[0])
@@ -857,9 +858,16 @@ def verification_text(current_order, exotel_idx, cur, cur_2, ndr=None):
             "INSERT INTO delivery_check (order_id, verification_link, date_created) VALUES (%s,%s,%s);",
             insert_cod_ver_tuple)
     else:
-        cur.execute(
-            "INSERT INTO ndr_verification (order_id, verification_link, date_created) VALUES (%s,%s,%s);",
-            insert_cod_ver_tuple)
+        cur.execute("SELECT * from ndr_shipments WHERE shipment_id=%s"%str(current_order[10]))
+        if not cur.fetchone():
+            ndr_ship_tuple = (current_order[0], current_order[10], ndr_reason, "required" , datetime.utcnow() + timedelta(hours=5.5))
+            cur.execute(
+                "INSERT INTO ndr_shipments (order_id, shipment_id, reason_id, current_status, date_created) VALUES (%s,%s,%s,%s,%s);",
+                ndr_ship_tuple)
+            if ndr_reason in (1,3,9,11):
+                cur.execute(
+                    "INSERT INTO ndr_verification (order_id, verification_link, date_created) VALUES (%s,%s,%s);",
+                    insert_cod_ver_tuple)
     cur_2.execute("select client_name from clients where client_prefix='%s'" % current_order[3])
     client_name = cur_2.fetchone()
     customer_phone = current_order[4].replace(" ", "")
@@ -873,72 +881,66 @@ def verification_text(current_order, exotel_idx, cur, cur_2, ndr=None):
                             " Please click on the link (%s) to report any issue. We'll call you back shortly." % (
                                 client_name[0], str(current_order[12]),
                                 del_confirmation_link)
-    else:
+    elif ndr_reason in (1,3,9,11):
         sms_body_key_data = "Dear Customer, Delivery for your order from %s with order id %s was attempted today." \
                             " If you didn't cancel, please click on the link (%s). We'll call you shortly." % (
                                 client_name[0], str(current_order[12]),
                                 del_confirmation_link)
+    else:
+        sms_body_key_data = None
 
     return sms_to_key, sms_body_key, customer_phone, sms_body_key_data
 
 
 delhivery_status_code_mapping_dict = {
-                            "DLYDC-107": "Office/Institute closed",
-                            "DLYDC-110": "Delivery rescheduled",
-                            "DLYDC-132": "Out of Delivery Area (ODA)",
-                            "EOD-104": "Entry restricted area",
-                            "EOD-11": "Consignee unavailable",
-                            "EOD-111": "Consignee opened the package and refused to accept",
-                            "EOD-3": "Delivery rescheduled",
-                            "EOD-40": "Payment Mode/Amount Dispute",
-                            "EOD-6": "Cancelled the order",
-                            "EOD-69": "Customer asked for open delivery",
-                            "EOD-74": "Bad Address",
-                            "EOD-86": "Not attempted",
-                            "FMEOD-103": "Shipper is closed",
-                            "FMEOD-106": "Not attempted",
-                            "FMEOD-118": "Cancelled the order",
-                            "FMEOD-152": "Shipment not ready-Partial Pickup",
-                            "FMOFP-101": "Out for Pickup",
-                            "RDPD-17": "Not attempted",
-                            "RDPD-3": "Returned",
-                            "RT-101": "Not attempted",
-                            "RT-108": "Returned",
-                            "RT-113": "Returned",
-                            "ST-105": "Reattempt requested",
-                            "ST-107": "Reattempt requested",
-                            "ST-108": "Reached maximum attempt count",
+                            "DLYDC-107": 6,
+                            "DLYDC-110": 4,
+                            "DLYDC-132": 8,
+                            "EOD-104": 7,
+                            "EOD-11": 1,
+                            "EOD-111": 11,
+                            "EOD-3": 4,
+                            "EOD-40": 9,
+                            "EOD-6": 3,
+                            "EOD-69": 11,
+                            "EOD-74": 2,
+                            "EOD-86": 12,
+                            "FMEOD-106": 12,
+                            "FMEOD-118": 3,
+                            "RDPD-17": 12,
+                            "RT-101": 12,
+                            "ST-108": 13,
                             }
 
-shadowfax_status_mapping = {"new":("READY TO SHIP", "UD", ""),
-                            "sent_to_rev":("READY TO SHIP", "UD", ""),
-                            "assigned_for_pickup":("READY TO SHIP", "UD", ""),
-                            "ofp":("READY TO SHIP", "UD", ""),
-                            "picked":("IN TRANSIT", "UD", ""),
-                            "recd_at_rev_hub":("IN TRANSIT", "UD", ""),
-                            "sent_to_fwd":("IN TRANSIT", "UD", ""),
-                            "recd_at_fwd_hub":("IN TRANSIT", "UD", ""),
-                            "recd_at_fwd_dc":("IN TRANSIT", "UD", ""),
-                            "assigned_for_delivery":("IN TRANSIT", "UD", ""),
-                            "ofd":("DISPATCHED", "UD", ""),
-                            "cid":("PENDING", "UD", "Delivery rescheduled"),
-                            "nc":("PENDING", "UD", "Consignee unavailable"),
-                            "na":("PENDING", "UD", "Not attempted"),
-                            "reopen_ndr":("PENDING", "UD", "Delivery rescheduled"),
-                            "delivered":("DELIVERED", "DL", ""),
-                            "cancelled_by_customer":("PENDING", "UD", "Cancelled the order"),
-                            "rts":("PENDING", "RT", "Pending for rts"),
-                            "rts_d":("RTO", "DL", ""),
-                            "lost":("LOST", "UD", ""),
-                            "on_hold":("ON HOLD", "UD", ""),
-                            "pickup_on_hold":("NOT PICKED", "UD", ""),
+shadowfax_status_mapping = {"new":("READY TO SHIP", "UD", None),
+                            "sent_to_rev":("READY TO SHIP", "UD", None),
+                            "assigned_for_pickup":("READY TO SHIP", "UD", None),
+                            "ofp":("READY TO SHIP", "UD", None),
+                            "picked":("IN TRANSIT", "UD", None),
+                            "recd_at_rev_hub":("IN TRANSIT", "UD", None),
+                            "sent_to_fwd":("IN TRANSIT", "UD", None),
+                            "recd_at_fwd_hub":("IN TRANSIT", "UD", None),
+                            "recd_at_fwd_dc":("IN TRANSIT", "UD", None),
+                            "assigned_for_delivery":("IN TRANSIT", "UD", None),
+                            "ofd":("DISPATCHED", "UD", None),
+                            "cid":("PENDING", "UD", 4),
+                            "nc":("PENDING", "UD", 1),
+                            "na":("PENDING", "UD", 12),
+                            "reopen_ndr":("PENDING", "UD", 4),
+                            "delivered":("DELIVERED", "DL", None),
+                            "cancelled_by_customer":("PENDING", "UD", 3),
+                            "rts":("PENDING", "RT", None),
+                            "rts_d":("RTO", "DL", None),
+                            "lost":("LOST", "UD", None),
+                            "on_hold":("ON HOLD", "UD", None),
+                            "pickup_on_hold":("PICKUP REQUESTED", "UD", None),
                             }
 
 xpressbees_status_mapping = {"DRC":("READY TO SHIP", "UD", ""),
                             "PUC":("PICKUP REQUESTED", "UD", ""),
                             "OFP":("PICKUP REQUESTED", "UD", ""),
                             "PUD":("IN TRANSIT", "UD", ""),
-                            "PND":("NOT PICKED", "UD", ""),
+                            "PND":("PICKUP REQUESTED", "UD", ""),
                             "PKD":("IN TRANSIT", "UD", ""),
                             "IT":("IN TRANSIT", "UD", ""),
                             "RAD":("IN TRANSIT", "UD", ""),
@@ -957,6 +959,11 @@ xpressbees_status_mapping = {"DRC":("READY TO SHIP", "UD", ""),
                             "LOST":("LOST", "UD", ""),
                             "UD":("PENDING", "UD", "")
                             }
+
+Xpressbees_ndr_reasons = {"Customer Refused To Accept":3,
+                          "Customer Refused to Pay COD Amount": 9,
+                          "Add Incomplete/Incorrect & Mobile Not Reachable": 1,
+                          "Customer Not Available & Mobile Not Reachable": 1}
 
 
 def woocommerce_fulfillment(order):

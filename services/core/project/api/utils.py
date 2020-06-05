@@ -503,13 +503,11 @@ def fill_invoice_data(c, order, client_name):
         str_full_address = [full_name]
         full_address = order.pickup_data.pickup.address
         if order.pickup_data.pickup.address_two:
-            full_address += " "+order.delivery_address.address_two
+            full_address += " "+order.pickup_data.pickup.address_two
         full_address = split_string(full_address, 35)
         str_full_address += full_address
         str_full_address.append(order.pickup_data.pickup.city+", "+order.pickup_data.pickup.state)
         str_full_address.append(order.pickup_data.pickup.country+", PIN: "+str(order.pickup_data.pickup.pincode))
-        if order.pickup_data.pickup.phone:
-            str_full_address.append("Ph: "+str(order.pickup_data.pickup.phone))
         y_axis = 8.6
         for addr in str_full_address:
             c.drawString(-0.75 * inch, y_axis * inch, addr)
@@ -520,6 +518,7 @@ def fill_invoice_data(c, order, client_name):
 
     y_axis = 6.1
     s_no = 1
+    prod_total_value = 0
     for prod in order.products:
         try:
             c.setFont('Helvetica-Bold', 7)
@@ -534,10 +533,10 @@ def fill_invoice_data(c, order, client_name):
 
             c.drawString(2.02 * inch, (y_axis + 0.08) * inch, str(prod.quantity))
 
-            if order.products[0].tax_lines:
+            if prod.tax_lines:
                 des_str = ""
                 total_tax = 0
-                for tax_lines in order.products[0].tax_lines:
+                for tax_lines in prod.tax_lines:
                     des_str += tax_lines['title'] + ": " + str(tax_lines['rate']*100) + "% | "
                     total_tax += tax_lines['rate']
 
@@ -552,7 +551,7 @@ def fill_invoice_data(c, order, client_name):
 
                 tax_val = taxable_val*total_tax
 
-                c.drawString(4.82 * inch, (y_axis + 0.08) * inch, str(round(tax_val, 2))+" | "+str(round(total_tax*100)) + "%")
+                c.drawString(4.82 * inch, (y_axis + 0.08) * inch, str(round(tax_val, 2))+" | "+str(round(total_tax*100, 1)) + "%")
                 c.drawString(6.22 * inch, (y_axis + 0.08) * inch, str(round(prod.amount, 2)))
 
             else:
@@ -561,6 +560,7 @@ def fill_invoice_data(c, order, client_name):
                 c.drawString(3.62 * inch, (y_axis + 0.08) * inch, str(round(taxable_val, 2)))
                 c.drawString(6.22 * inch, (y_axis + 0.08) * inch, str(round(prod.amount, 2)))
 
+            prod_total_value += prod.amount
         except Exception:
             pass
 
@@ -570,6 +570,13 @@ def fill_invoice_data(c, order, client_name):
     if order.payments[0].shipping_charges:
         c.drawString(4.82 * inch, y_axis * inch, "Shipping Charges:")
         c.drawString(6.22 * inch, y_axis * inch, str(round(order.payments[0].shipping_charges, 2)))
+        y_axis -= 0.20
+        prod_total_value += order.payments[0].shipping_charges
+
+    if prod_total_value-order.payments[0].amount > 1:
+        c.drawString(4.82 * inch, y_axis * inch, "Discount:")
+        c.drawString(6.16 * inch, y_axis * inch, "-")
+        c.drawString(6.22 * inch, y_axis * inch, str(round(prod_total_value-order.payments[0].amount, 2)))
         y_axis -= 0.20
 
     c.setLineWidth(0.1)
@@ -585,9 +592,9 @@ def fill_invoice_data(c, order, client_name):
     c.line(-0.75 * inch, y_axis * inch, 6.9 * inch, y_axis * inch)
 
     y_axis -= 1.5
-    c.setFont('Helvetica-Bold', 8)
+    c.setFont('Helvetica', 7)
 
-    c.drawString(0*inch, y_axis * inch, "Authorized Signature")
+    c.drawString(-0.70 * inch, y_axis * inch, "This is computer generated invoice no signature required.")
 
     c.setFont('Helvetica', 8)
 

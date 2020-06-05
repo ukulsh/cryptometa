@@ -49,7 +49,7 @@ class User(db.Model):
             'admin': self.admin,
             'user_group': self.group.group,
             'client_prefix': self.client.client_prefix if self.client else None,
-            'warehouse_prefix': self.warehouse.warehouse_prefix if self.client else None,
+            'warehouse_prefix': self.warehouse.warehouse_prefix if self.warehouse else None,
             'tabs': self.tabs,
         }
 

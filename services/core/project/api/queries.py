@@ -38,7 +38,7 @@ update_product_quantity_query = """UPDATE products_quantity
                                     WHERE product_id=%s;"""
 
 insert_product_query = """INSERT INTO products (name, sku, active, channel_id, client_prefix, date_created, 
-                          dimensions, price, weight, master_sku) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id;"""
+                          dimensions, price, weight, master_sku, subcategory_id) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id;"""
 
 insert_product_quantity_query = """INSERT INTO products_quantity (product_id,total_quantity,approved_quantity,
                                     available_quantity,warehouse_prefix,status,date_created)
@@ -199,7 +199,7 @@ get_courier_id_and_key_query = """SELECT id, courier_name, api_key FROM master_c
 
 get_status_update_orders_query = """select aa.id, bb.awb, aa.status, aa.client_prefix, aa.customer_phone, 
                                     aa.order_id_channel_unique, bb.channel_fulfillment_id, cc.api_key, 
-                                    cc.api_password, cc.shop_url, bb.id, dd.pickup_id, aa.channel_order_id, ee.payment_mode, 
+                                    cc.api_password, cc.shop_url, bb.id, aa.pickup_data_id, aa.channel_order_id, ee.payment_mode, 
                                     cc.channel_id, gg.location_id, mm.item_list, mm.sku_quan_list from orders aa
                                     left join shipments bb
                                     on aa.id=bb.order_id
@@ -264,7 +264,7 @@ update_prod_quantity_query_pickup = """DO
                                         $do$;"""
 
 update_pickup_count_query = """UPDATE manifests SET total_picked=COALESCE(total_picked, 0)+%s
-                                WHERE courier_id=%s AND pickup_id=%s
+                                WHERE courier_id=%s AND client_pickup_id=%s
                                 AND pickup_date::date=%s;"""
 
 
@@ -358,13 +358,14 @@ fetch_warehouse_to_pick_from = """with temp_table (warehouse, pincode) as (VALUE
 
 select_product_list_query = """SELECT aa.id, aa.name as product_name, aa.product_image, aa.sku as channel_sku, aa.master_sku, price, bb.total_quantity,  bb.available_quantity,
                              bb.current_quantity, bb.inline_quantity, bb.rto_quantity,dimensions, weight, null as channel_logo FROM products aa
-                            LEFT JOIN (select product_id, sum(approved_quantity) as total_quantity, sum(available_quantity) as available_quantity,
+                            __JOIN_TYPE__ (select product_id, sum(approved_quantity) as total_quantity, sum(available_quantity) as available_quantity,
                                        sum(current_quantity) as current_quantity, sum(inline_quantity) as inline_quantity, sum(rto_quantity) as rto_quantity
                                       FROM products_quantity __WAREHOUSE_FILTER__ 
                                       GROUP BY product_id) bb
                             ON aa.id=bb.product_id
                             WHERE (aa.name ilike '%__SEARCH_KEY__%' or aa.sku ilike '%__SEARCH_KEY__%' or aa.master_sku ilike '%__SEARCH_KEY__%')
                             __CLIENT_FILTER__
+                            __MV_CLIENT_FILTER__
                             ORDER BY __ORDER_BY__ __ORDER_TYPE__ 
                             __PAGINATION__
                             """
@@ -373,7 +374,8 @@ select_orders_list_query = """select distinct on (aa.order_date, aa.id) aa.chann
                              CONCAT('http://webapp.wareiq.com/tracking/', bb.awb) as tracking_link, cc.courier_name, bb.edd, bb.weight, bb.dimensions,
                              bb.volumetric_weight,bb.remark, aa.customer_name, aa.customer_phone, aa.customer_email, dd.address_one, dd.address_two, 
                              dd.city, dd.state, dd.country, dd.pincode, ee.delivered_time, ff.pickup_time, gg.payment_mode, gg.amount, ii.warehouse_prefix,
-                             ll.product_names, ll.skus, ll.quantity,mm.id,  mm.cod_verified, mm.verified_via, nn.id,  nn.ndr_verified, nn.verified_via
+                             ll.product_names, ll.skus, ll.quantity,mm.id,  mm.cod_verified, mm.verified_via, nn.id,  nn.ndr_verified, nn.verified_via, 
+                             pp.logo_url, qq.manifest_time, rr.reason_id, rr.reason, rr.date_created
                              from orders aa
                              left join shipments bb
                              on aa.id=bb.order_id
@@ -383,7 +385,11 @@ select_orders_list_query = """select distinct on (aa.order_date, aa.id) aa.chann
                              on aa.id=ee.order_id
                              left join (select order_id, status_time as pickup_time from order_status where status='Picked') ff
                              on aa.id=ff.order_id
+                             left join (select order_id, status_time as manifest_time from order_status where status='Received') qq
+                             on aa.id=qq.order_id
                              left join orders_payments gg on aa.id=gg.order_id
+                             left join client_channel oo on aa.client_channel_id=oo.id
+                             left join master_channels pp on oo.channel_id=pp.id
                              left join client_pickups hh on aa.pickup_data_id=hh.id
                              left join pickup_points ii on hh.pickup_id=ii.id
                              left join op_association jj on aa.id=jj.order_id
@@ -394,16 +400,22 @@ select_orders_list_query = """select distinct on (aa.order_date, aa.id) aa.chann
                                        group by order_id) ll on aa.id=ll.order_id
                              left join cod_verification mm on mm.order_id=aa.id
                              left join ndr_verification nn on nn.order_id=aa.id
-                                                                 
+                             left join (select ss.id, ss.order_id, tt.id as reason_id, tt.reason, ss.date_created from ndr_shipments ss left join ndr_reasons tt on ss.reason_id=tt.id ) rr
+                             on aa.id=rr.order_id                                   
                              WHERE (aa.channel_order_id ilike '%__SEARCH_KEY__%' or awb ilike '%__SEARCH_KEY__%' or customer_name ilike '%__SEARCH_KEY__%')
                              __ORDER_DATE_FILTER__
+                             __MANIFEST_DATE_FILTER__
                              __PICKUP_TIME_FILTER__
                              __DELIVERED_TIME_FILTER__
                              __COURIER_FILTER__
                              __STATUS_FILTER__
+                             __TAB_STATUS_FILTER__
+                             __NDR_REASON_FILTER__
+                             __NDR_TYPE_FILTER__
                              __PICKUP_FILTER__
                              __TYPE_FILTER__
                              __CLIENT_FILTER__
+                             __MV_CLIENT_FILTER__
                              __SINCE_ID_FILTER__
                              order by order_date DESC
                              __PAGINATION__"""
@@ -420,8 +432,54 @@ select_wallet_deductions_query = """SELECT aa.status_time, aa.status, bb.courier
                                     WHERE aa.status in ('Delivered', 'RTO')
                                     AND (cc.awb ilike '%__SEARCH_KEY__%' or dd.channel_order_id ilike '%__SEARCH_KEY__%')
                                     __CLIENT_FILTER__
+                                    __MV_CLIENT_FILTER__
                                     __COURIER_FILTER__
                                     __DATE_TIME_FILTER__
                                     AND aa.status_time>'2020-04-01'
                                     ORDER BY status_time DESC
                                     __PAGINATION__"""
+
+
+select_wallet_remittance_query = """select * from
+                                    (select xx.unique_id, xx.client_prefix, xx.remittance_id, xx.date as remittance_date, 
+                                     xx.status, xx.transaction_id, sum(yy.amount) as remittance_total from
+                                    (select id as unique_id, client_prefix, remittance_id, transaction_id, DATE(remittance_date), 
+                                    ((DATE(remittance_date)) - INTERVAL '8 DAY') AS order_start,
+                                    ((DATE(remittance_date)) - INTERVAL '1 DAY') AS order_end,
+                                    status from cod_remittance) xx 
+                                    left join 
+                                    (select client_prefix, channel_order_id, order_date, payment_mode, amount, cc.status_time as delivered_date from orders aa
+                                    left join orders_payments bb on aa.id=bb.order_id
+                                    left join (select * from order_status where status='Delivered') cc
+                                    on aa.id=cc.order_id
+                                    where aa.status = 'DELIVERED'
+                                    and bb.payment_mode ilike 'cod') yy
+                                    on xx.client_prefix=yy.client_prefix 
+                                    and yy.delivered_date BETWEEN xx.order_start AND xx.order_end
+                                    group by xx.unique_id, xx.client_prefix, xx.remittance_id, xx.date, xx.status, xx.transaction_id) zz
+                                    WHERE remittance_total is not null
+                                    __SEARCH_KEY_FILTER__
+                                    __CLIENT_FILTER__
+                                    __MV_CLIENT_FILTER__
+                                    __REMITTANCE_DATE_FILTER__
+                                    order by remittance_date DESC
+                                    __PAGINATION__"""
+
+select_wallet_remittance_orders_query = """select yy.* from
+                                        (select id as unique_id, client_prefix, remittance_id, transaction_id, DATE(remittance_date), 
+                                        ((DATE(remittance_date)) - INTERVAL '8 DAY') AS order_start,
+                                        ((DATE(remittance_date)) - INTERVAL '1 DAY') AS order_end,
+                                        status from cod_remittance) xx 
+                                        left join 
+                                        (select client_prefix, channel_order_id, order_date, ee.courier_name, dd.awb, payment_mode, amount, cc.status_time as delivered_date from orders aa
+                                        left join orders_payments bb on aa.id=bb.order_id
+                                        left join (select * from order_status where status='Delivered') cc
+                                        on aa.id=cc.order_id
+                                        left join shipments dd on dd.order_id=aa.id
+                                        left join master_couriers ee on dd.courier_id=ee.id
+                                        where aa.status = 'DELIVERED'
+                                        and bb.payment_mode ilike 'cod') yy
+                                        on xx.client_prefix=yy.client_prefix 
+                                        and yy.delivered_date BETWEEN xx.order_start AND xx.order_end
+                                         where xx.unique_id=__REMITTANCE_ID__
+                                         order by delivered_date"""

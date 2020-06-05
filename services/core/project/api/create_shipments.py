@@ -132,18 +132,19 @@ def lambda_handler(courier_name=None, order_ids=None):
                                   None, None, None, None, "Pincode not serviceable", None, None),)
                             cur.execute(insert_shipments_data_query, tuple(insert_shipments_data_tuple))
                             continue
+                        """
                         elif 'covid_zone' in req.json()['delivery_codes'][0]['postal_code']:
                             if not order[48] and req.json()['delivery_codes'][0]['postal_code']['covid_zone'].upper()=='R':
-                                insert_shipments_data_query = """INSERT INTO SHIPMENTS (awb, status, order_id, pickup_id, courier_id, 
+                                insert_shipments_data_query = ""INSERT INTO SHIPMENTS (awb, status, order_id, pickup_id, courier_id, 
                                                                                                     dimensions, volumetric_weight, weight, remark, return_point_id, routing_code)
-                                                                                                    VALUES  %s"""
+                                                                                                    VALUES  %s""
                                 insert_shipments_data_tuple = list()
                                 insert_shipments_data_tuple.append(("", "Fail", order[0], None,
                                                                     None, None, None, None, "Non essential in Red Zone(COVID)",
                                                                     None, None), )
                                 cur.execute(insert_shipments_data_query, tuple(insert_shipments_data_tuple))
                                 continue
-
+                        """
 
                         package_string = ""
                         for idx, prod in enumerate(order[40]):

@@ -105,7 +105,7 @@ get_orders_to_ship_query = """select aa.id,aa.channel_order_id,aa.order_date,aa.
                                 cc.latitude,cc.longitude,cc.country_code,dd.id,dd.payment_mode,dd.amount,dd.currency,dd.order_id,dd.shipping_charges,
                                 dd.subtotal,dd.order_id,ee.dimensions,ee.weights,ee.quan, ff.api_key, ff.api_password, 
                                 ff.shop_url, aa.order_id_channel_unique, ee.products_name, aa.pickup_data_id, xx.cod_verified, 
-                                xx.id, ee.ship_courier, gg.location_id, ff.channel_id, yy.verify_cod, yy.essential, ee.subcategories, yy.cod_ship_unconfirmed
+                                xx.id, ee.ship_courier, gg.location_id, ff.channel_id, yy.verify_cod, yy.essential, ee.subcategories, yy.cod_ship_unconfirmed, yy.client_name
                                 from orders aa
                                 left join shipping_address cc
                                 on aa.delivery_address_id=cc.id

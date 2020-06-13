@@ -117,8 +117,12 @@ def fetch_shopify_orders(cur, channel):
             customer_phone = ''.join(e for e in str(customer_phone) if e.isalnum())
             customer_phone = "0" + customer_phone[-10:]
 
+            channel_order_id = str(order['order_number'])
+            if channel[16]:
+                channel_order_id = str(channel[16]) + channel_order_id
+
             orders_tuple = (
-                str(order['order_number']), order['created_at'], customer_name, order['customer']['email'],
+                channel_order_id, order['created_at'], customer_name, order['customer']['email'],
                 customer_phone if customer_phone else "", shipping_address_id, billing_address_id,
                 datetime.now(), "NEW", channel[1], channel[0], str(order['id']), pickup_data_id)
 
@@ -176,7 +180,7 @@ def fetch_shopify_orders(cur, channel):
                         cur.execute("SELECT keywords, warehouse_prefix, dimensions, weight, subcategory_id FROM keyword_weights WHERE client_prefix='%s'"%channel[1])
                         all_weights = cur.fetchall()
                         for obj in all_weights:
-                            if all(x in master_sku for x in obj[0]) or all(x in prod['name'] for x in obj[0]):
+                            if all(x.lower() in master_sku.lower() for x in obj[0]) or all(x.lower() in prod['name'].lower() for x in obj[0]):
                                 warehouse_prefix = obj[1]
                                 dimensions = json.dumps(obj[2])
                                 weight = obj[3]
@@ -300,8 +304,12 @@ def fetch_woocommerce_orders(cur, channel):
 
             insert_status = "NEW"
 
+            channel_order_id = str(order['number'])
+            if channel[16]:
+                channel_order_id = str(channel[16]) + channel_order_id
+
             orders_tuple = (
-                str(order['number']), order['date_created'], customer_name, order['billing']['email'],
+                channel_order_id, order['date_created'], customer_name, order['billing']['email'],
                 customer_phone if customer_phone else "", shipping_address_id, billing_address_id,
                 datetime.now(), insert_status, channel[1], channel[0], str(order['id']), pickup_data_id)
 
@@ -336,7 +344,7 @@ def fetch_woocommerce_orders(cur, channel):
                         cur.execute("SELECT keywords, warehouse_prefix, dimensions, weight, subcategory_id FROM keyword_weights WHERE client_prefix='%s'"%channel[1])
                         all_weights = cur.fetchall()
                         for obj in all_weights:
-                            if all(x in master_sku for x in obj[0]) or all(x in prod['name'] for x in obj[0]):
+                            if all(x.lower() in master_sku.lower() for x in obj[0]) or all(x.lower() in prod['name'].lower() for x in obj[0]):
                                 warehouse_prefix = obj[1]
                                 dimensions = json.dumps(obj[2])
                                 weight = obj[3]
@@ -472,8 +480,11 @@ def fetch_magento_orders(cur, channel):
             insert_status = "NEW"
 
             order_time = datetime.strptime(order['created_at'], "%Y-%m-%d %X") + timedelta(hours=5.5)
+            channel_order_id = str(order['increment_id'])
+            if channel[16]:
+                channel_order_id = str(channel[16]) + channel_order_id
             orders_tuple = (
-                str(order['increment_id']), order_time, customer_name, order['customer_email'],
+                channel_order_id, order_time, customer_name, order['customer_email'],
                 customer_phone if customer_phone else "", shipping_address_id, billing_address_id,
                 datetime.now(), insert_status, channel[1], channel[0], str(order['entity_id']), pickup_data_id)
 
@@ -513,7 +524,7 @@ def fetch_magento_orders(cur, channel):
                         cur.execute("SELECT keywords, warehouse_prefix, dimensions, weight, subcategory_id FROM keyword_weights WHERE client_prefix='%s'"%channel[1])
                         all_weights = cur.fetchall()
                         for obj in all_weights:
-                            if all(x in master_sku for x in obj[0]) or all(x in prod['name'] for x in obj[0]):
+                            if all(x.lower() in master_sku.lower() for x in obj[0]) or all(x.lower() in prod['name'].lower() for x in obj[0]):
                                 warehouse_prefix = obj[1]
                                 dimensions = json.dumps(obj[2])
                                 weight = obj[3]

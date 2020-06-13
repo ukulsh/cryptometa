@@ -569,6 +569,8 @@ class ClientMapping(db.Model):
     essential = db.Column(db.BOOLEAN, nullable=True, default=True)
     custom_email = db.Column(db.Text, nullable=True)
     custom_email_subject = db.Column(db.String, nullable=True)
+    unique_parameter = db.Column(db.String, nullable=True)
+    cod_ship_unconfirmed = db.Column(db.BOOLEAN, nullable=True, default=True)
 
 
 class MultiVendor(db.Model):

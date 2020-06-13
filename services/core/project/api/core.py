@@ -38,6 +38,7 @@ conn_2 = psycopg2.connect(host="wareiq-core-prod.cvqssxsqruyc.us-east-1.rds.amaz
 email_server = smtplib.SMTP_SSL('smtpout.secureserver.net', 465)
 email_server.login("noreply@wareiq.com", "Berlin@123")
 
+
 ORDERS_DOWNLOAD_HEADERS = ["Order ID", "Customer Name", "Customer Email", "Customer Phone", "Order Date",
                             "Courier", "Weight", "awb", "Expected Delivery Date", "Status", "Address_one", "Address_two",
                            "City", "State", "Country", "Pincode", "Pickup Point", "Products", "Quantity", "Order Type", "Amount", "Pickup Date", "Delivered Date"]
@@ -83,7 +84,7 @@ class ProductList(Resource):
                 query_to_execute = query_to_execute.replace('__JOIN_TYPE__', "JOIN")
             if auth_data['user_group'] == 'multi-vendor':
                 cur.execute("SELECT vendor_list FROM multi_vendor WHERE client_prefix='%s';"%client_prefix)
-                vendor_list = cur.fetchone()[0]
+                vendor_list = cur.fetchone()['vendor_list']
                 query_to_execute = query_to_execute.replace('__MV_CLIENT_FILTER__', "AND aa.client_prefix in %s"%str(tuple(vendor_list)))
             else:
                 query_to_execute = query_to_execute.replace('__MV_CLIENT_FILTER__', "")
@@ -179,12 +180,18 @@ def get_products_filters(resp):
     auth_data = resp.get('data')
     current_tab = request.args.get('tab')
     client_prefix = auth_data.get('client_prefix')
+    all_vendors = None
+    if auth_data['user_group'] == 'multi-vendor':
+        all_vendors = db.session.query(MultiVendor).filter(MultiVendor.client_prefix == client_prefix).first()
+        all_vendors = all_vendors.vendor_list
     warehouse_qs = db.session.query(ProductQuantity.warehouse_prefix, func.count(ProductQuantity.warehouse_prefix))\
                 .join(Products, Products.id == ProductQuantity.product_id)
     if auth_data['user_group'] == 'client':
         warehouse_qs = warehouse_qs.filter(Products.client_prefix == client_prefix)
     if auth_data['user_group'] == 'warehouse':
         warehouse_qs = warehouse_qs.filter(ProductQuantity.warehouse_prefix == auth_data.get('warehouse_prefix'))
+    if all_vendors:
+        warehouse_qs = warehouse_qs.filter(Products.client_prefix.in_(all_vendors))
     if current_tab == 'active':
         warehouse_qs = warehouse_qs.filter(Products.active == True)
     elif current_tab =='inactive':
@@ -195,6 +202,11 @@ def get_products_filters(resp):
         client_qs = db.session.query(Products.client_prefix, func.count(Products.client_prefix)).join(ProductQuantity, ProductQuantity.product_id == Products.id).group_by(Products.client_prefix)
         if auth_data['user_group'] == 'warehouse':
             client_qs = client_qs.filter(ProductQuantity.warehouse_prefix == auth_data.get('warehouse_prefix'))
+        response['filters']['client'] = [{x[0]: x[1]} for x in client_qs]
+    if all_vendors:
+        client_qs = db.session.query(Products.client_prefix, func.count(Products.client_prefix)).join(ProductQuantity,
+                                                                                                      ProductQuantity.product_id == Products.id).filter(
+            Products.client_prefix.in_(all_vendors)).group_by(Products.client_prefix)
         response['filters']['client'] = [{x[0]: x[1]} for x in client_qs]
 
     return jsonify(response), 200
@@ -578,6 +590,15 @@ api.add_resource(OrderList, '/orders/<type>')
 def get_dashboard(resp):
     response = dict()
     auth_data = resp.get('data')
+    if not auth_data:
+        return jsonify({"msg": "Authentication Failed"}), 400
+
+    if auth_data['user_group'] == 'warehouse':
+        response['today'] = {"orders": 0, "revenue": 0}
+        response['yesterday'] = {"orders": 0, "revenue": 0}
+        response['graph_data'] = list()
+        return jsonify(response), 200
+
     client_prefix = auth_data.get('client_prefix')
     from_date = datetime.datetime.utcnow() + datetime.timedelta(hours=5.5)
     from_date = datetime.datetime(from_date.year, from_date.month, from_date.day)
@@ -589,7 +610,7 @@ def get_dashboard(resp):
         .filter(or_(CodVerification.date_created >= from_date, CodVerification.verification_time >= from_date))
     ndr_verification = db.session.query(NDRVerification).join(Orders, Orders.id==NDRVerification.order_id)\
         .filter(or_(NDRVerification.date_created >= from_date, NDRVerification.verification_time >= from_date))
-    if auth_data['user_group'] != 'super-admin':
+    if auth_data['user_group'] == 'client':
         qs_data = qs_data.filter(Orders.client_prefix == client_prefix)
         cod_verification = cod_verification.filter(Orders.client_prefix == client_prefix)
         ndr_verification = ndr_verification.filter(Orders.client_prefix == client_prefix)
@@ -674,6 +695,10 @@ def get_orders_filters(resp):
     client_prefix = auth_data.get('client_prefix')
     warehouse_prefix = auth_data.get('warehouse_prefix')
     client_qs = None
+    all_vendors = None
+    if auth_data['user_group'] == 'multi-vendor':
+        all_vendors = db.session.query(MultiVendor).filter(MultiVendor.client_prefix == client_prefix).first()
+        all_vendors = all_vendors.vendor_list
     if current_tab =='ndr':
         type = {"Action Requested": 0,
                 "Action Required": 0}
@@ -687,6 +712,8 @@ def get_orders_filters(resp):
                             group by ndr_verified"""
         if auth_data['user_group'] == 'client':
             query_for_type = query_for_type.replace("__CLIENT_FILTER__", "AND cc.client_prefix='%s'"%auth_data['client_prefix'])
+        elif all_vendors:
+            query_for_type = query_for_type.replace("__CLIENT_FILTER__", "AND cc.client_prefix in %s"%str(tuple(all_vendors)))
         else:
             query_for_type = query_for_type.replace("__CLIENT_FILTER__", "")
 
@@ -704,15 +731,23 @@ def get_orders_filters(resp):
             type_list.append({type_val:type[type_val]})
 
         reason_qs = db.session.query(NDRReasons.reason, func.count(NDRReasons.reason)) \
-        .join(NDRShipments, NDRReasons.id == NDRShipments.reason_id).join(Orders, Orders.id == NDRShipments.order_id).group_by(NDRReasons.reason)
+        .join(NDRShipments, NDRReasons.id == NDRShipments.reason_id).join(Orders, Orders.id == NDRShipments.order_id).filter(Orders.status=='PENDING').group_by(NDRReasons.reason)
         if auth_data['user_group'] == 'client':
             reason_qs = reason_qs.filter(Orders.client_prefix == client_prefix)
+        if all_vendors:
+            reason_qs = reason_qs.filter(Orders.client_prefix.in_(all_vendors))
+
         reason_qs = reason_qs.order_by(NDRReasons.reason).all()
         response['filters']['ndr_reason'] = [{x[0]: x[1]} for x in reason_qs]
         response['filters']['ndr_type'] = type_list
         if auth_data['user_group'] == 'super-admin':
             client_qs = db.session.query(Orders.client_prefix, func.count(Orders.client_prefix)).join(NDRShipments,
                         Orders.id==NDRShipments.order_id).filter(NDRShipments.reason_id!=None).group_by(Orders.client_prefix).order_by(Orders.client_prefix).all()
+            response['filters']['client'] = [{x[0]: x[1]} for x in client_qs]
+        elif all_vendors:
+            client_qs = db.session.query(Orders.client_prefix, func.count(Orders.client_prefix)).join(NDRShipments,
+                                                                                                      Orders.id == NDRShipments.order_id).filter(
+                NDRShipments.reason_id != None, Orders.client_prefix.in_(all_vendors)).group_by(Orders.client_prefix).order_by(Orders.client_prefix).all()
             response['filters']['client'] = [{x[0]: x[1]} for x in client_qs]
 
         return jsonify(response), 200
@@ -732,11 +767,17 @@ def get_orders_filters(resp):
         client_qs = db.session.query(Orders.client_prefix, func.count(Orders.client_prefix)).join(ClientPickups,
                         Orders.pickup_data_id==ClientPickups.id).join(PickupPoints,
                         PickupPoints.id==ClientPickups.pickup_id).filter(PickupPoints.warehouse_prefix == warehouse_prefix)
+    elif all_vendors:
+        client_qs = db.session.query(Orders.client_prefix, func.count(Orders.client_prefix)).filter(Orders.client_prefix.in_(all_vendors))
 
     if auth_data['user_group'] == 'client':
         status_qs=status_qs.filter(Orders.client_prefix == client_prefix)
         courier_qs = courier_qs.filter(Orders.client_prefix == client_prefix)
         pickup_point_qs = pickup_point_qs.filter(Orders.client_prefix == client_prefix)
+    if all_vendors:
+        status_qs = status_qs.filter(Orders.client_prefix.in_(all_vendors))
+        courier_qs = courier_qs.filter(Orders.client_prefix.in_(all_vendors))
+        pickup_point_qs = pickup_point_qs.filter(Orders.client_prefix.in_(all_vendors))
     if auth_data['user_group'] == 'warehouse':
         status_qs = status_qs.filter(PickupPoints.warehouse_prefix == warehouse_prefix)
         courier_qs = courier_qs.filter(PickupPoints.warehouse_prefix == warehouse_prefix)
@@ -772,6 +813,8 @@ def get_orders_filters(resp):
     pickup_point_qs = pickup_point_qs.order_by(PickupPoints.warehouse_prefix).all()
     response['filters']['pickup_point'] = [{x[0]: x[1]} for x in pickup_point_qs]
     if client_qs:
+        if all_vendors:
+            client_qs = client_qs.filter(Orders.client_prefix.in_(all_vendors))
         client_qs = client_qs.group_by(Orders.client_prefix).order_by(Orders.client_prefix).all()
         response['filters']['client'] = [{x[0]: x[1]} for x in client_qs]
 
@@ -824,11 +867,17 @@ class AddOrder(Resource):
                         prod_obj = db.session.query(Products).filter(Products.sku == prod['sku']).first()
                         if not prod_obj:
                             prod_obj = db.session.query(Products).filter(Products.master_sku == prod['sku']).first()
+
+                        if not prod_obj:
+                            return {"status": "Failed", "msg": "One or more SKU(s) not found"}, 400
+
                     else:
                         prod_obj = db.session.query(Products).filter(Products.id == int(prod['id'])).first()
 
                     if prod_obj:
-                        op_association = OPAssociation(order=new_order, product=prod_obj, quantity=prod['quantity'])
+                        tax_lines = prod.get('tax_lines')
+                        amount = prod.get('amount')
+                        op_association = OPAssociation(order=new_order, product=prod_obj, quantity=prod['quantity'], amount=amount, tax_lines=tax_lines)
                         new_order.products.append(op_association)
 
             if data.get('shipping_charges'):
@@ -852,7 +901,7 @@ class AddOrder(Resource):
                 db.session.commit()
             except Exception:
                 return {"status": "Failed", "msg": "Duplicate order_id"}, 400
-            return {'status': 'success', 'msg': "successfully added", "order_id": new_order.channel_order_id}, 200
+            return {'status': 'success', 'msg': "successfully added", "order_id": new_order.channel_order_id, "unique_id": new_order.id}, 200
 
         except Exception as e:
             return {"status":"Failed", "msg":""}, 400
@@ -1793,9 +1842,20 @@ class PincodeServiceabilty(Resource):
             if not sku_list:
                 return {"success": True, "data": {"cod_available": cod_available, "covid_zone": covid_zone}}, 200
 
+            sku_string = "('"
+
+            for value in sku_list:
+                sku_string += value['sku'] + "','"
+            sku_string = sku_string.rstrip("'").rstrip(",")
+            sku_string += ")"
+            cur.execute("SELECT sku, master_sku FROM products WHERE (sku in __SKU_STR__ or master_sku in __SKU_STR__) and client_prefix='__CLIENT__'".replace('__SKU_STR__', sku_string).replace('__CLIENT__', auth_data[
+                                                                                                        'client_prefix']))
+            sku_tuple = cur.fetchall()
+
             sku_dict = dict()
             for sku in sku_list:
-                sku_dict[str(sku['sku'])] = sku['quantity']
+                [accept_sku] = [a[0] for a in sku_tuple if sku['sku'] in a]
+                sku_dict[str(accept_sku)] = sku['quantity']
 
             sku_string = "('"
 
@@ -2223,7 +2283,7 @@ class WalletDeductions(Resource):
             auth_data = resp.get('data')
             if not auth_data:
                 return {"success": False, "msg": "Auth Failed"}, 404
-            if auth_data.get('user_group') == 'super-admin' or 'client':
+            if auth_data.get('user_group') in ('super-admin', 'client', 'multi-vendor'):
                 client_prefix = auth_data.get('client_prefix')
                 query_to_execute = select_wallet_deductions_query
                 query_total_recharge = """select COALESCE(sum(recharge_amount), 0) from client_recharges
@@ -2351,8 +2411,11 @@ class WalletDeductions(Resource):
             cur = conn.cursor()
             auth_data = resp.get('data')
             if not auth_data:
-                return {"sucscess": False, "msg": "Auth Failed"}, 404
-
+                return {"success": False, "msg": "Auth Failed"}, 404
+            all_vendors = None
+            if auth_data['user_group'] == 'multi-vendor':
+                all_vendors = db.session.query(MultiVendor).filter(MultiVendor.client_prefix == auth_data['client_prefix']).first()
+                all_vendors = all_vendors.vendor_list
             filters = dict()
             query_to_run_courier = """SELECT cc.courier_name, count(*) FROM client_deductions aa
                                         LEFT JOIN shipments bb on aa.shipment_id=bb.id
@@ -2363,23 +2426,34 @@ class WalletDeductions(Resource):
                                         GROUP BY courier_name
                                         ORDER BY courier_name"""
 
-            if auth_data['user_group'] != 'super-admin':
+            if auth_data['user_group'] == 'client':
                 query_to_run_courier = query_to_run_courier.replace("__CLIENT_FILTER__",
                                                     "AND dd.client_prefix='%s'" % auth_data['client_prefix'])
-            else:
-                query_to_run_courier = query_to_run_courier.replace("__CLIENT_FILTER__", "")
+            elif auth_data['user_group'] in ('super-admin', 'multi-vendor'):
                 query_to_run_client = """SELECT cc.client_prefix, count(*) FROM client_deductions aa
                                         LEFT JOIN shipments bb on aa.shipment_id=bb.id
                                         LEFT JOIN orders cc on bb.order_id=cc.id
                                         WHERE aa.deduction_time>'2020-04-01'
+                                        __CLIENT_FILTER__
                                         GROUP BY client_prefix
                                         ORDER BY client_prefix"""
+                if all_vendors:
+                    query_to_run_client = query_to_run_client.replace("__CLIENT_FILTER__", "AND cc.client_prefix in %s"%str(tuple(all_vendors)))
+                    query_to_run_courier = query_to_run_courier.replace("__CLIENT_FILTER__",
+                                                                        "AND dd.client_prefix in %s" % str(
+                                                                            tuple(all_vendors)))
+                else:
+                    query_to_run_client = query_to_run_client.replace("__CLIENT_FILTER__", "")
+                    query_to_run_courier = query_to_run_courier.replace("__CLIENT_FILTER__", "")
+
                 cur.execute(query_to_run_client)
                 client_data = cur.fetchall()
                 filters['client'] = list()
                 for client in client_data:
                     if client[0]:
-                        filters['client'].append({client[0]:client[1]})
+                        filters['client'].append({client[0]: client[1]})
+            else:
+                query_to_run_courier = query_to_run_courier.replace("__CLIENT_FILTER__","")
 
             cur.execute(query_to_run_courier)
             courier_data = cur.fetchall()
@@ -2511,11 +2585,22 @@ class WalletRecharges(Resource):
             if not auth_data:
                 return {"success": False, "msg": "Auth Failed"}, 404
 
+            all_vendors = None
+            if auth_data['user_group'] == 'multi-vendor':
+                all_vendors = db.session.query(MultiVendor).filter(
+                    MultiVendor.client_prefix == auth_data['client_prefix']).first()
+                all_vendors = all_vendors.vendor_list
+
             filters = dict()
-            if auth_data['user_group'] == 'super-admin':
+            if auth_data['user_group'] in ('super-admin', 'multi-vendor'):
                 query_to_run= """SELECT client_prefix, count(*) FROM client_recharges
+                                __CLIENT_FILTER__
                                 GROUP BY client_prefix
                                 ORDER BY client_prefix"""
+                if all_vendors:
+                    query_to_run = query_to_run.replace("__CLIENT_FILTER__", "WHERE client_prefix in %s"%str(tuple(all_vendors)))
+                else:
+                    query_to_run = query_to_run.replace("__CLIENT_FILTER__", "")
 
                 cur.execute(query_to_run)
                 client_data = cur.fetchall()
@@ -2645,11 +2730,22 @@ class WalletRemittance(Resource):
             if not auth_data:
                 return {"success": False, "msg": "Auth Failed"}, 404
 
+            all_vendors = None
+            if auth_data['user_group'] == 'multi-vendor':
+                all_vendors = db.session.query(MultiVendor).filter(
+                    MultiVendor.client_prefix == auth_data['client_prefix']).first()
+                all_vendors = all_vendors.vendor_list
             filters = dict()
-            if auth_data['user_group'] == 'super-admin':
+            if auth_data['user_group'] in ('super-admin', 'multi-vendor'):
                 query_to_run_client = """SELECT client_prefix, count(*) FROM cod_remittance
+                                        __CLIENT_FILTER__
                                         GROUP BY client_prefix
                                         ORDER BY client_prefix"""
+                if all_vendors:
+                    query_to_run_client = query_to_run_client.replace("__CLIENT_FILTER__", "WHERE client_prefix in %s"%str(tuple(all_vendors)))
+                else:
+                    query_to_run_client = query_to_run_client.replace("__CLIENT_FILTER__", "")
+
                 cur.execute(query_to_run_client)
                 client_data = cur.fetchall()
                 filters['client'] = list()
@@ -2669,9 +2765,98 @@ api.add_resource(WalletRemittance, '/wallet/v1/remittance')
 @core_blueprint.route('/core/dev', methods=['POST'])
 def ping_dev():
     return 0
-    create_fulfillment_url = "https://e156f178d7a211b66ae0870942ff32b1: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@trendy-things-2020.myshopify.com/admin/api/2019-10/locations.json"
-    import requests
+    import requests, json
+    headers = {"Content-Type": "application/json",
+               "XBKey": "NJlG1ISTUa2017XzrCG6OoJng"}
+    body = {"ShippingID": "14201720000512"}
+    xpress_url = "http://xbclientapi.xbees.in/POSTShipmentService.svc/UpdateNDRDeferredDeliveryDate"
+    req = requests.post(xpress_url, headers=headers, data=json.dumps(body))
+    create_fulfillment_url = "https://4733f7636c1b220def586b9b2d498bc0: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@home-alone-products.myshopify.com/admin/api/2020-04/products.json?limit=250"
     qs = requests.get(create_fulfillment_url)
+    return 0
+    from .update_status_utils import send_bulk_emails
+    from project import create_app
+    app = create_app()
+    query_to_run = """select aa.id, bb.awb, aa.status, aa.client_prefix, aa.customer_phone, 
+                                    aa.order_id_channel_unique, bb.channel_fulfillment_id, cc.api_key, 
+                                    cc.api_password, cc.shop_url, bb.id, aa.pickup_data_id, aa.channel_order_id, ee.payment_mode, 
+                                    cc.channel_id, gg.location_id, mm.item_list, mm.sku_quan_list , aa.customer_name, aa.customer_email, 
+                                    nn.client_name, nn.client_logo, nn.custom_email_subject, bb.courier_id, nn.theme_color, bb.edd
+                                    from orders aa
+                                    left join shipments bb
+                                    on aa.id=bb.order_id
+                                    left join (select order_id, array_agg(channel_item_id) as item_list, array_agg(quantity) as sku_quan_list from
+                                      		  (select kk.order_id, kk.channel_item_id, kk.quantity
+                                              from op_association kk
+                                              left join products ll on kk.product_id=ll.id) nn
+                                              group by order_id) mm
+                                    on aa.id=mm.order_id
+                                    left join client_channel cc
+                                    on aa.client_channel_id=cc.id
+                                    left join client_pickups dd
+                                    on aa.pickup_data_id=dd.id
+                                    left join orders_payments ee
+                                    on aa.id=ee.order_id
+                                    left join client_channel_locations gg
+                                    on aa.client_channel_id=gg.client_channel_id
+                                    and aa.pickup_data_id=gg.pickup_data_id
+                                    left join client_mapping nn
+                                    on aa.client_prefix=nn.client_prefix
+                                    where aa.status in ('IN TRANSIT')
+                                    and aa.status_type is distinct from 'RT'
+                                    and bb.awb != ''
+                                    and aa.order_date>'2020-06-01'
+                                    and aa.customer_email is not null
+                                    and bb.awb is not null;"""
+    cur = conn.cursor()
+    cur.execute(query_to_run)
+    all_orders = cur.fetchall()
+    email_list = list()
+    for order in all_orders:
+        try:
+            edd = order[25].strftime('%-d %b') if order[25] else ""
+            email = create_email(order, edd, order[19])
+            email_list.append((email, [order[19]]))
+        except Exception as e:
+            pass
+
+    send_bulk_emails(email_list)
+
+    return 0
+    from .models import Orders
+    all_orders = db.session.query(Orders).filter(Orders.client_prefix == 'ORGANICRIOT',
+                                                 Orders.status.in_(['IN TRANSIT', 'DELIVERED', 'PENDING'])).all()
+    for order in all_orders:
+        shopify_url = "https://e67230312f67dd92f62bea398a1c7d38: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@the-organic-riot.myshopify.com/admin/api/2020-04/orders/%s/fulfillments.json" % order.order_id_channel_unique
+        tracking_link = "http://webapp.wareiq.com/tracking/%s" % str(order.shipments[0].awb)
+        ful_header = {'Content-Type': 'application/json'}
+        fulfil_data = {
+            "fulfillment": {
+                "tracking_number": str(order.shipments[0].awb),
+                "tracking_urls": [
+                    tracking_link
+                ],
+                "tracking_company": "WareIQ",
+                "location_id": 6529810489,
+                "notify_customer": True
+            }
+        }
+        req_ful = requests.post(shopify_url, data=json.dumps(fulfil_data),
+                                headers=ful_header)
+    return 0
+
+    create_fulfillment_url = "https://e67230312f67dd92f62bea398a1c7d38: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@the-organic-riot.myshopify.com/admin/api/2020-04/locations.json?limit=250"
+    qs = requests.get(create_fulfillment_url)
+    return 0
+
+    create_fulfillment_url = "https://dc948a1330721a0116d84fb76ab168c4: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@daily-veggies-india.myshopify.com/admin/api/2020-04/orders.json?limit=250"
+    qs = requests.get(create_fulfillment_url)
+    from requests_oauthlib.oauth1_session import OAuth1Session
+    auth_session = OAuth1Session("ck_5ed9fb66f9cb3e148403ccd107bfc6806ca22147",
+                                 client_secret="cs_6f1911e69d89ae1ce498be9afaf44117a660bcba")
+    url = '%s/wp-json/wc/v3/products?per_page=100&consumer_key=ck_5ed9fb66f9cb3e148403ccd107bfc6806ca22147&consumer_secret=cs_6f1911e69d89ae1ce498be9afaf44117a660bcba' % (
+        "https://www.thechasmeesh.com")
+    r = auth_session.get(url)
 
     myfile = request.files['myfile']
 
@@ -2717,12 +2902,7 @@ def ping_dev():
     create_fulfillment_url = "https://17146b742aefb92ed627add9e44538a2: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@yo-aatma.myshopify.com/admin/api/2019-10/orders.json?ids=2240736788557,2240813563981,2241321435213,2243709665357,2245366349901,2245868355661,2246144163917,2247595196493&limit=250"
     import requests
     qs = requests.get(create_fulfillment_url)
-    from requests_oauthlib.oauth1_session import OAuth1Session
-    auth_session = OAuth1Session("ck_5ed9fb66f9cb3e148403ccd107bfc6806ca22147",
-                                 client_secret="cs_6f1911e69d89ae1ce498be9afaf44117a660bcba")
-    url = '%s/wp-json/wc/v3/products?&consumer_key=ck_5ed9fb66f9cb3e148403ccd107bfc6806ca22147&consumer_secret=cs_6f1911e69d89ae1ce498be9afaf44117a660bcba' % (
-        "https://www.thechasmeesh.com")
-    r = auth_session.get(url)
+
     return 0
 
 
@@ -2775,25 +2955,7 @@ def ping_dev():
 
     shopify_url = "https://e67230312f67dd92f62bea398a1c7d38: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@the-organic-riot.myshopify.com/admin/api/2020-04/locations.json?limit=100"
     data = requests.get(shopify_url).json()
-    from .models import Orders
-    all_orders = db.session.query(Orders).filter(Orders.client_prefix=='BOLTCOLD', Orders.status.in_(['IN TRANSIT','DELIVERED','PENDING'])).all()
-    for order in all_orders:
-        shopify_url = "https://720247f946e1cb4b64730dc501fc8f75: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@boltcoldbrew.myshopify.com/admin/api/2020-04/orders/%s/fulfillments.json"%order.order_id_channel_unique
-        tracking_link = "http://webapp.wareiq.com/tracking/%s" % str(order.shipments[0].awb)
-        ful_header = {'Content-Type': 'application/json'}
-        fulfil_data = {
-            "fulfillment": {
-                "tracking_number": str(order.shipments[0].awb),
-                "tracking_urls": [
-                    tracking_link
-                ],
-                "tracking_company": "WareIQ",
-                "location_id": 33865859124,
-                "notify_customer": False
-            }
-        }
-        req_ful = requests.post(shopify_url, data=json.dumps(fulfil_data),
-                                headers=ful_header)
+
     return 0
     from .fetch_orders import lambda_handler
     lambda_handler()
@@ -3843,9 +4005,95 @@ def ping_dev():
         'message': 'pong!'
     })
 
+import smtplib, logging
+from datetime import datetime
+from flask import render_template
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+
+def create_email(order, edd, email):
+    try:
+        from project import create_app
+        app = create_app()
+        background_color = str(order[24]) if order[24] else "#B5D0EC"
+        client_logo = str(order[21]) if order[21] else "https://logourls.s3.amazonaws.com/client_logos/logo_ane.png"
+        client_name = str(order[20]) if order[20] else "WareIQ"
+        email_title = str(order[22]) if order[22] else "Your order has been shipped!"
+        order_id = str(order[12]) if order[12] else ""
+        customer_name = str(order[18]) if order[18] else "Customer"
+        courier_name = "WareIQ"
+        if order[23] in (1,2,8,11,12):
+            courier_name = "Delhivery"
+        elif order[23] in (5,13):
+            courier_name = "Xpressbees"
+        elif order[23] in (4):
+            courier_name = "Shadowfax"
+
+        edd = edd if edd else ""
+        awb_number = str(order[1]) if order[1] else ""
+        tracking_link = "http://webapp.wareiq.com/tracking/" + str(order[1])
+        html = render_template("order_shipped.html", background_color=background_color,
+                               client_logo=client_logo,
+                               client_name=client_name,
+                               email_title=email_title,
+                               order_id=order_id,
+                               customer_name=customer_name,
+                               courier_name=courier_name,
+                               edd=edd,
+                               awb_number=awb_number,
+                               tracking_link=tracking_link)
+
+        # create message object instance
+        msg = MIMEMultipart('alternative')
+
+        recipients = [email]
+        msg['From'] = "%s <noreply@wareiq.com>"%client_name
+        msg['To'] = ", ".join(recipients)
+        msg['Subject'] = email_title
+
+        # write the HTML part
+
+        part2 = MIMEText(html, "html")
+        msg.attach(part2)
+        return msg
+    except Exception as e:
+        return None
 
 @core_blueprint.route('/core/send', methods=['GET'])
 def send_dev():
+    return 0
+    from project import create_app
+    app = create_app()
+    from flask import render_template, Flask
+    html = render_template("order_shipped.html", background_color="#B5D0EC",
+                           client_logo="https://logourls.s3.amazonaws.com/client_logos/logo_zlade.png",
+                           client_name="Zlade",
+                           email_title="Your order has been shipped!",
+                           order_id = "12345",
+                           customer_name="Suraj Chaudhari",
+                           courier_name = "Delhivery",
+                           edd="14 June",
+                           awb_number = "3992410231781",
+                           tracking_link = "http://webapp.wareiq.com/tracking/3992410231781")
+    from email.mime.multipart import MIMEMultipart
+    from email.mime.text import MIMEText
+
+    # create message object instance
+    msg = MIMEMultipart('alternative')
+
+    recipients = ["cravi8750@gmail.com"]
+    msg['From'] = "Zlade <noreply@wareiq.com>"
+    msg['To'] = ", ".join(recipients)
+    msg['Subject'] = "Your order has been shipped!"
+
+    # write the HTML part
+
+    part2 = MIMEText(html, "html")
+    msg.attach(part2)
+
+    email_server.sendmail(msg['From'], recipients, msg.as_string())
+
+    return 0
     return jsonify({
         'status': 'success',
         'message': 'pong!'

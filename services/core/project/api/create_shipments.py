@@ -49,7 +49,7 @@ def lambda_handler(courier_name=None, order_ids=None):
         'From': 'LM-WAREIQ'
     }
     for courier in all_couriers:
-        if courier[10] in ("Delhivery", "Delhivery Surface Standard", "Delhivery Bulk", "Delhivery Heavy", "Delhivery Heavy 2") and courier[1] not in ('BEYONDUW'):
+        if courier[10] in ("Delhivery", "Delhivery Surface Standard", "Delhivery Bulk", "Delhivery Heavy", "Delhivery Heavy 2"):
             if courier_name and order_ids:
                 orders_to_ship_query = get_orders_to_ship_query.replace("__ORDER_SELECT_FILTERS__", """and aa.id in %s"""%order_id_tuple)
             else:
@@ -87,7 +87,8 @@ def lambda_handler(courier_name=None, order_ids=None):
                     if order[17].lower() in ("bengaluru", "bangalore", "banglore") and courier[1] == "MIRAKKI":
                         continue
                     """
-                    if order[47]:
+                    time_2_days = datetime.utcnow() + timedelta(hours=5.5) - timedelta(days=2)
+                    if order[47] and not (order[50] and order[2] < time_2_days):
                         if order[26].lower()=='cod' and not order[42] and order[43]:
                             continue #change this to continue later
                         if order[26].lower()=='cod' and not order[43]:
@@ -301,13 +302,15 @@ def lambda_handler(courier_name=None, order_ids=None):
                     dimensions = orders_dict[package['refnum']][1][0]
                     dimensions['length'] = dimensions['length']*orders_dict[package['refnum']][3][0]
                     weight = orders_dict[package['refnum']][2][0]*orders_dict[package['refnum']][3][0]
+                    volumetric_weight = (dimensions['length']*dimensions['breadth']*dimensions['height'])/5000
                     for idx, dim in enumerate(orders_dict[package['refnum']][1]):
                         if idx==0:
                             continue
-                        dimensions['length'] += dim['length']*(orders_dict[package['refnum']][3][idx])
+                        dim['length'] = dim['length']*(orders_dict[package['refnum']][3][idx])
+                        volumetric_weight += (dim['length']*dim['breadth']*dim['height'])/5000
                         weight += orders_dict[package['refnum']][2][idx]*(orders_dict[package['refnum']][3][idx])
 
-                    volumetric_weight = (dimensions['length']*dimensions['breadth']*dimensions['height'])/5000
+                    dimensions['height'] = round((volumetric_weight*5000)/(dimensions['length']*dimensions['breadth']))
 
                     data_tuple = (package['waybill'], package['status'], orders_dict[package['refnum']][0], pickup_point[1],
                                   courier[9], json.dumps(dimensions), volumetric_weight, weight, remark, pickup_point[2],
@@ -537,7 +540,8 @@ def lambda_handler(courier_name=None, order_ids=None):
                 for order in all_new_orders:
                     if order[17].lower() not in ("bengaluru", "bangalore", "banglore") and courier[1] == "MIRAKKI":
                         continue
-                    if order[47]:
+                    time_2_days = datetime.utcnow() + timedelta(hours=5.5) - timedelta(days=2)
+                    if order[47] and not (order[50] and order[2]<time_2_days):
                         if order[26].lower()=='cod' and not order[42] and order[43]:
                             continue
                         if order[26].lower()=='cod' and not order[43]:
@@ -598,13 +602,16 @@ def lambda_handler(courier_name=None, order_ids=None):
                         dimensions = order[33][0]
                         dimensions['length'] = dimensions['length'] * order[35][0]
                         weight = order[34][0] * order[35][0]
+                        volumetric_weight = (dimensions['length'] * dimensions['breadth'] * dimensions['height']) / 5000
                         for idx, dim in enumerate(order[33]):
                             if idx == 0:
                                 continue
-                            dimensions['length'] += dim['length'] * (order[35][idx])
+                            dim['length'] += dim['length'] * (order[35][idx])
+                            volumetric_weight += (dim['length'] * dim['breadth'] * dim['height']) / 5000
                             weight += order[34][idx] * (order[35][idx])
 
-                        volumetric_weight = (dimensions['length'] * dimensions['breadth'] * dimensions['height']) / 5000
+                        dimensions['height'] = round(
+                            (volumetric_weight * 5000) / (dimensions['length'] * dimensions['breadth']))
 
                         customer_phone = order[21].replace(" ", "")
                         customer_phone = "0" + customer_phone[-10:]
@@ -789,7 +796,8 @@ def lambda_handler(courier_name=None, order_ids=None):
                 pickup_point = cur.fetchone()  # change this as we get to dynamic pickups
 
                 for order in all_new_orders:
-                    if order[47]:
+                    time_2_days = datetime.utcnow() + timedelta(hours=5.5) - timedelta(days=2)
+                    if order[47] and not (order[50] and order[2] < time_2_days):
                         if order[26].lower()=='cod' and not order[42] and order[43]:
                             continue
                         if order[26].lower()=='cod' and not order[43]:
@@ -838,13 +846,16 @@ def lambda_handler(courier_name=None, order_ids=None):
                         dimensions = order[33][0]
                         dimensions['length'] = dimensions['length'] * order[35][0]
                         weight = order[34][0] * order[35][0]
+                        volumetric_weight = (dimensions['length'] * dimensions['breadth'] * dimensions['height']) / 5000
                         for idx, dim in enumerate(order[33]):
                             if idx == 0:
                                 continue
-                            dimensions['length'] += dim['length'] * (order[35][idx])
+                            dim['length'] += dim['length'] * (order[35][idx])
+                            volumetric_weight += (dim['length'] * dim['breadth'] * dim['height']) / 5000
                             weight += order[34][idx] * (order[35][idx])
 
-                        volumetric_weight = (dimensions['length'] * dimensions['breadth'] * dimensions['height']) / 5000
+                        dimensions['height'] = round(
+                            (volumetric_weight * 5000) / (dimensions['length'] * dimensions['breadth']))
 
                         customer_phone = order[21].replace(" ", "")
                         customer_phone = "0" + customer_phone[-10:]

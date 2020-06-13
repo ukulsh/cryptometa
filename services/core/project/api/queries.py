@@ -1,10 +1,12 @@
 
 fetch_client_channels_query = """select aa.id,aa.client_prefix,aa.channel_id,aa.api_key,aa.api_password,aa.shop_url,
                                 aa.last_synced_order,aa.last_synced_time,aa.date_created,aa.date_updated,
-                                bb.id,bb.channel_name,bb.logo_url,bb.date_created,bb.date_updated,aa.fetch_status
+                                bb.id,bb.channel_name,bb.logo_url,bb.date_created,bb.date_updated,aa.fetch_status, cc.unique_parameter
                                 from client_channel aa
                                 left join master_channels bb
-                                on aa.channel_id=bb.id"""
+                                on aa.channel_id=bb.id
+                                left join client_mapping cc
+                                on aa.client_prefix=cc.client_prefix"""
 
 insert_shipping_address_query = """INSERT INTO shipping_address (first_name, last_name, address_one, address_two, city,	
                                             pincode, state, country, phone, latitude, longitude, country_code)
@@ -103,7 +105,7 @@ get_orders_to_ship_query = """select aa.id,aa.channel_order_id,aa.order_date,aa.
                                 cc.latitude,cc.longitude,cc.country_code,dd.id,dd.payment_mode,dd.amount,dd.currency,dd.order_id,dd.shipping_charges,
                                 dd.subtotal,dd.order_id,ee.dimensions,ee.weights,ee.quan, ff.api_key, ff.api_password, 
                                 ff.shop_url, aa.order_id_channel_unique, ee.products_name, aa.pickup_data_id, xx.cod_verified, 
-                                xx.id, ee.ship_courier, gg.location_id, ff.channel_id, yy.verify_cod, yy.essential, ee.subcategories
+                                xx.id, ee.ship_courier, gg.location_id, ff.channel_id, yy.verify_cod, yy.essential, ee.subcategories, yy.cod_ship_unconfirmed
                                 from orders aa
                                 left join shipping_address cc
                                 on aa.delivery_address_id=cc.id
@@ -136,6 +138,8 @@ get_orders_to_ship_query = """select aa.id,aa.channel_order_id,aa.order_date,aa.
                                 where aa.client_prefix=%s
                                 __ORDER_SELECT_FILTERS__
                                 __PRODUCT_FILTER__
+                                and NOT EXISTS (SELECT 1 FROM unnest(ee.weights) x WHERE x IS NULL)
+                                and (xx.id is null or (xx.id is not null and (xx.cod_verified is not null or xx.cod_verified = false)))
                                 order by order_date"""
 
 update_last_shipped_order_query = """UPDATE client_couriers SET last_shipped_order_id=%s, last_shipped_time=%s WHERE client_prefix=%s"""
@@ -143,8 +147,8 @@ update_last_shipped_order_query = """UPDATE client_couriers SET last_shipped_ord
 update_orders_status_query = """UPDATE orders SET status='READY TO SHIP' WHERE id in %s;"""
 
 delete_failed_shipments_query = """DELETE FROM 	order_status where shipment_id in 
-                                    (select id  from shipments where remark like 'Crashing while saving package%');
-                                    delete  from shipments where remark like 'Crashing while saving package%';"""
+                                    (select id  from shipments where remark like 'Crashing while saving package%' or remark like 'COD%');
+                                    delete  from shipments where remark like 'Crashing while saving package%' or remark like 'COD%';"""
 
 #########################request pickups
 
@@ -200,7 +204,9 @@ get_courier_id_and_key_query = """SELECT id, courier_name, api_key FROM master_c
 get_status_update_orders_query = """select aa.id, bb.awb, aa.status, aa.client_prefix, aa.customer_phone, 
                                     aa.order_id_channel_unique, bb.channel_fulfillment_id, cc.api_key, 
                                     cc.api_password, cc.shop_url, bb.id, aa.pickup_data_id, aa.channel_order_id, ee.payment_mode, 
-                                    cc.channel_id, gg.location_id, mm.item_list, mm.sku_quan_list from orders aa
+                                    cc.channel_id, gg.location_id, mm.item_list, mm.sku_quan_list , aa.customer_name, aa.customer_email, 
+                                    nn.client_name, nn.client_logo, nn.custom_email_subject, bb.courier_id, nn.theme_color
+                                    from orders aa
                                     left join shipments bb
                                     on aa.id=bb.order_id
                                     left join (select order_id, array_agg(channel_item_id) as item_list, array_agg(quantity) as sku_quan_list from
@@ -218,6 +224,8 @@ get_status_update_orders_query = """select aa.id, bb.awb, aa.status, aa.client_p
                                     left join client_channel_locations gg
                                     on aa.client_channel_id=gg.client_channel_id
                                     and aa.pickup_data_id=gg.pickup_data_id
+                                    left join client_mapping nn
+                                    on aa.client_prefix=nn.client_prefix
                                     where aa.status not in ('NEW','DELIVERED','NOT SHIPPED','RTO','CANCELED')
                                     and aa.status_type is distinct from 'DL'
                                     and bb.awb != ''

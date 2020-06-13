@@ -2,6 +2,7 @@ import psycopg2, requests, os, json
 import logging
 from datetime import datetime, timedelta
 from .queries import *
+from .update_status_utils import *
 from requests_oauthlib.oauth1_session import OAuth1Session
 
 logger = logging.getLogger()
@@ -33,6 +34,7 @@ def lambda_handler():
                 }
                 orders_dict = dict()
                 pickup_dict = dict()
+                emails_list = list()
                 req_ship_data = list()
                 chunks = [all_orders[x:x + 500] for x in range(0, len(all_orders), 500)]
                 for some_orders in chunks:
@@ -212,6 +214,11 @@ def lambda_handler():
                                 except Exception as e:
                                     logger.error("Couldn't update Magento for: " + str(orders_dict[current_awb][0])
                                                  + "\nError: " + str(e.args))
+
+                            if orders_dict[current_awb][19]:
+                                email = create_email(orders_dict[current_awb], edd.strftime('%-d %b') if edd else "", orders_dict[current_awb][19])
+                                if email:
+                                    emails_list.append((email, [orders_dict[current_awb][19]]))
                             """
                             if orders_dict[current_awb][5] and not orders_dict[current_awb][6]:
                                 create_fulfillment_url = "https://%s:%s@%s/admin/api/2019-10/orders/%s/fulfillments.json"  % (
@@ -309,6 +316,10 @@ def lambda_handler():
                     except Exception as e:
                         logger.error("Couldn't update pickup count for : " + str(e.args[0]))
 
+                if emails_list:
+                    emails_list.append((emails_list[0][0], ["cravi8750@gmail.com"]))
+                    send_bulk_emails(emails_list)
+
                 conn.commit()
             elif courier[1] == "Shadowfax":
                 pickup_count = 0
@@ -321,7 +332,7 @@ def lambda_handler():
                 orders_dict = dict()
                 awb_list = list()
                 pickup_dict = dict()
-
+                emails_list = list()
                 for order in all_orders:
                     orders_dict[order[1]] = order
                     awb_list.append(order[1])
@@ -488,6 +499,10 @@ def lambda_handler():
                                 except Exception as e:
                                     logger.error("Couldn't update Magento for: " + str(orders_dict[current_awb][0])
                                                  + "\nError: " + str(e.args))
+                            if orders_dict[current_awb][19]:
+                                email = create_email(orders_dict[current_awb], edd.strftime('%-d %b') if edd else "", orders_dict[current_awb][19])
+                                if email:
+                                    emails_list.append((email, [orders_dict[current_awb][19]]))
                             """
                             if orders_dict[current_awb][5] and not orders_dict[current_awb][6]:
                                 create_fulfillment_url = "https://%s:%s@%s/admin/api/2019-10/orders/%s/fulfillments.json" % (
@@ -575,6 +590,9 @@ def lambda_handler():
                     except Exception as e:
                         logger.error("Couldn't update pickup count for : " + str(e.args[0]))
 
+                if emails_list:
+                    send_bulk_emails(emails_list)
+
                 conn.commit()
 
             elif courier[1] in ("Xpressbees", "Xpressbees Surface"):
@@ -587,6 +605,7 @@ def lambda_handler():
                 }
                 orders_dict = dict()
                 pickup_dict = dict()
+                emails_list = list()
                 req_ship_data = list()
                 headers = {"Content-Type": "application/json"}
                 chunks = [all_orders[x:x + 20] for x in range(0, len(all_orders), 20)]
@@ -754,6 +773,11 @@ def lambda_handler():
                                     logger.error("Couldn't update Magento for: " + str(orders_dict[current_awb][0])
                                                  + "\nError: " + str(e.args))
 
+                            if orders_dict[current_awb][19]:
+                                email = create_email(orders_dict[current_awb], edd.strftime('%-d %b') if edd else "", orders_dict[current_awb][19])
+                                if email:
+                                    emails_list.append((email, [orders_dict[current_awb][19]]))
+
                             if edd:
                                 edd = edd.strftime('%-d %b')
                                 cur_2.execute(
@@ -831,6 +855,9 @@ def lambda_handler():
                             cur.execute(update_pickup_count_query, pickup_count_tuple)
                     except Exception as e:
                         logger.error("Couldn't update pickup count for : " + str(e.args[0]))
+
+                if emails_list:
+                    send_bulk_emails(emails_list)
 
                 conn.commit()
 
@@ -989,7 +1016,7 @@ def shopify_fulfillment(order, cur):
             ],
             "tracking_company": "WareIQ",
             "location_id": int(order[15]),
-            "notify_customer": False
+            "notify_customer": True
         }
     }
     req_ful = requests.post(create_fulfillment_url, data=json.dumps(fulfil_data),

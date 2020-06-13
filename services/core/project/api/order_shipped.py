@@ -1,4 +1,4 @@
-<!-- THIS EMAIL WAS BUILT AND TESTED WITH LITMUS http://litmus.com -->
+order_shipped = """<!-- THIS EMAIL WAS BUILT AND TESTED WITH LITMUS http://litmus.com -->
 <!-- IT WAS RELEASED UNDER THE MIT LICENSE https://opensource.org/licenses/MIT -->
 <!-- QUESTIONS? TWEET US @LITMUSAPP -->
 <!DOCTYPE html>
@@ -230,7 +230,7 @@
         <!-- HERO : BEGIN -->
         <tr>
           <td style="padding: 40px 0 20px;"><img
-              src="{{client_logo}}" alt="{{client_name}}" width="200" height="50"/></td>
+              src="__CLIENT_LOGO__" alt="__CLIENT_NAME__" width="200" height="50"/></td>
         </tr>
         <tr>
           <!-- Bulletproof Background Images c/o https://backgrounds.cm -->
@@ -249,17 +249,17 @@
                       <table style="width:640px;" role="presentation" border="0" cellpadding="0" cellspacing="0"
                         align="left">
                         <tr>
-                          <td valign="middle" style="text-align: left; padding: 10px 20px;" bgcolor="{{background_color}}">
+                          <td valign="middle" style="text-align: left; padding: 10px 20px;" bgcolor="__BACKGROUND_COLOR__">
                             <!--[if gte mso 9]>
                                     <v:rect xmlns:v="urn:schemas-microsoft-com:vml" fill="true" stroke="false" style="width:680px;height: 100px;background-position: center center !important;">
-                                    <v:fill type="tile" color="{{background_color}}"/>
+                                    <v:fill type="tile" color="__BACKGROUND_COLOR__"/>
                                     <v:textbox inset="0,0,0,0">
                                     <![endif]-->
                             <table style="width: 600px;" role="presentation" border="0" cellpadding="0" cellspacing="0"
                               align="left">
                               <tr>
                                 <td valign="middle" style="text-align: left; padding: 0;" height="100" stye="height:100px">
-                                  <h1 style="margin: 10px 0 0 0;font-size: 22px; line-height: 22px; color: #000000;font-weight:normal;letter-spacing: 0.5px;font-family: 'Poppins', sans-serif, Helvetica, Arial !important;">{{email_title}}</h1>
+                                  <h1 style="margin: 10px 0 0 0;font-size: 22px; line-height: 22px; color: #000000;font-weight:normal;letter-spacing: 0.5px;font-family: 'Poppins', sans-serif, Helvetica, Arial !important;">__EMAIL_TITLE__</h1>
                                 </td>
                               </tr>
                             </table>
@@ -280,7 +280,7 @@
                   <td align="left" valign="middle" style="padding: 0 20px 5px 20px;">
                     <h4
                       style="margin: 0;font-size: 16px; line-height: 32px; color: #333333; font-weight: 500;font-family: 'Poppins', sans-serif, Helvetica, Arial !important;">
-                      Hi {{customer_name}},</h4>
+                      Hi __CUSTOMER_NAME__,</h4>
                   </td>
                 </tr>
               </table>
@@ -290,7 +290,7 @@
                   <td align="left" valign="middle" style="padding: 0 20px 5px 20px;">
                     <h6
                       style="margin: 0;font-size: 15px; line-height: 26px; color: #505050; font-weight: normal;font-family: 'Poppins', sans-serif, Helvetica, Arial !important;">
-                      Your order {{order_id}} is shipped via {{courier_name}} and is expected to reach you by {{edd}}. Here are your tracking details:
+                      Your order __ORDER_ID__ is shipped via __COURIER_NAME__ and is expected to reach you by __EDD__. Here are your tracking details:
                     </h6>
                   </td>
                 </tr>
@@ -301,12 +301,12 @@
                   <td align="left" valign="middle" style="padding: 0 20px 5px 20px;">
                     <h4
                       style="margin: 0;font-size: 14px; line-height: 32px; color: #505050; font-weight: normal;font-family: 'Poppins', sans-serif, Helvetica, Arial !important;">
-                      <b>AWB Number: </b>&nbsp;&nbsp;{{awb_number}}<br /></h4>
+                      <b>AWB Number: </b>&nbsp;&nbsp;__AWB_NUMBER__<br /></h4>
                   </td>
                     <td align="right" valign="middle" style="padding-right:100px;">
                     <h4
                       style="margin: 0;font-size: 14px; line-height: 32px; color: #505050; font-weight: normal;font-family: 'Poppins', sans-serif, Helvetica, Arial !important;">
-                      <b>Courier: </b>&nbsp;&nbsp;{{courier_name}}</h4>
+                      <b>Courier: </b>&nbsp;&nbsp;__COURIER_NAME__</h4>
                   </td>
                 </tr>
               </table>
@@ -319,13 +319,13 @@
                         <td width='175' align="center">
                           <div>
                             <!--[if mso]>
-                                      <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="http://webapp.wareiq.com/tracking/3991610067804" style="height:38px;v-text-anchor:middle;width:150px;" arcsize="5%" strokecolor="{{background_color}}" fillcolor="{{background_color}}">
+                                      <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="http://webapp.wareiq.com/tracking/3991610067804" style="height:38px;v-text-anchor:middle;width:150px;" arcsize="5%" strokecolor="__BACKGROUND_COLOR__" fillcolor="__BACKGROUND_COLOR__">
                                         <w:anchorlock/>
                                         <center style="color:#ffffff;font-family: 'Poppins', sans-serif, Helvetica, Arial !important;font-size:14px;">Track Order</center>
                                       </v:roundrect>
                                     <![endif]-->
-                            <a href="{{tracking_link}}"
-                              style="background-color:{{background_color}};border:1px solid {{background_color}};border-radius:3px;color:#000000;display:inline-block;font-size:14px;line-height:36px;text-align:center;text-decoration:none;width:150px;-webkit-text-size-adjust:none;mso-hide:all;letter-spacing: 1px;font-family: 'Poppins', sans-serif, Helvetica, Arial !important;">Track Order</a>
+                            <a href="__TRACKING_LINK__"
+                              style="background-color:__BACKGROUND_COLOR__;border:1px solid __BACKGROUND_COLOR__;border-radius:3px;color:#000000;display:inline-block;font-size:14px;line-height:36px;text-align:center;text-decoration:none;width:150px;-webkit-text-size-adjust:none;mso-hide:all;letter-spacing: 1px;font-family: 'Poppins', sans-serif, Helvetica, Arial !important;">Track Order</a>
                           </div>
                         </td>
                       </tr>
@@ -340,7 +340,7 @@
                           <h6
                             style="margin: 10;font-size: 14px; line-height: 22px; color: #505050; font-weight: normal;font-family: 'Poppins', sans-serif, Helvetica, Arial !important;">
                             Thank you for shopping with us,<br />
-                            {{client_name}}<br />
+                            __CLIENT_NAME__<br />
                           </h6>
                           <p
                             style="margin: 15px 0 0 0;font-size: 12px; line-height: 26px; color: #7d7d7d; font-weight: normal;font-family: 'Poppins', sans-serif, Helvetica, Arial !important;">
@@ -379,3 +379,4 @@
 </body>
 
 </html>
+"""

@@ -1,10 +1,11 @@
 # services/core/project/api/core.py
 
-import requests, json, math, datetime, pytz, psycopg2
+import requests, json, math, pytz, psycopg2
 import boto3, os, csv, io, smtplib
 import pandas as pd
 import re
 from flask_cors import cross_origin
+from datetime import datetime, timedelta
 from sqlalchemy import or_, func, not_, and_
 from flask import Blueprint, request, jsonify, make_response
 from flask_restful import Resource, Api
@@ -22,7 +23,7 @@ from project.api.models import Products, ProductQuantity, InventoryUpdate, Wareh
     MasterCouriers, Shipments, OPAssociation, ShippingAddress, Manifests, ClientCouriers, OrderStatus, DeliveryCheck, ClientMapping
 from project.api.utils import authenticate_restful, get_products_sort_func, fill_shiplabel_data_thermal, \
     get_orders_sort_func, create_shiplabel_blank_page, fill_shiplabel_data, create_shiplabel_blank_page_thermal, \
-    create_invoice_blank_page, fill_invoice_data
+    create_invoice_blank_page, fill_invoice_data, generate_picklist, generate_packlist
 
 core_blueprint = Blueprint('core', __name__)
 api = Api(core_blueprint)
@@ -41,7 +42,8 @@ email_server.login("noreply@wareiq.com", "Berlin@123")
 
 ORDERS_DOWNLOAD_HEADERS = ["Order ID", "Customer Name", "Customer Email", "Customer Phone", "Order Date",
                             "Courier", "Weight", "awb", "Expected Delivery Date", "Status", "Address_one", "Address_two",
-                           "City", "State", "Country", "Pincode", "Pickup Point", "Products", "Quantity", "Order Type", "Amount", "Pickup Date", "Delivered Date"]
+                           "City", "State", "Country", "Pincode", "Pickup Point", "Product", "SKU", "Quantity", "Order Type",
+                           "Amount", "Pickup Date", "Delivered Date", "COD Verfication", "COD Verified Via", "NDR Verfication", "NDR Verified Via"]
 
 PRODUCTS_DOWNLOAD_HEADERS = ["S. No.", "Product Name", "Channel SKU", "Master SKU", "Price", "Total Quantity",
                              "Available Quantity", "Current Quantity", "Inline Quantity", "RTO Quantity", "Dimensions", "Weight"]
@@ -327,6 +329,7 @@ class OrderList(Resource):
 
     def post(self, resp, type):
         try:
+            hide_weights = None
             cur = conn.cursor()
             response = {'status':'success', 'data': dict(), "meta": dict()}
             data = json.loads(request.data)
@@ -341,6 +344,11 @@ class OrderList(Resource):
                 return {"success": False, "msg": "Auth Failed"}, 404
 
             client_prefix = auth_data.get('client_prefix')
+            cur.execute("SELECT hide_weights FROM client_mapping WHERE client_prefix='%s'"%client_prefix)
+            try:
+                hide_weights = cur.fetchone()[0]
+            except Exception:
+                pass
             query_to_run = select_orders_list_query
             if auth_data['user_group'] == 'client':
                 query_to_run = query_to_run.replace("__CLIENT_FILTER__", "AND aa.client_prefix = '%s'"%client_prefix)
@@ -444,7 +452,7 @@ class OrderList(Resource):
                     query_to_run = query_to_run.replace("__PICKUP_TIME_FILTER__", "AND delivered_time between '%s' and '%s'" %(filter_date_start, filter_date_end))
 
             if download_flag:
-                date_month_ago = datetime.datetime.utcnow() + datetime.timedelta(hours=5.5) - datetime.timedelta(days=31)
+                date_month_ago = datetime.utcnow() + timedelta(hours=5.5) - timedelta(days=31)
                 date_month_ago = date_month_ago.strftime("%Y-%m-%d %H:%M:%S")
                 query_to_run = query_to_run.replace('__ORDER_DATE_FILTER__', "AND order_date > '%s' "%date_month_ago)
                 query_to_run = query_to_run.replace('__PAGINATION__', "")
@@ -456,31 +464,46 @@ class OrderList(Resource):
                 cw.writerow(ORDERS_DOWNLOAD_HEADERS)
                 for order in orders_qs_data:
                     try:
-                        new_row = list()
-                        new_row.append(str(order[0]))
-                        new_row.append(str(order[14]))
-                        new_row.append(str(order[16]))
-                        new_row.append(str(order[15]))
-                        new_row.append(order[2].strftime("%Y-%m-%d") if order[2] else "N/A")
-                        new_row.append(str(order[8]))
-                        new_row.append(str(order[10]))
-                        new_row.append(str(order[6]))
-                        new_row.append(order[9].strftime("%Y-%m-%d") if order[9] else "N/A")
-                        new_row.append(str(order[3]))
-                        new_row.append(str(order[17]))
-                        new_row.append(str(order[18]))
-                        new_row.append(str(order[19]))
-                        new_row.append(str(order[20]))
-                        new_row.append(str(order[21]))
-                        new_row.append(str(order[22]))
-                        new_row.append(order[27])
-                        new_row.append(order[28])
-                        new_row.append(order[30])
-                        new_row.append(str(order[25]))
-                        new_row.append(order[26])
-                        new_row.append(order[24].strftime("%Y-%m-%d %H:%M:%S") if order[24] else "N/A")
-                        new_row.append(order[23].strftime("%Y-%m-%d %H:%M:%S") if order[23] else "N/A")
-                        cw.writerow(new_row)
+                        if order[28]:
+                            for idx, val in enumerate(order[28]):
+                                new_row = list()
+                                new_row.append(str(order[0]))
+                                new_row.append(str(order[14]))
+                                new_row.append(str(order[16]))
+                                new_row.append(str(order[15]))
+                                new_row.append(order[2].strftime("%Y-%m-%d") if order[2] else "N/A")
+                                new_row.append(str(order[8]))
+                                new_row.append(str(order[10]) if not hide_weights else "")
+                                new_row.append(str(order[6]))
+                                new_row.append(order[9].strftime("%Y-%m-%d") if order[9] else "N/A")
+                                new_row.append(str(order[3]))
+                                new_row.append(str(order[17]))
+                                new_row.append(str(order[18]))
+                                new_row.append(str(order[19]))
+                                new_row.append(str(order[20]))
+                                new_row.append(str(order[21]))
+                                new_row.append(str(order[22]))
+                                new_row.append(order[27])
+                                new_row.append(str(val))
+                                new_row.append(str(order[29][idx]))
+                                new_row.append(str(order[30][idx]))
+                                new_row.append(str(order[25]))
+                                new_row.append(order[26])
+                                new_row.append(order[24].strftime("%Y-%m-%d %H:%M:%S") if order[24] else "N/A")
+                                new_row.append(order[23].strftime("%Y-%m-%d %H:%M:%S") if order[23] else "N/A")
+                                if order[31] and order[32] is not None:
+                                    new_row.append("Confirmed" if order[32] else "Cancelled")
+                                    new_row.append(str(order[33]))
+                                else:
+                                    new_row.append("N/A")
+                                    new_row.append("N/A")
+                                if order[34] and order[35] is not None:
+                                    new_row.append("Cancelled" if order[35] else "Re-attempt")
+                                    new_row.append(str(order[36]))
+                                else:
+                                    new_row.append("N/A")
+                                    new_row.append("N/A")
+                                cw.writerow(new_row)
                     except Exception as e:
                         pass
 
@@ -555,9 +578,9 @@ class OrderList(Resource):
                 resp_obj['shipping_details'] = {"courier": order[8],
                                                 "awb":order[6],
                                                 "tracking_link": order[7]}
-                resp_obj['dimensions'] = order[11]
-                resp_obj['weight'] = order[10]
-                resp_obj['volumetric'] = order[12]
+                resp_obj['dimensions'] = order[11] if not hide_weights else None
+                resp_obj['weight'] = order[10] if not hide_weights else None
+                resp_obj['volumetric'] = order[12] if not hide_weights else None
                 resp_obj['channel_logo'] = order[37]
                 if order[9]:
                     resp_obj['edd'] = order[9].strftime('%-d %b')
@@ -600,12 +623,12 @@ def get_dashboard(resp):
         return jsonify(response), 200
 
     client_prefix = auth_data.get('client_prefix')
-    from_date = datetime.datetime.utcnow() + datetime.timedelta(hours=5.5)
-    from_date = datetime.datetime(from_date.year, from_date.month, from_date.day)
-    from_date = from_date - datetime.timedelta(hours=5.5)
+    from_date = datetime.utcnow() + timedelta(hours=5.5)
+    from_date = datetime(from_date.year, from_date.month, from_date.day)
+    from_date = from_date - timedelta(hours=5.5)
     qs_data = db.session.query(func.date_trunc('day', Orders.order_date).label('date'), func.count(Orders.id), func.sum(OrdersPayments.amount))\
         .join(OrdersPayments, Orders.id==OrdersPayments.order_id)\
-        .filter(Orders.order_date >= datetime.datetime.today()- datetime.timedelta(days=30))
+        .filter(Orders.order_date >= datetime.today()- timedelta(days=30))
     cod_verification = db.session.query(CodVerification).join(Orders, Orders.id==CodVerification.order_id)\
         .filter(or_(CodVerification.date_created >= from_date, CodVerification.verification_time >= from_date))
     ndr_verification = db.session.query(NDRVerification).join(Orders, Orders.id==NDRVerification.order_id)\
@@ -661,12 +684,12 @@ def get_dashboard(resp):
     response['cod_verification'] = cod_check
     response['ndr_verification'] = ndr_check
 
-    date_today = datetime.datetime.utcnow()
-    date_today = date_today + datetime.timedelta(hours=5.5)
-    date_yest = date_today - datetime.timedelta(days=1)
+    date_today = datetime.utcnow()
+    date_today = date_today + timedelta(hours=5.5)
+    date_yest = date_today - timedelta(days=1)
 
-    date_today = datetime.datetime.strftime(date_today, '%d-%m-%Y')
-    date_yest = datetime.datetime.strftime(date_yest, '%d-%m-%Y')
+    date_today = datetime.strftime(date_today, '%d-%m-%Y')
+    date_yest = datetime.strftime(date_yest, '%d-%m-%Y')
 
     response['today'] = {"orders": 0, "revenue": 0}
     response['yesterday'] = {"orders": 0, "revenue": 0}
@@ -674,12 +697,12 @@ def get_dashboard(resp):
     response['graph_data'] = list()
 
     for dat_obj in qs_data:
-        date_str=datetime.datetime.strftime(dat_obj[0], '%d-%m-%Y')
+        date_str = datetime.strftime(dat_obj[0], '%d-%m-%Y')
         if date_str==date_today:
             response['today'] = {"orders": dat_obj[1], "revenue": dat_obj[2]}
         if date_str==date_yest:
             response['yesterday'] = {"orders": dat_obj[1], "revenue": dat_obj[2]}
-        response['graph_data'].append({"date":datetime.datetime.strftime(dat_obj[0], '%d-%m-%Y'),
+        response['graph_data'].append({"date":datetime.strftime(dat_obj[0], '%d-%m-%Y'),
                                        "orders":dat_obj[1],
                                        "revenue":dat_obj[2]})
 
@@ -850,8 +873,8 @@ class AddOrder(Resource):
                 else:
                     pickup_data = None
 
-            new_order = Orders(channel_order_id=str(data.get('order_id')),
-                           order_date=datetime.datetime.now()+datetime.timedelta(hours=5.5),
+            new_order = Orders(channel_order_id=str(data.get('order_id')).rstrip(),
+                           order_date=datetime.utcnow()+timedelta(hours=5.5),
                            customer_name=data.get('full_name'),
                            customer_email=data.get('customer_email'),
                            customer_phone=data.get('customer_phone'),
@@ -904,6 +927,8 @@ class AddOrder(Resource):
             return {'status': 'success', 'msg': "successfully added", "order_id": new_order.channel_order_id, "unique_id": new_order.id}, 200
 
         except Exception as e:
+            if e.args[0].startswith("(psycopg2.IntegrityError) duplicate key value"):
+                return {"status": "Failed", "msg": "Duplicate order_id"}, 400
             return {"status":"Failed", "msg":""}, 400
 
     def get(self, resp):
@@ -991,8 +1016,8 @@ def upload_orders(resp):
             else:
                 pickup_data = None
 
-            new_order = Orders(channel_order_id=str(row_data.order_id),
-                               order_date=datetime.datetime.now()+datetime.timedelta(hours=5.5),
+            new_order = Orders(channel_order_id=str(row_data.order_id).rstrip(),
+                               order_date=datetime.now()+timedelta(hours=5.5),
                                customer_name=str(row_data.customer_name),
                                customer_email=str(row_data.customer_email),
                                customer_phone=str(row_data.customer_phone),
@@ -1065,7 +1090,7 @@ def download_shiplabels(resp):
 
     shiplabel_type = db.session.query(WarehouseMapping).filter(WarehouseMapping.warehouse_prefix==auth_data['warehouse_prefix']).first()
     file_pref = auth_data['client_prefix'] if auth_data['client_prefix'] else auth_data['warehouse_prefix']
-    file_name = "shiplabels_"+str(file_pref)+"_"+str(datetime.datetime.now().strftime("%d_%b_%Y_%H_%M_%S"))+".pdf"
+    file_name = "shiplabels_"+str(file_pref)+"_"+str(datetime.now().strftime("%d_%b_%Y_%H_%M_%S"))+".pdf"
     if shiplabel_type and shiplabel_type.shiplabel_type=='TH1':
         c = canvas.Canvas(file_name, pagesize=(288, 432))
         create_shiplabel_blank_page_thermal(c)
@@ -1154,7 +1179,7 @@ def download_invoice(resp):
         return jsonify({"success": False, "msg": "No valid order ID"}), 404
 
     file_pref = auth_data['client_prefix'] if auth_data['client_prefix'] else auth_data['warehouse_prefix']
-    file_name = "invoice_"+str(file_pref)+"_"+str(datetime.datetime.now().strftime("%d_%b_%Y_%H_%M_%S"))+".pdf"
+    file_name = "invoice_"+str(file_pref)+"_"+str(datetime.now().strftime("%d_%b_%Y_%H_%M_%S"))+".pdf"
     c = canvas.Canvas(file_name, pagesize=A4)
     create_invoice_blank_page(c)
     failed_ids = dict()
@@ -1184,6 +1209,130 @@ def download_invoice(resp):
         'status': 'success',
         'url': invoice_url,
         "failed_ids": failed_ids
+    }), 200
+
+
+@core_blueprint.route('/orders/v1/download/picklist', methods=['POST'])
+@authenticate_restful
+def download_picklist(resp):
+    data = json.loads(request.data)
+    auth_data = resp.get('data')
+    if not auth_data:
+        return jsonify({"success": False, "msg": "Auth Failed"}), 404
+
+    order_ids = data['order_ids']
+    orders_qs = db.session.query(Orders).filter(Orders.id.in_(order_ids))
+
+    if auth_data['user_group'] == 'client':
+        orders_qs = orders_qs.filter(Orders.client_prefix==auth_data.get('client_prefix'))
+    orders_qs = orders_qs.order_by(Orders.id).all()
+    if not orders_qs:
+        return jsonify({"success": False, "msg": "No valid order ID"}), 404
+
+    products_dict = dict()
+    order_count = dict()
+
+    for order in orders_qs:
+        if order.client_prefix not in products_dict:
+            products_dict[order.client_prefix] = dict()
+            order_count[order.client_prefix] = 1
+        else:
+            order_count[order.client_prefix] += 1
+            pass
+        for prod in order.products:
+            if prod.product.combo:
+                for new_prod in prod.product.combo:
+                    if new_prod.combo_prod_id not in products_dict[order.client_prefix]:
+                        sku = new_prod.combo_prod.master_sku if new_prod.combo_prod.master_sku else new_prod.combo_prod.sku
+                        products_dict[order.client_prefix][new_prod.combo_prod_id] = {"sku": sku, "name": new_prod.combo_prod.name,
+                                                                               "quantity": prod.quantity * new_prod.quantity}
+                    else:
+                        products_dict[order.client_prefix][new_prod.combo_prod_id]['quantity'] += prod.quantity*new_prod.quantity
+            else:
+                if prod.product_id not in products_dict[order.client_prefix]:
+                    sku = prod.product.master_sku if prod.product.master_sku else prod.product.sku
+                    products_dict[order.client_prefix][prod.product_id] = {"sku": sku, "name": prod.product.name, "quantity": prod.quantity}
+                else:
+                    products_dict[order.client_prefix][prod.product_id]['quantity'] += prod.quantity
+
+    file_pref = auth_data['client_prefix'] if auth_data['client_prefix'] else auth_data['warehouse_prefix']
+    file_name = "picklist_"+str(file_pref)+"_"+str(datetime.now().strftime("%d_%b_%Y_%H_%M_%S"))+".pdf"
+    c = canvas.Canvas(file_name, pagesize=A4)
+    c = generate_picklist(c, products_dict, order_count)
+
+    c.save()
+    s3 = session.resource('s3')
+    bucket = s3.Bucket("wareiqpicklist")
+    bucket.upload_file(file_name, file_name, ExtraArgs={'ACL':'public-read'})
+    invoice_url = "https://wareiqpicklist.s3.us-east-2.amazonaws.com/" + file_name
+    os.remove(file_name)
+
+    return jsonify({
+        'status': 'success',
+        'url': invoice_url,
+    }), 200
+
+
+@core_blueprint.route('/orders/v1/download/packlist', methods=['POST'])
+@authenticate_restful
+def download_packlist(resp):
+    data = json.loads(request.data)
+    auth_data = resp.get('data')
+    if not auth_data:
+        return jsonify({"success": False, "msg": "Auth Failed"}), 404
+
+    order_ids = data['order_ids']
+    orders_qs = db.session.query(Orders).filter(Orders.id.in_(order_ids))
+
+    if auth_data['user_group'] == 'client':
+        orders_qs = orders_qs.filter(Orders.client_prefix==auth_data.get('client_prefix'))
+    orders_qs = orders_qs.order_by(Orders.id).all()
+    if not orders_qs:
+        return jsonify({"success": False, "msg": "No valid order ID"}), 404
+
+    orders_dict = dict()
+    order_count = dict()
+
+    for order in orders_qs:
+        if order.client_prefix not in orders_dict:
+            orders_dict[order.client_prefix] = {order.channel_order_id: dict()}
+            order_count[order.client_prefix] = 1
+        else:
+            orders_dict[order.client_prefix][order.channel_order_id] = dict()
+            order_count[order.client_prefix] += 1
+            pass
+        for prod in order.products:
+            if prod.product.combo:
+                for new_prod in prod.product.combo:
+                    sku = new_prod.combo_prod.master_sku if new_prod.combo_prod.master_sku else new_prod.combo_prod.sku
+                    if new_prod.combo_prod_id not in orders_dict[order.client_prefix][order.channel_order_id]:
+                        orders_dict[order.client_prefix][order.channel_order_id][new_prod.combo_prod_id] = {"sku": sku, "name": new_prod.combo_prod.name,
+                                                                               "quantity": prod.quantity * new_prod.quantity}
+                    else:
+                        orders_dict[order.client_prefix][order.channel_order_id][new_prod.combo_prod_id]['quantity'] += prod.quantity * new_prod.quantity
+            else:
+                sku = prod.product.master_sku if prod.product.master_sku else prod.product.sku
+                if prod.product_id not in orders_dict[order.client_prefix][order.channel_order_id]:
+                    orders_dict[order.client_prefix][order.channel_order_id][prod.product_id] = {"sku": sku, "name": prod.product.name, "quantity": prod.quantity}
+                else:
+                    orders_dict[order.client_prefix][order.channel_order_id][prod.product_id]['quantity'] += prod.quantity
+
+
+    file_pref = auth_data['client_prefix'] if auth_data['client_prefix'] else auth_data['warehouse_prefix']
+    file_name = "packlist_"+str(file_pref)+"_"+str(datetime.now().strftime("%d_%b_%Y_%H_%M_%S"))+".pdf"
+    c = canvas.Canvas(file_name, pagesize=A4)
+    c = generate_packlist(c, orders_dict, order_count)
+
+    c.save()
+    s3 = session.resource('s3')
+    bucket = s3.Bucket("wareiqpacklist")
+    bucket.upload_file(file_name, file_name, ExtraArgs={'ACL':'public-read'})
+    invoice_url = "https://wareiqpacklist.s3.us-east-2.amazonaws.com/" + file_name
+    os.remove(file_name)
+
+    return jsonify({
+        'status': 'success',
+        'url': invoice_url,
     }), 200
 
 
@@ -1369,7 +1518,7 @@ class OrderDetails(Resource):
                 if order.exotel_data:
                     order.exotel_data[0].cod_verified = data.get('cod_verification')
                     order.exotel_data[0].verified_via = 'manual'
-                    order.exotel_data[0].verification_time = datetime.datetime.utcnow() + datetime.timedelta(hours=5.5)
+                    order.exotel_data[0].verification_time = datetime.utcnow() + timedelta(hours=5.5)
                 if data.get('cod_verification') == False:
                     order.status = 'CANCELED'
                     if order.shipments and order.shipments[0].awb:
@@ -1402,7 +1551,7 @@ class OrderDetails(Resource):
             if 'ndr_verification' in data and order.ndr_verification:
                 order.ndr_verification[0].ndr_verified = data.get('ndr_verification')
                 order.ndr_verification[0].verified_via = 'manual'
-                order.ndr_verification[0].verification_time = datetime.datetime.utcnow() + datetime.timedelta(hours=5.5)
+                order.ndr_verification[0].verification_time = datetime.utcnow() + timedelta(hours=5.5)
 
             db.session.commit()
             return {'status': 'success', 'msg': "successfully updated"}, 200
@@ -1431,7 +1580,7 @@ class CreateReturn(Resource):
                 return {"success": False, "msg": "No order found for given id"}, 400
 
             new_order = Orders(channel_order_id="R_"+str(order.channel_order_id),
-                               order_date=datetime.datetime.utcnow() + datetime.timedelta(hours=5.5),
+                               order_date=datetime.utcnow() + timedelta(hours=5.5),
                                customer_name=order.customer_name,
                                customer_email=order.customer_email,
                                customer_phone=order.customer_phone,
@@ -1551,9 +1700,9 @@ def track_order(awb):
                     status_time = each_scan['ScanDetail']['StatusDateTime']
                     if status_time:
                         if len(status_time) == 19:
-                            status_time = datetime.datetime.strptime(status_time, '%Y-%m-%dT%H:%M:%S')
+                            status_time = datetime.strptime(status_time, '%Y-%m-%dT%H:%M:%S')
                         else:
-                            status_time = datetime.datetime.strptime(status_time, '%Y-%m-%dT%H:%M:%S.%f')
+                            status_time = datetime.strptime(status_time, '%Y-%m-%dT%H:%M:%S.%f')
                     time_str = status_time.strftime("%d %b %Y, %H:%M:%S")
                     return_details_obj['time'] = time_str
                     if time_str[:11] not in return_details:
@@ -1576,7 +1725,7 @@ def track_order(awb):
             response['theme_color'] = None
             response['remark'] = req_obj['ShipmentData'][0]['Shipment']['Status']['Instructions']
             response['order_id'] = req_obj['ShipmentData'][0]['Shipment']['ReferenceNo']
-            status_time = datetime.datetime.strptime(req_obj['ShipmentData'][0]['Shipment']['PickUpDate'], '%Y-%m-%dT%H:%M:%S.%f')
+            status_time = datetime.strptime(req_obj['ShipmentData'][0]['Shipment']['PickUpDate'], '%Y-%m-%dT%H:%M:%S.%f')
             response['placed_on'] = status_time.strftime("%d %b %Y, %H:%M:%S")
             response['get_details'] = True
             if 'expectedDate' in req_obj['ShipmentData'][0]['Shipment']:
@@ -1592,28 +1741,28 @@ def track_order(awb):
                 if 'Picked Up' in order_status['ScanDetail']['Instructions']:
                     status_dict['status'] = 'Picked'
                     status_dict['city'] = order_status['ScanDetail']['ScannedLocation']
-                    status_time = datetime.datetime.strptime(order_status['ScanDetail']['StatusDateTime'],
+                    status_time = datetime.strptime(order_status['ScanDetail']['StatusDateTime'],
                                                              '%Y-%m-%dT%H:%M:%S.%f')
                     status_dict['time'] = status_time.strftime("%d %b %Y, %H:%M:%S")
                     picked_obj = status_dict
                 elif order_status['ScanDetail']['Scan'] == 'In Transit':
                     status_dict['status'] = 'In Transit'
                     status_dict['city'] = order_status['ScanDetail']['ScannedLocation']
-                    status_time = datetime.datetime.strptime(order_status['ScanDetail']['StatusDateTime'],
+                    status_time = datetime.strptime(order_status['ScanDetail']['StatusDateTime'],
                                                              '%Y-%m-%dT%H:%M:%S.%f')
                     status_dict['time'] = status_time.strftime("%d %b %Y, %H:%M:%S")
                     in_transit_obj = status_dict
                 elif order_status['ScanDetail']['Scan'] == 'Dispatched':
                     status_dict['status'] = 'Out for delivery'
                     status_dict['city'] = order_status['ScanDetail']['ScannedLocation']
-                    status_time = datetime.datetime.strptime(order_status['ScanDetail']['StatusDateTime'],
+                    status_time = datetime.strptime(order_status['ScanDetail']['StatusDateTime'],
                                                              '%Y-%m-%dT%H:%M:%S.%f')
                     status_dict['time'] = status_time.strftime("%d %b %Y, %H:%M:%S")
                     ofd_obj = status_dict
                 elif 'Delivered' in order_status['ScanDetail']['Instructions']:
                     status_dict['status'] = 'Delivered'
                     status_dict['city'] = order_status['ScanDetail']['ScannedLocation']
-                    status_time = datetime.datetime.strptime(order_status['ScanDetail']['StatusDateTime'],
+                    status_time = datetime.strptime(order_status['ScanDetail']['StatusDateTime'],
                                                              '%Y-%m-%dT%H:%M:%S.%f')
                     status_dict['time'] = status_time.strftime("%d %b %Y, %H:%M:%S")
                     del_obj = status_dict
@@ -1794,7 +1943,7 @@ def verification_passthru(type):
 
             cod_ver.verified_via = verified_via
 
-            current_time = datetime.datetime.now()
+            current_time = datetime.now()
             cod_ver.verification_time = current_time
 
             db.session.commit()
@@ -1927,10 +2076,10 @@ class PincodeServiceabilty(Resource):
                 return {"success": True, "data": {"cod_available": cod_available, "covid_zone": covid_zone,
                         "label_url":"https://logourls.s3.amazonaws.com/wareiq_standard.jpeg"}}, 200
 
-            current_time = datetime.datetime.utcnow() + datetime.timedelta(hours=5.5)
+            current_time = datetime.utcnow() + timedelta(hours=5.5)
             order_before = current_time
             if current_time.hour >= 14:
-                order_before = order_before + datetime.timedelta(days=1)
+                order_before = order_before + timedelta(days=1)
                 order_before = order_before.replace(hour=14, minute=0, second=0)
                 days_for_delivery = final_wh[1] + 1
                 if days_for_delivery == 1:
@@ -1948,7 +2097,7 @@ class PincodeServiceabilty(Resource):
             else:
                 label_url = "https://logourls.s3.amazonaws.com/wareiq_standard.jpeg"
 
-            delivered_by = datetime.datetime.utcnow() + datetime.timedelta(hours=5.5) + datetime.timedelta(
+            delivered_by = datetime.utcnow() + timedelta(hours=5.5) + timedelta(
                 days=days_for_delivery)
 
             delivery_zone = final_wh[2]
@@ -2088,7 +2237,7 @@ class UpdateInventory(Resource):
                                                  remark = data.get('remark', None),
                                                  quantity = int(quantity),
                                                  type = str(type).lower(),
-                                                 date_created = datetime.datetime.utcnow()+datetime.timedelta(hours=5.5))
+                                                 date_created = datetime.utcnow()+timedelta(hours=5.5))
 
                     if not quan_obj:
                         sku_obj['error'] = "Warehouse sku combination not found."
@@ -2212,7 +2361,7 @@ class AddSKU(Resource):
                                   client_prefix=client,
                                   active=True,
                                   channel_id=4,
-                                  date_created=datetime.datetime.now()
+                                  date_created=datetime.now()
                                   )
 
             for wh_obj in warehouse_list:
@@ -2225,7 +2374,7 @@ class AddSKU(Resource):
                                                 current_quantity=int(wh_obj['quantity']),
                                                 warehouse_prefix=wh_obj['warehouse'],
                                                 status="APPROVED",
-                                                date_created=datetime.datetime.now()
+                                                date_created=datetime.now()
                                                 )
                 db.session.add(prod_quan_obj)
 
@@ -2765,14 +2914,151 @@ api.add_resource(WalletRemittance, '/wallet/v1/remittance')
 @core_blueprint.route('/core/dev', methods=['POST'])
 def ping_dev():
     return 0
-    import requests, json
+    import requests
+    create_fulfillment_url = "https://007a66d567f35b876355bbd5ef6bc046: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@shoutoutloud-co.myshopify.com/admin/api/2020-04/orders.json?limit=250"
+    qs = requests.get(create_fulfillment_url)
+
+    myfile = request.files['myfile']
+
+    data_xlsx = pd.read_excel(myfile)
+    from .models import PickupPoints, ReturnPoints, ClientPickups
+    import json, re
+    count = 0
+    iter_rw = data_xlsx.iterrows()
+    p_id=105
+    r_id=103
+    cp_id=122
+    for row in iter_rw:
+        warehouse_prefix = "BRANDINGKART_" + str(row[1].Seller_Code).upper()
+        pickup_point = PickupPoints(pickup_location=str(row[1].Seller_name),
+                                    name=str(row[1].Seller_name),
+                                    phone=str(row[1].Contact_Number),
+                                    address=str(row[1].Seller_Address),
+                                    address_two="",
+                                    city=str(row[1].City),
+                                    state=str(row[1].State),
+                                    pincode=int(row[1].Pincode),
+                                    country="India",
+                                    warehouse_prefix=warehouse_prefix,
+                                    id=p_id
+                                    )
+        return_points = ReturnPoints(return_location=str(row[1].Seller_name),
+                                    name=str(row[1].Seller_name),
+                                    phone=str(row[1].Contact_Number),
+                                    address=str(row[1].Seller_Address),
+                                    address_two="",
+                                    city=str(row[1].City),
+                                    state=str(row[1].State),
+                                    pincode=int(row[1].Pincode),
+                                    country="India",
+                                    warehouse_prefix = warehouse_prefix,
+                                     id=r_id
+                                    )
+
+        client_pickup = ClientPickups(client_prefix="BRANDINGKART",
+                                      pickup=pickup_point,
+                                      return_point=return_points,
+                                      id=cp_id)
+        db.session.add(client_pickup)
+        p_id+=1
+        r_id+=1
+        cp_id+=1
+
+    db.session.commit()
+
+    from .models import Products, ProductQuantity
+
+    for prod in qs.json()['products']:
+        for prod_obj in prod['variants']:
+            prod_name = prod['title']
+            if prod_obj['title'] != 'Default Title':
+                prod_name += " - " + prod_obj['title']
+
+            prod_obj_x = db.session.query(Products).filter(Products.sku==str(prod_obj['id'])).first()
+            if not prod_obj_x:
+                prod_obj_x = Products(name=prod_name,
+                                      sku=str(prod_obj['id']),
+                                      master_sku=prod_obj['sku'],
+                                      dimensions=None,
+                                      weight=None,
+                                      price=float(prod_obj['price']),
+                                      client_prefix='COUNTRYBEAN',
+                                      active=True,
+                                      channel_id=1,
+                                      date_created=datetime.now()
+                                      )
+                prod_quan_obj = ProductQuantity(product=prod_obj_x,
+                                                total_quantity=1000,
+                                                approved_quantity=1000,
+                                                available_quantity=1000,
+                                                inline_quantity=0,
+                                                rto_quantity=0,
+                                                current_quantity=1000,
+                                                warehouse_prefix="COUNTRYBEAN",
+                                                status="APPROVED",
+                                                date_created=datetime.now()
+                                                )
+
+                db.session.add(prod_quan_obj)
+
+    db.session.commit()
+    return 0
+    create_fulfillment_url = "https://2fb2b05eb853b50e0bd8892e2e6d95c1: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@thechaapkhana.myshopify.com/admin/api/2020-04/orders.json?limit=250"
+    qs = requests.get(create_fulfillment_url)
+    magento_orders_url = """%s/V1/orders?searchCriteria[filter_groups][0][filters][0][field]=updated_at&searchCriteria[filter_groups][0][filters][0][value]=%s&searchCriteria[filter_groups][0][filters][0][condition_type]=gt""" % (
+        "https://demokama2.com/rest/default", "2020-06-23")
+    headers = {'Authorization': "Bearer " + "gfl1ilzw8iwe4yf06iuiophjfq1gb49k",
+               'Content-Type': 'application/json'}
+    data = requests.get(magento_orders_url, headers=headers, verify=False)
+
+
+
+    from zeep import Client
+    wsdl = "https://netconnect.bluedart.com/Ver1.9/ShippingAPI/Finder/ServiceFinderQuery.svc?wsdl"
+    client = Client(wsdl)
+    request_data = {
+        'pinCode': '560068',
+        "profile": {
+                    "LoginID": "HOW53544",
+                    "LicenceKey": "goqshifiomf4qw01yll5fqgtthjgksmj",
+                    "Api_type": "S",
+                    "Version": "1.9"
+                  }
+    }
+    response = client.service.GetServicesforPincode(**request_data)
+
+    return 0
+
+    return 0
+    from .models import Orders
+    all_orders = db.session.query(Orders).filter(Orders.client_prefix == 'SSTELECOM',
+                                                 Orders.status.in_(['IN TRANSIT']), Orders.channel_order_id>'2093').all()
+    for order in all_orders:
+        shopify_url = "https://e156f178d7a211b66ae0870942ff32b1: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@trendy-things-2020.myshopify.com/admin/api/2020-04/orders/%s/fulfillments.json" % order.order_id_channel_unique
+        tracking_link = "http://webapp.wareiq.com/tracking/%s" % str(order.shipments[0].awb)
+        ful_header = {'Content-Type': 'application/json'}
+        fulfil_data = {
+            "fulfillment": {
+                "tracking_number": str(order.shipments[0].awb),
+                "tracking_urls": [
+                    tracking_link
+                ],
+                "tracking_company": "WareIQ",
+                "location_id": 40801534089,
+                "notify_customer": True
+            }
+        }
+        req_ful = requests.post(shopify_url, data=json.dumps(fulfil_data),
+                                headers=ful_header)
+    return 0
+
+    return 0
     headers = {"Content-Type": "application/json",
                "XBKey": "NJlG1ISTUa2017XzrCG6OoJng"}
     body = {"ShippingID": "14201720000512"}
     xpress_url = "http://xbclientapi.xbees.in/POSTShipmentService.svc/UpdateNDRDeferredDeliveryDate"
     req = requests.post(xpress_url, headers=headers, data=json.dumps(body))
-    create_fulfillment_url = "https://4733f7636c1b220def586b9b2d498bc0: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@home-alone-products.myshopify.com/admin/api/2020-04/products.json?limit=250"
-    qs = requests.get(create_fulfillment_url)
+
     return 0
     from .update_status_utils import send_bulk_emails
     from project import create_app
@@ -2823,30 +3109,9 @@ def ping_dev():
     send_bulk_emails(email_list)
 
     return 0
-    from .models import Orders
-    all_orders = db.session.query(Orders).filter(Orders.client_prefix == 'ORGANICRIOT',
-                                                 Orders.status.in_(['IN TRANSIT', 'DELIVERED', 'PENDING'])).all()
-    for order in all_orders:
-        shopify_url = "https://e67230312f67dd92f62bea398a1c7d38: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@the-organic-riot.myshopify.com/admin/api/2020-04/orders/%s/fulfillments.json" % order.order_id_channel_unique
-        tracking_link = "http://webapp.wareiq.com/tracking/%s" % str(order.shipments[0].awb)
-        ful_header = {'Content-Type': 'application/json'}
-        fulfil_data = {
-            "fulfillment": {
-                "tracking_number": str(order.shipments[0].awb),
-                "tracking_urls": [
-                    tracking_link
-                ],
-                "tracking_company": "WareIQ",
-                "location_id": 6529810489,
-                "notify_customer": True
-            }
-        }
-        req_ful = requests.post(shopify_url, data=json.dumps(fulfil_data),
-                                headers=ful_header)
-    return 0
 
-    create_fulfillment_url = "https://e67230312f67dd92f62bea398a1c7d38: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@the-organic-riot.myshopify.com/admin/api/2020-04/locations.json?limit=250"
-    qs = requests.get(create_fulfillment_url)
+
+
     return 0
 
     create_fulfillment_url = "https://dc948a1330721a0116d84fb76ab168c4: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@daily-veggies-india.myshopify.com/admin/api/2020-04/orders.json?limit=250"
@@ -2890,7 +3155,7 @@ def ping_dev():
                                       active=True,
                                       channel_id=4,
                                       inactive_reason = inactive_reason,
-                                      date_created=datetime.datetime.now()
+                                      date_created=datetime.now()
                                       )
                 db.session.add(prod_obj_x)
                 db.session.commit()
@@ -2933,10 +3198,7 @@ def ping_dev():
 
     return 0
 
-    magento_url = "https://www.vedaearth.com/rest/V1/orders?searchCriteria[filter_groups][0][filters][0][field]=created_at&searchCriteria[filter_groups][0][filters][0][value]=2020-05-09&searchCriteria[filter_groups][0][filters][0][condition_type]=gt"
-    headers = {'Authorization': "Bearer zg1j7voibdpswz0yugnt3pfjfbvog335",
-                         'Content-Type': 'application/json'}
-    r = requests.get(magento_url, headers=headers)
+
 
 
 
@@ -4059,8 +4321,15 @@ def create_email(order, edd, email):
     except Exception as e:
         return None
 
+
 @core_blueprint.route('/core/send', methods=['GET'])
 def send_dev():
+    return 0
+    import requests
+    magento_url = "https://demokama2.com/rest/V1/orders?searchCriteria[filter_groups][0][filters][0][field]=created_at&searchCriteria[filter_groups][0][filters][0][value]=2020-05-09&searchCriteria[filter_groups][0][filters][0][condition_type]=gt"
+    headers = {'Authorization': "Bearer gfl1ilzw8iwe4yf06iuiophjfq1gb49k",
+               'Content-Type': 'application/json'}
+    r = requests.get(magento_url, headers=headers, verify=False)
     return 0
     from project import create_app
     app = create_app()

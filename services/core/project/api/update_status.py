@@ -838,6 +838,7 @@ def lambda_handler():
                 if exotel_idx:
                     logger.info("Sending messages...count:" + str(exotel_idx))
                     logger.info("Total Picked: " + str(exotel_idx) + "  Time: " + str(datetime.utcnow()))
+
                     try:
                         lad = requests.post(
                             'https://ff2064142bc89ac5e6c52a6398063872f95f759249509009:783fa09c0ba1110309f606c7411889192335bab2e908a079@api.exotel.com/v1/Accounts/wareiq1/Sms/bulksend',
@@ -1028,7 +1029,7 @@ def shopify_fulfillment(order, cur):
 
 
 def magento_fulfillment(order, cur):
-    create_fulfillment_url = "%s/rest/V1/order/%s/ship" % (order[9], order[5])
+    create_fulfillment_url = "%s/V1/order/%s/ship" % (order[9], order[5])
     tracking_link = "http://webapp.wareiq.com/tracking/%s" % str(order[1])
     ful_header = {'Content-Type': 'application/json',
                   'Authorization': 'Bearer '+order[7]}
@@ -1046,36 +1047,40 @@ def magento_fulfillment(order, cur):
                   "notify": False,
                   "tracks": [
                     {
-                      "extension_attributes": {},
+                      "extension_attributes": {"warehouse_name": "HydShip3"},
                       "track_number": str(order[1]),
                       "title": "WareIQ",
                       "carrier_code": "WareIQ"
                     }
-                  ],
-                  "arguments": {
-                    "extension_attributes": {}
-                  }
+                  ]
                 }
     req_ful = requests.post(create_fulfillment_url, data=json.dumps(fulfil_data),
                             headers=ful_header, verify=False)
 
-    create_shipped_url = "%s/rest/V1/orders" % order[9]
-    shipped_data = {
-        "entity": {
-            "entity_id": int(order[5]),
+    if type(req_ful.json()) == str:
+        cur.execute("UPDATE shipments SET channel_fulfillment_id=%s, tracking_link=%s WHERE id=%s", (req_ful.json(), tracking_link, order[10]))
+
+    shipped_comment_url = "%s/V1/orders/%s/comments" % (order[9], order[5])
+
+    time_now = datetime.utcnow() + timedelta(hours=5.5)
+    time_now = time_now.strftime('%Y-%m-%d %H:%M:%S')
+    complete_data = {
+        "statusHistory": {
+            "comment": "Shipped",
+            "created_at": time_now,
+            "parent_id": int(order[5]),
+            "is_customer_notified": 0,
+            "is_visible_on_front": 1,
             "status": "shipped"
         }
     }
-
-    req_shipped = requests.post(create_shipped_url, data=json.dumps(shipped_data),
-                                headers=ful_header, verify=False)
-    if type(req_ful.json()) == str:
-        cur.execute("UPDATE shipments SET channel_fulfillment_id=%s, tracking_link=%s WHERE id=%s", (req_ful.json(), tracking_link, order[10]))
+    req_ful = requests.post(shipped_comment_url, data=json.dumps(complete_data),
+                            headers=ful_header, verify=False)
     return req_ful.json(), tracking_link
 
 
 def magento_invoice(order):
-    create_invoice_url = "%s/rest/V1/order/%s/invoice" % (order[9], order[5])
+    create_invoice_url = "%s/V1/order/%s/invoice" % (order[9], order[5])
     ful_header = {'Content-Type': 'application/json',
                   'Authorization': 'Bearer '+order[7]}
 
@@ -1089,44 +1094,46 @@ def magento_invoice(order):
                         })
 
     invoice_data = {
-                      "capture": True,
-                      "items": items_list,
-                      "notify": True,
-                      "appendComment": False,
-                      "comment": {
-                        "extension_attributes": {},
-                        "comment": "",
-                        "is_visible_on_front": 0
-                      },
-                      "arguments": {
-                        "extension_attributes": {}
-                      }
+                      "capture": False,
+                      "notify": False
                     }
     req_ful = requests.post(create_invoice_url, data=json.dumps(invoice_data),
                             headers=ful_header, verify=False)
 
-    create_invoice_url = "%s/rest/V1/orders" %order[9]
-    invoice_data = {
-        "entity": {
-            "entity_id": int(order[5]),
+    invoice_comment_url = "%s/V1/orders/%s/comments" % (order[9], order[5])
+
+    time_now = datetime.utcnow() + timedelta(hours=5.5)
+    time_now = time_now.strftime('%Y-%m-%d %H:%M:%S')
+    complete_data = {
+        "statusHistory": {
+            "comment": "Invoiced",
+            "created_at": time_now,
+            "parent_id": int(order[5]),
+            "is_customer_notified": 0,
+            "is_visible_on_front": 1,
             "status": "invoiced"
         }
     }
-
-    req_invoice = requests.post(create_invoice_url, data=json.dumps(invoice_data),
+    req_ful = requests.post(invoice_comment_url, data=json.dumps(complete_data),
                             headers=ful_header, verify=False)
 
 
 def magento_complete_order(order):
-    complete_order_url = "%s/rest/V1/orders" %order[9]
+    complete_order_url = "%s/V1/orders/%s/comments" %(order[9], order[5])
     ful_header = {'Content-Type': 'application/json',
                   'Authorization': 'Bearer '+order[7]}
 
+    time_now = datetime.utcnow() + timedelta(hours=5.5)
+    time_now = time_now.strftime('%Y-%m-%d %H:%M:%S')
     complete_data = {
-            "entity": {
-                "entity_id": int(order[5]),
-                "status": "complete"
-            }
-        }
+                    "statusHistory": {
+                    "comment": "Delivered",
+                    "created_at": time_now,
+                    "parent_id": int(order[5]),
+                    "is_customer_notified": 0,
+                    "is_visible_on_front": 1,
+                    "status": "delivered"
+                    }
+                    }
     req_ful = requests.post(complete_order_url, data=json.dumps(complete_data),
                             headers=ful_header, verify=False)

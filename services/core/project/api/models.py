@@ -571,6 +571,7 @@ class ClientMapping(db.Model):
     custom_email_subject = db.Column(db.String, nullable=True)
     unique_parameter = db.Column(db.String, nullable=True)
     cod_ship_unconfirmed = db.Column(db.BOOLEAN, nullable=True, default=True)
+    hide_weights = db.Column(db.BOOLEAN, nullable=True, default=True)
 
 
 class MultiVendor(db.Model):

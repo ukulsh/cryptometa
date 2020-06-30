@@ -164,58 +164,6 @@ def create_shiplabel_blank_page(canvas):
     canvas.setFont('Helvetica', 10)
 
 
-def create_shiplabel_blank_page_thermal(canvas):
-    canvas.setLineWidth(.8)
-    canvas.setFont('Helvetica', 9)
-    canvas.translate(inch, inch)
-    canvas.rect(-0.9 * inch, -0.9 * inch, 3.8 * inch, 5.8 * inch, fill=0)
-    canvas.setLineWidth(0.8)
-    for i in (3.2, 2.7, 0.9):
-        canvas.line(-0.90 * inch, i * inch, 2.9 * inch, i * inch)
-
-    canvas.drawString(-0.8 * inch, 4.75 * inch, "COURIER:")
-    canvas.drawString(-0.8 * inch, 3.05 * inch, "Dimensions:")
-    canvas.drawString(-0.8 * inch, 2.77 * inch, "Weight:")
-    canvas.drawString(0.85 * inch, 3.05 * inch, "Payment:")
-    canvas.setFont('Helvetica-Bold', 9)
-    canvas.drawString(1.5 * inch, 0.75 * inch,  "Total")
-    canvas.drawString(-0.8 * inch, 2.55 * inch, "Deliver To:")
-    canvas.drawString(-0.8 * inch, 0.75 * inch, "Product(s)")
-    canvas.drawString(-0.8 * inch, -0.5 * inch, "Shipped By (Return Address):")
-    canvas.setFont('Helvetica', 0)
-
-
-def create_invoice_blank_page(canvas):
-    canvas.setFont('Helvetica', 9)
-    canvas.translate(inch, inch)
-    canvas.setLineWidth(0.4)
-    canvas.line(-0.80 * inch, 6.7 * inch, 6.9 * inch, 6.7 * inch)
-    canvas.line(-0.80 * inch, 6.4 * inch, 6.9 * inch, 6.4 * inch)
-    canvas.line(-0.80 * inch, 9.7 * inch, 2.0 * inch, 9.7 * inch)
-    canvas.line(-0.80 * inch, 9.2 * inch, 2.0 * inch, 9.2 * inch)
-    canvas.setFont('Helvetica', 18)
-    canvas.drawString(-0.75 * inch, 9.35 * inch, "TAX INVOICE")
-    canvas.setFont('Helvetica-Bold', 9)
-    canvas.drawString(-0.75 * inch, 6.5 * inch, "Product(s)")
-    canvas.drawString(2.00 * inch, 6.5 * inch, "Qty")
-    canvas.drawString(2.40 * inch, 6.5 * inch, "Tax Description")
-    canvas.drawString(3.60 * inch, 6.5 * inch, "Taxable value")
-    canvas.drawString(4.80 * inch, 6.5 * inch, "Tax (value | %)")
-    canvas.drawString(6.20 * inch, 6.5 * inch, "Total")
-    canvas.drawString(-0.75 * inch, 8.8 * inch, "SOLD BY:")
-    canvas.drawString(-0.75 * inch, 7.1 * inch, "GSTIN:")
-    canvas.drawString(2.2 * inch, 8.5 * inch, "Billing Address:")
-    canvas.drawString(5.0 * inch, 8.5 * inch, "Shipping Address:")
-    canvas.setFont('Helvetica', 8)
-    canvas.drawString(2.5 * inch, 9.7 * inch, "INVOICE DATE:")
-    canvas.drawString(4.7 * inch, 9.7 * inch, "INVOICE NO.")
-    canvas.drawString(2.5 * inch, 9.45 * inch, "ORDER DATE:")
-    canvas.drawString(4.7 * inch, 9.45 * inch, "ORDER NO.")
-    canvas.drawString(2.5 * inch, 9.2 * inch, "PAYMENT METHOD:")
-    canvas.drawString(4.7 * inch, 9.2 * inch, "AWB NO.")
-    canvas.setLineWidth(0.8)
-
-
 def fill_shiplabel_data(c, order, offset):
     c.drawString(offset * inch, 6.90 * inch, order.shipments[0].courier.courier_name)
     c.setFont('Helvetica-Bold', 14)
@@ -326,6 +274,27 @@ def fill_shiplabel_data(c, order, offset):
     c.setFont('Helvetica', 10)
 
 
+def create_shiplabel_blank_page_thermal(canvas):
+    canvas.setLineWidth(.8)
+    canvas.setFont('Helvetica', 9)
+    canvas.translate(inch, inch)
+    canvas.rect(-0.9 * inch, -0.9 * inch, 3.8 * inch, 5.8 * inch, fill=0)
+    canvas.setLineWidth(0.8)
+    for i in (3.2, 2.7, 0.9):
+        canvas.line(-0.90 * inch, i * inch, 2.9 * inch, i * inch)
+
+    canvas.drawString(-0.8 * inch, 4.75 * inch, "COURIER:")
+    canvas.drawString(-0.8 * inch, 3.05 * inch, "Dimensions:")
+    canvas.drawString(-0.8 * inch, 2.77 * inch, "Weight:")
+    canvas.drawString(0.85 * inch, 3.05 * inch, "Payment:")
+    canvas.setFont('Helvetica-Bold', 9)
+    canvas.drawString(1.5 * inch, 0.75 * inch,  "Total")
+    canvas.drawString(-0.8 * inch, 2.55 * inch, "Deliver To:")
+    canvas.drawString(-0.8 * inch, 0.75 * inch, "Product(s)")
+    canvas.drawString(-0.8 * inch, -0.5 * inch, "Shipped By (Return Address):")
+    canvas.setFont('Helvetica', 0)
+
+
 def fill_shiplabel_data_thermal(c, order):
     c.setFont('Helvetica-Bold', 10)
     c.drawString(1.45* inch, 3.05 * inch, order.payments[0].payment_mode)
@@ -430,6 +399,202 @@ def fill_shiplabel_data_thermal(c, order):
         pass
 
     c.setFont('Helvetica', 10)
+
+
+def generate_picklist(canvas, products, order_count):
+    time_now = datetime.utcnow() + timedelta(hours=5.5)
+    time_now = time_now.strftime('%Y-%m-%d %I:%M %p')
+    y_axis = 11.25
+    canvas.setFont('Helvetica-Bold', 14)
+    canvas.drawString(3.5 * inch, y_axis * inch, "PICK LIST")
+    y_axis -= 0.3
+    canvas.setFont('Helvetica-Bold', 12)
+    canvas.drawString(2.75 * inch, y_axis * inch, "Generated at: " + time_now)
+    y_axis -= 0.3
+    x_axis = (0.25, 2.55, 6.20, 7.10, 8.0)
+    for client, prod_dict in products.items():
+        try:
+            prod_dict = sorted(prod_dict.items(),key=lambda x: x[1]['quantity'],reverse=True)
+            if y_axis < 4:
+                canvas.drawString((x_axis[0] + 0.2) * inch, 0.6 * inch, "Picked By:")
+                canvas.showPage()
+                y_axis = 11.1
+            canvas.setFont('Helvetica-Bold', 12)
+            canvas.drawString(x_axis[0] * inch, y_axis * inch, "Client: " + str(client))
+            y_axis -= 0.20
+            canvas.drawString(x_axis[0] * inch, y_axis * inch, "Orders Selected: " + str(order_count[client]))
+            y_axis -= 0.20
+
+            canvas.line(x_axis[0] * inch, y_axis * inch, x_axis[4] * inch, y_axis * inch)
+
+            canvas.drawString((x_axis[0]+0.1) * inch, (y_axis - 0.20)* inch, "SKU")
+            canvas.drawString((x_axis[1]+0.1) * inch, (y_axis - 0.20)* inch, "Description")
+            canvas.drawString((x_axis[2]+0.1) * inch, (y_axis- 0.20) * inch, "Quantity")
+            canvas.drawString((x_axis[3]+0.1) * inch, (y_axis - 0.20) * inch, "Picked?")
+
+            new_y_axis = y_axis - 0.30
+
+            for x in x_axis:
+                canvas.line(x * inch, new_y_axis * inch, x * inch, y_axis * inch)
+
+            canvas.line(x_axis[0] * inch, new_y_axis * inch, x_axis[4] * inch, new_y_axis * inch)
+
+            y_axis = new_y_axis
+            canvas.setFont('Helvetica', 10)
+            for prod_info in prod_dict:
+                prod_info = prod_info[1]
+                if y_axis < 1:
+                    canvas.drawString((x_axis[0] + 0.2) * inch, 0.6 * inch, "Picked By:")
+                    canvas.showPage()
+                    y_axis = 11.1
+
+                canvas.drawString((x_axis[0] + 0.1) * inch, (y_axis - 0.20) * inch, str(prod_info['sku']))
+                canvas.drawString((x_axis[2] + 0.3) * inch, (y_axis - 0.20) * inch, str(prod_info['quantity']))
+
+                canvas.setFont('Helvetica', 8)
+                prod_name = split_string(str(prod_info['name']), 60)
+                old_y_axis = y_axis
+                y_axis += 0.13
+                for addr in prod_name:
+                    y_axis -= 0.13
+                    canvas.drawString((x_axis[1] + 0.1) * inch, (y_axis - 0.20) * inch, addr)
+
+                canvas.setFont('Helvetica', 10)
+
+                new_y_axis = y_axis - 0.30
+
+                for x in x_axis:
+                    canvas.line(x * inch, new_y_axis * inch, x * inch, old_y_axis * inch)
+
+                canvas.line(x_axis[0] * inch, new_y_axis * inch, x_axis[4] * inch, new_y_axis * inch)
+                y_axis = new_y_axis
+
+            y_axis -= 0.5
+
+        except Exception:
+            pass
+
+    canvas.drawString((x_axis[0] + 0.2) * inch, 0.6 * inch, "Picked By:")
+
+    return canvas
+
+
+def generate_packlist(canvas, orders, order_count):
+    time_now = datetime.utcnow() + timedelta(hours=5.5)
+    time_now = time_now.strftime('%Y-%m-%d %I:%M %p')
+    y_axis = 11.25
+    canvas.setFont('Helvetica-Bold', 14)
+    canvas.drawString(3.5 * inch, y_axis * inch, "PACK LIST")
+    y_axis -= 0.3
+    canvas.setFont('Helvetica-Bold', 12)
+    canvas.drawString(2.75 * inch, y_axis * inch, "Generated at: " + time_now)
+    y_axis -= 0.3
+    x_axis = (0.25, 1.4, 3.20, 6.20, 7.10, 8.0)
+    for client, order_dict in orders.items():
+        try:
+            if y_axis < 4:
+                canvas.drawString((x_axis[0] + 0.2) * inch, 0.6 * inch, "Packed By:")
+                canvas.showPage()
+                y_axis = 11.1
+            canvas.setFont('Helvetica-Bold', 12)
+            canvas.drawString(x_axis[0] * inch, y_axis * inch, "Client: " + str(client))
+            y_axis -= 0.20
+            canvas.drawString(x_axis[0] * inch, y_axis * inch, "Orders Selected: " + str(order_count[client]))
+            y_axis -= 0.20
+
+            canvas.line(x_axis[0] * inch, y_axis * inch, x_axis[5] * inch, y_axis * inch)
+
+            canvas.drawString((x_axis[0]+0.1) * inch, (y_axis - 0.20)* inch, "Order ID")
+            canvas.drawString((x_axis[1]+0.1) * inch, (y_axis - 0.20)* inch, "SKU")
+            canvas.drawString((x_axis[2]+0.1) * inch, (y_axis - 0.20)* inch, "Description")
+            canvas.drawString((x_axis[3]+0.1) * inch, (y_axis- 0.20) * inch, "Quantity")
+            canvas.drawString((x_axis[4]+0.1) * inch, (y_axis - 0.20) * inch, "Packed?")
+
+            new_y_axis = y_axis - 0.30
+
+            for x in x_axis:
+                canvas.line(x * inch, new_y_axis * inch, x * inch, y_axis * inch)
+
+            canvas.line(x_axis[0] * inch, new_y_axis * inch, x_axis[5] * inch, new_y_axis * inch)
+
+            y_axis = new_y_axis
+            for order_id, prod_dict in order_dict.items():
+                prod_dict = sorted(prod_dict.items(), key=lambda x: x[1]['quantity'], reverse=True)
+                if y_axis < 1:
+                    canvas.drawString((x_axis[0] + 0.2) * inch, 0.6 * inch, "Packed By:")
+                    canvas.showPage()
+                    y_axis = 11.1
+                canvas.setFont('Helvetica', 10)
+                canvas.drawString((x_axis[0] + 0.1) * inch, (y_axis - 0.20) * inch, str(order_id))
+                for prod_info in prod_dict:
+                    prod_info = prod_info[1]
+                    if y_axis < 1:
+                        canvas.drawString((x_axis[0] + 0.2) * inch, 0.6 * inch, "Packed By:")
+                        canvas.showPage()
+                        y_axis = 11.1
+
+                    canvas.drawString((x_axis[1] + 0.1) * inch, (y_axis - 0.20) * inch, str(prod_info['sku']))
+                    canvas.drawString((x_axis[3] + 0.3) * inch, (y_axis - 0.20) * inch, str(prod_info['quantity']))
+
+                    canvas.setFont('Helvetica', 8)
+                    prod_name = split_string(str(prod_info['name']), 50)
+                    old_y_axis = y_axis
+                    y_axis += 0.13
+                    for addr in prod_name:
+                        y_axis -= 0.13
+                        canvas.drawString((x_axis[2] + 0.1) * inch, (y_axis - 0.20) * inch, addr)
+
+                    canvas.setFont('Helvetica', 10)
+
+                    new_y_axis = y_axis - 0.30
+
+                    for x in x_axis:
+                        canvas.line(x * inch, new_y_axis * inch, x * inch, old_y_axis * inch)
+
+                    canvas.line(x_axis[1] * inch, new_y_axis * inch, x_axis[5] * inch, new_y_axis * inch)
+                    y_axis = new_y_axis
+
+                canvas.line(x_axis[0] * inch, y_axis * inch, x_axis[5] * inch, y_axis * inch)
+
+            y_axis -= 0.5
+
+        except Exception:
+            pass
+
+    canvas.drawString((x_axis[0] + 0.2) * inch, 0.6 * inch, "Packed By:")
+
+    return canvas
+
+
+def create_invoice_blank_page(canvas):
+    canvas.setFont('Helvetica', 9)
+    canvas.translate(inch, inch)
+    canvas.setLineWidth(0.4)
+    canvas.line(-0.80 * inch, 6.7 * inch, 6.9 * inch, 6.7 * inch)
+    canvas.line(-0.80 * inch, 6.4 * inch, 6.9 * inch, 6.4 * inch)
+    canvas.line(-0.80 * inch, 9.7 * inch, 2.0 * inch, 9.7 * inch)
+    canvas.line(-0.80 * inch, 9.2 * inch, 2.0 * inch, 9.2 * inch)
+    canvas.setFont('Helvetica', 18)
+    canvas.drawString(-0.75 * inch, 9.35 * inch, "TAX INVOICE")
+    canvas.setFont('Helvetica-Bold', 9)
+    canvas.drawString(-0.75 * inch, 6.5 * inch, "Product(s)")
+    canvas.drawString(2.00 * inch, 6.5 * inch, "Qty")
+    canvas.drawString(2.40 * inch, 6.5 * inch, "Tax Description")
+    canvas.drawString(3.60 * inch, 6.5 * inch, "Taxable value")
+    canvas.drawString(4.80 * inch, 6.5 * inch, "Tax (value | %)")
+    canvas.drawString(6.20 * inch, 6.5 * inch, "Total")
+    canvas.drawString(-0.75 * inch, 8.8 * inch, "SOLD BY:")
+    canvas.drawString(-0.75 * inch, 7.1 * inch, "GSTIN:")
+    canvas.drawString(2.2 * inch, 8.5 * inch, "Billing Address:")
+    canvas.drawString(5.0 * inch, 8.5 * inch, "Shipping Address:")
+    canvas.setFont('Helvetica', 8)
+    canvas.drawString(2.5 * inch, 9.7 * inch, "INVOICE DATE:")
+    canvas.drawString(4.7 * inch, 9.7 * inch, "INVOICE NO.")
+    canvas.drawString(2.5 * inch, 9.45 * inch, "ORDER DATE:")
+    canvas.drawString(4.7 * inch, 9.45 * inch, "ORDER NO.")
+    canvas.drawString(2.5 * inch, 9.2 * inch, "PAYMENT METHOD:")
+    canvas.drawString(4.7 * inch, 9.2 * inch, "AWB NO.")
+    canvas.setLineWidth(0.8)
 
 
 def fill_invoice_data(c, order, client_name):

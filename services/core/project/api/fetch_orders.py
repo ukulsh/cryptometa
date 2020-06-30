@@ -26,13 +26,22 @@ def lambda_handler():
     cur.execute(fetch_client_channels_query)
     for channel in cur.fetchall():
         if channel[11] == "Shopify":
-            fetch_shopify_orders(cur, channel)
+            try:
+                fetch_shopify_orders(cur, channel)
+            except Exception as e:
+                logger.error("Couldn't fetch orders: " + str(channel[1]) + "\nError: " + str(e.args))
 
         elif channel[11] == "WooCommerce":
-            fetch_woocommerce_orders(cur, channel)
+            try:
+                fetch_woocommerce_orders(cur, channel)
+            except Exception as e:
+                logger.error("Couldn't fetch orders: " + str(channel[1]) + "\nError: " + str(e.args))
 
         elif channel[11] == "Magento":
-            fetch_magento_orders(cur, channel)
+            try:
+                fetch_magento_orders(cur, channel)
+            except Exception as e:
+                logger.error("Couldn't fetch orders: " + str(channel[1]) + "\nError: " + str(e.args))
 
     assign_pickup_points_for_unassigned(cur, cur_2)
     update_available_quantity(cur)
@@ -387,7 +396,7 @@ def fetch_magento_orders(cur, channel):
 
     updated_after = channel[7].strftime("%Y-%m-%d %X")
     filter_idx=0
-    magento_orders_url = """%s/rest/V1/orders?searchCriteria[filter_groups][0][filters][0][field]=updated_at&searchCriteria[filter_groups][0][filters][0][value]=%s&searchCriteria[filter_groups][0][filters][0][condition_type]=gt""" % (
+    magento_orders_url = """%s/V1/orders?searchCriteria[filter_groups][0][filters][0][field]=updated_at&searchCriteria[filter_groups][0][filters][0][value]=%s&searchCriteria[filter_groups][0][filters][0][condition_type]=gt""" % (
         channel[5], updated_after)
     for fetch_status in channel[15]:
         magento_orders_url += """&searchCriteria[filter_groups][1][filters][__IDX__][field]=status&searchCriteria[filter_groups][1][filters][__IDX__][value]=__STATUS__&searchCriteria[filter_groups][1][filters][__IDX__][condition_type]=eq""".replace('__IDX__', str(filter_idx)).replace('__STATUS__', fetch_status)

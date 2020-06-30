@@ -139,7 +139,8 @@ get_orders_to_ship_query = """select aa.id,aa.channel_order_id,aa.order_date,aa.
                                 __ORDER_SELECT_FILTERS__
                                 __PRODUCT_FILTER__
                                 and NOT EXISTS (SELECT 1 FROM unnest(ee.weights) x WHERE x IS NULL)
-                                and (xx.id is null or (xx.id is not null and (xx.cod_verified is not null or xx.cod_verified = false)))
+                                and (xx.id is null or (xx.id is not null and xx.cod_verified = true) 
+                                     or (yy.cod_ship_unconfirmed=true and aa.order_date<(NOW() - interval '1 day')))
                                 order by order_date"""
 
 update_last_shipped_order_query = """UPDATE client_couriers SET last_shipped_order_id=%s, last_shipped_time=%s WHERE client_prefix=%s"""

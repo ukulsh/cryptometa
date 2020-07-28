@@ -13,6 +13,8 @@ from reportlab.lib.pagesizes import landscape, A4
 from reportlab.lib.units import inch
 from reportlab.pdfgen import canvas
 from psycopg2.extras import RealDictCursor
+from .generate_manifest import fill_manifest_data
+from .worker import celery
 
 from project import db
 from .queries import product_count_query, available_warehouse_product_quantity, fetch_warehouse_to_pick_from, \
@@ -370,7 +372,7 @@ class OrderList(Resource):
             elif type == 'ready_to_ship':
                 query_to_run = query_to_run.replace("__TAB_STATUS_FILTER__", "AND aa.status in ('PICKUP REQUESTED','READY TO SHIP')")
             elif type == 'shipped':
-                query_to_run = query_to_run.replace("__TAB_STATUS_FILTER__", "AND aa.status not in ('NEW', 'READY TO SHIP', 'PICKUP REQUESTED','NOT PICKED','CANCELED','PENDING PAYMENT','NEW - FAILED')")
+                query_to_run = query_to_run.replace("__TAB_STATUS_FILTER__", "AND aa.status not in ('NEW', 'READY TO SHIP', 'PICKUP REQUESTED','NOT PICKED','CANCELED', 'CLOSED', 'PENDING PAYMENT','NEW - FAILED', 'LOST', 'NOT SHIPPED')")
             elif type == "return":
                 query_to_run = query_to_run.replace("__TAB_STATUS_FILTER__", "AND (aa.status_type='RT' or (aa.status_type='DL' and aa.status='RTO'))")
             elif type == "ndr":
@@ -452,10 +454,11 @@ class OrderList(Resource):
                     query_to_run = query_to_run.replace("__PICKUP_TIME_FILTER__", "AND delivered_time between '%s' and '%s'" %(filter_date_start, filter_date_end))
 
             if download_flag:
-                date_month_ago = datetime.utcnow() + timedelta(hours=5.5) - timedelta(days=31)
-                date_month_ago = date_month_ago.strftime("%Y-%m-%d %H:%M:%S")
-                query_to_run = query_to_run.replace('__ORDER_DATE_FILTER__', "AND order_date > '%s' "%date_month_ago)
-                query_to_run = query_to_run.replace('__PAGINATION__', "")
+                if not [i for i in ['order_date', 'pickup_time', 'manifest_time', 'delivered_time'] if i in filters]:
+                    date_month_ago = datetime.utcnow() + timedelta(hours=5.5) - timedelta(days=31)
+                    date_month_ago = date_month_ago.strftime("%Y-%m-%d %H:%M:%S")
+                    query_to_run = query_to_run.replace('__ORDER_DATE_FILTER__', "AND order_date > '%s' "%date_month_ago)
+                    query_to_run = query_to_run.replace('__PAGINATION__', "")
                 query_to_run = re.sub(r"""__.+?__""", "", query_to_run)
                 cur.execute(query_to_run)
                 orders_qs_data = cur.fetchall()
@@ -503,6 +506,8 @@ class OrderList(Resource):
                                 else:
                                     new_row.append("N/A")
                                     new_row.append("N/A")
+                                if auth_data.get('user_group') == 'super-admin':
+                                    new_row.append(order[42])
                                 cw.writerow(new_row)
                     except Exception as e:
                         pass
@@ -783,7 +788,7 @@ def get_orders_filters(resp):
     pickup_point_qs = db.session.query(PickupPoints.warehouse_prefix, func.count(PickupPoints.warehouse_prefix)) \
         .join(ClientPickups, PickupPoints.id == ClientPickups.pickup_id).join(Orders, ClientPickups.id == Orders.pickup_data_id).group_by(PickupPoints.warehouse_prefix)
 
-    shipped_filters = ["NEW","READY TO SHIP","PICKUP REQUESTED","NOT PICKED","PENDING PAYMENT","NOT SHIPPED"]
+    shipped_filters = ['NEW', 'READY TO SHIP', 'PICKUP REQUESTED','NOT PICKED','CANCELED', 'CLOSED', 'PENDING PAYMENT','NEW - FAILED', 'LOST', 'NOT SHIPPED']
     if auth_data['user_group'] == 'super-admin':
         client_qs = db.session.query(Orders.client_prefix, func.count(Orders.client_prefix))
     elif auth_data['user_group'] == 'warehouse':
@@ -865,14 +870,16 @@ class AddOrder(Resource):
                                                )
 
             pickup_filter = data.get('warehouse')
+            pickup_data = None
             if pickup_filter:
-                pickup_data = db.session.query(ClientPickups).join(PickupPoints, ClientPickups.pickup_id==PickupPoints.id).filter(PickupPoints.warehouse_prefix==pickup_filter).first()
-            else:
-                if auth_data.get('client_prefix')!='NASHER':
-                    pickup_data = db.session.query(ClientPickups).filter(ClientPickups.client_prefix==auth_data.get('client_prefix')).first()
-                else:
-                    pickup_data = None
+                pickup_data = db.session.query(ClientPickups).join(PickupPoints, ClientPickups.pickup_id==PickupPoints.id).filter(PickupPoints.warehouse_prefix==pickup_filter)
+                if auth_data.get('user_group') == 'client':
+                    pickup_data = pickup_data.filter(ClientPickups.client_prefix==auth_data.get('client_prefix'))
+                pickup_data = pickup_data.first()
 
+            chargeable_weight = data.get('weight')
+            if chargeable_weight:
+                chargeable_weight = float(chargeable_weight)
             new_order = Orders(channel_order_id=str(data.get('order_id')).rstrip(),
                            order_date=datetime.utcnow()+timedelta(hours=5.5),
                            customer_name=data.get('full_name'),
@@ -882,15 +889,13 @@ class AddOrder(Resource):
                            status="NEW",
                            client_prefix=auth_data.get('client_prefix'),
                            pickup_data=pickup_data,
+                           chargeable_weight=chargeable_weight
                            )
 
             if data.get('products'):
                 for prod in data.get('products'):
                     if 'sku' in prod:
-                        prod_obj = db.session.query(Products).filter(Products.sku == prod['sku']).first()
-                        if not prod_obj:
-                            prod_obj = db.session.query(Products).filter(Products.master_sku == prod['sku']).first()
-
+                        prod_obj = db.session.query(Products).filter(or_(Products.sku == prod['sku'], Products.master_sku==prod['sku']), Products.client_prefix==auth_data.get('client_prefix')).first()
                         if not prod_obj:
                             return {"status": "Failed", "msg": "One or more SKU(s) not found"}, 400
 
@@ -1033,7 +1038,7 @@ def upload_orders(resp):
                 sku = str(row_data.sku).split('|')
                 sku_quantity = str(row_data.sku_quantity).split('|')
                 for idx, sku_str in enumerate(sku):
-                    prod_obj = db.session.query(Products).filter(Products.sku == sku_str.strip()).first()
+                    prod_obj = db.session.query(Products).filter(or_(Products.sku == sku_str.strip(), Products.master_sku==sku_str.strip()), Products.client_prefix==auth_data.get('client_prefix')).first()
                     if prod_obj:
                         op_association = OPAssociation(order=new_order, product=prod_obj, quantity=int(sku_quantity[idx].strip()))
                         new_order.products.append(op_association)
@@ -1079,7 +1084,7 @@ def download_shiplabels(resp):
         return jsonify({"success": False, "msg": "Auth Failed"}), 404
 
     order_ids = data['order_ids']
-    orders_qs = db.session.query(Orders).filter(Orders.id.in_(order_ids), Orders.delivery_address!=None,
+    orders_qs = db.session.query(Orders, ClientMapping).join(ClientMapping, Orders.client_prefix==ClientMapping.client_prefix).filter(Orders.id.in_(order_ids), Orders.delivery_address!=None,
                                                 Orders.shipments!=None)
 
     if auth_data['user_group'] == 'client':
@@ -1088,7 +1093,7 @@ def download_shiplabels(resp):
     if not orders_qs:
         return jsonify({"success": False, "msg": "No valid order ID"}), 404
 
-    shiplabel_type = db.session.query(WarehouseMapping).filter(WarehouseMapping.warehouse_prefix==auth_data['warehouse_prefix']).first()
+    shiplabel_type = db.session.query(WarehouseMapping).filter(WarehouseMapping.warehouse_prefix==auth_data.get('warehouse_prefix')).first()
     file_pref = auth_data['client_prefix'] if auth_data['client_prefix'] else auth_data['warehouse_prefix']
     file_name = "shiplabels_"+str(file_pref)+"_"+str(datetime.now().strftime("%d_%b_%Y_%H_%M_%S"))+".pdf"
     if shiplabel_type and shiplabel_type.shiplabel_type=='TH1':
@@ -1101,11 +1106,11 @@ def download_shiplabels(resp):
     idx=0
     for ixx, order in enumerate(orders_qs):
         try:
-            if not order.shipments or not order.shipments[0].awb:
+            if not order[0].shipments or not order[0].shipments[0].awb:
                 continue
             if shiplabel_type and shiplabel_type.shiplabel_type=='TH1':
                 try:
-                    fill_shiplabel_data_thermal(c, order)
+                    fill_shiplabel_data_thermal(c, order[0])
                 except Exception:
                     pass
 
@@ -1116,7 +1121,7 @@ def download_shiplabels(resp):
             elif shiplabel_type and shiplabel_type.shiplabel_type=='A41':
                 offset = 3.913
                 try:
-                    fill_shiplabel_data(c, order, offset)
+                    fill_shiplabel_data(c, order[0], offset, order[1])
                 except Exception:
                     pass
                 c.setFillColorRGB(1, 1, 1)
@@ -1128,7 +1133,7 @@ def download_shiplabels(resp):
             else:
                 offset_dict = {0:0.20, 1:3.913, 2:7.676}
                 try:
-                    fill_shiplabel_data(c, order, offset_dict[idx%3])
+                    fill_shiplabel_data(c, order[0], offset_dict[idx%3], order[1])
                 except Exception:
                     pass
                 if idx%3==2 and ixx!=(len(orders_qs)-1):
@@ -1136,7 +1141,7 @@ def download_shiplabels(resp):
                     create_shiplabel_blank_page(c)
             idx += 1
         except Exception as e:
-            failed_ids[order.channel_order_id] = str(e.args[0])
+            failed_ids[order[0].channel_order_id] = str(e.args[0])
             pass
 
     if not (shiplabel_type and shiplabel_type.shiplabel_type in ('A41','TH1')):
@@ -1333,6 +1338,56 @@ def download_packlist(resp):
     return jsonify({
         'status': 'success',
         'url': invoice_url,
+    }), 200
+
+
+@core_blueprint.route('/orders/v1/download/manifest', methods=['POST'])
+@authenticate_restful
+def download_manifests(resp):
+    data = json.loads(request.data)
+    auth_data = resp.get('data')
+    if not auth_data:
+        return jsonify({"success": False, "msg": "Auth Failed"}), 404
+
+    order_ids = data['order_ids']
+    orders_qs = db.session.query(Orders).filter(Orders.id.in_(order_ids), Orders.shipments!=None)
+
+    if auth_data['user_group'] == 'client':
+        orders_qs = orders_qs.filter(Orders.client_prefix==auth_data.get('client_prefix'))
+    orders_qs = orders_qs.order_by(Orders.id).all()
+    if not orders_qs:
+        return jsonify({"success": False, "msg": "No valid order ID"}), 404
+
+    orders_list = list()
+    warehouse = auth_data['client_prefix'] if auth_data['client_prefix'] else auth_data['warehouse_prefix']
+    courier = None
+    store = None
+    for order in orders_qs:
+        if not order.shipments or not order.shipments[0].awb:
+            continue
+        if not store and order.pickup_data:
+            store = order.pickup_data.pickup.warehouse_prefix
+        if not courier:
+            courier = order.shipments[0].courier.courier_name
+
+        prod_names = list()
+        prod_quan = list()
+
+        for prod in order.products:
+            prod_names.append(prod.product.name)
+            prod_quan.append(prod.quantity)
+
+        order_tuple = (order.channel_order_id, order.order_date, order.client_prefix, order.shipments[0].weight, None, None,
+                       None, prod_names, prod_quan, order.payments[0].payment_mode, order.payments[0].amount,
+                       order.delivery_address.first_name, order.delivery_address.last_name, order.delivery_address.address_one,
+                       order.delivery_address.address_two, order.delivery_address.city, order.delivery_address.pincode, order.delivery_address.state,
+                       order.delivery_address.country, order.delivery_address.phone, order.shipments[0].awb, None, None)
+
+        orders_list.append(order_tuple)
+
+    return jsonify({
+        'status': 'success',
+        'url': fill_manifest_data(orders_list, courier, store, warehouse),
     }), 200
 
 
@@ -1683,6 +1738,37 @@ def track_order(awb):
 
         details = request.args.get('details')
         if details:
+            if shipment and shipment.courier_id in (5,13): #Xpressbees details of status
+                xpressbees_url = "http://xbclientapi.xbees.in/TrackingService.svc/GetShipmentSummaryDetails"
+                try:
+                    body = {"AWBNo": awb, "XBkey": shipment.courier.api_key}
+                    return_details = dict()
+                    req = requests.post(xpressbees_url, json=body).json()
+                    for each_scan in req[0]['ShipmentSummary']:
+                        return_details_obj = dict()
+                        return_details_obj['status'] = each_scan['Status']
+                        if each_scan['Comment']:
+                            return_details_obj['status'] += " - " + each_scan['Comment']
+                        return_details_obj['city'] = each_scan['Location']
+                        if each_scan['Location']:
+                            return_details_obj['city'] = each_scan['Location'].split(", ")[1]
+                        status_time = each_scan['StatusDate'] + " " + each_scan['StatusTime']
+                        if status_time:
+                            status_time = datetime.strptime(status_time, '%d-%m-%Y %H%M')
+
+                        time_str = status_time.strftime("%d %b %Y, %H:%M:%S")
+                        return_details_obj['time'] = time_str
+                        if time_str[:11] not in return_details:
+                            return_details[time_str[:11]] = [return_details_obj]
+                        else:
+                            return_details[time_str[:11]].append(return_details_obj)
+
+                        for key in return_details:
+                            return_details[key] = sorted(return_details[key], key=lambda k: k['time'], reverse=True)
+                    return jsonify({"success": True, "data": return_details}), 200
+                except Exception as e:
+                    return jsonify({"success": False, "msg": "Details not available"}), 400
+
             if shipment and shipment.courier_id in (1,2,8,11,12): #Delhivery details of status
                 delhivery_url = "https://track.delhivery.com/api/status/packages/json/?waybill=%s&token=%s" \
                                 % (str(awb), shipment.courier.api_key)
@@ -2166,10 +2252,13 @@ class PincodeServiceabilty(Resource):
                 return {"success": False, "msg": "Pincode not serviceable"}, 404
 
             cod_available = False
+            reverse_pickup = False
             if cod_req['delivery_codes'][0]['postal_code']['cod'].lower() == 'y':
                 cod_available = True
+            if cod_req['delivery_codes'][0]['postal_code']['pickup'].lower() == 'y':
+                reverse_pickup = True
 
-            return {"success": True, "data": {"serviceable": True, "cod_available": cod_available}}, 200
+            return {"success": True, "data": {"serviceable": True, "cod_available": cod_available, "reverse_pickup": reverse_pickup}}, 200
 
         except Exception as e:
             return {"success": False, "msg": ""}, 404
@@ -2231,18 +2320,37 @@ class UpdateInventory(Resource):
 
                     quan_obj = quan_obj.first()
 
-                    update_obj = InventoryUpdate(product_id=quan_obj.product_id,
-                                                 warehouse_prefix=warehouse,
-                                                 user=auth_data['email'] if auth_data.get('email') else auth_data['client_prefix'],
-                                                 remark = data.get('remark', None),
-                                                 quantity = int(quantity),
-                                                 type = str(type).lower(),
-                                                 date_created = datetime.utcnow()+timedelta(hours=5.5))
-
                     if not quan_obj:
-                        sku_obj['error'] = "Warehouse sku combination not found."
-                        failed_list.append(sku_obj)
-                        continue
+                        prod_obj = db.session.query(Products).filter(or_(Products.sku==sku, Products.master_sku==sku))
+                        if auth_data.get('user_group') != 'super-admin':
+                            prod_obj = prod_obj.filter(Products.client_prefix == auth_data['client_prefix'])
+
+                        prod_obj = prod_obj.first()
+                        if not prod_obj:
+                            sku_obj['error'] = "Warehouse sku combination not found."
+                            failed_list.append(sku_obj)
+                            continue
+                        else:
+                            quan_obj = ProductQuantity(product=prod_obj,
+                                                       total_quantity=0,
+                                                       approved_quantity=0,
+                                                       available_quantity=0,
+                                                       inline_quantity=0,
+                                                       rto_quantity=0,
+                                                       current_quantity=0,
+                                                       warehouse_prefix=warehouse,
+                                                       status="APPROVED",
+                                                       date_created=datetime.now())
+                            db.session.add(quan_obj)
+
+                    update_obj = InventoryUpdate(product=quan_obj.product,
+                                                 warehouse_prefix=warehouse,
+                                                 user=auth_data['email'] if auth_data.get('email') else auth_data[
+                                                     'client_prefix'],
+                                                 remark=sku_obj.get('remark', None),
+                                                 quantity=int(quantity),
+                                                 type=str(type).lower(),
+                                                 date_created=datetime.utcnow() + timedelta(hours=5.5))
 
                     shipped_quantity=0
                     try:
@@ -2915,96 +3023,257 @@ api.add_resource(WalletRemittance, '/wallet/v1/remittance')
 def ping_dev():
     return 0
     import requests
-    create_fulfillment_url = "https://007a66d567f35b876355bbd5ef6bc046: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@shoutoutloud-co.myshopify.com/admin/api/2020-04/orders.json?limit=250"
+    magento_orders_url = """%s/V1/orders/345635""" % (
+        "https://www.kamaayurveda.com/rest/default")
+    headers = {'Authorization': "Bearer " + "q4ldi2wasczvm7l8caeyozgkxf4qanfr",
+               'Content-Type': 'application/json'}
+    data = requests.get(magento_orders_url, headers=headers)
+    return 0
+    from .fetch_orders import lambda_handler
+    lambda_handler()
+    from woocommerce import API
+    wcapi = API(
+        url="https://naaginsauce.com",
+        consumer_key="ck_9a540daf59bd7e78268d80ed0db14d03a0e68b57",
+        consumer_secret="cs_017c6ac59089de2dfd4e2f99e56513aec093464b",
+        version="wc/v3"
+    )
+    r=wcapi.get('orders')
+    return 0
+
+    from requests_oauthlib.oauth1_session import OAuth1Session
+    auth_session = OAuth1Session("ck_9a540daf59bd7e78268d80ed0db14d03a0e68b57",
+                                 client_secret="cs_017c6ac59089de2dfd4e2f99e56513aec093464b")
+    url = '%s/wp-json/wc/v3/orders?per_page=100&order=asc&consumer_key=ck_9a540daf59bd7e78268d80ed0db14d03a0e68b57&consumer_secret=cs_017c6ac59089de2dfd4e2f99e56513aec093464b' % (
+        "https://naaginsauce.com")
+    r = auth_session.get(url)
+    return 0
+    from .fetch_orders import lambda_handler
+    lambda_handler()
+    return 0
+    create_fulfillment_url = "https://9bf9e5f5fb698274d52d0e8a734354d7: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@actifiber.myshopify.com/admin/api/2020-07/orders.json?limit=250"
     qs = requests.get(create_fulfillment_url)
+
+
+    import requests
+
+    from .models import Orders, ReturnPoints, ClientPickups, Products, ProductQuantity
+    since_id = "1643999133767"
+    count = 250
+    myfile = request.files['myfile']
+    while count==250:
+        create_fulfillment_url = "https://c74b07d8c51d504b047ba32aa11d4c3a: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@sportsqvest.myshopify.com/admin/api/2020-07/products.json?limit=250&since_id=%s"%since_id
+        qs = requests.get(create_fulfillment_url)
+        for prod in qs.json()['products']:
+            for prod_obj in prod['variants']:
+                prod_name = prod['title']
+                quan = 0
+                if not prod_obj['sku']:
+                    continue
+                master_sku = str(prod_obj['sku'])
+                data_xlsx = pd.read_excel(myfile)
+                iter_rw = data_xlsx.iterrows()
+                for row in iter_rw:
+                    try:
+                        if master_sku == str(row[1].SKU):
+                            quan = str(row[1].quan)
+                            break
+                    except Exception as e:
+                        pass
+                if prod_obj['title'] != 'Default Title':
+                    prod_name += " - " + prod_obj['title']
+                if not quan:
+                    continue
+                prod_obj_x = db.session.query(Products).filter(Products.sku == str(prod_obj['id'])).first()
+                if not prod_obj_x:
+                    prod_obj_x = Products(name=prod_name,
+                                          sku=str(prod_obj['id']),
+                                          master_sku=master_sku,
+                                          dimensions=None,
+                                          weight=None,
+                                          price=float(prod_obj['price']),
+                                          client_prefix='SPORTSQVEST',
+                                          active=True,
+                                          channel_id=1,
+                                          date_created=datetime.now()
+                                          )
+
+                    db.session.add(prod_obj_x)
+
+                if quan:
+                    prod_quan_obj = ProductQuantity(product=prod_obj_x,
+                                                    total_quantity=quan,
+                                                    approved_quantity=quan,
+                                                    available_quantity=quan,
+                                                    inline_quantity=0,
+                                                    rto_quantity=0,
+                                                    current_quantity=quan,
+                                                    warehouse_prefix="QSBHIWANDI",
+                                                    status="APPROVED",
+                                                    date_created=datetime.now()
+                                                    )
+
+                    db.session.add(prod_quan_obj)
+        count = len(qs.json()['products'])
+        since_id = str(qs.json()['products'][-1]['id'])
+        db.session.commit()
+
+    db.session.commit()
+    return 0
 
     myfile = request.files['myfile']
 
     data_xlsx = pd.read_excel(myfile)
-    from .models import PickupPoints, ReturnPoints, ClientPickups
     import json, re
     count = 0
     iter_rw = data_xlsx.iterrows()
-    p_id=105
-    r_id=103
-    cp_id=122
     for row in iter_rw:
-        warehouse_prefix = "BRANDINGKART_" + str(row[1].Seller_Code).upper()
-        pickup_point = PickupPoints(pickup_location=str(row[1].Seller_name),
-                                    name=str(row[1].Seller_name),
-                                    phone=str(row[1].Contact_Number),
-                                    address=str(row[1].Seller_Address),
-                                    address_two="",
-                                    city=str(row[1].City),
-                                    state=str(row[1].State),
-                                    pincode=int(row[1].Pincode),
-                                    country="India",
-                                    warehouse_prefix=warehouse_prefix,
-                                    id=p_id
-                                    )
-        return_points = ReturnPoints(return_location=str(row[1].Seller_name),
-                                    name=str(row[1].Seller_name),
-                                    phone=str(row[1].Contact_Number),
-                                    address=str(row[1].Seller_Address),
-                                    address_two="",
-                                    city=str(row[1].City),
-                                    state=str(row[1].State),
-                                    pincode=int(row[1].Pincode),
-                                    country="India",
-                                    warehouse_prefix = warehouse_prefix,
-                                     id=r_id
-                                    )
-
-        client_pickup = ClientPickups(client_prefix="BRANDINGKART",
-                                      pickup=pickup_point,
-                                      return_point=return_points,
-                                      id=cp_id)
-        db.session.add(client_pickup)
-        p_id+=1
-        r_id+=1
-        cp_id+=1
-
-    db.session.commit()
-
-    from .models import Products, ProductQuantity
-
-    for prod in qs.json()['products']:
-        for prod_obj in prod['variants']:
-            prod_name = prod['title']
-            if prod_obj['title'] != 'Default Title':
-                prod_name += " - " + prod_obj['title']
-
-            prod_obj_x = db.session.query(Products).filter(Products.sku==str(prod_obj['id'])).first()
-            if not prod_obj_x:
-                prod_obj_x = Products(name=prod_name,
-                                      sku=str(prod_obj['id']),
-                                      master_sku=prod_obj['sku'],
-                                      dimensions=None,
-                                      weight=None,
-                                      price=float(prod_obj['price']),
-                                      client_prefix='COUNTRYBEAN',
-                                      active=True,
-                                      channel_id=1,
-                                      date_created=datetime.now()
-                                      )
-                prod_quan_obj = ProductQuantity(product=prod_obj_x,
-                                                total_quantity=1000,
-                                                approved_quantity=1000,
-                                                available_quantity=1000,
+        try:
+            sku = str(row[1].SKU)
+            quan = int(row[1].quan)
+            prod_obj = db.session.query(Products).filter(Products.master_sku == sku,
+                                                         Products.client_prefix == 'ZLADE').first()
+            if prod_obj:
+                prod_quan_obj = ProductQuantity(product=prod_obj,
+                                                total_quantity=quan,
+                                                approved_quantity=quan,
+                                                available_quantity=quan,
                                                 inline_quantity=0,
                                                 rto_quantity=0,
-                                                current_quantity=1000,
-                                                warehouse_prefix="COUNTRYBEAN",
+                                                current_quantity=quan,
+                                                warehouse_prefix="QSDWARKA",
                                                 status="APPROVED",
                                                 date_created=datetime.now()
                                                 )
 
                 db.session.add(prod_quan_obj)
+            if row[0] % 100 == 0:
+                db.session.commit()
+        except Exception as e:
+            pass
+
+    from .fetch_orders import lambda_handler
+    lambda_handler()
+
+    return 0
+    from requests_oauthlib.oauth1_session import OAuth1Session
+    auth_session = OAuth1Session("ck_9a540daf59bd7e78268d80ed0db14d03a0e68b57",
+                                 client_secret="cs_017c6ac59089de2dfd4e2f99e56513aec093464")
+    url = '%s/wp-json/wc/v3/products?per_page=100&consumer_key=ck_9a540daf59bd7e78268d80ed0db14d03a0e68b57&consumer_secret=cs_017c6ac59089de2dfd4e2f99e56513aec093464' % (
+        "https://naaginsauce.com")
+    r = auth_session.get(url)
+    return 0
+
+    import requests
+
+    return 0
+    from .models import Orders
+    for order_id in order_ids:
+        del_order =None
+        keep_order = None
+        order_qs = db.session.query(Orders).filter(Orders.order_id_channel_unique==order_id, Orders.client_prefix=='KAMAAYURVEDA').all()
+        for new_order in order_qs:
+            if new_order.channel_order_id.endswith("-A"):
+                del_order = new_order
+            else:
+                keep_order = new_order
+
+        cur.execute("""UPDATE op_association SET order_id=%s where order_id=%s"""%(str(keep_order.id), str(del_order.id)))
+        keep_order.payments[0].amount = keep_order.payments[0].amount + del_order.payments[0].amount
+        keep_order.payments[0].shipping_charges = keep_order.payments[0].shipping_charges + del_order.payments[0].shipping_charges
+        keep_order.payments[0].subtotal = keep_order.payments[0].subtotal + del_order.payments[0].subtotal
+        conn.commit()
+        db.session
+
+    return 0
+
+
+    from .models import Products, ProductQuantity
+
+
+    myfile = request.files['myfile']
+
+    data_xlsx = pd.read_excel(myfile)
+    from .models import Products, ReturnPoints, ClientPickups
+    import json, re
+    count = 0
+    iter_rw = data_xlsx.iterrows()
+    for row in iter_rw:
+        try:
+            sku = str(row[1].SKU)
+            prod_obj_x = db.session.query(Products).filter(Products.master_sku == sku, Products.client_prefix=='KAMAAYURVEDA').first()
+            if not prod_obj_x:
+                print("product not found: "+sku)
+            else:
+                name = row[1].Name
+                prod_obj_x.name=name
+                """
+                box_pack = str(row[1].Boxpack)
+                dimensions = None
+                if weight:
+                    weight = int(weight)/1000
+                if box_pack == "Small":
+                    dimensions =  {"length": 9.5, "breadth": 12.5, "height": 20}
+                elif box_pack == "Medium":
+                    dimensions =  {"length": 9.5, "breadth": 19, "height": 26}
+                elif box_pack == "Large":
+                    dimensions =  {"length": 11, "breadth": 20, "height": 31}
+                prod_obj_x.weight = weight
+                prod_obj_x.dimensions = dimensions
+                cmb_quantity = row[1].CMBQTY
+                cmb_quantity = int(cmb_quantity) if cmb_quantity else 0
+
+                prod_quan_obj_b = ProductQuantity(product=prod_obj_x,
+                                                  total_quantity=cmb_quantity,
+                                                  approved_quantity=cmb_quantity,
+                                                  available_quantity=cmb_quantity,
+                                                  inline_quantity=0,
+                                                  rto_quantity=0,
+                                                  current_quantity=cmb_quantity,
+                                                  warehouse_prefix="KACMB",
+                                                  status="APPROVED",
+                                                  date_created=datetime.now()
+                                                  )
+
+                db.session.add(prod_quan_obj_b)
+                """
+                if count%100==0:
+                    db.session.commit()
+
+        except Exception as e:
+            print(str(row[1].SKU))
+            pass
+        count += 1
 
     db.session.commit()
+    idx = 0
+    for prod in data.json()['items']:
+        if 'main' in prod['sku']:
+            continue
+        try:
+            prod_obj = Products(name=prod['name'],
+                                sku=str(prod['id']),
+                                master_sku=prod['sku'],
+                                dimensions=None,
+                                weight=None,
+                                price=float(prod['price']) if prod.get('price') else None,
+                                client_prefix='KAMAAYURVEDA',
+                                active=True,
+                                channel_id=6,
+                                date_created=datetime.now()
+                                )
+            db.session.add(prod_obj)
+            idx += 1
+            if idx%100==0:
+                db.session.commit()
+        except Exception as e:
+            print(str(prod['sku']) + "\n" + str(e.args[0]))
+    db.session.commit()
     return 0
-    create_fulfillment_url = "https://2fb2b05eb853b50e0bd8892e2e6d95c1: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@thechaapkhana.myshopify.com/admin/api/2020-04/orders.json?limit=250"
-    qs = requests.get(create_fulfillment_url)
+
+    return 0
+
+
     magento_orders_url = """%s/V1/orders?searchCriteria[filter_groups][0][filters][0][field]=updated_at&searchCriteria[filter_groups][0][filters][0][value]=%s&searchCriteria[filter_groups][0][filters][0][condition_type]=gt""" % (
         "https://demokama2.com/rest/default", "2020-06-23")
     headers = {'Authorization': "Bearer " + "gfl1ilzw8iwe4yf06iuiophjfq1gb49k",
@@ -3114,15 +3383,6 @@ def ping_dev():
 
     return 0
 
-    create_fulfillment_url = "https://dc948a1330721a0116d84fb76ab168c4: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@daily-veggies-india.myshopify.com/admin/api/2020-04/orders.json?limit=250"
-    qs = requests.get(create_fulfillment_url)
-    from requests_oauthlib.oauth1_session import OAuth1Session
-    auth_session = OAuth1Session("ck_5ed9fb66f9cb3e148403ccd107bfc6806ca22147",
-                                 client_secret="cs_6f1911e69d89ae1ce498be9afaf44117a660bcba")
-    url = '%s/wp-json/wc/v3/products?per_page=100&consumer_key=ck_5ed9fb66f9cb3e148403ccd107bfc6806ca22147&consumer_secret=cs_6f1911e69d89ae1ce498be9afaf44117a660bcba' % (
-        "https://www.thechasmeesh.com")
-    r = auth_session.get(url)
-
     myfile = request.files['myfile']
 
     data_xlsx = pd.read_excel(myfile)
@@ -3222,13 +3482,7 @@ def ping_dev():
     from .fetch_orders import lambda_handler
     lambda_handler()
     import requests
-    from requests_oauthlib.oauth1_session import OAuth1Session
-    auth_session = OAuth1Session("ck_cd462226a5d5c21c5936c7f75e1afca25b9853a6",
-                                 client_secret="cs_c897bf3e770e15f518cba5c619b32671b7cc527c")
-    url = '%s/wp-json/wc/v3/orders?per_page=100&include=109160,109110&order=asc&consumer_key=ck_cd462226a5d5c21c5936c7f75e1afca25b9853a6&consumer_secret=cs_c897bf3e770e15f518cba5c619b32671b7cc527c' % (
-        "https://www.zladeformen.com")
-    r = auth_session.get(url)
-    return 0
+
     from .update_status import lambda_handler
     lambda_handler()
 
@@ -3240,42 +3494,7 @@ def ping_dev():
     from .models import Products, ProductQuantity
     count = 0
     iter_rw = data_xlsx.iterrows()
-    for row in iter_rw:
-        try:
-            sku_name = row[1].Sku
-            prod_obj = Products(name=row[1].Products,
-                                sku=sku_name,
-                                master_sku=sku_name,
-                                dimensions={"length":float(row[1].length),
-                                          "breadth":float(row[1].breadth),
-                                          "height": float(row[1].height)
-                                          },
-                                weight=row[1].weight,
-                                price=0,
-                                client_prefix='VITAMINPLANET',
-                                active=True,
-                                channel_id=4,
-                                date_created=datetime.datetime.now()
-                                )
-            prod_quan_obj = ProductQuantity(product=prod_obj,
-                                            total_quantity=1000,
-                                            approved_quantity=1000,
-                                            available_quantity=1000,
-                                            inline_quantity=0,
-                                            rto_quantity=0,
-                                            current_quantity=0,
-                                            warehouse_prefix='VITAMINPLANET',
-                                            status="APPROVED",
-                                            date_created=datetime.datetime.now()
-                                            )
 
-
-            db.session.add(prod_quan_obj)
-            db.session.commit()
-        except Exception as e:
-            print(str(row[1].Ordr_id) + "\n" + str(e.args[0]))
-            db.session.rollback()
-    return 0
     import requests
     url = 'https://vearth.codolin.com/rest/v1/orders/1258'
     headers = {'Authorization': "Bearer h5e9tmzud0c8p0o82gaobegxpw9tjaqq",
@@ -4326,8 +4545,9 @@ def create_email(order, edd, email):
 def send_dev():
     return 0
     import requests
-    magento_url = "https://demokama2.com/rest/V1/orders?searchCriteria[filter_groups][0][filters][0][field]=created_at&searchCriteria[filter_groups][0][filters][0][value]=2020-05-09&searchCriteria[filter_groups][0][filters][0][condition_type]=gt"
-    headers = {'Authorization': "Bearer gfl1ilzw8iwe4yf06iuiophjfq1gb49k",
+
+    magento_url = "https://www.kamaayurveda.com/rest/default/V1/orders/345635?searchCriteria[filter_groups][0][filters][0][field]=created_at&searchCriteria[filter_groups][0][filters][0][value]=2020-05-09&searchCriteria[filter_groups][0][filters][0][condition_type]=gt"
+    headers = {'Authorization': "Bearer q4ldi2wasczvm7l8caeyozgkxf4qanfr",
                'Content-Type': 'application/json'}
     r = requests.get(magento_url, headers=headers, verify=False)
     return 0
@@ -4447,8 +4667,7 @@ def send_dev():
         data=sms_data)
 
     """
-    shopify_url = "https://b27f6afd9506d0a07af9a160b1666b74:6c8ca315e01fe612bc997e70c7a21908@mirakki.myshopify.com/admin/api/2019-10/orders.json?since_id=1873306419335&limit=150"
-    data = requests.get(shopify_url).json()
+    
     from .utils import createBarCodes
 
     for order in data:

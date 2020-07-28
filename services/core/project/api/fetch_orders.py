@@ -57,6 +57,15 @@ def fetch_shopify_orders(cur, channel):
         return None
     for order in data['orders']:
         try:
+            cur.execute("SELECT id from orders where channel_order_id='%s' and client_prefix='%s'" % (
+            str(order['order_number']), channel[1]))
+            try:
+                existing_order = cur.fetchone()[0]
+            except Exception as e:
+                existing_order = False
+                pass
+            if existing_order:
+                continue
             product_exists = True
             if channel[1] == "DAPR":  # serving only DAPR available skus, Have to create generic logic for this
                 for prod in order['line_items']:
@@ -138,8 +147,9 @@ def fetch_shopify_orders(cur, channel):
             cur.execute(insert_orders_data_query, orders_tuple)
             order_id = cur.fetchone()[0]
 
-            total_amount = float(order['subtotal_price_set']['shop_money']['amount']) + float(
-                order['total_shipping_price_set']['shop_money']['amount'])
+            total_amount = float(order['total_price'])
+            shipping_amount = float(order['total_shipping_price_set']['shop_money']['amount'])
+            subtotal_amount = total_amount- shipping_amount
 
             if order['financial_status'] == 'paid':
                 financial_status = 'prepaid'
@@ -149,8 +159,8 @@ def fetch_shopify_orders(cur, channel):
                 financial_status = order['financial_status']
 
             payments_tuple = (
-                financial_status, total_amount, float(order['subtotal_price_set']['shop_money']['amount']),
-                float(order['total_shipping_price_set']['shop_money']['amount']), order["currency"], order_id)
+                financial_status, total_amount, subtotal_amount,
+                shipping_amount, order["currency"], order_id)
 
             cur.execute(insert_payments_data_query, payments_tuple)
 
@@ -325,10 +335,12 @@ def fetch_woocommerce_orders(cur, channel):
             cur.execute(insert_orders_data_query, orders_tuple)
             order_id = cur.fetchone()[0]
 
-            total_amount = float(order['total']) + float(order['shipping_total'])
+            total_amount = float(order['total'])
+            total_shipping = float(order['shipping_total']) + float(order['shipping_tax'])
+            subtotal_amount = total_amount - total_shipping
 
-            payments_tuple = (financial_status, total_amount, float(order['total']),
-                              float(order['shipping_total']), order["currency"], order_id)
+            payments_tuple = (financial_status, total_amount, subtotal_amount,
+                              total_shipping, order["currency"], order_id)
 
             cur.execute(insert_payments_data_query, payments_tuple)
 
@@ -378,7 +390,7 @@ def fetch_woocommerce_orders(cur, channel):
                 except Exception as e:
                     logger.error("Couldn't fetch tex for: " + str(order_id))
 
-                op_tuple = (product_id, order_id, prod['quantity'], float(prod['quantity'] * float(prod['price'])), None, json.dumps(tax_lines))
+                op_tuple = (product_id, order_id, prod['quantity'], float(prod['quantity'] * (float(prod['total'])+float(prod['total_tax']))), None, json.dumps(tax_lines))
 
                 cur.execute(insert_op_association_query, op_tuple)
 
@@ -403,7 +415,8 @@ def fetch_magento_orders(cur, channel):
         filter_idx += 1
     headers = {'Authorization': "Bearer "+channel[3],
                'Content-Type': 'application/json'}
-    data = requests.get(magento_orders_url, headers=headers, verify=False)
+    data = requests.get(magento_orders_url, headers=headers)
+    logger.info(str(data.reason))
     if data.status_code==200:
         data = data.json()
     else:
@@ -430,8 +443,8 @@ def fetch_magento_orders(cur, channel):
             else:
                 pickup_data_id = None  # change this as we move to dynamic pickups
 
-            customer_name = order['customer_firstname']
-            customer_name += " " + order['customer_lastname'] if order['customer_lastname'] else ""
+            customer_name = order['billing_address']['firstname']
+            customer_name += " " + order['billing_address']['lastname'] if order['billing_address']['lastname'] else ""
 
             address_1 = ""
             for addr in order['billing_address']['street']:
@@ -517,8 +530,10 @@ def fetch_magento_orders(cur, channel):
                 else:
                     continue
                 product_sku = str(prod['product_id'])
-                prod_tuple = (product_sku, channel[1])
-                cur.execute(select_products_query, prod_tuple)
+                master_sku = str(prod['sku'])
+                prod_tuple = (master_sku, channel[1])
+                select_products_query_temp = """SELECT id from products where master_sku=%s and client_prefix=%s;"""
+                cur.execute(select_products_query_temp, prod_tuple)
                 try:
                     product_id = cur.fetchone()[0]
                 except Exception:
@@ -571,7 +586,7 @@ def fetch_magento_orders(cur, channel):
 
 
 def assign_pickup_points_for_unassigned(cur, cur_2):
-    time_after = datetime.utcnow() - timedelta(hours=6.5)
+    time_after = datetime.utcnow() - timedelta(days=1)
     cur.execute(get_orders_to_assign_pickups, (time_after,))
     all_orders = cur.fetchall()
     for order in all_orders:
@@ -632,15 +647,28 @@ def assign_pickup_points_for_unassigned(cur, cur_2):
 
             warehouse_pincode_str = warehouse_pincode_str.rstrip(',')
             if not warehouse_pincode_str and not kitted_skus: #todo: define order split in case of kitting
-                total_count = 0
                 prod_list = list()
+                set_list = list()
                 for key, value in wh_dict.items():
-                    total_count+=value['count']
-                    prod_list.append(value['prod_list'])
-                if total_count == no_sku:
+                    append_list = list(set(value['prod_list']) - set(set_list))
+                    set_list = list(set(set_list)|set(value['prod_list']))
+                    if append_list:
+                        prod_list.append(append_list)
+                if len(set_list) == no_sku and order[5]!=False:
                     prod_list.sort(key=len, reverse=True)
                     split_order(cur, order[0], prod_list)
-                logger.info(str(order[0]) + ": One or more SKUs not serviceable")
+                elif order[6]:
+                    cur.execute("""select aa.id from client_pickups aa
+                                                left join pickup_points bb on aa.pickup_id=bb.id
+                                                where bb.warehouse_prefix=%s and aa.client_prefix=%s""",
+                                (order[6], order[1]))
+
+                    pickup_id = cur.fetchone()
+                    if not pickup_id:
+                        logger.info(str(order[0]) + "Pickup id not found")
+                        continue
+
+                    cur.execute("""UPDATE orders SET pickup_data_id = %s WHERE id=%s""", (pickup_id[0], order[0]))
                 continue
 
             if courier_id in (8, 11, 12):
@@ -681,11 +709,20 @@ def assign_pickup_points_for_unassigned(cur, cur_2):
 def split_order(cur, order_id, prod_list):
     try:
         sub_id = 'A'
-        cur.execute("SELECT shipping_charges, payment_mode, currency from orders_payments WHERE order_id=%s" % str(order_id))
+        cur.execute("SELECT shipping_charges, payment_mode, currency, amount from orders_payments WHERE order_id=%s" % str(order_id))
         fetched_tuple = cur.fetchone()
         shipping_cost_each = fetched_tuple[0]/len(prod_list)
         payment_mode = fetched_tuple[1]
         currency = fetched_tuple[2]
+        order_total = int(fetched_tuple[3])
+        if fetched_tuple[0]:
+            order_total -= int(fetched_tuple[0])
+
+        all_products = list()
+        for prod_new in prod_list:
+            all_products+=prod_new
+        cur.execute("SELECT sum(amount) FROM op_association WHERE order_id=%s and product_id in %s" % (str(order_id), str(tuple(all_products))))
+        products_total = cur.fetchone()[0]
         for idx, prods in enumerate(prod_list):
             if len(prods)==1:
                 prods_tuple = "("+str(prods[0])+")"
@@ -693,6 +730,7 @@ def split_order(cur, order_id, prod_list):
                 prods_tuple = str(tuple(prods))
             cur.execute("SELECT sum(amount) FROM op_association WHERE order_id=%s and product_id in %s"%(str(order_id), prods_tuple))
             prod_amount = cur.fetchone()[0]
+            prod_amount = round(prod_amount*(order_total/products_total))
             if idx==0: #first order remains same
                 cur.execute("UPDATE orders_payments SET subtotal=%s, shipping_charges=%s, amount=%s WHERE order_id=%s",
                             (prod_amount, shipping_cost_each, prod_amount+shipping_cost_each, order_id))
@@ -749,7 +787,7 @@ def update_available_quantity(cur):
         elif prod_status[1] in ('NEW','PICKUP REQUESTED','READY TO SHIP', 'PENDING PAYMENT'):
             quantity_dict[prod_status[0]][prod_status[2]]['inline_quantity'] += prod_status[3]
             quantity_dict[prod_status[0]][prod_status[2]]['available_quantity'] -= prod_status[3]
-        elif prod_status[1] in ('RTO'):
+        elif prod_status[1] in ('RTO', 'DTO'):
             quantity_dict[prod_status[0]][prod_status[2]]['rto_quantity'] += prod_status[3]
 
         if prod_status[4] and prod_status[0] not in combo_dict:

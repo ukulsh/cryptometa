@@ -80,88 +80,99 @@ def lambda_handler():
                 logger.info("charged weight not found: " + str(order[0]))
                 continue
 
-            if order[6] != 'NASHER' or (order[6] == 'NASHER' and charged_weight<10.0):
-                cost_select_tuple = (order[6], order[2])
-                cur.execute("SELECT __ZONE__, cod_min, cod_ratio, rto_ratio from cost_to_clients WHERE client_prefix=%s and courier_id=%s;".replace(
-                    '__ZONE__', zone_column_mapping[delivery_zone]), cost_select_tuple)
-                charge_rate_values = cur.fetchone()
-                if not charge_rate_values:
-                    logger.info("charge_rate_values not found: " + str(order[0]))
-                    continue
+            try:
+                if order[6] != 'NASHER' or (order[6] == 'NASHER' and charged_weight<10.0):
+                    cost_select_tuple = (order[6], order[2])
+                    cur.execute("SELECT __ZONE__, cod_min, cod_ratio, rto_ratio from cost_to_clients WHERE client_prefix=%s and courier_id=%s;".replace(
+                        '__ZONE__', zone_column_mapping[delivery_zone]), cost_select_tuple)
+                    charge_rate_values = cur.fetchone()
+                    if not charge_rate_values:
+                        cur.execute(
+                            """INSERT INTO client_deductions (weight_charged, zone, shipment_id) VALUES (%s,%s,%s) RETURNING id;""",
+                            (charged_weight, delivery_zone, order[0]))
 
-                charge_rate = charge_rate_values[0]
+                        logger.info("charge_rate_values not found: " + str(order[0]))
+                        continue
 
-                multiple = ceil(charged_weight/0.5)
+                    charge_rate = charge_rate_values[0]
 
-                forward_charge = charge_rate*multiple
-                forward_charge_gst = forward_charge*1.18
+                    multiple = ceil(charged_weight/0.5)
 
-                rto_charge = 0
-                rto_charge_gst = 0
-                cod_charge = 0
-                cod_charged_gst = 0
-                if order[13] == 'RTO':
-                    rto_charge = forward_charge*charge_rate_values[3]
-                    rto_charge_gst = forward_charge_gst*charge_rate_values[3]
-                else:
-                    if order[11] and order[11].lower() == 'cod':
-                        if order[12]:
-                            cod_charge = order[12]*(charge_rate_values[2]/100)
-                            if charge_rate_values[1]>cod_charge:
+                    forward_charge = charge_rate*multiple
+                    forward_charge_gst = forward_charge*1.18
+
+                    rto_charge = 0
+                    rto_charge_gst = 0
+                    cod_charge = 0
+                    cod_charged_gst = 0
+                    if order[13] == 'RTO':
+                        rto_charge = forward_charge*charge_rate_values[3]
+                        rto_charge_gst = forward_charge_gst*charge_rate_values[3]
+                    else:
+                        if order[11] and order[11].lower() == 'cod':
+                            if order[12]:
+                                cod_charge = order[12]*(charge_rate_values[2]/100)
+                                if charge_rate_values[1]>cod_charge:
+                                    cod_charge = charge_rate_values[1]
+                            else:
                                 cod_charge = charge_rate_values[1]
-                        else:
-                            cod_charge = charge_rate_values[1]
 
-                        cod_charged_gst = cod_charge*1.18
-            else:
-                charge_rate_values = (None, 32, 1.5, 1)
-                intial_charge = nasher_zonal_mapping[delivery_zone][0]
-                next_weight = charged_weight-10.0
-                charge_rate = nasher_zonal_mapping[delivery_zone][1]
-                multiple = ceil(next_weight / 1.0)
-
-                forward_charge = charge_rate * multiple + intial_charge
-                forward_charge_gst = forward_charge * 1.18
-
-                rto_charge = 0
-                rto_charge_gst = 0
-                cod_charge = 0
-                cod_charged_gst = 0
-                if order[13] == 'RTO':
-                    rto_charge = forward_charge * charge_rate_values[3]
-                    rto_charge_gst = forward_charge_gst * charge_rate_values[3]
+                            cod_charged_gst = cod_charge*1.18
                 else:
-                    if order[11] and order[11].lower() == 'cod':
-                        if order[12]:
-                            cod_charge = order[12] * (charge_rate_values[2] / 100)
-                            if charge_rate_values[1] > cod_charge:
+                    charge_rate_values = (None, 32, 1.5, 1)
+                    intial_charge = nasher_zonal_mapping[delivery_zone][0]
+                    next_weight = charged_weight-10.0
+                    charge_rate = nasher_zonal_mapping[delivery_zone][1]
+                    multiple = ceil(next_weight / 1.0)
+
+                    forward_charge = charge_rate * multiple + intial_charge
+                    forward_charge_gst = forward_charge * 1.18
+
+                    rto_charge = 0
+                    rto_charge_gst = 0
+                    cod_charge = 0
+                    cod_charged_gst = 0
+                    if order[13] == 'RTO':
+                        rto_charge = forward_charge * charge_rate_values[3]
+                        rto_charge_gst = forward_charge_gst * charge_rate_values[3]
+                    else:
+                        if order[11] and order[11].lower() == 'cod':
+                            if order[12]:
+                                cod_charge = order[12] * (charge_rate_values[2] / 100)
+                                if charge_rate_values[1] > cod_charge:
+                                    cod_charge = charge_rate_values[1]
+                            else:
                                 cod_charge = charge_rate_values[1]
-                        else:
-                            cod_charge = charge_rate_values[1]
 
-                        cod_charged_gst = cod_charge * 1.18
+                            cod_charged_gst = cod_charge * 1.18
 
-            if order[9]:
-                deduction_time=order[9]
-            elif order[10]:
-                deduction_time=order[10]
-            else:
-                deduction_time=datetime.now()
+                if order[9]:
+                    deduction_time=order[9]
+                elif order[10]:
+                    deduction_time=order[10]
+                else:
+                    deduction_time=datetime.now()
 
-            total_charge = forward_charge+cod_charge+rto_charge
-            total_charge_gst = forward_charge_gst+rto_charge_gst+cod_charged_gst
-            insert_rates_tuple = (charged_weight, delivery_zone, deduction_time, cod_charge, cod_charged_gst,
-                                  forward_charge, forward_charge_gst,rto_charge,rto_charge_gst,order[0],
-                                  total_charge,total_charge_gst,datetime.now(),datetime.now())
+                total_charge = forward_charge+cod_charge+rto_charge
+                total_charge_gst = forward_charge_gst+rto_charge_gst+cod_charged_gst
+                insert_rates_tuple = (charged_weight, delivery_zone, deduction_time, cod_charge, cod_charged_gst,
+                                      forward_charge, forward_charge_gst,rto_charge,rto_charge_gst,order[0],
+                                      total_charge,total_charge_gst,datetime.now(),datetime.now())
 
-            cur.execute(insert_into_deduction_query, insert_rates_tuple)
+                cur.execute(insert_into_deduction_query, insert_rates_tuple)
 
+            except Exception as e:
+                logger.error("couldn't calculate order: " + str(order[0]) + "\nError: " + str(e))
+                cur.execute(
+                    """INSERT INTO client_deductions (weight_charged, zone, shipment_id) VALUES (%s,%s,%s) RETURNING id;""",
+                    (charged_weight, delivery_zone, order[0]))
+                continue
             conn.commit()
         except Exception as e:
             logger.error("couldn't calculate order: " + str(order[0]) + "\nError: " + str(e))
 
     ndr_push_reattempts(cur)
-
+    conn.commit()
     cur.close()
     cur_2.close()
 

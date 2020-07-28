@@ -12,7 +12,7 @@ class Products(db.Model):
     __tablename__ = "products"
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     name = db.Column(db.String, nullable=False)
-    sku = db.Column(db.String, nullable=False, unique=True)
+    sku = db.Column(db.String, nullable=False)
     master_sku = db.Column(db.String, nullable=True)
     dimensions = db.Column(JSON)
     weight = db.Column(db.FLOAT, nullable=True)
@@ -28,6 +28,8 @@ class Products(db.Model):
     hsn_code = db.Column(db.String, nullable=True)
     date_created = db.Column(db.DateTime, default=datetime.now)
     date_updated = db.Column(db.DateTime, onupdate=datetime.now)
+    __table_args__ = (UniqueConstraint('sku', 'client_prefix', 'channel_id', name='sku_unique'),
+                      )
 
     def to_json(self):
         return {
@@ -199,6 +201,7 @@ class Orders(db.Model):
     order_id_channel_unique = db.Column(db.String, nullable=True)
     pickup_data_id = db.Column(db.Integer, db.ForeignKey('client_pickups.id'))
     pickup_data = db.relationship("ClientPickups", backref=db.backref("orders", uselist=True))
+    chargeable_weight = db.Column(db.FLOAT, nullable=True)
     date_created = db.Column(db.DateTime, default=datetime.now)
     date_updated = db.Column(db.DateTime, onupdate=datetime.now)
     __table_args__ = (UniqueConstraint('channel_order_id', 'client_prefix', name='id_client_unique'),
@@ -572,6 +575,8 @@ class ClientMapping(db.Model):
     unique_parameter = db.Column(db.String, nullable=True)
     cod_ship_unconfirmed = db.Column(db.BOOLEAN, nullable=True, default=True)
     hide_weights = db.Column(db.BOOLEAN, nullable=True, default=True)
+    order_split = db.Column(db.BOOLEAN, nullable=True, default=True)
+    default_warehouse = db.Column(db.String, nullable=True)
 
 
 class MultiVendor(db.Model):

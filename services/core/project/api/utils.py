@@ -164,7 +164,7 @@ def create_shiplabel_blank_page(canvas):
     canvas.setFont('Helvetica', 10)
 
 
-def fill_shiplabel_data(c, order, offset):
+def fill_shiplabel_data(c, order, offset, client_name=None):
     c.drawString(offset * inch, 6.90 * inch, order.shipments[0].courier.courier_name)
     c.setFont('Helvetica-Bold', 14)
     c.drawString((offset + 1.8) * inch, 4.90 * inch, order.payments[0].payment_mode)
@@ -224,7 +224,8 @@ def fill_shiplabel_data(c, order, offset):
 
         return_address = split_string(return_address, 30)
 
-        c.drawString((offset - 0.85) * inch, 3.25 * inch, return_point.name)
+        return_point_name = client_name.client_name if client_name else str(return_point.name)
+        c.drawString((offset - 0.85) * inch, 3.25 * inch, return_point_name)
         y_axis = 3.05
         for retn in return_address:
             c.drawString((offset - 0.85) * inch, y_axis * inch, retn)
@@ -664,7 +665,7 @@ def fill_invoice_data(c, order, client_name):
         pass
 
     try:
-        full_name = order.pickup_data.pickup.name
+        full_name = client_name.client_name if client_name.client_name else order.pickup_data.pickup.name
         str_full_address = [full_name]
         full_address = order.pickup_data.pickup.address
         if order.pickup_data.pickup.address_two:

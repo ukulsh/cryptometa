@@ -1,6 +1,7 @@
 import psycopg2, requests, os, json
 from datetime import datetime, timedelta
 from requests_oauthlib.oauth1_session import OAuth1Session
+from woocommerce import API
 import logging
 
 from .queries import *
@@ -50,15 +51,17 @@ def lambda_handler():
 
 
 def fetch_shopify_orders(cur, channel):
-    shopify_orders_url = "https://%s:%s@%s/admin/api/2019-10/orders.json?since_id=%s&limit=250" % (
-        channel[3], channel[4], channel[5], channel[6])
+    updated_after = (channel[7] - timedelta(hours=5.5)).strftime("%Y-%m-%dT%X")
+    shopify_orders_url = "https://%s:%s@%s/admin/api/2020-07/orders.json?updated_at_min=%s&limit=250&fulfillment_status=unfulfilled" % (
+        channel[3], channel[4], channel[5], updated_after)
     data = requests.get(shopify_orders_url).json()
+    last_synced_time = datetime.utcnow() + timedelta(hours=5.5)
     if 'orders' not in data:
         return None
     for order in data['orders']:
         try:
-            cur.execute("SELECT id from orders where channel_order_id='%s' and client_prefix='%s'" % (
-            str(order['order_number']), channel[1]))
+            cur.execute("SELECT id from orders where order_id_channel_unique='%s' and client_prefix='%s'" % (
+            str(order['id']), channel[1]))
             try:
                 existing_order = cur.fetchone()[0]
             except Exception as e:
@@ -234,14 +237,14 @@ def fetch_shopify_orders(cur, channel):
         conn.commit()
 
     if data['orders']:
-        last_sync_tuple = (str(data['orders'][-1]['id']), datetime.utcnow() + timedelta(hours=5.5), channel[0])
+        last_sync_tuple = (str(data['orders'][-1]['id']), last_synced_time, channel[0])
         cur.execute(update_last_fetched_data_query, last_sync_tuple)
 
     conn.commit()
 
 
 def fetch_woocommerce_orders(cur, channel):
-    time_after = channel[7] - timedelta(days=5)
+    time_after = channel[7] - timedelta(days=10)
     cur.execute("SELECT order_id_channel_unique from orders WHERE order_date>%s "
                 "and client_prefix=%s and order_id_channel_unique is not null;", (time_after, channel[1]))
 
@@ -251,10 +254,13 @@ def fetch_woocommerce_orders(cur, channel):
     for fetch_id in all_fetched_ids:
         exclude_ids += str(fetch_id[0]) + ","
 
-    auth_session = OAuth1Session(channel[3],
-                                 client_secret=channel[4])
-    url = '%s/wp-json/wc/v3/orders?per_page=100&after=%s&order=asc&consumer_key=%s&consumer_secret=%s&exclude=%s&status=%s' % (
-        channel[5],time_after.isoformat(),channel[3],channel[4],exclude_ids, fetch_status)
+    auth_session = API(
+            url=channel[5],
+            consumer_key=channel[3],
+            consumer_secret=channel[4],
+            version="wc/v3"
+        )
+    url = 'orders?per_page=100&after=%s&order=asc&exclude=%s&status=%s&consumer_key=%s&consumer_secret=%s' % (time_after.isoformat(), exclude_ids, fetch_status, channel[3], channel[4])
     last_order_time = datetime.utcnow() + timedelta(hours=5.5)
     r = auth_session.get(url)
     data = list()
@@ -416,7 +422,7 @@ def fetch_magento_orders(cur, channel):
     headers = {'Authorization': "Bearer "+channel[3],
                'Content-Type': 'application/json'}
     data = requests.get(magento_orders_url, headers=headers)
-    logger.info(str(data.reason))
+    logger.info(str(len(data.json())))
     if data.status_code==200:
         data = data.json()
     else:

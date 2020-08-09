@@ -3,7 +3,7 @@
 
 from project import db
 from sqlalchemy.dialects.postgresql import JSON
-from sqlalchemy import UniqueConstraint
+from sqlalchemy import UniqueConstraint, Index
 from datetime import datetime
 from sqlalchemy.dialects.postgresql import ARRAY
 
@@ -205,7 +205,9 @@ class Orders(db.Model):
     date_created = db.Column(db.DateTime, default=datetime.now)
     date_updated = db.Column(db.DateTime, onupdate=datetime.now)
     __table_args__ = (UniqueConstraint('channel_order_id', 'client_prefix', name='id_client_unique'),
+                      Index('orders_id_date_idx_2','order_date', 'id'),
                       )
+
 
 
 class OrdersPayments(db.Model):
@@ -291,6 +293,17 @@ class ClientChannel(db.Model):
     last_synced_order = db.Column(db.String, nullable=True)
     last_synced_time = db.Column(db.DateTime, nullable=True)
     fetch_status = db.Column(ARRAY(db.String(20)))
+    mark_shipped = db.Column(db.BOOLEAN, nullable=True, default=True)
+    shipped_status = db.Column(db.String, nullable=True, default='shipped')
+    mark_canceled = db.Column(db.BOOLEAN, nullable=True, default=True)
+    canceled_status = db.Column(db.String, nullable=True, default='cancelled')
+    mark_returned = db.Column(db.BOOLEAN, nullable=True, default=True)
+    returned_status = db.Column(db.String, nullable=True, default='returned')
+    mark_delivered = db.Column(db.BOOLEAN, nullable=True, default=True)
+    delivered_status = db.Column(db.String, nullable=True, default='delivered')
+    mark_invoiced = db.Column(db.BOOLEAN, nullable=True, default=True)
+    invoiced_status = db.Column(db.String, nullable=True, default='invoiced')
+    unique_parameter = db.Column(db.String, nullable=True)
     date_created = db.Column(db.DateTime, default=datetime.now)
     date_updated = db.Column(db.DateTime, onupdate=datetime.now)
 

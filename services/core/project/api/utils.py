@@ -296,7 +296,7 @@ def create_shiplabel_blank_page_thermal(canvas):
     canvas.setFont('Helvetica', 0)
 
 
-def fill_shiplabel_data_thermal(c, order):
+def fill_shiplabel_data_thermal(c, order, client_name=None):
     c.setFont('Helvetica-Bold', 10)
     c.drawString(1.45* inch, 3.05 * inch, order.payments[0].payment_mode)
     if order.payments[0].payment_mode.lower()=="cod":
@@ -354,6 +354,9 @@ def fill_shiplabel_data_thermal(c, order):
         return_address = return_point.address
         if return_point.address_two:
             return_address += " "+ return_point.address_two
+
+        return_point_name = client_name.client_name if client_name else str(return_point.name)
+        return_address = return_point_name + " |  " + return_address
 
         return_address = split_string(return_address, 75)
 

@@ -208,7 +208,9 @@ get_status_update_orders_query = """select aa.id, bb.awb, aa.status, aa.client_p
                                     aa.order_id_channel_unique, bb.channel_fulfillment_id, cc.api_key, 
                                     cc.api_password, cc.shop_url, bb.id, aa.pickup_data_id, aa.channel_order_id, ee.payment_mode, 
                                     cc.channel_id, gg.location_id, mm.item_list, mm.sku_quan_list , aa.customer_name, aa.customer_email, 
-                                    nn.client_name, nn.client_logo, nn.custom_email_subject, bb.courier_id, nn.theme_color
+                                    nn.client_name, nn.client_logo, nn.custom_email_subject, bb.courier_id, nn.theme_color, cc.unique_parameter,
+                                    cc.mark_shipped, cc.shipped_status, cc.mark_invoiced, cc.invoiced_status, cc.mark_delivered, 
+                                    cc.delivered_status, cc.mark_returned, cc.returned_status, cc.id
                                     from orders aa
                                     left join shipments bb
                                     on aa.id=bb.order_id
@@ -229,7 +231,7 @@ get_status_update_orders_query = """select aa.id, bb.awb, aa.status, aa.client_p
                                     and aa.pickup_data_id=gg.pickup_data_id
                                     left join client_mapping nn
                                     on aa.client_prefix=nn.client_prefix
-                                    where aa.status not in ('NEW','DELIVERED','NOT SHIPPED','RTO','CANCELED')
+                                    where aa.status not in ('NEW','DELIVERED','NOT SHIPPED','RTO','CANCELED','CLOSED','DTO','LOST')
                                     and aa.status_type is distinct from 'DL'
                                     and bb.awb != ''
                                     and bb.awb is not null
@@ -289,10 +291,10 @@ select_orders_to_calculate_query = """select aa.id, aa.awb, aa.courier_id, aa.vo
                                         left join pickup_points cc on aa.pickup_id=cc.id
                                         left join shipping_address dd on bb.delivery_address_id=dd.id
                                         left join client_deductions ee on ee.shipment_id=aa.id
-                                        left join (select * from order_status where status in ('Delivered', 'RTO')) ff
+                                        left join (select * from order_status where status in ('Delivered', 'RTO', 'DTO')) ff
                                         on aa.id = ff.shipment_id
                                         left join orders_payments gg on bb.id=gg.order_id
-                                        where bb.status in ('DELIVERED', 'RTO')
+                                        where bb.status in ('DELIVERED', 'RTO', 'DTO')
                                         and ee.shipment_id is null
                                         and (ff.status_time>'__STATUS_TIME__' or ff.status_time is null)"""
 
@@ -386,7 +388,7 @@ select_orders_list_query = """select distinct on (aa.order_date, aa.id) aa.chann
                              bb.volumetric_weight,bb.remark, aa.customer_name, aa.customer_phone, aa.customer_email, dd.address_one, dd.address_two, 
                              dd.city, dd.state, dd.country, dd.pincode, ee.delivered_time, ff.pickup_time, gg.payment_mode, gg.amount, ii.warehouse_prefix,
                              ll.product_names, ll.skus, ll.quantity,mm.id,  mm.cod_verified, mm.verified_via, nn.id,  nn.ndr_verified, nn.verified_via, 
-                             pp.logo_url, qq.manifest_time, rr.reason_id, rr.reason, rr.date_created, aa.client_prefix
+                             pp.logo_url, qq.manifest_time, rr.reason_id, rr.reason, rr.date_created, aa.client_prefix, ll.weights, ll.dimensions
                              from orders aa
                              left join shipments bb
                              on aa.id=bb.order_id
@@ -406,7 +408,7 @@ select_orders_list_query = """select distinct on (aa.order_date, aa.id) aa.chann
                              left join op_association jj on aa.id=jj.order_id
                              left join products kk on jj.product_id=kk.id
                              left join (SELECT order_id, array_agg(name) as product_names, array_agg(master_sku) as skus, 
-                                        array_agg(quantity) as quantity from op_association jj 
+                                        array_agg(quantity) as quantity, array_agg(weight) as weights, array_agg(dimensions) as dimensions from op_association jj 
                                        left join products kk on jj.product_id=kk.id
                                        group by order_id) ll on aa.id=ll.order_id
                              left join cod_verification mm on mm.order_id=aa.id
@@ -428,7 +430,7 @@ select_orders_list_query = """select distinct on (aa.order_date, aa.id) aa.chann
                              __CLIENT_FILTER__
                              __MV_CLIENT_FILTER__
                              __SINCE_ID_FILTER__
-                             order by order_date DESC
+                             order by order_date DESC, aa.id DESC
                              __PAGINATION__"""
 
 
@@ -440,7 +442,7 @@ select_wallet_deductions_query = """SELECT aa.status_time, aa.status, bb.courier
                                     LEFT JOIN orders dd on aa.order_id=dd.id
                                     LEFT JOIN client_deductions ee on ee.shipment_id=aa.shipment_id
                                     LEFT JOIN cost_to_clients ff on dd.client_prefix=ff.client_prefix and bb.id=ff.courier_id
-                                    WHERE aa.status in ('Delivered', 'RTO')
+                                    WHERE aa.status in ('Delivered', 'RTO', 'DTO')
                                     AND (cc.awb ilike '%__SEARCH_KEY__%' or dd.channel_order_id ilike '%__SEARCH_KEY__%')
                                     __CLIENT_FILTER__
                                     __MV_CLIENT_FILTER__

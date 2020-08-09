@@ -28,7 +28,7 @@ app.config['CELERY_BROKER_URL'] = "redis://redis:6379/0"
 app.config['CELERYBEAT_SCHEDULE'] = {
     'run-status-update': {
             'task': 'status_update',
-            'schedule': crontab(minute='10', hour='*')
+            'schedule': crontab(minute='50', hour='*')
         },
 }
 

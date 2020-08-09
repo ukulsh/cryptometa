@@ -27,7 +27,8 @@ def lambda_handler():
     for courier in cur.fetchall():
         try:
             if courier[1] in (
-            "Delhivery", "Delhivery Surface Standard", "Delhivery Bulk", "Delhivery Heavy", "Delhivery Heavy 2"):
+                    "Delhivery", "Delhivery Surface Standard", "Delhivery Bulk", "Delhivery Heavy",
+                    "Delhivery Heavy 2"):
                 cur.execute(get_status_update_orders_query % str(courier[0]))
                 all_orders = cur.fetchall()
                 pickup_count = 0
@@ -49,7 +50,7 @@ def lambda_handler():
                     awb_string = awb_string.rstrip(',')
 
                     check_status_url = "https://track.delhivery.com/api/status/packages/json/?waybill=%s&token=%s" % (
-                    awb_string, courier[2])
+                        awb_string, courier[2])
                     req = requests.get(check_status_url)
                     try:
                         req_ship_data += req.json()['ShipmentData']
@@ -95,7 +96,7 @@ def lambda_handler():
                                     to_record_status = "Picked"
                                 elif each_scan['ScanDetail']['Scan'] == "In Transit" \
                                         and "Pick Up Completed" in each_scan['ScanDetail']['Instructions']:
-                                    to_record_status = "Picked"
+                                    to_record_status = "Picked RVP"
                                 elif each_scan['ScanDetail']['Scan'] == "In Transit" \
                                         and each_scan['ScanDetail']['ScanType'] == "UD":
                                     to_record_status = "In Transit"
@@ -181,12 +182,33 @@ def lambda_handler():
                             cur.execute("UPDATE shipments SET edd=%s WHERE awb=%s", (edd, current_awb))
 
                         if new_status == 'DELIVERED':
-                            if orders_dict[current_awb][14] == 6:  # Magento complete
+                            if orders_dict[current_awb][30] != False:
+                                if orders_dict[current_awb][14] == 6:  # Magento complete
+                                    try:
+                                        magento_complete_order(orders_dict[current_awb])
+                                    except Exception as e:
+                                        logger.error(
+                                            "Couldn't complete Magento for: " + str(orders_dict[current_awb][0])
+                                            + "\nError: " + str(e.args))
+                                if orders_dict[current_awb][14] == 5:  # Woocommerce complete
+                                    try:
+                                        woocommerce_complete(orders_dict[current_awb])
+                                    except Exception as e:
+                                        logger.error(
+                                            "Couldn't complete Magento for: " + str(orders_dict[current_awb][0])
+                                            + "\nError: " + str(e.args))
+
+                            if orders_dict[current_awb][28] != False and str(
+                                    orders_dict[current_awb][13]).lower() == 'cod' and orders_dict[current_awb][
+                                14] == 1:  # mark paid on shopify
                                 try:
-                                    magento_complete_order(orders_dict[current_awb])
+                                    shopify_markpaid(orders_dict[current_awb])
                                 except Exception as e:
-                                    logger.error("Couldn't complete Magento for: " + str(orders_dict[current_awb][0])
-                                                 + "\nError: " + str(e.args))
+                                    logger.error(
+                                        "Couldn't mark paid Shopify for: " + str(orders_dict[current_awb][0])
+                                        + "\nError: " + str(e.args))
+
+                            """
                             if orders_dict[current_awb][13] and str(orders_dict[current_awb][13]).lower() == 'prepaid':
                                 try:  ## Delivery check text
                                     sms_to_key, sms_body_key, customer_phone, sms_body_key_data = verification_text(
@@ -197,21 +219,22 @@ def lambda_handler():
                                 except Exception as e:
                                     logger.error(
                                         "Delivery confirmation not sent. Order id: " + str(orders_dict[current_awb][0]))
-
+                            """
                         if new_status == 'RTO':
-                            if orders_dict[current_awb][14] == 6:  # Magento return
-                                try:
-                                    magento_return_order(orders_dict[current_awb])
-                                except Exception as e:
-                                    logger.error("Couldn't return Magento for: " + str(orders_dict[current_awb][0])
-                                                 + "\nError: " + str(e.args))
-                            elif orders_dict[current_awb][14] == 5:  # Woocommerce Cancelled
-                                try:
-                                    woocommerce_cancelled(orders_dict[current_awb])
-                                except Exception as e:
-                                    logger.error(
-                                        "Couldn't cancel on woocommerce for: " + str(orders_dict[current_awb][0])
-                                        + "\nError: " + str(e.args))
+                            if orders_dict[current_awb][32] != False:
+                                if orders_dict[current_awb][14] == 6:  # Magento return
+                                    try:
+                                        magento_return_order(orders_dict[current_awb])
+                                    except Exception as e:
+                                        logger.error("Couldn't return Magento for: " + str(orders_dict[current_awb][0])
+                                                     + "\nError: " + str(e.args))
+                                elif orders_dict[current_awb][14] == 5:  # Woocommerce Cancelled
+                                    try:
+                                        woocommerce_returned(orders_dict[current_awb])
+                                    except Exception as e:
+                                        logger.error(
+                                            "Couldn't cancel on woocommerce for: " + str(orders_dict[current_awb][0])
+                                            + "\nError: " + str(e.args))
 
                         """
                             if orders_dict[current_awb][6] and orders_dict[current_awb][5]:
@@ -228,32 +251,35 @@ def lambda_handler():
                         """
 
                         if orders_dict[current_awb][2] in (
-                        'READY TO SHIP', 'PICKUP REQUESTED', 'NOT PICKED') and new_status == 'IN TRANSIT':
+                                'READY TO SHIP', 'PICKUP REQUESTED', 'NOT PICKED') and new_status == 'IN TRANSIT':
                             pickup_count += 1
                             if orders_dict[current_awb][11] not in pickup_dict:
                                 pickup_dict[orders_dict[current_awb][11]] = 1
                             else:
                                 pickup_dict[orders_dict[current_awb][11]] += 1
                             # cur.execute(update_prod_quantity_query_pickup%str(orders_dict[current_awb][0]))
-                            if orders_dict[current_awb][14] == 5:
-                                try:
-                                    woocommerce_fulfillment(orders_dict[current_awb])
-                                except Exception as e:
-                                    logger.error("Couldn't update woocommerce for: " + str(orders_dict[current_awb][0])
-                                                 + "\nError: " + str(e.args))
-                            elif orders_dict[current_awb][14] == 1 and orders_dict[current_awb][15]:
-                                try:
-                                    shopify_fulfillment(orders_dict[current_awb], cur)
-                                except Exception as e:
-                                    logger.error("Couldn't update shopify for: " + str(orders_dict[current_awb][0])
-                                                 + "\nError: " + str(e.args))
-                            elif orders_dict[current_awb][14] == 6:  # Magento fulfilment
-                                try:
-                                    magento_invoice(orders_dict[current_awb])
-                                    magento_fulfillment(orders_dict[current_awb], cur)
-                                except Exception as e:
-                                    logger.error("Couldn't update Magento for: " + str(orders_dict[current_awb][0])
-                                                 + "\nError: " + str(e.args))
+                            if orders_dict[current_awb][26] != False:
+                                if orders_dict[current_awb][14] == 5:
+                                    try:
+                                        woocommerce_fulfillment(orders_dict[current_awb])
+                                    except Exception as e:
+                                        logger.error(
+                                            "Couldn't update woocommerce for: " + str(orders_dict[current_awb][0])
+                                            + "\nError: " + str(e.args))
+                                elif orders_dict[current_awb][14] == 1:
+                                    try:
+                                        shopify_fulfillment(orders_dict[current_awb], cur)
+                                    except Exception as e:
+                                        logger.error("Couldn't update shopify for: " + str(orders_dict[current_awb][0])
+                                                     + "\nError: " + str(e.args))
+                                elif orders_dict[current_awb][14] == 6:  # Magento fulfilment
+                                    try:
+                                        if orders_dict[current_awb][28] != False:
+                                            magento_invoice(orders_dict[current_awb])
+                                        magento_fulfillment(orders_dict[current_awb], cur)
+                                    except Exception as e:
+                                        logger.error("Couldn't update Magento for: " + str(orders_dict[current_awb][0])
+                                                     + "\nError: " + str(e.args))
 
                             if orders_dict[current_awb][19]:
                                 email = create_email(orders_dict[current_awb], edd.strftime('%-d %b') if edd else "",
@@ -491,13 +517,31 @@ def lambda_handler():
                             cur.execute("UPDATE shipments SET edd=%s WHERE awb=%s", (edd, current_awb))
 
                         if new_status == 'DELIVERED':
-                            if orders_dict[current_awb][14] == 6:  # Magento complete
+                            if orders_dict[current_awb][30] != False:
+                                if orders_dict[current_awb][14] == 6:  # Magento complete
+                                    try:
+                                        magento_complete_order(orders_dict[current_awb])
+                                    except Exception as e:
+                                        logger.error(
+                                            "Couldn't complete Magento for: " + str(orders_dict[current_awb][0])
+                                            + "\nError: " + str(e.args))
+                                if orders_dict[current_awb][14] == 5:  # Woocommerce complete
+                                    try:
+                                        woocommerce_complete(orders_dict[current_awb])
+                                    except Exception as e:
+                                        logger.error(
+                                            "Couldn't complete Magento for: " + str(orders_dict[current_awb][0])
+                                            + "\nError: " + str(e.args))
+                            if orders_dict[current_awb][28] != False and str(
+                                    orders_dict[current_awb][13]).lower() == 'cod' and orders_dict[current_awb][
+                                14] == 1:  # mark paid on shopify
                                 try:
-                                    magento_complete_order(orders_dict[current_awb])
+                                    shopify_markpaid(orders_dict[current_awb])
                                 except Exception as e:
-                                    logger.error("Couldn't complete Magento for: " + str(orders_dict[current_awb][0])
-                                                 + "\nError: " + str(e.args))
-
+                                    logger.error(
+                                        "Couldn't mark paid Shopify for: " + str(orders_dict[current_awb][0])
+                                        + "\nError: " + str(e.args))
+                            """
                             if orders_dict[current_awb][13] and str(orders_dict[current_awb][13]).lower() == 'prepaid':
                                 try:  ## Delivery check text
                                     sms_to_key, sms_body_key, customer_phone, sms_body_key_data = verification_text(
@@ -508,21 +552,22 @@ def lambda_handler():
                                 except Exception as e:
                                     logger.error(
                                         "Delivery confirmation not sent. Order id: " + str(orders_dict[current_awb][0]))
-
+                            """
                         if new_status == 'RTO':
-                            if orders_dict[current_awb][14] == 6:  # Magento return
-                                try:
-                                    magento_return_order(orders_dict[current_awb])
-                                except Exception as e:
-                                    logger.error("Couldn't return Magento for: " + str(orders_dict[current_awb][0])
-                                                 + "\nError: " + str(e.args))
-                            if orders_dict[current_awb][14] == 5:  # Woocommerce cancelled
-                                try:
-                                    woocommerce_cancelled(orders_dict[current_awb])
-                                except Exception as e:
-                                    logger.error(
-                                        "Couldn't cancel on woocommerce for: " + str(orders_dict[current_awb][0])
-                                        + "\nError: " + str(e.args))
+                            if orders_dict[current_awb][32] != False:
+                                if orders_dict[current_awb][14] == 6:  # Magento return
+                                    try:
+                                        magento_return_order(orders_dict[current_awb])
+                                    except Exception as e:
+                                        logger.error("Couldn't return Magento for: " + str(orders_dict[current_awb][0])
+                                                     + "\nError: " + str(e.args))
+                                elif orders_dict[current_awb][14] == 5:  # Woocommerce Cancelled
+                                    try:
+                                        woocommerce_returned(orders_dict[current_awb])
+                                    except Exception as e:
+                                        logger.error(
+                                            "Couldn't cancel on woocommerce for: " + str(orders_dict[current_awb][0])
+                                            + "\nError: " + str(e.args))
                         """
                             if orders_dict[current_awb][6] and orders_dict[current_awb][5]:
                                 complete_fulfillment_url = "https://%s:%s@%s/admin/api/2019-10/orders/%s/fulfillments/%s/complete.json" % (
@@ -545,26 +590,28 @@ def lambda_handler():
                             else:
                                 pickup_dict[orders_dict[current_awb][11]] += 1
                             # cur.execute(update_prod_quantity_query_pickup%str(orders_dict[current_awb][0]))
-                            if orders_dict[current_awb][14] == 5:
-                                try:
-                                    woocommerce_fulfillment(orders_dict[current_awb])
-                                except Exception as e:
-                                    logger.error("Couldn't update woocommerce for: " + str(orders_dict[current_awb][0])
-                                                 + "\nError: " + str(e.args))
-
-                            elif orders_dict[current_awb][14] == 1 and orders_dict[current_awb][15]:
-                                try:
-                                    shopify_fulfillment(orders_dict[current_awb], cur)
-                                except Exception as e:
-                                    logger.error("Couldn't update shopify for: " + str(orders_dict[current_awb][0])
-                                                 + "\nError: " + str(e.args))
-                            elif orders_dict[current_awb][14] == 6:  # Magento fulfilment
-                                try:
-                                    magento_invoice(orders_dict[current_awb])
-                                    magento_fulfillment(orders_dict[current_awb], cur)
-                                except Exception as e:
-                                    logger.error("Couldn't update Magento for: " + str(orders_dict[current_awb][0])
-                                                 + "\nError: " + str(e.args))
+                            if orders_dict[current_awb][26] != False:
+                                if orders_dict[current_awb][14] == 5:
+                                    try:
+                                        woocommerce_fulfillment(orders_dict[current_awb])
+                                    except Exception as e:
+                                        logger.error(
+                                            "Couldn't update woocommerce for: " + str(orders_dict[current_awb][0])
+                                            + "\nError: " + str(e.args))
+                                elif orders_dict[current_awb][14] == 1:
+                                    try:
+                                        shopify_fulfillment(orders_dict[current_awb], cur)
+                                    except Exception as e:
+                                        logger.error("Couldn't update shopify for: " + str(orders_dict[current_awb][0])
+                                                     + "\nError: " + str(e.args))
+                                elif orders_dict[current_awb][14] == 6:  # Magento fulfilment
+                                    try:
+                                        if orders_dict[current_awb][28] != False:
+                                            magento_invoice(orders_dict[current_awb])
+                                        magento_fulfillment(orders_dict[current_awb], cur)
+                                    except Exception as e:
+                                        logger.error("Couldn't update Magento for: " + str(orders_dict[current_awb][0])
+                                                     + "\nError: " + str(e.args))
                             if orders_dict[current_awb][19]:
                                 email = create_email(orders_dict[current_awb], edd.strftime('%-d %b') if edd else "",
                                                      orders_dict[current_awb][19])
@@ -799,13 +846,32 @@ def lambda_handler():
                             cur.execute("UPDATE shipments SET edd=%s WHERE awb=%s", (edd, current_awb))
 
                         if new_status == 'DELIVERED':
-                            if orders_dict[current_awb][14] == 6:  # Magento complete
-                                try:
-                                    magento_complete_order(orders_dict[current_awb])
-                                except Exception as e:
-                                    logger.error("Couldn't complete Magento for: " + str(orders_dict[current_awb][0])
-                                                 + "\nError: " + str(e.args))
+                            if orders_dict[current_awb][30] != False:
+                                if orders_dict[current_awb][14] == 6:  # Magento complete
+                                    try:
+                                        magento_complete_order(orders_dict[current_awb])
+                                    except Exception as e:
+                                        logger.error(
+                                            "Couldn't complete Magento for: " + str(orders_dict[current_awb][0])
+                                            + "\nError: " + str(e.args))
+                                if orders_dict[current_awb][14] == 5:  # Woocommerce complete
+                                    try:
+                                        woocommerce_complete(orders_dict[current_awb])
+                                    except Exception as e:
+                                        logger.error(
+                                            "Couldn't complete Magento for: " + str(orders_dict[current_awb][0])
+                                            + "\nError: " + str(e.args))
 
+                            if orders_dict[current_awb][28] != False and str(
+                                    orders_dict[current_awb][13]).lower() == 'cod' and orders_dict[current_awb][
+                                14] == 1:  # mark paid on shopify
+                                try:
+                                    shopify_markpaid(orders_dict[current_awb])
+                                except Exception as e:
+                                    logger.error(
+                                        "Couldn't mark paid Shopify for: " + str(orders_dict[current_awb][0])
+                                        + "\nError: " + str(e.args))
+                            """
                             if orders_dict[current_awb][13] and str(orders_dict[current_awb][13]).lower() == 'prepaid':
                                 try:  ## Delivery check text
                                     sms_to_key, sms_body_key, customer_phone, sms_body_key_data = verification_text(
@@ -816,22 +882,22 @@ def lambda_handler():
                                 except Exception as e:
                                     logger.error(
                                         "Delivery confirmation not sent. Order id: " + str(orders_dict[current_awb][0]))
-
+                            """
                         if new_status == 'RTO':
-                            if orders_dict[current_awb][14] == 6:  # Magento return
-                                try:
-                                    magento_return_order(orders_dict[current_awb])
-                                except Exception as e:
-                                    logger.error("Couldn't return Magento for: " + str(orders_dict[current_awb][0])
-                                                 + "\nError: " + str(e.args))
-
-                            if orders_dict[current_awb][14] == 5:  # Woocommerce cancelled
-                                try:
-                                    woocommerce_cancelled(orders_dict[current_awb])
-                                except Exception as e:
-                                    logger.error(
-                                        "Couldn't cancel on woocommerce for: " + str(orders_dict[current_awb][0])
-                                        + "\nError: " + str(e.args))
+                            if orders_dict[current_awb][32] != False:
+                                if orders_dict[current_awb][14] == 6:  # Magento return
+                                    try:
+                                        magento_return_order(orders_dict[current_awb])
+                                    except Exception as e:
+                                        logger.error("Couldn't return Magento for: " + str(orders_dict[current_awb][0])
+                                                     + "\nError: " + str(e.args))
+                                elif orders_dict[current_awb][14] == 5:  # Woocommerce Cancelled
+                                    try:
+                                        woocommerce_returned(orders_dict[current_awb])
+                                    except Exception as e:
+                                        logger.error(
+                                            "Couldn't cancel on woocommerce for: " + str(orders_dict[current_awb][0])
+                                            + "\nError: " + str(e.args))
 
                         if orders_dict[current_awb][2] in (
                                 'READY TO SHIP', 'PICKUP REQUESTED', 'NOT PICKED') and new_status == 'IN TRANSIT':
@@ -842,28 +908,30 @@ def lambda_handler():
                                 else:
                                     pickup_dict[orders_dict[current_awb][11]] += 1
                                 # cur.execute(update_prod_quantity_query_pickup % str(orders_dict[current_awb][0]))
-                                if orders_dict[current_awb][14] == 5:
-                                    try:
-                                        woocommerce_fulfillment(orders_dict[current_awb])
-                                    except Exception as e:
-                                        logger.error(
-                                            "Couldn't update woocommerce for: " + str(orders_dict[current_awb][0])
-                                            + "\nError: " + str(e.args))
-
-                                elif orders_dict[current_awb][14] == 1 and orders_dict[current_awb][15]:
-                                    try:
-                                        shopify_fulfillment(orders_dict[current_awb], cur)
-                                    except Exception as e:
-                                        logger.error("Couldn't update shopify for: " + str(orders_dict[current_awb][0])
-                                                     + "\nError: " + str(e.args))
-
-                                elif orders_dict[current_awb][14] == 6:  # Magento fulfilment
-                                    try:
-                                        magento_invoice(orders_dict[current_awb])
-                                        magento_fulfillment(orders_dict[current_awb], cur)
-                                    except Exception as e:
-                                        logger.error("Couldn't update Magento for: " + str(orders_dict[current_awb][0])
-                                                     + "\nError: " + str(e.args))
+                                if orders_dict[current_awb][26] != False:
+                                    if orders_dict[current_awb][14] == 5:
+                                        try:
+                                            woocommerce_fulfillment(orders_dict[current_awb])
+                                        except Exception as e:
+                                            logger.error(
+                                                "Couldn't update woocommerce for: " + str(orders_dict[current_awb][0])
+                                                + "\nError: " + str(e.args))
+                                    elif orders_dict[current_awb][14] == 1:
+                                        try:
+                                            shopify_fulfillment(orders_dict[current_awb], cur)
+                                        except Exception as e:
+                                            logger.error(
+                                                "Couldn't update shopify for: " + str(orders_dict[current_awb][0])
+                                                + "\nError: " + str(e.args))
+                                    elif orders_dict[current_awb][14] == 6:  # Magento fulfilment
+                                        try:
+                                            if orders_dict[current_awb][28] != False:
+                                                magento_invoice(orders_dict[current_awb])
+                                            magento_fulfillment(orders_dict[current_awb], cur)
+                                        except Exception as e:
+                                            logger.error(
+                                                "Couldn't update Magento for: " + str(orders_dict[current_awb][0])
+                                                + "\nError: " + str(e.args))
 
                                 if orders_dict[current_awb][19]:
                                     email = create_email(orders_dict[current_awb],
@@ -988,7 +1056,7 @@ def verification_text(current_order, exotel_idx, cur, cur_2, ndr=None, ndr_reaso
         cur.execute("SELECT * from ndr_shipments WHERE shipment_id=%s" % str(current_order[10]))
         if not cur.fetchone():
             ndr_ship_tuple = (
-            current_order[0], current_order[10], ndr_reason, "required", datetime.utcnow() + timedelta(hours=5.5))
+                current_order[0], current_order[10], ndr_reason, "required", datetime.utcnow() + timedelta(hours=5.5))
             cur.execute(
                 "INSERT INTO ndr_shipments (order_id, shipment_id, reason_id, current_status, date_created) VALUES (%s,%s,%s,%s,%s);",
                 ndr_ship_tuple)
@@ -1098,21 +1166,41 @@ def woocommerce_fulfillment(order):
     auth_session = OAuth1Session(order[7],
                                  client_secret=order[8])
     url = '%s/wp-json/wc/v3/orders/%s' % (order[9], str(order[5]))
-    r = auth_session.post(url, data={"status": "shipped"})
-    if r.status_code == 400:
-        r = auth_session.post(url, data={"status": "completed"})
+    status_mark = order[27]
+    if not status_mark:
+        status_mark = "shipped"
+    r = auth_session.post(url, data={"status": status_mark})
 
 
-def woocommerce_cancelled(order):
+def woocommerce_complete(order):
     auth_session = OAuth1Session(order[7],
                                  client_secret=order[8])
     url = '%s/wp-json/wc/v3/orders/%s' % (order[9], str(order[5]))
-    r = auth_session.post(url, data={"status": "cancelled"})
-    if r.status_code == 400:
-        r = auth_session.post(url, data={"status": "canceled"})
+    status_mark = order[27]
+    if not status_mark:
+        status_mark = "delivered"
+    r = auth_session.post(url, data={"status": status_mark})
+
+
+def woocommerce_returned(order):
+    auth_session = OAuth1Session(order[7],
+                                 client_secret=order[8])
+    url = '%s/wp-json/wc/v3/orders/%s' % (order[9], str(order[5]))
+    status_mark = order[33]
+    if not status_mark:
+        status_mark = "returned"
+    r = auth_session.post(url, data={"status": status_mark})
 
 
 def shopify_fulfillment(order, cur):
+    if not order[25]:
+        get_locations_url = "https://%s:%s@%s/admin/api/2019-10/locations.json" % (order[7], order[8], order[9])
+        req = requests.get(get_locations_url).json()
+        location_id = str(req['locations'][0]['id'])
+        cur.execute("UPDATE client_channel set unique_parameter=%s where id=%s" % (location_id, order[34]))
+    else:
+        location_id = str(order[25])
+
     create_fulfillment_url = "https://%s:%s@%s/admin/api/2019-10/orders/%s/fulfillments.json" % (
         order[7], order[8],
         order[9], order[5])
@@ -1125,7 +1213,7 @@ def shopify_fulfillment(order, cur):
                 tracking_link
             ],
             "tracking_company": "WareIQ",
-            "location_id": int(order[15]),
+            "location_id": int(location_id),
             "notify_customer": True
         }
     }
@@ -1136,6 +1224,29 @@ def shopify_fulfillment(order, cur):
         cur.execute("UPDATE shipments SET channel_fulfillment_id=%s, tracking_link=%s WHERE id=%s",
                     (fulfillment_id, tracking_link, order[10]))
     return fulfillment_id, tracking_link
+
+
+def shopify_markpaid(order):
+    get_transactions_url = "https://%s:%s@%s/admin/api/2019-10/orders/%s/transactions.json" % (
+        order[7], order[8],
+        order[9], order[5])
+
+    req = requests.get(get_transactions_url).json()
+    transaction = req['transactions'][0]
+
+    tra_header = {'Content-Type': 'application/json'}
+    transaction_data = {
+        "transaction": {
+            "kind": "capture",
+            "gateway": "manual",
+            "amount": transaction['amount'],
+            "parent_id": str(transaction['id']),
+            "status": "success",
+            "currency": transaction['currency']
+        }
+    }
+    req_ful = requests.post(get_transactions_url, data=json.dumps(transaction_data),
+                            headers=tra_header)
 
 
 def magento_fulfillment(order, cur):
@@ -1173,6 +1284,9 @@ def magento_fulfillment(order, cur):
 
     shipped_comment_url = "%s/V1/orders/%s/comments" % (order[9], order[5])
 
+    status_mark = order[27]
+    if not status_mark:
+        status_mark = "shipped"
     time_now = datetime.utcnow() + timedelta(hours=5.5)
     time_now = time_now.strftime('%Y-%m-%d %H:%M:%S')
     complete_data = {
@@ -1182,7 +1296,7 @@ def magento_fulfillment(order, cur):
             "parent_id": int(order[5]),
             "is_customer_notified": 0,
             "is_visible_on_front": 0,
-            "status": "dispatched"
+            "status": status_mark
         }
     }
     req_ful = requests.post(shipped_comment_url, data=json.dumps(complete_data),
@@ -1213,6 +1327,9 @@ def magento_invoice(order):
 
     invoice_comment_url = "%s/V1/orders/%s/comments" % (order[9], order[5])
 
+    status_mark = order[29]
+    if not status_mark:
+        status_mark = "invoiced"
     time_now = datetime.utcnow() + timedelta(hours=5.5)
     time_now = time_now.strftime('%Y-%m-%d %H:%M:%S')
     complete_data = {
@@ -1222,7 +1339,7 @@ def magento_invoice(order):
             "parent_id": int(order[5]),
             "is_customer_notified": 0,
             "is_visible_on_front": 0,
-            "status": "invoiced"
+            "status": status_mark
         }
     }
     req_ful = requests.post(invoice_comment_url, data=json.dumps(complete_data),
@@ -1234,6 +1351,9 @@ def magento_complete_order(order):
     ful_header = {'Content-Type': 'application/json',
                   'Authorization': 'Bearer ' + order[7]}
 
+    status_mark = order[31]
+    if not status_mark:
+        status_mark = "delivered"
     time_now = datetime.utcnow() + timedelta(hours=5.5)
     time_now = time_now.strftime('%Y-%m-%d %H:%M:%S')
     complete_data = {
@@ -1255,6 +1375,9 @@ def magento_return_order(order):
     ful_header = {'Content-Type': 'application/json',
                   'Authorization': 'Bearer ' + order[7]}
 
+    status_mark = order[33]
+    if not status_mark:
+        status_mark = "returned"
     time_now = datetime.utcnow() + timedelta(hours=5.5)
     time_now = time_now.strftime('%Y-%m-%d %H:%M:%S')
     complete_data = {
@@ -1264,7 +1387,7 @@ def magento_return_order(order):
             "parent_id": int(order[5]),
             "is_customer_notified": 0,
             "is_visible_on_front": 0,
-            "status": "return"
+            "status": status_mark
         }
     }
     req_ful = requests.post(complete_order_url, data=json.dumps(complete_data),

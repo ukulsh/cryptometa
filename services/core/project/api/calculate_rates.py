@@ -105,7 +105,7 @@ def lambda_handler():
                     rto_charge_gst = 0
                     cod_charge = 0
                     cod_charged_gst = 0
-                    if order[13] == 'RTO':
+                    if order[13] in ('RTO','DTO'):
                         rto_charge = forward_charge*charge_rate_values[3]
                         rto_charge_gst = forward_charge_gst*charge_rate_values[3]
                     else:
@@ -132,7 +132,7 @@ def lambda_handler():
                     rto_charge_gst = 0
                     cod_charge = 0
                     cod_charged_gst = 0
-                    if order[13] == 'RTO':
+                    if order[13] in ('RTO','DTO'):
                         rto_charge = forward_charge * charge_rate_values[3]
                         rto_charge_gst = forward_charge_gst * charge_rate_values[3]
                     else:
@@ -152,6 +152,10 @@ def lambda_handler():
                     deduction_time=order[10]
                 else:
                     deduction_time=datetime.now()
+
+                if order[13] == "DTO":
+                    forward_charge = 0
+                    forward_charge_gst = 0
 
                 total_charge = forward_charge+cod_charge+rto_charge
                 total_charge_gst = forward_charge_gst+rto_charge_gst+cod_charged_gst

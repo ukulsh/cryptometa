@@ -830,5 +830,3 @@ def update_available_quantity(cur):
                                 WHERE product_id=%s and warehouse_prefix=%s;""", update_tuple)
 
     conn.commit()
-
-

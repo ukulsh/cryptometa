@@ -590,6 +590,8 @@ class ClientMapping(db.Model):
     hide_weights = db.Column(db.BOOLEAN, nullable=True, default=True)
     order_split = db.Column(db.BOOLEAN, nullable=True, default=True)
     default_warehouse = db.Column(db.String, nullable=True)
+    hide_products = db.Column(db.BOOLEAN, nullable=True, default=False)
+    hide_address = db.Column(db.BOOLEAN, nullable=True, default=False)
 
 
 class MultiVendor(db.Model):
@@ -614,3 +616,18 @@ class ClientChannelLocations(db.Model):
     client_channel_id = db.Column(db.Integer, db.ForeignKey('client_channel.id'))
     client_channel = db.relationship("ClientChannel", backref=db.backref("client_channel_locations"))
     location_id = db.Column(db.String, nullable=False)
+
+
+class IVRHistory(db.Model):
+    __tablename__ = "ivr_history"
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    order_id = db.Column(db.Integer, db.ForeignKey('orders.id'))
+    order = db.relationship("Orders", backref=db.backref("ivr_history", uselist=True))
+    call_sid = db.Column(db.String, nullable=True)
+    recording_url = db.Column(db.String, nullable=True)
+    status = db.Column(db.String, nullable=True)
+    call_time = db.Column(db.DateTime, default=datetime.now)
+    from_no = db.Column(db.String, nullable=True)
+    to_no = db.Column(db.String, nullable=True)
+    date_created = db.Column(db.DateTime, default=datetime.now)
+    date_updated = db.Column(db.DateTime, onupdate=datetime.now)

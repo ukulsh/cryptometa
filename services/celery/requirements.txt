@@ -34,6 +34,7 @@ Flask-Migrate==2.4.0
 Flask-RESTful==0.3.7
 Flask-SQLAlchemy==2.3.2
 Flask-Testing==0.7.1
+flower==0.9.5
 future==0.18.2
 gunicorn==19.9.0
 idna==2.8
@@ -116,7 +117,7 @@ pickleshare==0.7.5
 Pillow==6.2.1
 prometheus-client==0.8.0
 prompt-toolkit==3.0.4
-psycopg2-binary==2.7.7
+psycopg2-binary==2.8.5
 ptyprocess==0.6.0
 pycodestyle==2.5.0
 pycparser==2.19

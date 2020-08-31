@@ -236,25 +236,26 @@ def fill_shiplabel_data(c, order, offset, client_name=None):
     except Exception:
         pass
 
-    c.setFont('Helvetica', 8)
-    try:
-        products_string = ""
-        for prod in order.products:
-            products_string += prod.product.name + " (" + str(prod.quantity) + ") + "
-        products_string = products_string.rstrip(" + ")
-        if order.payments[0].shipping_charges:
-            products_string += " + Shipping"
-        products_string = split_string(products_string, 35)
-        if len(products_string) > 9:
-            products_string = products_string[:9]
-            products_string[8] += "..."
+    if not client_name.hide_products:
+        c.setFont('Helvetica', 8)
+        try:
+            products_string = ""
+            for prod in order.products:
+                products_string += prod.product.name + " (" + str(prod.quantity) + ") + "
+            products_string = products_string.rstrip(" + ")
+            if order.payments[0].shipping_charges:
+                products_string += " + Shipping"
+            products_string = split_string(products_string, 35)
+            if len(products_string) > 9:
+                products_string = products_string[:9]
+                products_string[8] += "..."
 
-        y_axis = 1.42
-        for prod in products_string:
-            c.drawString((offset - 0.85) * inch, y_axis * inch, prod)
-            y_axis -= 0.12
-    except Exception:
-        pass
+            y_axis = 1.42
+            for prod in products_string:
+                c.drawString((offset - 0.85) * inch, y_axis * inch, prod)
+                y_axis -= 0.12
+        except Exception:
+            pass
 
     c.setFont('Helvetica', 12)
 
@@ -368,25 +369,26 @@ def fill_shiplabel_data_thermal(c, order, client_name=None):
     except Exception:
         pass
 
-    c.setFont('Helvetica', 7)
-    try:
-        products_string = ""
-        for prod in order.products:
-            products_string += prod.product.name + " (" + str(prod.quantity) + ") + "
-        products_string = products_string.rstrip(" + ")
-        if order.payments[0].shipping_charges:
-            products_string += " + Shipping"
-        products_string = split_string(products_string, 45)
-        if len(products_string) > 7:
-            products_string = products_string[:7]
-            products_string[6] += "..."
+    if not client_name.hide_products:
+        c.setFont('Helvetica', 7)
+        try:
+            products_string = ""
+            for prod in order.products:
+                products_string += prod.product.name + " (" + str(prod.quantity) + ") + "
+            products_string = products_string.rstrip(" + ")
+            if order.payments[0].shipping_charges:
+                products_string += " + Shipping"
+            products_string = split_string(products_string, 45)
+            if len(products_string) > 7:
+                products_string = products_string[:7]
+                products_string[6] += "..."
 
-        y_axis = 0.6
-        for prod in products_string:
-            c.drawString(-0.75 * inch, y_axis * inch, prod)
-            y_axis -= 0.15
-    except Exception:
-        pass
+            y_axis = 0.6
+            for prod in products_string:
+                c.drawString(-0.75 * inch, y_axis * inch, prod)
+                y_axis -= 0.15
+        except Exception:
+            pass
 
     c.setFont('Helvetica', 8)
 

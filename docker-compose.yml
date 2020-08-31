@@ -64,3 +64,21 @@ services:
     environment:
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=aSderRFgd23
+
+  celery:
+    build:
+      context: ./services/celery
+      dockerfile: Dockerfile-prod
+    ports:
+      - 5000
+    depends_on:
+      - rabbitmq
+
+  rabbitmq:
+    image: rabbitmq
+
+  flower:
+    image: mher/flower
+    command: ["flower", "--broker=amqp://guest:guest@rabbitmq:5672", "--port=8888", "--url-prefix=flower"]
+    ports:
+      - 8888:8888

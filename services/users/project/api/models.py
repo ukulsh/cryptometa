@@ -29,6 +29,8 @@ class User(db.Model):
     group_id = db.Column(db.Integer, db.ForeignKey('usergroups.id'))
     group = db.relationship("UserGroups", backref=db.backref("usergroups", uselist=True))
     tabs = db.Column(ARRAY(db.String(20)))
+    phone_no = db.Column(db.String(13), nullable=True)
+    calling_active = db.Column(db.Boolean(), default=False, nullable=True)
     admin = db.Column(db.Boolean, default=False, nullable=False)
 
     def __init__(self, username, email, password):
@@ -51,6 +53,8 @@ class User(db.Model):
             'client_prefix': self.client.client_prefix if self.client else None,
             'warehouse_prefix': self.warehouse.warehouse_prefix if self.warehouse else None,
             'tabs': self.tabs,
+            'phone_no': self.phone_no,
+            'calling_active': self.calling_active,
         }
 
     def encode_auth_token(self, user_id):
@@ -91,9 +95,9 @@ class User(db.Model):
 class Client(db.Model):
     __tablename__ = 'clients'
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    client_name = db.Column(db.String(128), unique=True, nullable=False)
+    client_name = db.Column(db.String(128), nullable=False)
     client_prefix = db.Column(db.String(32), unique=True, nullable=False)
-    primary_email = db.Column(db.String(128), unique=True, nullable=False)
+    primary_email = db.Column(db.String(128), nullable=False)
 
     def __init__(self, client_name, primary_email):
         self.client_name = client_name
@@ -110,9 +114,9 @@ class Client(db.Model):
 class Warehouse(db.Model):
     __tablename__ = 'warehouses'
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    warehouse_name = db.Column(db.String(128), unique=True, nullable=False)
+    warehouse_name = db.Column(db.String(128), nullable=False)
     warehouse_prefix = db.Column(db.String(32), unique=True, nullable=False)
-    primary_email = db.Column(db.String(128), unique=True, nullable=False)
+    primary_email = db.Column(db.String(128), nullable=False)
 
     def __init__(self, warehouse_name, primary_email):
         self.warehouse_name = warehouse_name

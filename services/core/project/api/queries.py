@@ -207,10 +207,10 @@ get_courier_id_and_key_query = """SELECT id, courier_name, api_key FROM master_c
 get_status_update_orders_query = """select aa.id, bb.awb, aa.status, aa.client_prefix, aa.customer_phone, 
                                     aa.order_id_channel_unique, bb.channel_fulfillment_id, cc.api_key, 
                                     cc.api_password, cc.shop_url, bb.id, aa.pickup_data_id, aa.channel_order_id, ee.payment_mode, 
-                                    cc.channel_id, gg.location_id, mm.item_list, mm.sku_quan_list , aa.customer_name, aa.customer_email, 
+                                    cc.channel_id, gg.location_id, mm.item_list, mm.sku_quan_list, aa.customer_name, aa.customer_email, 
                                     nn.client_name, nn.client_logo, nn.custom_email_subject, bb.courier_id, nn.theme_color, cc.unique_parameter,
                                     cc.mark_shipped, cc.shipped_status, cc.mark_invoiced, cc.invoiced_status, cc.mark_delivered, 
-                                    cc.delivered_status, cc.mark_returned, cc.returned_status, cc.id
+                                    cc.delivered_status, cc.mark_returned, cc.returned_status, cc.id, ee.amount
                                     from orders aa
                                     left join shipments bb
                                     on aa.id=bb.order_id
@@ -415,7 +415,7 @@ select_orders_list_query = """select distinct on (aa.order_date, aa.id) aa.chann
                              left join ndr_verification nn on nn.order_id=aa.id
                              left join (select ss.id, ss.order_id, tt.id as reason_id, tt.reason, ss.date_created from ndr_shipments ss left join ndr_reasons tt on ss.reason_id=tt.id ) rr
                              on aa.id=rr.order_id                                   
-                             WHERE (aa.channel_order_id ilike '%__SEARCH_KEY__%' or awb ilike '%__SEARCH_KEY__%' or customer_name ilike '%__SEARCH_KEY__%')
+                             WHERE (aa.channel_order_id ilike '%__SEARCH_KEY__%' or awb ilike '%__SEARCH_KEY__%' or customer_name ilike '%__SEARCH_KEY__%' or customer_phone ilike '%__SEARCH_KEY__%')
                              __ORDER_DATE_FILTER__
                              __MANIFEST_DATE_FILTER__
                              __PICKUP_TIME_FILTER__

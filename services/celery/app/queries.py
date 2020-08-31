@@ -207,10 +207,10 @@ get_courier_id_and_key_query = """SELECT id, courier_name, api_key FROM master_c
 get_status_update_orders_query = """select aa.id, bb.awb, aa.status, aa.client_prefix, aa.customer_phone, 
                                     aa.order_id_channel_unique, bb.channel_fulfillment_id, cc.api_key, 
                                     cc.api_password, cc.shop_url, bb.id, aa.pickup_data_id, aa.channel_order_id, ee.payment_mode, 
-                                    cc.channel_id, gg.location_id, mm.item_list, mm.sku_quan_list , aa.customer_name, aa.customer_email, 
+                                    cc.channel_id, gg.location_id, mm.item_list, mm.sku_quan_list, aa.customer_name, aa.customer_email, 
                                     nn.client_name, nn.client_logo, nn.custom_email_subject, bb.courier_id, nn.theme_color, cc.unique_parameter,
                                     cc.mark_shipped, cc.shipped_status, cc.mark_invoiced, cc.invoiced_status, cc.mark_delivered, 
-                                    cc.delivered_status, cc.mark_returned, cc.returned_status, cc.id
+                                    cc.delivered_status, cc.mark_returned, cc.returned_status, cc.id, ee.amount
                                     from orders aa
                                     left join shipments bb
                                     on aa.id=bb.order_id

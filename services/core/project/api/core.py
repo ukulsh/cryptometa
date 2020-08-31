@@ -3,6 +3,7 @@
 import requests, json, math, pytz, psycopg2
 import boto3, os, csv, io, smtplib
 import pandas as pd
+import numpy as np
 import re
 from flask_cors import cross_origin
 from datetime import datetime, timedelta
@@ -22,7 +23,7 @@ from .queries import product_count_query, available_warehouse_product_quantity, 
     select_wallet_remittance_orders_query
 from project.api.models import Products, ProductQuantity, InventoryUpdate, WarehouseMapping, NDRReasons, MultiVendor, \
     Orders, OrdersPayments, PickupPoints, MasterChannels, ClientPickups, CodVerification, NDRVerification, NDRShipments,\
-    MasterCouriers, Shipments, OPAssociation, ShippingAddress, Manifests, ClientCouriers, OrderStatus, DeliveryCheck, ClientMapping
+    MasterCouriers, Shipments, OPAssociation, ShippingAddress, Manifests, ClientCouriers, OrderStatus, DeliveryCheck, ClientMapping, IVRHistory
 from project.api.utils import authenticate_restful, get_products_sort_func, fill_shiplabel_data_thermal, \
     get_orders_sort_func, create_shiplabel_blank_page, fill_shiplabel_data, create_shiplabel_blank_page_thermal, \
     create_invoice_blank_page, fill_invoice_data, generate_picklist, generate_packlist
@@ -400,7 +401,7 @@ class OrderList(Resource):
             elif type == "return":
                 query_to_run = query_to_run.replace("__TAB_STATUS_FILTER__", "AND (aa.status_type='RT' or (aa.status_type='DL' and aa.status='RTO'))")
             elif type == "ndr":
-                query_to_run = query_to_run.replace("__TAB_STATUS_FILTER__", "AND (rr.id is not null AND aa.status='PENDING')")
+                query_to_run = query_to_run.replace("__TAB_STATUS_FILTER__", "AND (rr.id is not null AND aa.status='PENDING' AND aa.status_type!='RT')")
             elif type == 'all':
                 pass
             else:
@@ -750,6 +751,416 @@ def get_dashboard(resp):
     return jsonify(response), 200
 
 
+@core_blueprint.route('/dashboard/v1/performance', methods=['GET'])
+@authenticate_restful
+def get_dashboard_performance(resp):
+    response = dict()
+    cur = conn.cursor()
+    try:
+        auth_data = resp.get('data')
+        if not auth_data:
+            return jsonify({"msg": "Authentication Failed"}), 400
+
+        if auth_data['user_group'] == 'warehouse':
+            response['data'] = {}
+            return jsonify(response), 200
+
+        from_date = request.args.get('from')
+        to_date = request.args.get('to')
+
+        if not from_date:
+            from_date = datetime.utcnow() + timedelta(hours=5.5) - timedelta(days=30)
+            from_date = from_date.strftime('%Y-%m-%d')
+
+        if to_date:
+            to_date = datetime.strptime(to_date, '%Y-%m-%d')
+            to_date = to_date+timedelta(days=1)
+            to_date = to_date.strftime('%Y-%m-%d')
+        else:
+            to_date = datetime.utcnow() + timedelta(hours=5.5) + timedelta(days=1)
+            to_date = to_date.strftime('%Y-%m-%d')
+
+        client_prefix = auth_data.get('client_prefix')
+
+        query_to_run = """select aa.status, count(*) from orders aa
+                        left join shipments bb on aa.id=bb.order_id
+                        where aa.order_date>'%s' and aa.order_date<'%s'
+                        __CLIENT_FILTER__
+                        group by aa.status"""%(from_date, to_date)
+
+        all_vendors = None
+        if auth_data['user_group'] == 'multi-vendor':
+            all_vendors = db.session.query(MultiVendor).filter(MultiVendor.client_prefix == client_prefix).first()
+            all_vendors = all_vendors.vendor_list
+
+        if auth_data['user_group'] == 'client':
+            query_to_run = query_to_run.replace("__CLIENT_FILTER__",
+                                                    "AND aa.client_prefix='%s'" % auth_data['client_prefix'])
+        elif all_vendors:
+            query_to_run = query_to_run.replace("__CLIENT_FILTER__",
+                                                    "AND aa.client_prefix in %s" % str(tuple(all_vendors)))
+        else:
+            query_to_run = query_to_run.replace("__CLIENT_FILTER__", "")
+
+        all_shipments = 0
+        active_shipments = 0
+        delivered_shipments = 0
+        rto_shipments = 0
+        cur.execute(query_to_run)
+        status_qs = cur.fetchall()
+
+        for st_obj in status_qs:
+            if st_obj[0] in ('DELIVERED'):
+                delivered_shipments += st_obj[1]
+                all_shipments += st_obj[1]
+            elif st_obj[0] in ('RTO','DTO'):
+                rto_shipments += st_obj[1]
+                all_shipments += st_obj[1]
+            elif st_obj[0] in ('IN TRANSIT','PENDING', 'DISPATCHED'):
+                active_shipments += st_obj[1]
+                all_shipments += st_obj[1]
+            elif st_obj[0] in ('PICKUP REQUESTED', 'READY TO SHIP'):
+                all_shipments += st_obj[1]
+
+        response['data'] = {'all':all_shipments, "active": active_shipments, "delivered":delivered_shipments, "rto": rto_shipments}
+
+        return jsonify(response), 200
+    except Exception as e:
+        return jsonify(response), 400
+
+
+@core_blueprint.route('/dashboard/v1/verification', methods=['GET'])
+@authenticate_restful
+def get_dashboard_verification(resp):
+    response = dict()
+    cur = conn.cursor()
+    try:
+        auth_data = resp.get('data')
+        if not auth_data:
+            return jsonify({"msg": "Authentication Failed"}), 400
+
+        if auth_data['user_group'] == 'warehouse':
+            response['data'] = {}
+            return jsonify(response), 200
+
+        from_date = request.args.get('from')
+        to_date = request.args.get('to')
+
+        if not from_date:
+            from_date = datetime.utcnow() + timedelta(hours=5.5) - timedelta(days=30)
+            from_date = from_date.strftime('%Y-%m-%d')
+
+        if to_date:
+            to_date = datetime.strptime(to_date, '%Y-%m-%d')
+            to_date = to_date+timedelta(days=1)
+            to_date = to_date.strftime('%Y-%m-%d')
+        else:
+            to_date = datetime.utcnow() + timedelta(hours=5.5) + timedelta(days=1)
+            to_date = to_date.strftime('%Y-%m-%d')
+
+        client_prefix = auth_data.get('client_prefix')
+
+        query_to_run_cod = """select verified_via, count(*) from cod_verification aa
+                            left join orders bb on bb.id=aa.order_id
+                            where aa.date_created+interval '5.5 hours'>'%s' 
+                            and aa.date_created+interval '5.5 hours'<'%s'
+                            __CLIENT_FILTER__
+                            group by verified_via"""%(from_date, to_date)
+
+        query_to_run_ndr = """select verified_via, count(*) from ndr_verification aa
+                                    left join orders bb on bb.id=aa.order_id
+                                    where aa.date_created+interval '5.5 hours'>'%s' 
+                                    and aa.date_created+interval '5.5 hours'<'%s'
+                                    __CLIENT_FILTER__
+                                    group by verified_via""" % (from_date, to_date)
+
+        all_vendors = None
+        if auth_data['user_group'] == 'multi-vendor':
+            all_vendors = db.session.query(MultiVendor).filter(MultiVendor.client_prefix == client_prefix).first()
+            all_vendors = all_vendors.vendor_list
+
+        if auth_data['user_group'] == 'client':
+            query_to_run_cod = query_to_run_cod.replace("__CLIENT_FILTER__",
+                                                    "AND bb.client_prefix='%s'" % auth_data['client_prefix'])
+            query_to_run_ndr = query_to_run_ndr.replace("__CLIENT_FILTER__",
+                                                        "AND bb.client_prefix='%s'" % auth_data['client_prefix'])
+        elif all_vendors:
+            query_to_run_cod = query_to_run_cod.replace("__CLIENT_FILTER__",
+                                                    "AND bb.client_prefix in %s" % str(tuple(all_vendors)))
+            query_to_run_ndr = query_to_run_ndr.replace("__CLIENT_FILTER__",
+                                                        "AND bb.client_prefix in %s" % str(tuple(all_vendors)))
+        else:
+            query_to_run_cod = query_to_run_cod.replace("__CLIENT_FILTER__", "")
+            query_to_run_ndr = query_to_run_ndr.replace("__CLIENT_FILTER__", "")
+
+        cur.execute(query_to_run_cod)
+        cod_qs = cur.fetchall()
+        cur.execute(query_to_run_ndr)
+        ndr_qs = cur.fetchall()
+
+        cod_obj = {'text':0, 'call':0, 'manual':0,'total':0}
+        ndr_obj = {'text':0, 'call':0, 'manual':0,'total':0}
+
+        for st_obj in cod_qs:
+            cod_obj['total'] += st_obj[1]
+            if st_obj[0] =='text':
+                cod_obj['text'] += st_obj[1]
+            elif st_obj[0] =='call':
+                cod_obj['call'] += st_obj[1]
+            elif st_obj[0] == 'manual':
+                cod_obj['manual'] += st_obj[1]
+
+        for st_obj in ndr_qs:
+            ndr_obj['total'] += st_obj[1]
+            if st_obj[0] =='text':
+                ndr_obj['text'] += st_obj[1]
+            elif st_obj[0] =='call':
+                ndr_obj['call'] += st_obj[1]
+            elif st_obj[0] == 'manual':
+                ndr_obj['manual'] += st_obj[1]
+
+        response['data'] = {'cod':cod_obj, "ndr": ndr_obj}
+
+        return jsonify(response), 200
+    except Exception as e:
+        return jsonify(response), 400
+
+
+@core_blueprint.route('/dashboard/v1/zonewise', methods=['GET'])
+@authenticate_restful
+def get_dashboard_zonewise(resp):
+    response = dict()
+    cur = conn.cursor()
+    try:
+        auth_data = resp.get('data')
+        if not auth_data:
+            return jsonify({"msg": "Authentication Failed"}), 400
+
+        if auth_data['user_group'] == 'warehouse':
+            response['data'] = {}
+            return jsonify(response), 200
+
+        from_date = request.args.get('from')
+        to_date = request.args.get('to')
+
+        if not from_date:
+            from_date = datetime.utcnow() + timedelta(hours=5.5) - timedelta(days=30)
+            from_date = from_date.strftime('%Y-%m-%d')
+
+        if to_date:
+            to_date = datetime.strptime(to_date, '%Y-%m-%d')
+            to_date = to_date+timedelta(days=1)
+            to_date = to_date.strftime('%Y-%m-%d')
+        else:
+            to_date = datetime.utcnow() + timedelta(hours=5.5) + timedelta(days=1)
+            to_date = to_date.strftime('%Y-%m-%d')
+
+        client_prefix = auth_data.get('client_prefix')
+
+        query_to_run = """select cc.zone, count(cc.zone) from orders aa
+                                left join shipments bb on aa.id=bb.order_id
+                                left join client_deductions cc on cc.shipment_id=bb.id
+                                where aa.order_date>'%s' and aa.order_date<'%s'
+                                and cc.zone is not null
+                                __CLIENT_FILTER__
+                                group by cc.zone"""%(from_date, to_date)
+
+        all_vendors = None
+        if auth_data['user_group'] == 'multi-vendor':
+            all_vendors = db.session.query(MultiVendor).filter(MultiVendor.client_prefix == client_prefix).first()
+            all_vendors = all_vendors.vendor_list
+
+        if auth_data['user_group'] == 'client':
+            query_to_run = query_to_run.replace("__CLIENT_FILTER__",
+                                                    "AND aa.client_prefix='%s'" % auth_data['client_prefix'])
+        elif all_vendors:
+            query_to_run = query_to_run.replace("__CLIENT_FILTER__",
+                                                    "AND aa.client_prefix in %s" % str(tuple(all_vendors)))
+        else:
+            query_to_run = query_to_run.replace("__CLIENT_FILTER__", "")
+
+        cur.execute(query_to_run)
+        zone_qs = cur.fetchall()
+
+        response['data'] = {'data':zone_qs}
+
+        return jsonify(response), 200
+    except Exception as e:
+        return jsonify(response), 400
+
+
+@core_blueprint.route('/dashboard/v1/ndr', methods=['GET'])
+@authenticate_restful
+def get_dashboard_ndr(resp):
+    response = dict()
+    cur = conn.cursor()
+    try:
+        auth_data = resp.get('data')
+        if not auth_data:
+            return jsonify({"msg": "Authentication Failed"}), 400
+
+        if auth_data['user_group'] == 'warehouse':
+            response['data'] = {}
+            return jsonify(response), 200
+
+        from_date = request.args.get('from')
+        to_date = request.args.get('to')
+
+        if not from_date:
+            from_date = datetime.utcnow() + timedelta(hours=5.5) - timedelta(days=30)
+            from_date = from_date.strftime('%Y-%m-%d')
+
+        if to_date:
+            to_date = datetime.strptime(to_date, '%Y-%m-%d')
+            to_date = to_date+timedelta(days=1)
+            to_date = to_date.strftime('%Y-%m-%d')
+        else:
+            to_date = datetime.utcnow() + timedelta(hours=5.5) + timedelta(days=1)
+            to_date = to_date.strftime('%Y-%m-%d')
+
+        client_prefix = auth_data.get('client_prefix')
+
+        query_to_run_count = """select bb.status, count(*) from ndr_shipments aa
+                            left join orders bb on bb.id=aa.order_id
+                            where aa.date_created+interval '5.5 hours'>'%s' 
+                            and aa.date_created+interval '5.5 hours'<'%s'
+                            __CLIENT_FILTER__
+                            group by bb.status"""%(from_date, to_date)
+
+        query_to_run_reason = """select cc.reason, count(*) from ndr_shipments aa
+                                left join orders bb on bb.id=aa.order_id
+                                left join ndr_reasons cc on cc.id=aa.reason_id
+                                where aa.date_created+interval '5.5 hours'>'%s' 
+                                and aa.date_created+interval '5.5 hours'<'%s'
+                                __CLIENT_FILTER__
+                                group by cc.reason""" % (from_date, to_date)
+
+        all_vendors = None
+        if auth_data['user_group'] == 'multi-vendor':
+            all_vendors = db.session.query(MultiVendor).filter(MultiVendor.client_prefix == client_prefix).first()
+            all_vendors = all_vendors.vendor_list
+
+        if auth_data['user_group'] == 'client':
+            query_to_run_count = query_to_run_count.replace("__CLIENT_FILTER__",
+                                                    "AND bb.client_prefix='%s'" % auth_data['client_prefix'])
+            query_to_run_reason = query_to_run_reason.replace("__CLIENT_FILTER__",
+                                                            "AND bb.client_prefix='%s'" % auth_data['client_prefix'])
+        elif all_vendors:
+            query_to_run_count = query_to_run_count.replace("__CLIENT_FILTER__",
+                                                    "AND bb.client_prefix in %s" % str(tuple(all_vendors)))
+            query_to_run_reason = query_to_run_reason.replace("__CLIENT_FILTER__",
+                                                            "AND bb.client_prefix in %s" % str(tuple(all_vendors)))
+        else:
+            query_to_run_count = query_to_run_count.replace("__CLIENT_FILTER__", "")
+            query_to_run_reason = query_to_run_reason.replace("__CLIENT_FILTER__", "")
+
+        cur.execute(query_to_run_count)
+        ndr_count_qs = cur.fetchall()
+        count = {"raised":0, "active":0, "delivered":0, "rto":0}
+        for ndr_qs in ndr_count_qs:
+            if ndr_qs[0] in ('IN TRANSIT', 'PENDING'):
+                count['raised'] += ndr_qs[1]
+                count['active'] += ndr_qs[1]
+            elif ndr_qs[0] == 'DELIVERED':
+                count['raised'] += ndr_qs[1]
+                count['delivered'] += ndr_qs[1]
+            elif ndr_qs[0] == 'RTO':
+                count['raised'] += ndr_qs[1]
+                count['rto'] += ndr_qs[1]
+
+        cur.execute(query_to_run_reason)
+        ndr_reason_qs = cur.fetchall()
+        reason = list()
+        for ndr_qs in ndr_reason_qs:
+            reason.append({"reason": ndr_qs[0], "count":ndr_qs[1]})
+
+        response['data'] = {'data':{"ndr_count": count, "ndr_reason": reason}}
+
+        return jsonify(response), 200
+    except Exception as e:
+        return jsonify(response), 400
+
+
+@core_blueprint.route('/dashboard/v1/delivery_timeline', methods=['GET'])
+@authenticate_restful
+def get_dashboard_delivery_timeline(resp):
+    response = dict()
+    cur = conn.cursor()
+    try:
+        auth_data = resp.get('data')
+        if not auth_data:
+            return jsonify({"msg": "Authentication Failed"}), 400
+
+        if auth_data['user_group'] == 'warehouse':
+            response['data'] = {}
+            return jsonify(response), 200
+
+        from_date = request.args.get('from')
+        to_date = request.args.get('to')
+
+        if not from_date:
+            from_date = datetime.utcnow() + timedelta(hours=5.5) - timedelta(days=30)
+            from_date = from_date.strftime('%Y-%m-%d')
+
+        if to_date:
+            to_date = datetime.strptime(to_date, '%Y-%m-%d')
+            to_date = to_date+timedelta(days=1)
+            to_date = to_date.strftime('%Y-%m-%d')
+        else:
+            to_date = datetime.utcnow() + timedelta(hours=5.5) + timedelta(days=1)
+            to_date = to_date.strftime('%Y-%m-%d')
+
+        client_prefix = auth_data.get('client_prefix')
+
+        query_to_run_count = """select delivery_days, count(delivery_days) from
+                                (select aa.status_time::date-dd.status_time::date as delivery_days from order_status aa
+                                left join orders bb on aa.order_id=bb.id
+                                left join shipments cc on aa.shipment_id=cc.id
+                                left join (select * from order_status where status='Picked') dd on bb.id=dd.order_id
+                                where aa.status='Delivered'
+                                and aa.status_time>'%s' and aa.status_time<'%s'
+                                __CLIENT_FILTER__) xx
+                                where delivery_days is not null
+                                group by delivery_days"""%(from_date, to_date)
+
+        all_vendors = None
+        if auth_data['user_group'] == 'multi-vendor':
+            all_vendors = db.session.query(MultiVendor).filter(MultiVendor.client_prefix == client_prefix).first()
+            all_vendors = all_vendors.vendor_list
+
+        if auth_data['user_group'] == 'client':
+            query_to_run_count = query_to_run_count.replace("__CLIENT_FILTER__",
+                                                    "AND bb.client_prefix='%s'" % auth_data['client_prefix'])
+        elif all_vendors:
+            query_to_run_count = query_to_run_count.replace("__CLIENT_FILTER__",
+                                                    "AND bb.client_prefix in %s" % str(tuple(all_vendors)))
+        else:
+            query_to_run_count = query_to_run_count.replace("__CLIENT_FILTER__", "")
+
+        cur.execute(query_to_run_count)
+        count_qs = cur.fetchall()
+        count_dict = {"one":0,"two":0,"three":0,"four":0,"five":0,"gt_five":0}
+        for count_qs_obj in count_qs:
+            if count_qs_obj[0]<2:
+                count_dict['one'] += count_qs_obj[1]
+            elif count_qs_obj[0]==2:
+                count_dict['two'] += count_qs_obj[1]
+            elif count_qs_obj[0]==3:
+                count_dict['three'] += count_qs_obj[1]
+            elif count_qs_obj[0]==4:
+                count_dict['four'] += count_qs_obj[1]
+            elif count_qs_obj[0]==5:
+                count_dict['five'] += count_qs_obj[1]
+            else:
+                count_dict['gt_five'] += count_qs_obj[1]
+
+        response['data'] = {'data':count_dict}
+
+        return jsonify(response), 200
+    except Exception as e:
+        return jsonify(response), 400
+
+
 @core_blueprint.route('/orders/get_filters', methods=['GET'])
 @authenticate_restful
 def get_orders_filters(resp):
@@ -930,7 +1341,8 @@ class AddOrder(Resource):
                            status="NEW",
                            client_prefix=auth_data.get('client_prefix'),
                            pickup_data=pickup_data,
-                           chargeable_weight=chargeable_weight
+                           chargeable_weight=chargeable_weight,
+                           order_id_channel_unique=str(data.get('order_id')).rstrip()
                            )
 
             if data.get('products'):
@@ -1099,11 +1511,13 @@ def upload_orders(resp):
                         db.session.rollback()
                         return
 
+            subtotal = float(row_data.subtotal) if not np.isnan(row_data.subtotal) else 0
+            shipping_charges = float(row_data.shipping_charges) if not np.isnan(row_data.shipping_charges) else 0
             payment = OrdersPayments(
                 payment_mode=str(row_data.payment_mode),
-                subtotal=float(row_data.subtotal),
-                amount=float(row_data.subtotal) + float(row_data.shipping_charges),
-                shipping_charges=float(row_data.shipping_charges),
+                subtotal=subtotal,
+                amount=subtotal+shipping_charges,
+                shipping_charges=shipping_charges,
                 currency='INR',
                 order=new_order
             )
@@ -1652,9 +2066,8 @@ class OrderDetails(Resource):
                             cancel_body = json.dumps({"AWBNumber": order.shipments[0].awb, "XBkey": order.shipments[0].courier.api_key, "RTOReason": "Cancelled by seller"})
                             headers = {"Authorization": "Basic " + order.shipments[0].courier.api_key,
                                         "Content-Type": "application/json"}
-                            req_can = requests.post("http://xbclientapi.xbees.in/StandardForwardStagingService.svc/RTONotifyShipment", headers=headers, data=cancel_body)
+                            req_can = requests.post("http://xbclientapi.xbees.in/POSTShipmentService.svc/RTONotifyShipment", headers=headers, data=cancel_body)
                     db.session.query(OrderStatus).filter(OrderStatus.order_id == int(order_id)).delete()
-                    db.session.query(Shipments).filter(Shipments.order_id == int(order_id)).delete()
                     if order.client_channel and order.client_channel.channel_id == 6 and order.order_id_channel_unique: #cancel on magento
                         cancel_header = {'Content-Type': 'application/json',
                                       'Authorization': 'Bearer ' + order.client_channel.api_key}
@@ -2118,6 +2531,100 @@ def verification_passthru(type):
         return jsonify({"success": False, "msg": str(e.args[0])}), 404
 
 
+@core_blueprint.route('/orders/v1/ivrcalls/call', methods=['GET'])
+@authenticate_restful
+def ivr_call(resp):
+    try:
+        order_id = request.args.get('unique_id')
+        auth_data = resp.get('data')
+        from_no = auth_data.get("phone_no")
+        if not from_no:
+            return jsonify({"success": False, "msg": "From number not found"}), 404
+
+        order = db.session.query(Orders).filter(Orders.id==int(order_id)).first()
+        if not order or not order.customer_phone:
+            return jsonify({"success": False, "msg": "To number not found"}), 404
+
+        ivr_obj = IVRHistory(order=order,
+                             from_no=from_no,
+                             to_no=str(order.customer_phone),
+                             status="new",
+                             call_time=datetime.utcnow() + timedelta(hours=5.5))
+
+        db.session.add(ivr_obj)
+        db.session.commit()
+        ivr_id=ivr_obj.id
+
+        ivr_url = "https://ff2064142bc89ac5e6c52a6398063872f95f759249509009:783fa09c0ba1110309f606c7411889192335bab2e908a079@api.exotel.com/v1/Accounts/wareiq1/Calls/connect"
+        call_data = {
+            'From': from_no,
+            'To': str(order.customer_phone),
+            'CallerId': '08047192710',
+            'CallType': 'trans',
+            'StatusCallback': 'http://track.wareiq.com/orders/v1/ivrcalls/passthru/%s'%str(ivr_id),
+            'MaxRetries': 1
+        }
+
+        req = requests.post(ivr_url, data=call_data)
+
+        if req.status_code!=200:
+            ivr_obj.status = "failed"
+            db.session.commit()
+        return jsonify({"success": True, "data": {"from_no": from_no, "to_no": order.customer_phone}}), 200
+
+    except Exception as e:
+        return jsonify({"success": False, "msg": str(e.args[0])}), 404
+
+
+@core_blueprint.route('/orders/v1/ivrcalls/call_history', methods=['GET'])
+@authenticate_restful
+def ivr_call_history(resp):
+    try:
+        order_id = request.args.get('unique_id')
+        auth_data = resp.get('data')
+        if not auth_data:
+            return {"success": False, "msg": "Auth Failed"}, 404
+        if not order_id:
+            return jsonify({"success": False, "msg": "order not found"}), 404
+
+        ivr_qs = db.session.query(IVRHistory).filter(IVRHistory.order_id==int(order_id)).order_by(IVRHistory.call_time.desc()).all()
+        call_list = list()
+        for ivr_call in ivr_qs:
+            call_obj = dict()
+            call_obj['from_no'] = ivr_call.from_no
+            call_obj['to_no'] = ivr_call.to_no
+            call_obj['call_time'] = ivr_call.call_time.strftime("%d %b %Y, %I:%M %p")
+            call_obj['status'] = ivr_call.status
+            call_obj['recording_url'] = ivr_call.recording_url
+            call_list.append(call_obj)
+
+        return jsonify({"success": True, "data": call_list}), 200
+
+    except Exception as e:
+        return jsonify({"success": False, "msg": str(e.args[0])}), 404
+
+
+@core_blueprint.route('/orders/v1/ivrcalls/passthru/<ivr_id>', methods=['POST'])
+def ivr_passthru(ivr_id):
+    try:
+        ivr_obj = db.session.query(IVRHistory).filter(IVRHistory.id==int(ivr_id)).first()
+        if not ivr_obj:
+            return jsonify({"success": False, "msg": "IVR details not found"}), 404
+
+        recording_url = request.form.get('RecordingUrl')
+        call_sid = request.form.get('CallSid')
+        status = request.form.get('Status')
+
+        ivr_obj.call_sid = call_sid
+        ivr_obj.recording_url = recording_url
+        ivr_obj.status = status
+        db.session.commit()
+        return jsonify({"success": True}), 200
+
+    except Exception as e:
+        return jsonify({"success": False, "msg": str(e.args[0])}), 404
+
+
 class PincodeServiceabilty(Resource):
 
     method_decorators = [authenticate_restful]
@@ -2139,6 +2646,8 @@ class PincodeServiceabilty(Resource):
                 return {"success": False, "msg": "Pincode not provided"}, 404
 
             covid_zone = None
+            city = None
+            state = None
             try:
                 cod_req = requests.get(
                     "https://track.delhivery.com/c/api/pin-codes/json/?filter_codes=%s&token=d6ce40e10b52b5ca74805a6e2fb45083f0194185" % str(
@@ -2149,10 +2658,12 @@ class PincodeServiceabilty(Resource):
                 if cod_req['delivery_codes'][0]['postal_code']['cod'].lower() == 'y':
                     cod_available = True
                 covid_zone = cod_req['delivery_codes'][0]['postal_code']['covid_zone']
+                city = cod_req['delivery_codes'][0]['postal_code']['district']
+                state = cod_req['delivery_codes'][0]['postal_code']['state_code']
             except Exception:
                 pass
             if not sku_list:
-                return {"success": True, "data": {"cod_available": cod_available, "covid_zone": covid_zone}}, 200
+                return {"success": True, "data": {"cod_available": cod_available, "covid_zone": covid_zone, "city": city, "state":state}}, 200
 
             sku_string = "('"
 
@@ -2306,7 +2817,9 @@ class PincodeServiceabilty(Resource):
                            "delivery_zone": delivery_zone,
                            "label_url": label_url,
                            "sku_wise": sku_wise_list,
-                           "covid_zone": covid_zone}
+                           "covid_zone": covid_zone,
+                           "city": city,
+                           "state":state}
 
             return {"success": True, "data": return_data}, 200
 
@@ -2430,18 +2943,34 @@ class UpdateInventory(Resource):
                                                  date_created=datetime.utcnow() + timedelta(hours=5.5))
 
                     shipped_quantity=0
+                    dto_quantity=0
                     try:
                         cur.execute("""  select COALESCE(sum(quantity), 0) from op_association aa
                                 left join orders bb on aa.order_id=bb.id
                                 left join client_pickups cc on bb.pickup_data_id=cc.id
                                 left join pickup_points dd on cc.pickup_id=dd.id
                                 left join products ee on aa.product_id=ee.id
-                                where status in ('DELIVERED','DISPATCHED','IN TRANSIT','ON HOLD','PENDING')
+                                where status in ('DELIVERED','DISPATCHED','IN TRANSIT','ON HOLD','PENDING','LOST')
                                 and dd.warehouse_prefix='__WAREHOUSE__'
-                                and ee.sku='__SKU__';""".replace('__WAREHOUSE__', warehouse).replace('__SKU__', sku))
+                                and ee.master_sku='__SKU__';""".replace('__WAREHOUSE__', warehouse).replace('__SKU__', sku))
                         shipped_quantity_obj = cur.fetchone()
                         if shipped_quantity_obj is not None:
                             shipped_quantity = shipped_quantity_obj[0]
+                    except Exception:
+                        conn.rollback()
+
+                    try:
+                        cur.execute("""  select COALESCE(sum(quantity), 0) from op_association aa
+                                left join orders bb on aa.order_id=bb.id
+                                left join client_pickups cc on bb.pickup_data_id=cc.id
+                                left join pickup_points dd on cc.pickup_id=dd.id
+                                left join products ee on aa.product_id=ee.id
+                                where status in ('DTO')
+                                and dd.warehouse_prefix='__WAREHOUSE__'
+                                and ee.master_sku='__SKU__';""".replace('__WAREHOUSE__', warehouse).replace('__SKU__', sku))
+                        dto_quantity_obj = cur.fetchone()
+                        if dto_quantity_obj is not None:
+                            dto_quantity = dto_quantity_obj[0]
                     except Exception:
                         conn.rollback()
 
@@ -2452,13 +2981,13 @@ class UpdateInventory(Resource):
                         quan_obj.total_quantity = quan_obj.total_quantity - quantity
                         quan_obj.approved_quantity = quan_obj.approved_quantity - quantity
                     elif str(type).lower() == 'replace':
-                        quan_obj.total_quantity = quantity + shipped_quantity
-                        quan_obj.approved_quantity = quantity + shipped_quantity
+                        quan_obj.total_quantity = quantity + shipped_quantity - dto_quantity
+                        quan_obj.approved_quantity = quantity + shipped_quantity - dto_quantity
                     else:
                         continue
 
                     current_quantity.append({"warehouse": warehouse, "sku": sku,
-                                             "available_quantity": quan_obj.approved_quantity- shipped_quantity})
+                                             "current_quantity": quan_obj.approved_quantity- shipped_quantity+dto_quantity})
 
                 except Exception:
                     failed_list.append(sku_obj)
@@ -3099,12 +3628,184 @@ api.add_resource(WalletRemittance, '/wallet/v1/remittance')
 @core_blueprint.route('/core/dev', methods=['POST'])
 def ping_dev():
     return 0
-    import requests
-    create_fulfillment_url = "https://c1abf447350ea5a3b79376bdbe5c3a9c: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@ekamonline.myshopify.com/admin/api/2020-07/orders/2297713393747/transactions.json?limit=250"
-    qs = requests.get(create_fulfillment_url)
-    from .models import PickupPoints, ReturnPoints, ClientPickups, Products, ProductQuantity
+    from .create_shipments import lambda_handler
+    lambda_handler()
+    import requests, json
+
+    #push magento inventory
+    cur = conn.cursor()
+
+    cur.execute("""select master_sku, GREATEST(available_quantity, 0) as available_quantity from
+                    (select master_sku, sum(available_quantity) as available_quantity from products_quantity aa
+                    left join products bb on aa.product_id=bb.id
+                    where bb.client_prefix='KAMAAYURVEDA'
+                    group by master_sku
+                    order by available_quantity) xx""")
+
+    all_quan = cur.fetchall()
+    source_items = list()
+    for quan in all_quan:
+        source_items.append({
+            "sku": quan[0],
+            "source_code": "default",
+            "quantity": quan[1],
+            "status": 1
+        })
+
+    magento_url = "https://www.kamaayurveda.com/rest/default/V1/inventory/source-items"
+    body = {
+        "sourceItems": source_items}
+    headers = {'Authorization': "Bearer q4ldi2wasczvm7l8caeyozgkxf4qanfr",
+               'Content-Type': 'application/json'}
+    r = requests.post(magento_url, headers=headers, data=json.dumps(body))
+
 
     myfile = request.files['myfile']
+    data_xlsx = pd.read_excel(myfile)
+
+    iter_rw = data_xlsx.iterrows()
+    source_items = list()
+    for row in iter_rw:
+        try:
+
+            sku = str(row[1].Item)
+            del_qty = int(row[1].DLQT)
+            cb_qty = int(row[1].CBQT)
+            mh_qty = int(row[1].MHQT)
+            """
+            source_items.append({
+                "sku": sku,
+                "source_code": "default",
+                "quantity": del_qty + cb_qty + mh_qty,
+                "status": 1
+            })
+            """
+            headers = {
+                'Authorization': "Bearer " + "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJleHAiOjE2MDAyMzM4MDMsImlhdCI6MTU5NzY0MTgwMywic3ViIjoxMTN9.9aVZVnryT4pd8LnVfdEbywfR7J0vRqOc-AEtnAlRq-o",
+                'Content-Type': 'application/json'}
+            """
+            data = {"sku_list": [{"sku": sku,
+                                  "warehouse": "DLWHEC",
+                                  "quantity": del_qty,
+                                  "type": "replace",
+                                  "remark": "30th aug resync"}]}
+            req = requests.post("http://track.wareiq.com/products/v1/update_inventory", headers=headers,
+                                data=json.dumps(data))
+                                
+            """
+
+            data = {"sku_list": [{"sku": sku,
+                                  "warehouse": "CBWHECB2C",
+                                  "quantity": cb_qty,
+                                  "type": "replace",
+                                  "remark": "30th aug resync"}]}
+            req = requests.post("http://track.wareiq.com/products/v1/update_inventory", headers=headers,
+                                data=json.dumps(data))
+            """
+
+            data = {"sku_list": [{"sku": sku,
+                                  "warehouse": "MHWHECB2C",
+                                  "quantity": mh_qty,
+                                  "type": "replace",
+                                  "remark": "30th aug resync"}]}
+            req = requests.post("http://track.wareiq.com/products/v1/update_inventory", headers=headers,
+                                data=json.dumps(data))
+                                
+            combo = str(row[1].SKU)
+            combo_prod = str(row[1].childsku)
+            combo = db.session.query(Products).filter(Products.master_sku == combo,
+                                                      Products.client_prefix == 'URBANGABRU').first()
+            combo_prod = db.session.query(Products).filter(Products.master_sku == combo_prod,
+                                                           Products.client_prefix == 'URBANGABRU').first()
+            if combo and combo_prod:
+                combo_obj = ProductsCombos(combo=combo,
+                                           combo_prod=combo_prod,
+                                           quantity=int(row[1].qty))
+                db.session.add(combo_obj)
+            else:
+                pass
+            """
+
+
+        except Exception as e:
+            pass
+
+    return 0
+    import requests, json
+    magento_orders_url = """%s/V1/orders/12326""" % (
+        "https://magento.feelmighty.com/rest")
+    headers = {'Authorization': "Bearer " + "f3ekur9ci3gc0cb63y743dvcy3ptyxe5",
+               'Content-Type': 'application/json'}
+    data = requests.get(magento_orders_url, headers=headers)
+
+    return 0
+    from woocommerce import API
+    wcapi = API(
+        url="https://www.zladeformen.com",
+        consumer_key="ck_cd462226a5d5c21c5936c7f75e1afca25b9853a6",
+        consumer_secret="cs_c897bf3e770e15f518cba5c619b32671b7cc527c",
+        version="wc/v3"
+    )
+    r = wcapi.get('orders/117929')
+
+
+
+    return 0
+
+
+    create_fulfillment_url = "https://c74b07d8c51d504b047ba32aa11d4c3a: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@sportsqvest.myshopify.com/admin/api/2020-07/orders/2180138500181.json"
+    qs = requests.get(create_fulfillment_url)
+    from .fetch_orders import lambda_handler
+    lambda_handler()
+    from .models import PickupPoints, ReturnPoints, ClientPickups, Products, ProductQuantity, ProductsCombos, Orders
+
+
+    db.session.commit()
+    import requests
+    myfile = request.files['myfile']
+    since_id = "1"
+    count = 250
+    while count == 250:
+        create_fulfillment_url = "https://c6ac91d702327f34a174008510129e44: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@urbangabru-mens-lifestyle.myshopify.com/admin/api/2020-07/products.json?limit=250&since_id=%s" % since_id
+        qs = requests.get(create_fulfillment_url)
+        for prod in qs.json()['products']:
+            for prod_obj in prod['variants']:
+                prod_obj_x = db.session.query(Products).filter(Products.sku == str(prod_obj['id'])).first()
+                if prod_obj_x:
+                    prod_obj_x.master_sku = prod_obj['sku']
+                else:
+                    prod_name = prod['title']
+                    if prod_obj['title'] != 'Default Title':
+                        prod_name += " - " + prod_obj['title']
+                    prod_obj_x = Products(name=prod_name,
+                                          sku=str(prod_obj['id']),
+                                          master_sku=str(prod_obj['sku']),
+                                          dimensions=None,
+                                          weight=None,
+                                          price=float(prod_obj['price']),
+                                          client_prefix='URBANGABRU',
+                                          active=True,
+                                          channel_id=1,
+                                          date_created=datetime.now()
+                                          )
+
+                    db.session.add(prod_obj_x)
+                    prod_quan_obj = ProductQuantity(product=prod_obj_x,
+                                                    total_quantity=0,
+                                                    approved_quantity=0,
+                                                    available_quantity=0,
+                                                    inline_quantity=0,
+                                                    rto_quantity=0,
+                                                    current_quantity=0,
+                                                    warehouse_prefix="QSDWARKA",
+                                                    status="APPROVED",
+                                                    date_created=datetime.now()
+                                                    )
+
+                    db.session.add(prod_quan_obj)
+
+        count = len(qs.json()['products'])
+        since_id = str(qs.json()['products'][-1]['id'])
 
     data_xlsx = pd.read_excel(myfile)
     import json, re
@@ -3113,64 +3814,120 @@ def ping_dev():
     for row in iter_rw:
         try:
             sku = str(row[1].SKU)
-            prod_obj = db.session.query(Products).filter(Products.master_sku == sku,
-                                                         Products.client_prefix == 'KAMAAYURVEDA').first()
+            name = str(row[1].Name)
+            mrp = float(row[1].MRP)
+            weight = float(row[1].Weight)
+            dimensions = {"length":float(row[1].Length),"breadth":float(row[1].Breadth),"height":float(row[1].Height)}
+            prod_obj = Products(name=name,
+                                sku=str(sku),
+                                master_sku=str(sku),
+                                dimensions=dimensions,
+                                weight=weight,
+                                price=mrp,
+                                client_prefix='MASKAPB',
+                                active=True,
+                                channel_id=4,
+                                inactive_reason=None,
+                                date_created=datetime.now()
+                                )
 
-            if not prod_obj:
-                prod_obj = Products(name=str(row[1].Description),
-                         sku=str(sku),
-                         master_sku=str(sku),
-                         dimensions=None,
-                         weight=None,
-                         price=float(row[1].Price),
-                         client_prefix='KAMAAYURVEDA',
-                         active=True,
-                         channel_id=6,
-                         inactive_reason=None,
-                         date_created=datetime.now()
-                         )
-            prod_quan_obj_a = ProductQuantity(product=prod_obj,
-                                            total_quantity=int(row[1].DELQTY),
-                                            approved_quantity=int(row[1].DELQTY),
-                                            available_quantity=int(row[1].DELQTY),
-                                            inline_quantity=0,
-                                            rto_quantity=0,
-                                            current_quantity=int(row[1].DELQTY),
-                                            warehouse_prefix="DLWHEC",
-                                            status="APPROVED",
-                                            date_created=datetime.now()
-                                            )
-            prod_quan_obj_b = ProductQuantity(product=prod_obj,
-                                              total_quantity=int(row[1].CBQTY),
-                                              approved_quantity=int(row[1].CBQTY),
-                                              available_quantity=int(row[1].CBQTY),
-                                              inline_quantity=0,
-                                              rto_quantity=0,
-                                              current_quantity=int(row[1].CBQTY),
-                                              warehouse_prefix="CBWHECBULK",
-                                              status="APPROVED",
-                                              date_created=datetime.now()
-                                              )
-            prod_quan_obj_c = ProductQuantity(product=prod_obj,
-                                              total_quantity=int(row[1].MHQTY),
-                                              approved_quantity=int(row[1].MHQTY),
-                                              available_quantity=int(row[1].MHQTY),
-                                              inline_quantity=0,
-                                              rto_quantity=0,
-                                              current_quantity=int(row[1].MHQTY),
-                                              warehouse_prefix="MHWHECB2C",
-                                              status="APPROVED",
-                                              date_created=datetime.now()
-                                              )
+            db.session.add(prod_obj)
 
-            db.session.add(prod_quan_obj_a)
-            db.session.add(prod_quan_obj_b)
-            db.session.add(prod_quan_obj_c)
-            if row[0] % 50 == 0:
-                db.session.commit()
         except Exception as e:
             pass
     db.session.commit()
+    import requests
+    req = requests.get("https://api.ecomexpress.in/apiv2/fetch_awb/?username=warelqlogisticspvtltd144004_pro&password=LdGvdcTFv6n4jGMT&count=10000&type=PPD")
+
+    from requests_oauthlib import OAuth1Session
+    auth_session = OAuth1Session("ck_cd462226a5d5c21c5936c7f75e1afca25b9853a6",
+                                 client_secret="cs_c897bf3e770e15f518cba5c619b32671b7cc527c")
+
+    order_qs = db.session.query(Orders).filter(Orders.client_prefix=='ZLADE', Orders.status.in_(['DELIVERED'])).all()
+    for order in order_qs:
+        if order.order_id_channel_unique:
+            url = '%s/wp-json/wc/v3/orders/%s' % ("https://www.zladeformen.com", order.order_id_channel_unique)
+            r = auth_session.post(url, data={"status": "completed"})
+
+    import requests, json
+
+
+
+    return 0
+
+
+    count = 0
+    return 0
+
+    import requests
+    create_fulfillment_url = "https://87c506a89d76c5815d7f1c4f782a4bef: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@perfour.myshopify.com/admin/api/2020-07/orders.json"
+    qs = requests.get(create_fulfillment_url)
+    from .fetch_orders import lambda_handler
+    lambda_handler()
+
+
+    return 0
+
+    from .models import PickupPoints, ReturnPoints, ClientPickups, Products, ProductQuantity
+    import requests, json, xmltodict
+    req = requests.get("https://plapi.ecomexpress.in/track_me/api/mawbd/?awb=8636140444,8636140446,8636140435&username=warelqlogisticspvtltd144004_pro&password=LdGvdcTFv6n4jGMT")
+    req = json.loads(json.dumps(xmltodict.parse(req.content)))
+    cancel_body = json.dumps({"AWBNumber": "14201720011569", "XBkey": "NJlG1ISTUa2017XzrCG6OoJng",
+                              "RTOReason": "Cancelled by seller"})
+    headers = {"Authorization": "Basic " + "NJlG1ISTUa2017XzrCG6OoJng",
+               "Content-Type": "application/json"}
+    req_can = requests.post("http://xbclientapi.xbees.in/POSTShipmentService.svc/RTONotifyShipment",
+                            headers=headers, data=cancel_body)
+
+
+
+    import requests
+    from .models import Orders, ProductsCombos, ClientPickups, Products, ProductQuantity, PickupPoints, ReturnPoints
+    myfile = request.files['myfile']
+    data_xlsx = pd.read_excel(myfile)
+    import json, re
+    count = 0
+    iter_rw = data_xlsx.iterrows()
+    for row in iter_rw:
+        try:
+            warehouse_prefix= "FURTADOS_"+str(row[1].SNo)
+            pickup_point = PickupPoints(pickup_location = str(row[1].SellerName),
+                                        name = str(row[1].SellerName),
+                                        phone =str(row[1].Contact),
+                                        address = str(row[1].SellerAddress),
+                                        address_two = "",
+                                        city = str(row[1].City),
+                                        state = str(row[1].State),
+                                        country = str(row[1].Contact),
+                                        pincode = str(row[1].Pincode),
+                                        warehouse_prefix = warehouse_prefix)
+
+            return_point = ReturnPoints(return_location=str(row[1].SellerName),
+                                        name=str(row[1].SellerName),
+                                        phone=str(row[1].Contact),
+                                        address=str(row[1].SellerAddress),
+                                        address_two="",
+                                        city=str(row[1].City),
+                                        state=str(row[1].State),
+                                        country=str(row[1].Contact),
+                                        pincode=str(row[1].Pincode),
+                                        warehouse_prefix=warehouse_prefix)
+
+            client_pickup = ClientPickups(pickup=pickup_point,
+                                          return_point=return_point,
+                                          client_prefix='FURTADOS')
+
+            db.session.add(client_pickup)
+
+        except Exception as e:
+            pass
+
+    db.session.commit()
+
+    db.session.commit()
+    from .fetch_orders import lambda_handler
+    lambda_handler()
+    return 0
 
     from .update_status import lambda_handler
     lambda_handler()
@@ -3220,77 +3977,13 @@ def ping_dev():
     import requests
     create_fulfillment_url = "https://39690624bee51fde0640bfa0e3832744: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@successcraft.myshopify.com/admin/api/2020-07/orders.json?limit=250"
     qs = requests.get(create_fulfillment_url)
-    myfile = request.files['myfile']
-    data_xlsx = pd.read_excel(myfile)
-    import json, re
-    count = 0
-    iter_rw = data_xlsx.iterrows()
-    for row in iter_rw:
-        try:
-            sku = str(row[1].MasterSKU)
-            name = str(row[1].ProductName)
-            prod_obj_x = Products(name=name,
-                                  sku=sku,
-                                  master_sku=sku,
-                                  dimensions=None,
-                                  weight=None,
-                                  price=None,
-                                  client_prefix='SANGEETHA',
-                                  active=True,
-                                  channel_id=4,
-                                  date_created=datetime.now()
-                                  )
-            """
-            warehouse_prefix = "SANGEETHA_" + str(row[1].StoreCode)
-            name = str(row[1].StoreName)
-            address = str(row[1].Address)
-            city = " "
-            state = str(row[1].State)
-            pincode = int(row[1].Pincode)
-            contact = str(row[1].PhoneNumber)
-            pickup_point = PickupPoints(pickup_location=name,
-                                        name=name,
-                                        phone=contact,
-                                        city=city,
-                                        state=state,
-                                        country="IN",
-                                        pincode=pincode,
-                                        address=address,
-                                        address_two="",
-                                        warehouse_prefix=warehouse_prefix)
-            return_point = ReturnPoints(return_location=name,
-                                        name=name,
-                                        phone=contact,
-                                        city=city,
-                                        state=state,
-                                        country="IN",
-                                        pincode=pincode,
-                                        address=address,
-                                        address_two="",
-                                        warehouse_prefix=warehouse_prefix)
 
-            client_pi = ClientPickups(client_prefix="SANGEETHA",
-                                      pickup=pickup_point,
-                                      return_point=return_point)
-                                      
-            """
 
-            db.session.add(prod_obj_x)
-            if row[0]%100==0:
-                db.session.commit()
-        except Exception as e:
-            pass
     db.session.commit()
 
     from .fetch_orders import lambda_handler
     lambda_handler()
     return 0
-
-    magento_orders_url = """%s/V1/orders/348196""" % (
-        "https://www.kamaayurveda.com/rest/default")
-    headers = {'Authorization': "Bearer " + "q4ldi2wasczvm7l8caeyozgkxf4qanfr",
-               'Content-Type': 'application/json'}
-    data = requests.get(magento_orders_url, headers=headers)
     return 0
     import requests
     url = "https://clbeta.ecomexpress.in/apiv2/fetch_awb/"
@@ -3303,79 +3996,12 @@ def ping_dev():
     url = '%s/wp-json/wc/v3/orders?per_page=100&order=asc&consumer_key=ck_e6e779af2808ee872ba3fa4c0eab26b5f434af8c&consumer_secret=cs_696656b398cc783073b281eca3bf02c3c4de0cd1' % (
         "https://silktree.in")
     r = auth_session.get(url)
-    import requests
-    from .models import PickupPoints, ReturnPoints, ClientPickups, Products, ProductQuantity
-    myfile = request.files['myfile']
-    data_xlsx = pd.read_excel(myfile)
-    import json, re
-    count = 0
-    iter_rw = data_xlsx.iterrows()
-    for row in iter_rw:
-        try:
-            sku = str(row[1].SKU)
-            quan = int(row[1].QTY)
-            headers = {
-                'Authorization': "Bearer " + "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJleHAiOjE1OTkwMjM3MDYsImlhdCI6MTU5NjQzMTcwNiwic3ViIjoxMTN9.Chf7sRXeSb5xYLoCwE8Pm8dlnYl8AkMpgViE8n1lvQs",
-                'Content-Type': 'application/json'}
-            data = {"sku_list": [{"sku": sku,
-                                  "warehouse": "HOLISOLBL",
-                                  "quantity": quan,
-                                  "type": "add",
-                                  "remark": "2nd Aug Inbound"}]}
-            req = requests.post("http://track.wareiq.com/products/v1/update_inventory", headers=headers,
-                                data=json.dumps(data))
 
-        except Exception:
-            pass
 
 
     return 0
     import requests
     count = 250
-    from .models import Orders, ReturnPoints, ClientPickups, Products, ProductQuantity
-    since_id = "1"
-    while count == 250:
-        create_fulfillment_url = "https://dd2017d318429a3d1b5340e4f5da6bbe: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@beyond-underwear-india.myshopify.com/admin/api/2020-07/products.json?limit=250&since_id=%s" % since_id
-        qs = requests.get(create_fulfillment_url)
-        for prod in qs.json()['products']:
-            for prod_obj in prod['variants']:
-                prod_obj_x = db.session.query(Products).filter(Products.sku == str(prod_obj['id'])).first()
-                if prod_obj_x:
-                    prod_obj_x.master_sku = prod_obj['sku']
-                else:
-                    prod_name = prod['title']
-                    if prod_obj['title'] != 'Default Title':
-                        prod_name += " - " + prod_obj['title']
-                    prod_obj_x = Products(name=prod_name,
-                                          sku=str(prod_obj['id']),
-                                          master_sku=str(prod_obj['sku']),
-                                          dimensions=None,
-                                          weight=None,
-                                          price=float(prod_obj['price']),
-                                          client_prefix='BEYONDUW',
-                                          active=True,
-                                          channel_id=1,
-                                          date_created=datetime.now()
-                                          )
-
-                    db.session.add(prod_obj_x)
-                    prod_quan_obj = ProductQuantity(product=prod_obj_x,
-                                                    total_quantity=0,
-                                                    approved_quantity=0,
-                                                    available_quantity=0,
-                                                    inline_quantity=0,
-                                                    rto_quantity=0,
-                                                    current_quantity=0,
-                                                    warehouse_prefix="QSDWARKA",
-                                                    status="APPROVED",
-                                                    date_created=datetime.now()
-                                                    )
-
-                    db.session.add(prod_quan_obj)
-
-        count = len(qs.json()['products'])
-        since_id = str(qs.json()['products'][-1]['id'])
-    db.session.commit()
     return 0
 
     import requests
@@ -3405,14 +4031,7 @@ def ping_dev():
     return 0
     from .fetch_orders import lambda_handler
     lambda_handler()
-    from woocommerce import API
-    wcapi = API(
-        url="https://naaginsauce.com",
-        consumer_key="ck_9a540daf59bd7e78268d80ed0db14d03a0e68b57",
-        consumer_secret="cs_017c6ac59089de2dfd4e2f99e56513aec093464b",
-        version="wc/v3"
-    )
-    r=wcapi.get('orders')
+
     return 0
 
 
@@ -4844,12 +5463,8 @@ def create_email(order, edd, email):
 @core_blueprint.route('/core/send', methods=['GET'])
 def send_dev():
     return 0
-    import requests
+    import requests, json
 
-    magento_url = "https://www.kamaayurveda.com/rest/default/V1/orders/345635?searchCriteria[filter_groups][0][filters][0][field]=created_at&searchCriteria[filter_groups][0][filters][0][value]=2020-05-09&searchCriteria[filter_groups][0][filters][0][condition_type]=gt"
-    headers = {'Authorization': "Bearer q4ldi2wasczvm7l8caeyozgkxf4qanfr",
-               'Content-Type': 'application/json'}
-    r = requests.get(magento_url, headers=headers, verify=False)
     return 0
     from project import create_app
     app = create_app()

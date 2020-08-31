@@ -27,8 +27,7 @@ def lambda_handler():
     for courier in cur.fetchall():
         try:
             if courier[1] in (
-                    "Delhivery", "Delhivery Surface Standard", "Delhivery Bulk", "Delhivery Heavy",
-                    "Delhivery Heavy 2"):
+            "Delhivery", "Delhivery Surface Standard", "Delhivery Bulk", "Delhivery Heavy", "Delhivery Heavy 2"):
                 cur.execute(get_status_update_orders_query % str(courier[0]))
                 all_orders = cur.fetchall()
                 pickup_count = 0
@@ -50,7 +49,7 @@ def lambda_handler():
                     awb_string = awb_string.rstrip(',')
 
                     check_status_url = "https://track.delhivery.com/api/status/packages/json/?waybill=%s&token=%s" % (
-                        awb_string, courier[2])
+                    awb_string, courier[2])
                     req = requests.get(check_status_url)
                     try:
                         req_ship_data += req.json()['ShipmentData']
@@ -198,9 +197,7 @@ def lambda_handler():
                                             "Couldn't complete Magento for: " + str(orders_dict[current_awb][0])
                                             + "\nError: " + str(e.args))
 
-                            if orders_dict[current_awb][28] != False and str(
-                                    orders_dict[current_awb][13]).lower() == 'cod' and orders_dict[current_awb][
-                                14] == 1:  # mark paid on shopify
+                            if orders_dict[current_awb][28] != False and str(orders_dict[current_awb][13]).lower() == 'cod' and orders_dict[current_awb][14] == 1:  #mark paid on shopify
                                 try:
                                     shopify_markpaid(orders_dict[current_awb])
                                 except Exception as e:
@@ -221,7 +218,7 @@ def lambda_handler():
                                         "Delivery confirmation not sent. Order id: " + str(orders_dict[current_awb][0]))
                             """
                         if new_status == 'RTO':
-                            if orders_dict[current_awb][32] != False:
+                            if orders_dict[current_awb][32]!=False:
                                 if orders_dict[current_awb][14] == 6:  # Magento return
                                     try:
                                         magento_return_order(orders_dict[current_awb])
@@ -251,21 +248,20 @@ def lambda_handler():
                         """
 
                         if orders_dict[current_awb][2] in (
-                                'READY TO SHIP', 'PICKUP REQUESTED', 'NOT PICKED') and new_status == 'IN TRANSIT':
+                        'READY TO SHIP', 'PICKUP REQUESTED', 'NOT PICKED') and new_status == 'IN TRANSIT':
                             pickup_count += 1
                             if orders_dict[current_awb][11] not in pickup_dict:
                                 pickup_dict[orders_dict[current_awb][11]] = 1
                             else:
                                 pickup_dict[orders_dict[current_awb][11]] += 1
                             # cur.execute(update_prod_quantity_query_pickup%str(orders_dict[current_awb][0]))
-                            if orders_dict[current_awb][26] != False:
+                            if orders_dict[current_awb][26]!=False:
                                 if orders_dict[current_awb][14] == 5:
                                     try:
                                         woocommerce_fulfillment(orders_dict[current_awb])
                                     except Exception as e:
-                                        logger.error(
-                                            "Couldn't update woocommerce for: " + str(orders_dict[current_awb][0])
-                                            + "\nError: " + str(e.args))
+                                        logger.error("Couldn't update woocommerce for: " + str(orders_dict[current_awb][0])
+                                                     + "\nError: " + str(e.args))
                                 elif orders_dict[current_awb][14] == 1:
                                     try:
                                         shopify_fulfillment(orders_dict[current_awb], cur)
@@ -364,7 +360,7 @@ def lambda_handler():
                                         "NDR confirmation not sent. Order id: " + str(orders_dict[current_awb][0]))
 
                     except Exception as e:
-                        logger.error("status update failed for " + "    err:" + str(e.args[0]))
+                        logger.error("status update failed for " +str(orders_dict[current_awb][0])+ "    err:" + str(e.args[0]))
 
                 if exotel_idx:
                     logger.info("Sending messages...count:" + str(exotel_idx))
@@ -532,9 +528,7 @@ def lambda_handler():
                                         logger.error(
                                             "Couldn't complete Magento for: " + str(orders_dict[current_awb][0])
                                             + "\nError: " + str(e.args))
-                            if orders_dict[current_awb][28] != False and str(
-                                    orders_dict[current_awb][13]).lower() == 'cod' and orders_dict[current_awb][
-                                14] == 1:  # mark paid on shopify
+                            if orders_dict[current_awb][28] != False and str(orders_dict[current_awb][13]).lower() == 'cod' and orders_dict[current_awb][14] == 1:  #mark paid on shopify
                                 try:
                                     shopify_markpaid(orders_dict[current_awb])
                                 except Exception as e:
@@ -683,7 +677,7 @@ def lambda_handler():
                                         "NDR confirmation not sent. Order id: " + str(orders_dict[current_awb][0]))
 
                     except Exception as e:
-                        logger.error("status update failed for " + "    err:" + str(e.args[0]))
+                        logger.error("status update failed for " +str(orders_dict[current_awb][0])+ "    err:" + str(e.args[0]))
 
                 if exotel_idx:
                     logger.info("Sending messages...count:" + str(exotel_idx))
@@ -771,6 +765,7 @@ def lambda_handler():
                                     order_picked_check = True
                                 elif each_scan['StatusCode'] in ("IT", "RAD"):
                                     to_record_status = "In Transit"
+                                    order_picked_check = True
                                 elif each_scan['StatusCode'] == "OFD":
                                     to_record_status = "Out for delivery"
                                 elif each_scan['StatusCode'] == "DLVD":
@@ -862,9 +857,7 @@ def lambda_handler():
                                             "Couldn't complete Magento for: " + str(orders_dict[current_awb][0])
                                             + "\nError: " + str(e.args))
 
-                            if orders_dict[current_awb][28] != False and str(
-                                    orders_dict[current_awb][13]).lower() == 'cod' and orders_dict[current_awb][
-                                14] == 1:  # mark paid on shopify
+                            if orders_dict[current_awb][28] != False and str(orders_dict[current_awb][13]).lower() == 'cod' and orders_dict[current_awb][14] == 1:  #mark paid on shopify
                                 try:
                                     shopify_markpaid(orders_dict[current_awb])
                                 except Exception as e:
@@ -901,6 +894,39 @@ def lambda_handler():
 
                         if orders_dict[current_awb][2] in (
                                 'READY TO SHIP', 'PICKUP REQUESTED', 'NOT PICKED') and new_status == 'IN TRANSIT':
+
+                            cur_2.execute(
+                                "select client_name from clients where client_prefix='%s'" %
+                                orders_dict[current_awb][
+                                    3])
+                            client_name = cur_2.fetchone()
+                            customer_phone = orders_dict[current_awb][4].replace(" ", "")
+                            customer_phone = "0" + customer_phone[-10:]
+
+                            sms_to_key = "Messages[%s][To]" % str(exotel_idx)
+                            sms_body_key = "Messages[%s][Body]" % str(exotel_idx)
+
+                            exotel_sms_data[sms_to_key] = customer_phone
+                            tracking_link_wareiq = "http://webapp.wareiq.com/tracking/" + str(
+                                orders_dict[current_awb][1])
+                            if edd:
+                                edd = edd.strftime('%-d %b')
+                                """
+                                short_url = requests.get(
+                                    "https://cutt.ly/api/api.php?key=f445d0bb52699d2f870e1832a1f77ef3f9078&short=%s" % tracking_link_wareiq)
+                                short_url_track = short_url.json()['url']['shortLink']
+                                """
+                                exotel_sms_data[
+                                    sms_body_key] = "Dear Customer, your %s order has been shipped via Xpressbees with AWB number %s. " \
+                                                    "It is expected to arrive by %s. You can track your order on this (%s) link." % (
+                                                        client_name[0], str(orders_dict[current_awb][1]), edd,
+                                                        tracking_link_wareiq)
+                            else:
+                                exotel_sms_data[
+                                    sms_body_key] = "Dear Customer, your %s order has been shipped via Xpressbees with AWB number %s. You can track your order on this (%s) link." % (
+                                                        client_name[0], str(orders_dict[current_awb][1]),
+                                                        tracking_link_wareiq)
+                            exotel_idx += 1
                             if order_picked_check:
                                 pickup_count += 1
                                 if orders_dict[current_awb][11] not in pickup_dict:
@@ -934,46 +960,16 @@ def lambda_handler():
                                                 + "\nError: " + str(e.args))
 
                                 if orders_dict[current_awb][19]:
+                                    """
                                     email = create_email(orders_dict[current_awb],
                                                          edd.strftime('%-d %b') if edd else "",
                                                          orders_dict[current_awb][19])
                                     if email:
                                         emails_list.append((email, [orders_dict[current_awb][19]]))
-
-                                if edd:
-                                    edd = edd.strftime('%-d %b')
-                                    cur_2.execute(
-                                        "select client_name from clients where client_prefix='%s'" %
-                                        orders_dict[current_awb][
-                                            3])
-                                    client_name = cur_2.fetchone()
-                                    customer_phone = orders_dict[current_awb][4].replace(" ", "")
-                                    customer_phone = "0" + customer_phone[-10:]
-
-                                    sms_to_key = "Messages[%s][To]" % str(exotel_idx)
-                                    sms_body_key = "Messages[%s][Body]" % str(exotel_idx)
-
-                                    exotel_sms_data[sms_to_key] = customer_phone
-                                    try:
-                                        tracking_link_wareiq = "http://webapp.wareiq.com/tracking/" + str(
-                                            orders_dict[current_awb][1])
-                                        """
-                                        short_url = requests.get(
-                                            "https://cutt.ly/api/api.php?key=f445d0bb52699d2f870e1832a1f77ef3f9078&short=%s" % tracking_link_wareiq)
-                                        short_url_track = short_url.json()['url']['shortLink']
-                                        """
-                                        exotel_sms_data[
-                                            sms_body_key] = "Dear Customer, your %s order has been shipped via Xpressbees with AWB number %s. " \
-                                                            "It is expected to arrive by %s. You can track your order on this (%s) link." % (
-                                                                client_name[0], str(orders_dict[current_awb][1]), edd,
-                                                                tracking_link_wareiq)
-                                    except Exception:
-                                        exotel_sms_data[
-                                            sms_body_key] = "Dear Customer, your %s order has been shipped via Xpressbees with AWB number %s. It is expected to arrive by %s. Thank you for Ordering." % (
-                                            client_name[0], orders_dict[current_awb][1], edd)
-                                    exotel_idx += 1
+                                    """
                             else:
                                 continue
+
 
                         if orders_dict[current_awb][2] != new_status:
                             status_update_tuple = (new_status, status_type, status_detail, orders_dict[current_awb][0])
@@ -1000,7 +996,7 @@ def lambda_handler():
                                         "NDR confirmation not sent. Order id: " + str(orders_dict[current_awb][0]))
 
                     except Exception as e:
-                        logger.error("status update failed for " + "    err:" + str(e.args[0]))
+                        logger.error("status update failed for " +str(orders_dict[current_awb][0])+ "    err:" + str(e.args[0]))
 
                 if exotel_idx:
                     logger.info("Sending messages...count:" + str(exotel_idx))
@@ -1056,7 +1052,7 @@ def verification_text(current_order, exotel_idx, cur, cur_2, ndr=None, ndr_reaso
         cur.execute("SELECT * from ndr_shipments WHERE shipment_id=%s" % str(current_order[10]))
         if not cur.fetchone():
             ndr_ship_tuple = (
-                current_order[0], current_order[10], ndr_reason, "required", datetime.utcnow() + timedelta(hours=5.5))
+            current_order[0], current_order[10], ndr_reason, "required", datetime.utcnow() + timedelta(hours=5.5))
             cur.execute(
                 "INSERT INTO ndr_shipments (order_id, shipment_id, reason_id, current_status, date_created) VALUES (%s,%s,%s,%s,%s);",
                 ndr_ship_tuple)
@@ -1168,7 +1164,7 @@ def woocommerce_fulfillment(order):
     url = '%s/wp-json/wc/v3/orders/%s' % (order[9], str(order[5]))
     status_mark = order[27]
     if not status_mark:
-        status_mark = "shipped"
+        status_mark = "completed"
     r = auth_session.post(url, data={"status": status_mark})
 
 
@@ -1178,7 +1174,7 @@ def woocommerce_complete(order):
     url = '%s/wp-json/wc/v3/orders/%s' % (order[9], str(order[5]))
     status_mark = order[27]
     if not status_mark:
-        status_mark = "delivered"
+        status_mark = "completed"
     r = auth_session.post(url, data={"status": status_mark})
 
 
@@ -1188,7 +1184,7 @@ def woocommerce_returned(order):
     url = '%s/wp-json/wc/v3/orders/%s' % (order[9], str(order[5]))
     status_mark = order[33]
     if not status_mark:
-        status_mark = "returned"
+        status_mark = "cancelled"
     r = auth_session.post(url, data={"status": status_mark})
 
 
@@ -1197,7 +1193,7 @@ def shopify_fulfillment(order, cur):
         get_locations_url = "https://%s:%s@%s/admin/api/2019-10/locations.json" % (order[7], order[8], order[9])
         req = requests.get(get_locations_url).json()
         location_id = str(req['locations'][0]['id'])
-        cur.execute("UPDATE client_channel set unique_parameter=%s where id=%s" % (location_id, order[34]))
+        cur.execute("UPDATE client_channel set unique_parameter=%s where id=%s"%(location_id, order[34]))
     else:
         location_id = str(order[25])
 
@@ -1231,18 +1227,13 @@ def shopify_markpaid(order):
         order[7], order[8],
         order[9], order[5])
 
-    req = requests.get(get_transactions_url).json()
-    transaction = req['transactions'][0]
-
     tra_header = {'Content-Type': 'application/json'}
     transaction_data = {
         "transaction": {
-            "kind": "capture",
-            "gateway": "manual",
-            "amount": transaction['amount'],
-            "parent_id": str(transaction['id']),
-            "status": "success",
-            "currency": transaction['currency']
+            "kind": "sale",
+            "source": "external",
+            "amount": str(order[35]),
+            "currency": "INR"
         }
     }
     req_ful = requests.post(get_transactions_url, data=json.dumps(transaction_data),

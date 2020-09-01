@@ -1,8 +1,5 @@
 # services/core/project/__init__.py
-
-
 import os
-
 from flask import Flask
 from flask_cors import CORS
 from flask_debugtoolbar import DebugToolbarExtension
@@ -28,7 +25,6 @@ def create_app(script_info=None):
     # set config
     app_settings = os.getenv('APP_SETTINGS')
     app.config.from_object(app_settings)
-
     # set up extensions
     toolbar.init_app(app)
     cors.init_app(app)
@@ -37,9 +33,17 @@ def create_app(script_info=None):
 
     # register blueprints
     from project.api.base import base_blueprint
-    app.register_blueprint(base_blueprint)
     from project.api.core import core_blueprint
+    from project.api.dashboard.index import dashboard_blueprint
+    from project.api.products.index import products_blueprint
+    from project.api.orders.index import orders_blueprint
+    from project.api.billing.index import billing_blueprint
+    app.register_blueprint(base_blueprint)
     app.register_blueprint(core_blueprint)
+    app.register_blueprint(dashboard_blueprint)
+    app.register_blueprint(products_blueprint)
+    app.register_blueprint(orders_blueprint)
+    app.register_blueprint(billing_blueprint)
 
     # shell context for flask cli
     @app.shell_context_processor

@@ -3628,9 +3628,78 @@ api.add_resource(WalletRemittance, '/wallet/v1/remittance')
 @core_blueprint.route('/core/dev', methods=['POST'])
 def ping_dev():
     return 0
-    from .create_shipments import lambda_handler
-    lambda_handler()
     import requests, json
+    myfile = request.files['myfile']
+    data_xlsx = pd.read_excel(myfile)
+
+    iter_rw = data_xlsx.iterrows()
+    source_items = list()
+    for row in iter_rw:
+        try:
+
+            sku = str(row[1].SKU)
+            del_qty = int(row[1].Qty)
+            #cb_qty = int(row[1].CBQT)
+            #mh_qty = int(row[1].MHQT)
+            """
+            source_items.append({
+                "sku": sku,
+                "source_code": "default",
+                "quantity": del_qty + cb_qty + mh_qty,
+                "status": 1
+            })
+            """
+            headers = {
+                'Authorization': "Bearer " + "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJleHAiOjE2MDAyMzM4MDMsImlhdCI6MTU5NzY0MTgwMywic3ViIjoxMTN9.9aVZVnryT4pd8LnVfdEbywfR7J0vRqOc-AEtnAlRq-o",
+                'Content-Type': 'application/json'}
+            """
+            data = {"sku_list": [{"sku": sku,
+                                  "warehouse": "DLWHEC",
+                                  "quantity": del_qty,
+                                  "type": "replace",
+                                  "remark": "30th aug resync"}]}
+            req = requests.post("http://track.wareiq.com/products/v1/update_inventory", headers=headers,
+                                data=json.dumps(data))
+
+            """
+
+            data = {"sku_list": [{"sku": sku,
+                                  "warehouse": "HOLISOLBL",
+                                  "quantity": del_qty,
+                                  "type": "add",
+                                  "remark": "1 sep Inbound"}]}
+            req = requests.post("http://track.wareiq.com/products/v1/update_inventory", headers=headers,
+                                data=json.dumps(data))
+            """
+
+            data = {"sku_list": [{"sku": sku,
+                                  "warehouse": "MHWHECB2C",
+                                  "quantity": mh_qty,
+                                  "type": "replace",
+                                  "remark": "30th aug resync"}]}
+            req = requests.post("http://track.wareiq.com/products/v1/update_inventory", headers=headers,
+                                data=json.dumps(data))
+
+            combo = str(row[1].SKU)
+            combo_prod = str(row[1].childsku)
+            combo = db.session.query(Products).filter(Products.master_sku == combo,
+                                                      Products.client_prefix == 'URBANGABRU').first()
+            combo_prod = db.session.query(Products).filter(Products.master_sku == combo_prod,
+                                                           Products.client_prefix == 'URBANGABRU').first()
+            if combo and combo_prod:
+                combo_obj = ProductsCombos(combo=combo,
+                                           combo_prod=combo_prod,
+                                           quantity=int(row[1].qty))
+                db.session.add(combo_obj)
+            else:
+                pass
+            """
+
+
+        except Exception as e:
+            pass
+    from .fetch_orders import lambda_handler
+    lambda_handler()
 
     #push magento inventory
     cur = conn.cursor()
@@ -3660,75 +3729,7 @@ def ping_dev():
     r = requests.post(magento_url, headers=headers, data=json.dumps(body))
 
 
-    myfile = request.files['myfile']
-    data_xlsx = pd.read_excel(myfile)
 
-    iter_rw = data_xlsx.iterrows()
-    source_items = list()
-    for row in iter_rw:
-        try:
-
-            sku = str(row[1].Item)
-            del_qty = int(row[1].DLQT)
-            cb_qty = int(row[1].CBQT)
-            mh_qty = int(row[1].MHQT)
-            """
-            source_items.append({
-                "sku": sku,
-                "source_code": "default",
-                "quantity": del_qty + cb_qty + mh_qty,
-                "status": 1
-            })
-            """
-            headers = {
-                'Authorization': "Bearer " + "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJleHAiOjE2MDAyMzM4MDMsImlhdCI6MTU5NzY0MTgwMywic3ViIjoxMTN9.9aVZVnryT4pd8LnVfdEbywfR7J0vRqOc-AEtnAlRq-o",
-                'Content-Type': 'application/json'}
-            """
-            data = {"sku_list": [{"sku": sku,
-                                  "warehouse": "DLWHEC",
-                                  "quantity": del_qty,
-                                  "type": "replace",
-                                  "remark": "30th aug resync"}]}
-            req = requests.post("http://track.wareiq.com/products/v1/update_inventory", headers=headers,
-                                data=json.dumps(data))
-                                
-            """
-
-            data = {"sku_list": [{"sku": sku,
-                                  "warehouse": "CBWHECB2C",
-                                  "quantity": cb_qty,
-                                  "type": "replace",
-                                  "remark": "30th aug resync"}]}
-            req = requests.post("http://track.wareiq.com/products/v1/update_inventory", headers=headers,
-                                data=json.dumps(data))
-            """
-
-            data = {"sku_list": [{"sku": sku,
-                                  "warehouse": "MHWHECB2C",
-                                  "quantity": mh_qty,
-                                  "type": "replace",
-                                  "remark": "30th aug resync"}]}
-            req = requests.post("http://track.wareiq.com/products/v1/update_inventory", headers=headers,
-                                data=json.dumps(data))
-                                
-            combo = str(row[1].SKU)
-            combo_prod = str(row[1].childsku)
-            combo = db.session.query(Products).filter(Products.master_sku == combo,
-                                                      Products.client_prefix == 'URBANGABRU').first()
-            combo_prod = db.session.query(Products).filter(Products.master_sku == combo_prod,
-                                                           Products.client_prefix == 'URBANGABRU').first()
-            if combo and combo_prod:
-                combo_obj = ProductsCombos(combo=combo,
-                                           combo_prod=combo_prod,
-                                           quantity=int(row[1].qty))
-                db.session.add(combo_obj)
-            else:
-                pass
-            """
-
-
-        except Exception as e:
-            pass
 
     return 0
     import requests, json
@@ -4652,11 +4653,8 @@ def ping_dev():
             print(str(e.args[0]))
 
 
-
     shopify_url = "https://006fce674dc07b96416afb8d7c075545:0d36560ddaf82721bfbb93f909ab5f47@themuwu.myshopify.com/admin/api/2019-10/products.json?limit=250"
     data = requests.get(shopify_url).json()
-
-
 
     for prod in data['products']:
         for e_sku in prod['variants']:

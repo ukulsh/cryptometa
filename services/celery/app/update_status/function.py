@@ -20,7 +20,7 @@ conn_2 = psycopg2.connect(host="wareiq-core-prod2.cvqssxsqruyc.us-east-1.rds.ama
                           user="postgres", password="aSderRFgd23")
 
 
-def lambda_handler():
+def update_status():
     cur = conn.cursor()
     cur_2 = conn_2.cursor()
     cur.execute(get_courier_id_and_key_query)

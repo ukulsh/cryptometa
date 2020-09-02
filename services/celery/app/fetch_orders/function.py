@@ -21,7 +21,7 @@ conn_2 = psycopg2.connect(host="wareiq-core-prod.cvqssxsqruyc.us-east-1.rds.amaz
                           user="postgres", password="aSderRFgd23")
 
 
-def lambda_handler():
+def fetch_orders():
     cur = conn.cursor()
     cur_2 = conn_2.cursor()
     cur.execute(fetch_client_channels_query)
@@ -806,27 +806,36 @@ def update_available_quantity(cur):
         if prod_status[4] and prod_status[0] not in combo_dict:
             combo_dict[prod_status[0]] = {'prod_ids': prod_status[4], 'prod_quan': prod_status[5]}
 
+    for prod_id, item_list in combo_dict.items():
+        for warehouse, quan_values in quantity_dict[prod_id].items():
+            quantity_dict[prod_id][warehouse] = {'available_quantity': 0,
+                                                 'current_quantity': 0,
+                                                 'inline_quantity': 0,
+                                                 'rto_quantity': 0}
+
+            for idx, new_prod_id in enumerate(item_list['prod_ids']):
+                mul_fac = item_list['prod_quan'][idx]
+                if new_prod_id not in quantity_dict:
+                    quantity_dict[new_prod_id] = {warehouse: {'available_quantity': quan_values['available_quantity']*mul_fac,
+                                                              'current_quantity': quan_values['current_quantity']*mul_fac,
+                                                              'inline_quantity': quan_values['inline_quantity']*mul_fac,
+                                                              'rto_quantity': quan_values['rto_quantity']*mul_fac}}
+                elif warehouse not in quantity_dict[new_prod_id]:
+                    quantity_dict[new_prod_id][warehouse] = {'available_quantity': quan_values['available_quantity']*mul_fac,
+                                                              'current_quantity': quan_values['current_quantity']*mul_fac,
+                                                              'inline_quantity': quan_values['inline_quantity']*mul_fac,
+                                                              'rto_quantity': quan_values['rto_quantity']*mul_fac}
+
+                else:
+                    quantity_dict[new_prod_id][warehouse]['available_quantity'] += quan_values['available_quantity']*mul_fac
+                    quantity_dict[new_prod_id][warehouse]['current_quantity'] += quan_values['current_quantity']*mul_fac
+                    quantity_dict[new_prod_id][warehouse]['inline_quantity'] += quan_values['inline_quantity']*mul_fac
+                    quantity_dict[new_prod_id][warehouse]['rto_quantity'] += quan_values['rto_quantity']*mul_fac
+
     for prod_id, wh_dict in quantity_dict.items():
         for warehouse, quan_values in wh_dict.items():
             update_tuple = (quan_values['available_quantity'], quan_values['current_quantity'], quan_values['inline_quantity'],
                             quan_values['rto_quantity'], prod_id, warehouse)
             cur.execute(update_inventory_quantity_query, update_tuple)
-
-    conn.commit()
-
-    for prod_id, item_list in combo_dict.items():
-        for warehouse, quan_values in quantity_dict[prod_id].items():
-            cur.execute("""UPDATE products_quantity SET available_quantity=0, current_quantity=0, inline_quantity=0, 
-                        rto_quantity=0 WHERE product_id=%s and warehouse_prefix='%s';"""%(prod_id, warehouse))
-
-            for idx, new_prod_id in enumerate(item_list['prod_ids']):
-                mul_fac = item_list['prod_quan'][idx]
-                update_tuple = (
-                quan_values['available_quantity']*mul_fac, quan_values['current_quantity']*mul_fac, quan_values['inline_quantity']*mul_fac,
-                quan_values['rto_quantity']*mul_fac, new_prod_id, warehouse)
-                cur.execute("""UPDATE products_quantity SET available_quantity=COALESCE(available_quantity, 0)+%s,
-                                current_quantity=COALESCE(current_quantity, 0)+%s, inline_quantity=COALESCE(inline_quantity, 0)+%s, 
-                                rto_quantity=COALESCE(rto_quantity, 0) + %s
-                                WHERE product_id=%s and warehouse_prefix=%s;""", update_tuple)
 
     conn.commit()

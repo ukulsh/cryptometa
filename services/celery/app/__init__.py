@@ -2,9 +2,8 @@ from flask import Flask
 from celery import Celery
 from datetime import timedelta
 from celery.schedules import crontab
-from .create_shipments import lambda_handler as create_shipments
-from .update_status import lambda_handler as update_status
-from .fetch_orders import lambda_handler as fetch_orders
+from .update_status.function import update_status
+from .fetch_orders.function import fetch_orders
 
 
 def make_celery(app):
@@ -29,7 +28,7 @@ app.config['CELERY_BROKER_URL'] = "amqp://guest:guest@rabbitmq:5672"
 app.config['CELERYBEAT_SCHEDULE'] = {
     'run-status-update': {
             'task': 'status_update',
-            'schedule': crontab(minute='11', hour='*')
+            'schedule': crontab(minute='02', hour='*')
         },
     'run-fetch-orders': {
                 'task': 'fetch_orders',
@@ -41,11 +40,6 @@ app.config['CELERY_TIMEZONE'] = 'UTC'
 
 celery_app = make_celery(app)
 
-
-@celery_app.task(name='ship_orders')
-def ship_orders():
-    create_shipments()
-    return 'ship orders job run'
 
 """
 @app.route('/ship_orders')

@@ -1,0 +1,46 @@
+version: '3.7'
+
+services:
+
+  users:
+    build:
+      context: ./services/users
+      dockerfile: Dockerfile-qa
+    expose:
+      - 5000
+    environment:
+      - FLASK_ENV=staging
+      - APP_SETTINGS=project.config.StagingConfig
+      - DATABASE_URL=postgres://postgres:aSderRFgd23@wareiq-core-qa.cvqssxsqruyc.us-east-1.rds.amazonaws.com:5432/users_prod  # new
+      - SECRET_KEY=${SECRET_KEY}
+
+  nginx:
+    build:
+      context: ./services/nginx
+      dockerfile: Dockerfile-qa
+    restart: always
+    ports:
+      - 80:80
+      - 443:443
+    depends_on:
+      - users
+
+  core:
+    build:
+      context: ./services/core
+      dockerfile: Dockerfile-qa
+    expose:
+      - 5000
+    environment:
+      - FLASK_ENV=staging
+      - APP_SETTINGS=project.config.StagingConfig
+      - USERS_SERVICE_URL=http://users:5000
+      - SECRET_KEY=my_precious
+      - DATABASE_URL=postgres://postgres:aSderRFgd23@wareiq-core-qa.cvqssxsqruyc.us-east-1.rds.amazonaws.com:5432/core_prod
+      - DATABASE_HOST=wareiq-core-qa.cvqssxsqruyc.us-east-1.rds.amazonaws.com
+      - DATABASE_HOST_PINCODE=wareiq-core-prod.cvqssxsqruyc.us-east-1.rds.amazonaws.com
+      - DATABASE_NAME=core_prod
+      - DATABASE_USER=postgres
+      - DATABASE_PASSWORD=aSderRFgd23
+    depends_on:
+      - users

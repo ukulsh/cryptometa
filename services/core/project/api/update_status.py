@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 from .queries import *
 from .update_status_utils import *
 from requests_oauthlib.oauth1_session import OAuth1Session
+from woocommerce import API
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -185,13 +186,6 @@ def lambda_handler():
                                 if orders_dict[current_awb][14] == 6:  # Magento complete
                                     try:
                                         magento_complete_order(orders_dict[current_awb])
-                                    except Exception as e:
-                                        logger.error(
-                                            "Couldn't complete Magento for: " + str(orders_dict[current_awb][0])
-                                            + "\nError: " + str(e.args))
-                                if orders_dict[current_awb][14] == 5:  # Woocommerce complete
-                                    try:
-                                        woocommerce_complete(orders_dict[current_awb])
                                     except Exception as e:
                                         logger.error(
                                             "Couldn't complete Magento for: " + str(orders_dict[current_awb][0])
@@ -521,13 +515,7 @@ def lambda_handler():
                                         logger.error(
                                             "Couldn't complete Magento for: " + str(orders_dict[current_awb][0])
                                             + "\nError: " + str(e.args))
-                                if orders_dict[current_awb][14] == 5:  # Woocommerce complete
-                                    try:
-                                        woocommerce_complete(orders_dict[current_awb])
-                                    except Exception as e:
-                                        logger.error(
-                                            "Couldn't complete Magento for: " + str(orders_dict[current_awb][0])
-                                            + "\nError: " + str(e.args))
+
                             if orders_dict[current_awb][28] != False and str(orders_dict[current_awb][13]).lower() == 'cod' and orders_dict[current_awb][14] == 1:  #mark paid on shopify
                                 try:
                                     shopify_markpaid(orders_dict[current_awb])
@@ -849,13 +837,6 @@ def lambda_handler():
                                         logger.error(
                                             "Couldn't complete Magento for: " + str(orders_dict[current_awb][0])
                                             + "\nError: " + str(e.args))
-                                if orders_dict[current_awb][14] == 5:  # Woocommerce complete
-                                    try:
-                                        woocommerce_complete(orders_dict[current_awb])
-                                    except Exception as e:
-                                        logger.error(
-                                            "Couldn't complete Magento for: " + str(orders_dict[current_awb][0])
-                                            + "\nError: " + str(e.args))
 
                             if orders_dict[current_awb][28] != False and str(orders_dict[current_awb][13]).lower() == 'cod' and orders_dict[current_awb][14] == 1:  #mark paid on shopify
                                 try:
@@ -1159,33 +1140,29 @@ Xpressbees_ndr_reasons = {"Customer Refused To Accept": 3,
 
 
 def woocommerce_fulfillment(order):
-    auth_session = OAuth1Session(order[7],
-                                 client_secret=order[8])
-    url = '%s/wp-json/wc/v3/orders/%s' % (order[9], str(order[5]))
+    wcapi = API(
+        url=order[9],
+        consumer_key=order[7],
+        consumer_secret=order[8],
+        version="wc/v3"
+    )
     status_mark = order[27]
     if not status_mark:
         status_mark = "completed"
-    r = auth_session.post(url, data={"status": status_mark})
-
-
-def woocommerce_complete(order):
-    auth_session = OAuth1Session(order[7],
-                                 client_secret=order[8])
-    url = '%s/wp-json/wc/v3/orders/%s' % (order[9], str(order[5]))
-    status_mark = order[27]
-    if not status_mark:
-        status_mark = "completed"
-    r = auth_session.post(url, data={"status": status_mark})
+    r = wcapi.post('orders/%s'%str(order[5]), data={"status": status_mark})
 
 
 def woocommerce_returned(order):
-    auth_session = OAuth1Session(order[7],
-                                 client_secret=order[8])
-    url = '%s/wp-json/wc/v3/orders/%s' % (order[9], str(order[5]))
+    wcapi = API(
+        url=order[9],
+        consumer_key=order[7],
+        consumer_secret=order[8],
+        version="wc/v3"
+    )
     status_mark = order[33]
     if not status_mark:
         status_mark = "cancelled"
-    r = auth_session.post(url, data={"status": status_mark})
+    r = wcapi.post('orders/%s'%str(order[5]), data={"status": status_mark})
 
 
 def shopify_fulfillment(order, cur):

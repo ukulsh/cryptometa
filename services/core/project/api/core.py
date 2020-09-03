@@ -36,8 +36,8 @@ session = boto3.Session(
     aws_secret_access_key='3dw3MQgEL9Q0Ug9GqWLo8+O1e5xu5Edi5Hl90sOs',
 )
 
-conn = psycopg2.connect(host="wareiq-core-prod2.cvqssxsqruyc.us-east-1.rds.amazonaws.com", database="core_prod", user="postgres", password="aSderRFgd23")
-conn_2 = psycopg2.connect(host="wareiq-core-prod.cvqssxsqruyc.us-east-1.rds.amazonaws.com", database="core_prod", user="postgres", password="aSderRFgd23")
+conn = psycopg2.connect(host=os.environ.get('DATABASE_HOST'), database=os.environ.get('DATABASE_NAME'), user=os.environ.get('DATABASE_USER'), password=os.environ.get('DATABASE_PASSWORD'))
+conn_2 = psycopg2.connect(host=os.environ.get('DATABASE_HOST_PINCODE'), database=os.environ.get('DATABASE_NAME'), user=os.environ.get('DATABASE_USER'), password=os.environ.get('DATABASE_PASSWORD'))
 
 email_server = smtplib.SMTP_SSL('smtpout.secureserver.net', 465)
 email_server.login("noreply@wareiq.com", "Berlin@123")
@@ -3628,6 +3628,29 @@ api.add_resource(WalletRemittance, '/wallet/v1/remittance')
 @core_blueprint.route('/core/dev', methods=['POST'])
 def ping_dev():
     return 0
+    import requests
+    create_fulfillment_url = "https://7e589aaa86d4fd54f88efc3daedf0615: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@shri-wellness-india.myshopify.com/admin/api/2020-07/orders.json"
+    qs = requests.get(create_fulfillment_url)
+    from .create_shipments import lambda_handler
+    lambda_handler()
+    return 0
+    from requests_oauthlib.oauth1_session import OAuth1Session
+    auth_session = OAuth1Session("ck_43f358286bc3a3a30ffd00e22d2282db07ed7f5d",
+                                 client_secret="cs_970ec6a2707c17fc2d04cc70e87972faf3c98918")
+    url = '%s/wp-json/wc/v3/orders/%s' % ("https://bleucares.com", str(6613))
+    status_mark = "completed"
+    if not status_mark:
+        status_mark = "completed"
+    r = auth_session.post(url, data={"status": status_mark})
+    from woocommerce import API
+    wcapi = API(
+        url="https://www.zladeformen.com",
+        consumer_key="ck_cd462226a5d5c21c5936c7f75e1afca25b9853a6",
+        consumer_secret="cs_c897bf3e770e15f518cba5c619b32671b7cc527c",
+        version="wc/v3"
+    )
+    r = wcapi.get('orders/117929')
+    return 0
     import requests, json
     myfile = request.files['myfile']
     data_xlsx = pd.read_excel(myfile)
@@ -3740,22 +3763,14 @@ def ping_dev():
     data = requests.get(magento_orders_url, headers=headers)
 
     return 0
-    from woocommerce import API
-    wcapi = API(
-        url="https://www.zladeformen.com",
-        consumer_key="ck_cd462226a5d5c21c5936c7f75e1afca25b9853a6",
-        consumer_secret="cs_c897bf3e770e15f518cba5c619b32671b7cc527c",
-        version="wc/v3"
-    )
-    r = wcapi.get('orders/117929')
+
 
 
 
     return 0
 
 
-    create_fulfillment_url = "https://c74b07d8c51d504b047ba32aa11d4c3a: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@sportsqvest.myshopify.com/admin/api/2020-07/orders/2180138500181.json"
-    qs = requests.get(create_fulfillment_url)
+
     from .fetch_orders import lambda_handler
     lambda_handler()
     from .models import PickupPoints, ReturnPoints, ClientPickups, Products, ProductQuantity, ProductsCombos, Orders

@@ -14,18 +14,6 @@ class BaseConfig:
     USERS_SERVICE_URL = os.environ.get('USERS_SERVICE_URL')  # new
 
 
-class DevelopmentConfig(BaseConfig):
-    """Development configuration"""
-    DEBUG_TB_ENABLED = True
-    SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL')  # new
-
-
-class TestingConfig(BaseConfig):
-    """Testing configuration"""
-    TESTING = True
-    SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_TEST_URL')  # new
-
-
 class StagingConfig(BaseConfig):
     """Staging configuration"""
     SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL')  # new

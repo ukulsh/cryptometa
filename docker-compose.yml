@@ -12,20 +12,7 @@ services:
       - FLASK_ENV=production
       - APP_SETTINGS=project.config.ProductionConfig
       - DATABASE_URL=postgres://postgres:aSderRFgd23@wareiq-core-prod2.cvqssxsqruyc.us-east-1.rds.amazonaws.com:5432/users_prod  # new
-      - DATABASE_TEST_URL=postgres://postgres:postgres@users-db:5432/users_test
       - SECRET_KEY=${SECRET_KEY}
-    depends_on:  # new
-      - users-db
-
-  users-db:  # new
-    build:
-      context: ./services/users/project/db
-      dockerfile: Dockerfile
-    expose:
-      - 5432
-    environment:
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=aSderRFgd23
 
   nginx:
     build:
@@ -50,20 +37,13 @@ services:
       - USERS_SERVICE_URL=http://users:5000
       - SECRET_KEY=my_precious
       - DATABASE_URL=postgres://postgres:aSderRFgd23@wareiq-core-prod2.cvqssxsqruyc.us-east-1.rds.amazonaws.com:5432/core_prod
-      - DATABASE_TEST_URL=postgres://postgres:postgres@core-db:5432/core_test  # new
+      - DATABASE_HOST=wareiq-core-prod2.cvqssxsqruyc.us-east-1.rds.amazonaws.com
+      - DATABASE_HOST_PINCODE=wareiq-core-prod.cvqssxsqruyc.us-east-1.rds.amazonaws.com
+      - DATABASE_NAME=core_prod
+      - DATABASE_USER=postgres
+      - DATABASE_PASSWORD=aSderRFgd23
     depends_on:
       - users
-      - core-db  # new
-
-  core-db:
-    build:
-      context: ./services/core/project/db
-      dockerfile: Dockerfile
-    ports:
-      - 5437:5432
-    environment:
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=aSderRFgd23
 
   celery:
     build:

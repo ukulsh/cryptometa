@@ -17,17 +17,10 @@ class BaseConfig:
     TOKEN_EXPIRATION_SECONDS = 0  # new
 
 
-class DevelopmentConfig(BaseConfig):
-    """Development configuration"""
-    SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL')
-    DEBUG_TB_ENABLED = True
-    BCRYPT_LOG_ROUNDS = 4
-
-
-class TestingConfig(BaseConfig):
+class StagingConfig(BaseConfig):
     """Testing configuration"""
     TESTING = True
-    SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_TEST_URL')
+    SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL')
     BCRYPT_LOG_ROUNDS = 4
     TOKEN_EXPIRATION_DAYS = 0     # new
     TOKEN_EXPIRATION_SECONDS = 3  # new

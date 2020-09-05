@@ -28,11 +28,11 @@ app.config['CELERY_BROKER_URL'] = "amqp://guest:guest@rabbitmq:5672"
 app.config['CELERYBEAT_SCHEDULE'] = {
     'run-status-update': {
             'task': 'status_update',
-            'schedule': crontab(minute='02', hour='*')
+            'schedule': crontab(minute='31', hour='*/2')
         },
     'run-fetch-orders': {
                 'task': 'fetch_orders',
-                'schedule': crontab(minute='*/15')
+                'schedule': crontab(minute='*/20')
             },
 }
 

@@ -1898,7 +1898,7 @@ def track_order(awb):
     except Exception as e:
         return jsonify({"success": False, "msg": str(e.args[0])}), 404
 
-
+'''
 class CodVerificationGather(Resource):
 
     def get(self, ver_type):
@@ -2017,7 +2017,7 @@ def verification_passthru(type):
     except Exception as e:
         return jsonify({"success": False, "msg": str(e.args[0])}), 404
 
-
+'''
 @core_blueprint.route('/orders/v1/ivrcalls/call', methods=['GET'])
 @authenticate_restful
 def ivr_call(resp):
@@ -3116,35 +3116,13 @@ api.add_resource(WalletRemittance, '/wallet/v1/remittance')
 @core_blueprint.route('/core/dev', methods=['POST'])
 def ping_dev():
     return 0
-    import requests
-    create_fulfillment_url = "https://7e589aaa86d4fd54f88efc3daedf0615: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@shri-wellness-india.myshopify.com/admin/api/2020-07/orders.json"
-    qs = requests.get(create_fulfillment_url)
-    from .create_shipments import lambda_handler
-    lambda_handler()
-    return 0
-    from requests_oauthlib.oauth1_session import OAuth1Session
-    auth_session = OAuth1Session("ck_43f358286bc3a3a30ffd00e22d2282db07ed7f5d",
-                                 client_secret="cs_970ec6a2707c17fc2d04cc70e87972faf3c98918")
-    url = '%s/wp-json/wc/v3/orders/%s' % ("https://bleucares.com", str(6613))
-    status_mark = "completed"
-    if not status_mark:
-        status_mark = "completed"
-    r = auth_session.post(url, data={"status": status_mark})
-    from woocommerce import API
-    wcapi = API(
-        url="https://www.zladeformen.com",
-        consumer_key="ck_cd462226a5d5c21c5936c7f75e1afca25b9853a6",
-        consumer_secret="cs_c897bf3e770e15f518cba5c619b32671b7cc527c",
-        version="wc/v3"
-    )
-    r = wcapi.get('orders/117929')
-    return 0
     import requests, json
     myfile = request.files['myfile']
     data_xlsx = pd.read_excel(myfile)
 
     iter_rw = data_xlsx.iterrows()
     source_items = list()
+    sku_list = list()
     for row in iter_rw:
         try:
 
@@ -3160,9 +3138,7 @@ def ping_dev():
                 "status": 1
             })
             """
-            headers = {
-                'Authorization': "Bearer " + "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJleHAiOjE2MDAyMzM4MDMsImlhdCI6MTU5NzY0MTgwMywic3ViIjoxMTN9.9aVZVnryT4pd8LnVfdEbywfR7J0vRqOc-AEtnAlRq-o",
-                'Content-Type': 'application/json'}
+
             """
             data = {"sku_list": [{"sku": sku,
                                   "warehouse": "DLWHEC",
@@ -3173,14 +3149,12 @@ def ping_dev():
                                 data=json.dumps(data))
 
             """
-
-            data = {"sku_list": [{"sku": sku,
-                                  "warehouse": "HOLISOLBL",
+            sku_list.append({"sku": sku,
+                                  "warehouse": "QSBHIWANDI",
                                   "quantity": del_qty,
-                                  "type": "add",
-                                  "remark": "1 sep Inbound"}]}
-            req = requests.post("http://track.wareiq.com/products/v1/update_inventory", headers=headers,
-                                data=json.dumps(data))
+                                  "type": "replace",
+                                  "remark": "3 sep resync"})
+
             """
 
             data = {"sku_list": [{"sku": sku,
@@ -3205,10 +3179,53 @@ def ping_dev():
             else:
                 pass
             """
+            if row[0]%200==0:
+                headers = {
+                    'Authorization': "Bearer " + "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJleHAiOjE2MDE3NDQwNzksImlhdCI6MTU5OTE1MjA3OSwic3ViIjo5fQ.lPSECo8JK0zJgv6oAO0fLyJ5JvsnJjVHp-97cKNO6E0",
+                    'Content-Type': 'application/json'}
 
+                data = {"sku_list": sku_list}
+                req = requests.post("http://track.wareiq.com/products/v1/update_inventory", headers=headers,
+                                    data=json.dumps(data))
+
+                sku_list = list()
 
         except Exception as e:
             pass
+
+    headers = {
+        'Authorization': "Bearer " + "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJleHAiOjE2MDE3NDQwNzksImlhdCI6MTU5OTE1MjA3OSwic3ViIjo5fQ.lPSECo8JK0zJgv6oAO0fLyJ5JvsnJjVHp-97cKNO6E0",
+        'Content-Type': 'application/json'}
+
+    data = {"sku_list": sku_list}
+    req = requests.post("http://track.wareiq.com/products/v1/update_inventory", headers=headers,
+                        data=json.dumps(data))
+
+    return 0
+    import requests
+    create_fulfillment_url = "https://7e589aaa86d4fd54f88efc3daedf0615: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@shri-wellness-india.myshopify.com/admin/api/2020-07/orders.json"
+    qs = requests.get(create_fulfillment_url)
+    from .create_shipments import lambda_handler
+    lambda_handler()
+    return 0
+    from requests_oauthlib.oauth1_session import OAuth1Session
+    auth_session = OAuth1Session("ck_43f358286bc3a3a30ffd00e22d2282db07ed7f5d",
+                                 client_secret="cs_970ec6a2707c17fc2d04cc70e87972faf3c98918")
+    url = '%s/wp-json/wc/v3/orders/%s' % ("https://bleucares.com", str(6613))
+    status_mark = "completed"
+    if not status_mark:
+        status_mark = "completed"
+    r = auth_session.post(url, data={"status": status_mark})
+    from woocommerce import API
+    wcapi = API(
+        url="https://www.zladeformen.com",
+        consumer_key="ck_cd462226a5d5c21c5936c7f75e1afca25b9853a6",
+        consumer_secret="cs_c897bf3e770e15f518cba5c619b32671b7cc527c",
+        version="wc/v3"
+    )
+    r = wcapi.get('orders/117929')
+    return 0
+
     from .fetch_orders import lambda_handler
     lambda_handler()
 

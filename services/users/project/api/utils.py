@@ -55,3 +55,15 @@ def authenticate_restful(f):
 def is_admin(user_id):
     user = User.query.filter_by(id=user_id).first()
     return user.admin
+
+
+def pagination_validator(page_size, page_number):
+    if page_size is None:
+        page_size = 10
+    else:
+        page_size = int(page_size)
+    if page_number is None:
+        page_number = 1
+    else:
+        page_number = int(page_number)
+    return page_size, page_number

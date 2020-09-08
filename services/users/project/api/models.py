@@ -98,16 +98,24 @@ class Client(db.Model):
     client_name = db.Column(db.String(128), nullable=False)
     client_prefix = db.Column(db.String(32), unique=True, nullable=False)
     primary_email = db.Column(db.String(128), nullable=False)
+    tabs = db.Column(ARRAY(db.String(20)))
+    active = db.Column(db.Boolean(), default=True, server_default="true", nullable=False)
+    created_date = db.Column(db.DateTime, default=func.now(), server_default=func.now(), nullable=False)
 
-    def __init__(self, client_name, primary_email):
+    def __init__(self, client_name, primary_email, client_prefix, tabs):
         self.client_name = client_name
         self.primary_email = primary_email
+        self.client_prefix = client_prefix
+        self.tabs = tabs
 
     def to_json(self):
         return {
             'id': self.id,
             'client_name': self.client_name,
-            'primary_email': self.primary_email
+            'client_prefix': self.client_prefix,
+            'primary_email': self.primary_email,
+            'active': self.active,
+            'tabs': self.tabs if isinstance(self.tabs, list) else []
         }
 
 

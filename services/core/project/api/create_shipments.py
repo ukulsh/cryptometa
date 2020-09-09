@@ -80,10 +80,10 @@ def cod_verification_text(order, exotel_idx, cur):
     sms_to_key = "Messages[%s][To]" % str(exotel_idx)
     sms_body_key = "Messages[%s][Body]" % str(exotel_idx)
 
-    sms_body_key_data = "Dear Customer, You recently placed an order from %s with order id %s. " \
+    sms_body_key_data = "Dear Customer, You recently placed an order from %s worth INR %s. " \
                         "Please click on the link (%s) to verify. " \
                         "Your order will be shipped soon after confirmation." % (
-                            client_name, str(order[1]), cod_confirmation_link)
+                            client_name, str(order[27]), cod_confirmation_link)
 
     return sms_to_key, sms_body_key, customer_phone, sms_body_key_data
 
@@ -129,10 +129,8 @@ def ship_delhivery_orders(cur, courier, courier_name, order_ids, order_id_tuple,
                    "Content-Type": "application/json"}
         for order in all_new_orders:
             try:
-                """
-                if order[17].lower() in ("bengaluru", "bangalore", "banglore") and courier[1] == "MIRAKKI":
+                if order[17].lower() in ("bengaluru", "bangalore", "banglore") and courier[1] == "KAMAAYURVEDA":
                     continue
-                """
 
                 if not order[52]:
                     weight = order[34][0] * order[35][0]
@@ -501,11 +499,6 @@ def ship_shadowfax_orders(cur, courier, courier_name, order_ids, order_id_tuple,
         orders_to_ship_query = get_orders_to_ship_query.replace("__ORDER_SELECT_FILTERS__", """and aa.status='NEW'
                                                                                             and ll.id is null""")
     get_orders_data_tuple = (courier[1], courier[1])
-    if courier[3] == 2:
-        orders_to_ship_query = orders_to_ship_query.replace('__PRODUCT_FILTER__',
-                                                            "and ship_courier[1]='%s'" % courier[10])
-    else:
-        orders_to_ship_query = orders_to_ship_query.replace('__PRODUCT_FILTER__', '')
 
     cur.execute(orders_to_ship_query, get_orders_data_tuple)
     all_orders = cur.fetchall()
@@ -757,11 +750,7 @@ def ship_xpressbees_orders(cur, courier, courier_name, order_ids, order_id_tuple
         orders_to_ship_query = get_orders_to_ship_query.replace("__ORDER_SELECT_FILTERS__", """and aa.status='NEW'
                                                                                             and ll.id is null""")
     get_orders_data_tuple = (courier[1], courier[1])
-    if courier[3] == 2:
-        orders_to_ship_query = orders_to_ship_query.replace('__PRODUCT_FILTER__',
-                                                            "and ship_courier[1]='%s'" % courier[10])
-    else:
-        orders_to_ship_query = orders_to_ship_query.replace('__PRODUCT_FILTER__', '')
+
     cur.execute(orders_to_ship_query, get_orders_data_tuple)
     all_orders = cur.fetchall()
     pickup_point_order_dict = dict()
@@ -1076,11 +1065,7 @@ def ship_ecom_orders(cur, courier, courier_name, order_ids, order_id_tuple, back
         orders_to_ship_query = get_orders_to_ship_query.replace("__ORDER_SELECT_FILTERS__", """and aa.status='NEW'
                                                                                             and ll.id is null""")
     get_orders_data_tuple = (courier[1], courier[1])
-    if courier[3] == 2:
-        orders_to_ship_query = orders_to_ship_query.replace('__PRODUCT_FILTER__',
-                                                            "and ship_courier[1]='%s'" % courier[10])
-    else:
-        orders_to_ship_query = orders_to_ship_query.replace('__PRODUCT_FILTER__', '')
+
     cur.execute(orders_to_ship_query, get_orders_data_tuple)
     all_orders = cur.fetchall()
     pickup_point_order_dict = dict()

@@ -88,6 +88,11 @@ def lambda_handler():
                     charge_rate_values = cur.fetchone()
                     if not charge_rate_values:
                         cur.execute(
+                            "SELECT __ZONE__, cod_min, cod_ratio, rto_ratio from cost_to_clients WHERE client_prefix=%s and courier_id=%s;".replace(
+                                '__ZONE__', zone_column_mapping[delivery_zone]), (order[6], 16)) #16 is rate for all
+                        charge_rate_values = cur.fetchone()
+                    if not charge_rate_values:
+                        cur.execute(
                             """INSERT INTO client_deductions (weight_charged, zone, shipment_id) VALUES (%s,%s,%s) RETURNING id;""",
                             (charged_weight, delivery_zone, order[0]))
 

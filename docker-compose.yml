@@ -56,9 +56,15 @@ services:
 
   rabbitmq:
     image: rabbitmq
+    build:
+      context: ./services/rabbitmq
+      dockerfile: Dockerfile-qa
+    ports:
+      - 5672:5672
+      - 15672:15672
 
   flower:
     image: mher/flower
-    command: ["flower", "--broker=amqp://guest:guest@rabbitmq:5672", "--port=8888", "--url-prefix=flower"]
+    command: ["flower", "--broker=amqp://ravi:Kad97711@rabbitmq:5672", "--port=8888", "--url-prefix=flower", "--basic_auth=ravi:Kad97711"]
     ports:
       - 8888:8888

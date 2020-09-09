@@ -17,6 +17,9 @@ class Clients(Resource):
     method_decorators = {'post': [authenticate_restful], 'get': [authenticate_restful]}
 
     def post(self, resp):
+        auth_data = resp.get('data')
+        if not auth_data or auth_data.get('user_group') != 'super-admin':
+            return {"success": False, "msg": "Auth Failed"}, 404
         response_object = {'status': 'fail'}
         post_data = request.get_json()
         client_name = post_data.get('client_name')
@@ -38,6 +41,9 @@ class Clients(Resource):
 
     def get(self, resp):
         try:
+            auth_data = resp.get('data')
+            if not auth_data or auth_data.get('user_group') != 'super-admin':
+                return {"success": False, "msg": "Auth Failed"}, 404
             page_number = request.args.get('page_number')
             page_size = request.args.get('page_size')
             page_size, page_number = pagination_validator(page_size, page_number)
@@ -59,10 +65,13 @@ class Clients(Resource):
             return {'status': 'fail', 'message': 'failed while fetching the client'}, 400
 
 
-@clients_blueprint.route('/clients/updateStatus', methods=['POST'])
+@clients_blueprint.route('users/v1/clients/updateStatus', methods=['POST'])
 @authenticate_restful
 def update_client_status(resp):
     response_object = {'status': 'fail'}
+    auth_data = resp.get('data')
+    if not auth_data or auth_data.get('user_group') != 'super-admin':
+        return {"success": False, "msg": "Auth Failed"}, 404
     try:
         request_data = request.get_json()
         active = True if request_data.get('active') else False
@@ -80,10 +89,13 @@ def update_client_status(resp):
         return jsonify(response_object), 400
 
 
-@clients_blueprint.route('/clients/checkClientPrefix', methods=['GET'])
+@clients_blueprint.route('users/v1/clients/checkClientPrefix', methods=['GET'])
 @authenticate_restful
 def check_client_prefix(resp):
     response_object = {'status': 'fail'}
+    auth_data = resp.get('data')
+    if not auth_data or auth_data.get('user_group') != 'super-admin':
+        return {"success": False, "msg": "Auth Failed"}, 404
     try:
         client_prefix = request.args.get('client_prefix')
         client = Client.query.filter_by(client_prefix=client_prefix).first()
@@ -96,5 +108,5 @@ def check_client_prefix(resp):
         return jsonify(response_object), 400
 
 
-api.add_resource(Clients, '/clients')
+api.add_resource(Clients, 'users/v1/clients')
 

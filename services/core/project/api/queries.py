@@ -86,7 +86,8 @@ fetch_client_couriers_query = """select aa.id,aa.client_prefix,aa.courier_id,aa.
 		                        from client_couriers aa
                                 left join master_couriers bb
                                 on aa.courier_id=bb.id
-                                where aa.active=true;"""
+                                where aa.active=true
+                                order by priority;"""
 
 get_pickup_points_query = """select aa.id, aa.pickup_id, aa.return_point_id, 
                                 bb.phone, bb.address, bb.address_two, bb.city,
@@ -139,7 +140,6 @@ get_orders_to_ship_query = """select aa.id,aa.channel_order_id,aa.order_date,aa.
                                 on aa.client_prefix=yy.client_prefix
                                 where aa.client_prefix=%s
                                 __ORDER_SELECT_FILTERS__
-                                __PRODUCT_FILTER__
                                 and NOT EXISTS (SELECT 1 FROM unnest(ee.weights) x WHERE x IS NULL)
                                 and (xx.id is null or (xx.id is not null and xx.cod_verified = true) 
                                      or (yy.cod_ship_unconfirmed=true and aa.order_date<(NOW() - interval '1 day')))

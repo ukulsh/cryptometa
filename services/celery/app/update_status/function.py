@@ -884,7 +884,7 @@ def update_status():
                                             + "\nError: " + str(e.args))
 
                         if orders_dict[current_awb][2] in (
-                                'READY TO SHIP', 'PICKUP REQUESTED', 'NOT PICKED') and new_status == 'IN TRANSIT':
+                                'READY TO SHIP', 'PICKUP REQUESTED', 'NOT PICKED') and new_status == 'IN TRANSIT' and order_picked_check:
 
                             cur_2.execute(
                                 "select client_name from clients where client_prefix='%s'" %

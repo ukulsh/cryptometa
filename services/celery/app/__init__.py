@@ -21,8 +21,8 @@ def make_celery(app):
 
 
 app = Flask(__name__)
-app.config['CELERY_BACKEND'] = "amqp://guest:guest@rabbitmq:5672"
-app.config['CELERY_BROKER_URL'] = "amqp://guest:guest@rabbitmq:5672"
+app.config['CELERY_BACKEND'] = "amqp://ravi:Kad97711@rabbitmq:5672"
+app.config['CELERY_BROKER_URL'] = "amqp://ravi:Kad97711@rabbitmq:5672"
 
 
 app.config['CELERYBEAT_SCHEDULE'] = {

@@ -1913,20 +1913,20 @@ class CodVerificationGather(Resource):
                 else:
                     client_name = order.client_prefix.lower()
                 if ver_type=="cod":
-                    gather_prompt_text = "Hello %s, You recently placed an order from %s with order ID %s." \
+                    gather_prompt_text = "Hello %s, You recently placed an order from %s with amount %s." \
                                      " Press 1 to confirm your order or, 0 to cancel." % (order.customer_name,
                                                                                          client_name,
-                                                                                         order.channel_order_id)
+                                                                                         str(order.payments[0].amount))
 
                     repeat_prompt_text = "It seems that you have not provided any input, please try again. Order from %s, " \
                                      "Order ID %s. Press 1 to confirm your order or, 0 to cancel." % (
                                      client_name,
                                      order.channel_order_id)
                 elif ver_type=="ndr":
-                    gather_prompt_text = "Hello %s, You recently cancelled your order from %s with order ID %s." \
+                    gather_prompt_text = "Hello %s, You recently cancelled your order from %s with amount %s." \
                                          " Press 1 to confirm cancellation or, 0 to re-attempt." % (order.customer_name,
                                                                                              client_name,
-                                                                                             order.channel_order_id)
+                                                                                             str(order.payments[0].amount))
 
                     repeat_prompt_text = "It seems that you have not provided any input, please try again. Order from %s, " \
                                          "Order ID %s. Press 1 to confirm cancellation or, 0 to re-attempt." % (
@@ -3116,7 +3116,7 @@ api.add_resource(WalletRemittance, '/wallet/v1/remittance')
 @core_blueprint.route('/core/dev', methods=['POST'])
 def ping_dev():
     return 0
-    import requests, json
+    import json, requests
     myfile = request.files['myfile']
     data_xlsx = pd.read_excel(myfile)
 
@@ -3128,8 +3128,8 @@ def ping_dev():
 
             sku = str(row[1].SKU)
             del_qty = int(row[1].Qty)
-            #cb_qty = int(row[1].CBQT)
-            #mh_qty = int(row[1].MHQT)
+            # cb_qty = int(row[1].CBQT)
+            # mh_qty = int(row[1].MHQT)
             """
             source_items.append({
                 "sku": sku,
@@ -3150,10 +3150,10 @@ def ping_dev():
 
             """
             sku_list.append({"sku": sku,
-                                  "warehouse": "QSBHIWANDI",
-                                  "quantity": del_qty,
-                                  "type": "replace",
-                                  "remark": "3 sep resync"})
+                             "warehouse": "QSDWARKA",
+                             "quantity": del_qty,
+                             "type": "add",
+                             "remark": "5 sep inbound"})
 
             """
 
@@ -3178,7 +3178,7 @@ def ping_dev():
                 db.session.add(combo_obj)
             else:
                 pass
-            """
+
             if row[0]%200==0:
                 headers = {
                     'Authorization': "Bearer " + "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJleHAiOjE2MDE3NDQwNzksImlhdCI6MTU5OTE1MjA3OSwic3ViIjo5fQ.lPSECo8JK0zJgv6oAO0fLyJ5JvsnJjVHp-97cKNO6E0",
@@ -3189,17 +3189,157 @@ def ping_dev():
                                     data=json.dumps(data))
 
                 sku_list = list()
+            """
 
         except Exception as e:
             pass
 
     headers = {
-        'Authorization': "Bearer " + "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJleHAiOjE2MDE3NDQwNzksImlhdCI6MTU5OTE1MjA3OSwic3ViIjo5fQ.lPSECo8JK0zJgv6oAO0fLyJ5JvsnJjVHp-97cKNO6E0",
+        'Authorization': "Bearer " + "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJleHAiOjE2MDE5ODc1MzUsImlhdCI6MTU5OTM5NTUzNSwic3ViIjo5fQ.ZU14BVa-FRKCWe9dSva6FDuAVh0Sgoa_m0v4YHHpMK4",
         'Content-Type': 'application/json'}
 
     data = {"sku_list": sku_list}
-    req = requests.post("http://track.wareiq.com/products/v1/update_inventory", headers=headers,
+    req = requests.post("https://track.wareiq.com/products/v1/update_inventory", headers=headers,
                         data=json.dumps(data))
+    return 0
+    from .models import Orders, ReturnPoints, ClientPickups, Products, ProductQuantity
+    since_id = "1"
+    count = 250
+    while count == 250:
+        create_fulfillment_url = "https://f2e810c7035e1653f0191cb8f5da58f6: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@rattleandco.myshopify.com/admin/api/2020-07/products.json?limit=250&since_id=%s"%since_id
+        qs = requests.get(create_fulfillment_url)
+        for prod in qs.json()['products']:
+            for prod_obj in prod['variants']:
+                prod_obj_x = db.session.query(Products).filter(Products.sku == str(prod_obj['id'])).first()
+                if prod_obj_x:
+                    prod_obj_x.master_sku = prod_obj['sku']
+                else:
+                    prod_name = prod['title']
+                    if prod_obj['title'] != 'Default Title':
+                        prod_name += " - " + prod_obj['title']
+                    prod_obj_x = Products(name=prod_name,
+                                          sku=str(prod_obj['id']),
+                                          master_sku=str(prod_obj['sku']),
+                                          dimensions=None,
+                                          weight=None,
+                                          price=float(prod_obj['price']),
+                                          client_prefix='RATTLEANDCO',
+                                          active=True,
+                                          channel_id=1,
+                                          date_created=datetime.now()
+                                          )
+
+                    db.session.add(prod_obj_x)
+                    # prod_quan_obj = ProductQuantity(product=prod_obj_x,
+                    #                                 total_quantity=0,
+                    #                                 approved_quantity=0,
+                    #                                 available_quantity=0,
+                    #                                 inline_quantity=0,
+                    #                                 rto_quantity=0,
+                    #                                 current_quantity=0,
+                    #                                 warehouse_prefix="QSDWARKA",
+                    #                                 status="APPROVED",
+                    #                                 date_created=datetime.now()
+                    #                                 )
+                    #
+                    # db.session.add(prod_quan_obj)
+
+        count = len(qs.json()['products'])
+        since_id = str(qs.json()['products'][-1]['id'])
+
+    data_xlsx = pd.read_excel(myfile)
+    import json, re
+    count = 0
+    iter_rw = data_xlsx.iterrows()
+    for row in iter_rw:
+        try:
+            sku = str(row[1].SKU)
+            name = str(row[1].Name)
+            mrp = float(row[1].MRP)
+            weight = float(row[1].Weight)
+            dimensions = {"length": float(row[1].Length), "breadth": float(row[1].Breadth),
+                          "height": float(row[1].Height)}
+            prod_obj = Products(name=name,
+                                sku=str(sku),
+                                master_sku=str(sku),
+                                dimensions=dimensions,
+                                weight=weight,
+                                price=mrp,
+                                client_prefix='MASKAPB',
+                                active=True,
+                                channel_id=4,
+                                inactive_reason=None,
+                                date_created=datetime.now()
+                                )
+
+            db.session.add(prod_obj)
+
+        except Exception as e:
+            pass
+    import requests
+
+    since_id = "1"
+    count = 250
+    myfile = request.files['myfile']
+    while count==250:
+        create_fulfillment_url = "https://f2e810c7035e1653f0191cb8f5da58f6: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@rattleandco.myshopify.com/admin/api/2020-07/products.json?limit=250&since_id=%s"%since_id
+        qs = requests.get(create_fulfillment_url)
+        for prod in qs.json()['products']:
+            for prod_obj in prod['variants']:
+                prod_name = prod['title']
+                quan = 0
+                if not prod_obj['sku']:
+                    continue
+                master_sku = str(prod_obj['sku'])
+                data_xlsx = pd.read_excel(myfile)
+                iter_rw = data_xlsx.iterrows()
+                for row in iter_rw:
+                    try:
+                        if master_sku == str(row[1].SKU):
+                            quan = str(row[1].quan)
+                            break
+                    except Exception as e:
+                        pass
+                if prod_obj['title'] != 'Default Title':
+                    prod_name += " - " + prod_obj['title']
+                if not quan:
+                    continue
+                prod_obj_x = db.session.query(Products).filter(Products.sku == str(prod_obj['id'])).first()
+                if not prod_obj_x:
+                    prod_obj_x = Products(name=prod_name,
+                                          sku=str(prod_obj['id']),
+                                          master_sku=master_sku,
+                                          dimensions=None,
+                                          weight=None,
+                                          price=float(prod_obj['price']),
+                                          client_prefix='SPORTSQVEST',
+                                          active=True,
+                                          channel_id=1,
+                                          date_created=datetime.now()
+                                          )
+
+                    db.session.add(prod_obj_x)
+
+                if quan:
+                    prod_quan_obj = ProductQuantity(product=prod_obj_x,
+                                                    total_quantity=quan,
+                                                    approved_quantity=quan,
+                                                    available_quantity=quan,
+                                                    inline_quantity=0,
+                                                    rto_quantity=0,
+                                                    current_quantity=quan,
+                                                    warehouse_prefix="QSBHIWANDI",
+                                                    status="APPROVED",
+                                                    date_created=datetime.now()
+                                                    )
+
+                    db.session.add(prod_quan_obj)
+        count = len(qs.json()['products'])
+        since_id = str(qs.json()['products'][-1]['id'])
+        db.session.commit()
+
+    db.session.commit()
+    import requests, json
 
     return 0
     import requests
@@ -3284,78 +3424,7 @@ def ping_dev():
     db.session.commit()
     import requests
     myfile = request.files['myfile']
-    since_id = "1"
-    count = 250
-    while count == 250:
-        create_fulfillment_url = "https://c6ac91d702327f34a174008510129e44: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@urbangabru-mens-lifestyle.myshopify.com/admin/api/2020-07/products.json?limit=250&since_id=%s" % since_id
-        qs = requests.get(create_fulfillment_url)
-        for prod in qs.json()['products']:
-            for prod_obj in prod['variants']:
-                prod_obj_x = db.session.query(Products).filter(Products.sku == str(prod_obj['id'])).first()
-                if prod_obj_x:
-                    prod_obj_x.master_sku = prod_obj['sku']
-                else:
-                    prod_name = prod['title']
-                    if prod_obj['title'] != 'Default Title':
-                        prod_name += " - " + prod_obj['title']
-                    prod_obj_x = Products(name=prod_name,
-                                          sku=str(prod_obj['id']),
-                                          master_sku=str(prod_obj['sku']),
-                                          dimensions=None,
-                                          weight=None,
-                                          price=float(prod_obj['price']),
-                                          client_prefix='URBANGABRU',
-                                          active=True,
-                                          channel_id=1,
-                                          date_created=datetime.now()
-                                          )
 
-                    db.session.add(prod_obj_x)
-                    prod_quan_obj = ProductQuantity(product=prod_obj_x,
-                                                    total_quantity=0,
-                                                    approved_quantity=0,
-                                                    available_quantity=0,
-                                                    inline_quantity=0,
-                                                    rto_quantity=0,
-                                                    current_quantity=0,
-                                                    warehouse_prefix="QSDWARKA",
-                                                    status="APPROVED",
-                                                    date_created=datetime.now()
-                                                    )
-
-                    db.session.add(prod_quan_obj)
-
-        count = len(qs.json()['products'])
-        since_id = str(qs.json()['products'][-1]['id'])
-
-    data_xlsx = pd.read_excel(myfile)
-    import json, re
-    count = 0
-    iter_rw = data_xlsx.iterrows()
-    for row in iter_rw:
-        try:
-            sku = str(row[1].SKU)
-            name = str(row[1].Name)
-            mrp = float(row[1].MRP)
-            weight = float(row[1].Weight)
-            dimensions = {"length":float(row[1].Length),"breadth":float(row[1].Breadth),"height":float(row[1].Height)}
-            prod_obj = Products(name=name,
-                                sku=str(sku),
-                                master_sku=str(sku),
-                                dimensions=dimensions,
-                                weight=weight,
-                                price=mrp,
-                                client_prefix='MASKAPB',
-                                active=True,
-                                channel_id=4,
-                                inactive_reason=None,
-                                date_created=datetime.now()
-                                )
-
-            db.session.add(prod_obj)
-
-        except Exception as e:
-            pass
     db.session.commit()
     import requests
     req = requests.get("https://api.ecomexpress.in/apiv2/fetch_awb/?username=warelqlogisticspvtltd144004_pro&password=LdGvdcTFv6n4jGMT&count=10000&type=PPD")
@@ -3562,72 +3631,6 @@ def ping_dev():
     return 0
     create_fulfillment_url = "https://9bf9e5f5fb698274d52d0e8a734354d7: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@actifiber.myshopify.com/admin/api/2020-07/orders.json?limit=250"
     qs = requests.get(create_fulfillment_url)
-
-
-    import requests
-
-    from .models import Orders, ReturnPoints, ClientPickups, Products, ProductQuantity
-    since_id = "1643999133767"
-    count = 250
-    myfile = request.files['myfile']
-    while count==250:
-        create_fulfillment_url = "https://c74b07d8c51d504b047ba32aa11d4c3a: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@sportsqvest.myshopify.com/admin/api/2020-07/products.json?limit=250&since_id=%s"%since_id
-        qs = requests.get(create_fulfillment_url)
-        for prod in qs.json()['products']:
-            for prod_obj in prod['variants']:
-                prod_name = prod['title']
-                quan = 0
-                if not prod_obj['sku']:
-                    continue
-                master_sku = str(prod_obj['sku'])
-                data_xlsx = pd.read_excel(myfile)
-                iter_rw = data_xlsx.iterrows()
-                for row in iter_rw:
-                    try:
-                        if master_sku == str(row[1].SKU):
-                            quan = str(row[1].quan)
-                            break
-                    except Exception as e:
-                        pass
-                if prod_obj['title'] != 'Default Title':
-                    prod_name += " - " + prod_obj['title']
-                if not quan:
-                    continue
-                prod_obj_x = db.session.query(Products).filter(Products.sku == str(prod_obj['id'])).first()
-                if not prod_obj_x:
-                    prod_obj_x = Products(name=prod_name,
-                                          sku=str(prod_obj['id']),
-                                          master_sku=master_sku,
-                                          dimensions=None,
-                                          weight=None,
-                                          price=float(prod_obj['price']),
-                                          client_prefix='SPORTSQVEST',
-                                          active=True,
-                                          channel_id=1,
-                                          date_created=datetime.now()
-                                          )
-
-                    db.session.add(prod_obj_x)
-
-                if quan:
-                    prod_quan_obj = ProductQuantity(product=prod_obj_x,
-                                                    total_quantity=quan,
-                                                    approved_quantity=quan,
-                                                    available_quantity=quan,
-                                                    inline_quantity=0,
-                                                    rto_quantity=0,
-                                                    current_quantity=quan,
-                                                    warehouse_prefix="QSBHIWANDI",
-                                                    status="APPROVED",
-                                                    date_created=datetime.now()
-                                                    )
-
-                    db.session.add(prod_quan_obj)
-        count = len(qs.json()['products'])
-        since_id = str(qs.json()['products'][-1]['id'])
-        db.session.commit()
-
-    db.session.commit()
     return 0
 
 

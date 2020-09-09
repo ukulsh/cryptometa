@@ -48,6 +48,8 @@ def authenticate_restful(f):
         user = User.query.filter_by(id=resp).first()
         if not user or not user.active:
             return response_object, 401
+        if user.group_id == 1 and user.login_as:
+            resp = user.login_as
         return f(resp, *args, **kwargs)
     return decorated_function
 

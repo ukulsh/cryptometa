@@ -22,7 +22,7 @@ class StagingConfig(BaseConfig):
     TESTING = True
     SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL')
     BCRYPT_LOG_ROUNDS = 4
-    TOKEN_EXPIRATION_DAYS = 0     # new
+    TOKEN_EXPIRATION_DAYS = 30     # new
     TOKEN_EXPIRATION_SECONDS = 3  # new
 
 

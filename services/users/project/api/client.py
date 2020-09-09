@@ -65,7 +65,7 @@ class Clients(Resource):
             return {'status': 'fail', 'message': 'failed while fetching the client'}, 400
 
 
-@clients_blueprint.route('users/v1/clients/updateStatus', methods=['POST'])
+@clients_blueprint.route('/users/v1/clients/updateStatus', methods=['POST'])
 @authenticate_restful
 def update_client_status(resp):
     response_object = {'status': 'fail'}
@@ -89,7 +89,7 @@ def update_client_status(resp):
         return jsonify(response_object), 400
 
 
-@clients_blueprint.route('users/v1/clients/checkClientPrefix', methods=['GET'])
+@clients_blueprint.route('/users/v1/clients/checkClientPrefix', methods=['GET'])
 @authenticate_restful
 def check_client_prefix(resp):
     response_object = {'status': 'fail'}
@@ -108,5 +108,5 @@ def check_client_prefix(resp):
         return jsonify(response_object), 400
 
 
-api.add_resource(Clients, 'users/v1/clients')
+api.add_resource(Clients, '/users/v1/clients')
 

@@ -64,7 +64,7 @@ def lambda_handler(courier_name=None, order_ids=None):
 
 
 def cod_verification_text(order, exotel_idx, cur):
-    cod_confirmation_link = "http://track.wareiq.com/core/v1/passthru/cod?CustomField=%s" % str(order[0])
+    cod_confirmation_link = "https://track.wareiq.com/core/v1/passthru/cod?CustomField=%s" % str(order[0])
     """
     short_url = requests.get(
         "https://cutt.ly/api/api.php?key=f445d0bb52699d2f870e1832a1f77ef3f9078&short=%s" % cod_confirmation_link)

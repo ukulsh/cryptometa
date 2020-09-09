@@ -44,3 +44,12 @@ services:
       - DATABASE_PASSWORD=aSderRFgd23
     depends_on:
       - users
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    build:
+      context: ./services/rabbitmq
+      dockerfile: Dockerfile-qa
+    ports:
+      - 5672:5672
+      - 15672:15672

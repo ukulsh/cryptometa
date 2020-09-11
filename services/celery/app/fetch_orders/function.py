@@ -249,8 +249,9 @@ def fetch_shopify_orders(cur, channel):
 
 def fetch_woocommerce_orders(cur, channel):
     time_after = channel[7] - timedelta(days=10)
-    cur.execute("SELECT order_id_channel_unique from orders WHERE order_date>%s "
-                "and client_prefix=%s and order_id_channel_unique is not null;", (time_after, channel[1]))
+    cur.execute("""SELECT order_id_channel_unique from orders aa
+                    left join client_channel bb on aa.client_channel_id=bb.id
+                    WHERE order_date>%s and aa.client_prefix=%s and bb.channel_id=5;""", (time_after, channel[1]))
 
     fetch_status = ",".join(channel[15])
     exclude_ids = ""

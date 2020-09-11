@@ -1246,7 +1246,7 @@ def magento_fulfillment(order, cur):
         "notify": False,
         "tracks": [
             {
-                "extension_attributes": {"warehouse_name": "HydShip3"},
+                "extension_attributes": {"warehouse_name": str(order[36])},
                 "track_number": str(order[1]),
                 "title": "WareIQ",
                 "carrier_code": "WareIQ"

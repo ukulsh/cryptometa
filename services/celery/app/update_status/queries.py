@@ -6,7 +6,7 @@ get_status_update_orders_query = """select aa.id, bb.awb, aa.status, aa.client_p
                                     cc.channel_id, gg.location_id, mm.item_list, mm.sku_quan_list, aa.customer_name, aa.customer_email, 
                                     nn.client_name, nn.client_logo, nn.custom_email_subject, bb.courier_id, nn.theme_color, cc.unique_parameter,
                                     cc.mark_shipped, cc.shipped_status, cc.mark_invoiced, cc.invoiced_status, cc.mark_delivered, 
-                                    cc.delivered_status, cc.mark_returned, cc.returned_status, cc.id, ee.amount
+                                    cc.delivered_status, cc.mark_returned, cc.returned_status, cc.id, ee.amount, oo.warehouse_prefix
                                     from orders aa
                                     left join shipments bb
                                     on aa.id=bb.order_id
@@ -20,6 +20,8 @@ get_status_update_orders_query = """select aa.id, bb.awb, aa.status, aa.client_p
                                     on aa.client_channel_id=cc.id
                                     left join client_pickups dd
                                     on aa.pickup_data_id=dd.id
+                                    left join pickup_points oo
+                                    on dd.pickup_id=oo.id
                                     left join orders_payments ee
                                     on aa.id=ee.order_id
                                     left join client_channel_locations gg

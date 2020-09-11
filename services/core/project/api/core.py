@@ -3116,8 +3116,43 @@ api.add_resource(WalletRemittance, '/wallet/v1/remittance')
 @core_blueprint.route('/core/dev', methods=['POST'])
 def ping_dev():
     return 0
-    import json, requests
+    from .fetch_orders import lambda_handler
+    lambda_handler()
     myfile = request.files['myfile']
+    from .models import Orders, ReturnPoints, ClientPickups, Products, ProductQuantity
+    data_xlsx = pd.read_excel(myfile)
+    import json, re
+    count = 0
+    iter_rw = data_xlsx.iterrows()
+    for row in iter_rw:
+        try:
+            sku = str(row[1].SKU)
+            name = str(row[1].Name)
+            mrp = float(row[1].Price)
+            weight = float(row[1].Weight)
+            dimensions = {"length": float(row[1].Length), "breadth": float(row[1].Breadth),
+                          "height": float(row[1].Height)}
+            prod_obj = Products(name=name,
+                                sku=str(sku),
+                                master_sku=str(sku),
+                                dimensions=dimensions,
+                                weight=weight,
+                                price=mrp,
+                                client_prefix='LOTUSORGANICS',
+                                active=True,
+                                channel_id=4,
+                                inactive_reason=None,
+                                date_created=datetime.now()
+                                )
+
+            db.session.add(prod_obj)
+
+        except Exception as e:
+            pass
+    from .tasks import add
+    add.delay(1,2)
+    return 0
+    import json, requests
     data_xlsx = pd.read_excel(myfile)
 
     iter_rw = data_xlsx.iterrows()
@@ -3202,7 +3237,6 @@ def ping_dev():
     req = requests.post("https://track.wareiq.com/products/v1/update_inventory", headers=headers,
                         data=json.dumps(data))
     return 0
-    from .models import Orders, ReturnPoints, ClientPickups, Products, ProductQuantity
     since_id = "1"
     count = 250
     while count == 250:
@@ -3247,35 +3281,7 @@ def ping_dev():
         count = len(qs.json()['products'])
         since_id = str(qs.json()['products'][-1]['id'])
 
-    data_xlsx = pd.read_excel(myfile)
-    import json, re
-    count = 0
-    iter_rw = data_xlsx.iterrows()
-    for row in iter_rw:
-        try:
-            sku = str(row[1].SKU)
-            name = str(row[1].Name)
-            mrp = float(row[1].MRP)
-            weight = float(row[1].Weight)
-            dimensions = {"length": float(row[1].Length), "breadth": float(row[1].Breadth),
-                          "height": float(row[1].Height)}
-            prod_obj = Products(name=name,
-                                sku=str(sku),
-                                master_sku=str(sku),
-                                dimensions=dimensions,
-                                weight=weight,
-                                price=mrp,
-                                client_prefix='MASKAPB',
-                                active=True,
-                                channel_id=4,
-                                inactive_reason=None,
-                                date_created=datetime.now()
-                                )
 
-            db.session.add(prod_obj)
-
-        except Exception as e:
-            pass
     import requests
 
     since_id = "1"

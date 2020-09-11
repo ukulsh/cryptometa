@@ -2,7 +2,7 @@
 from project.api.models import User, Client
 
 
-def register_user(data):
+def based_user_register(data):
     username = data.get('username')
     first_name = data.get('first_name')
     last_name = data.get('last_name')

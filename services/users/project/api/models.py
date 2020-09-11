@@ -44,7 +44,7 @@ class User(db.Model):
         self.first_name = first_name
         self.last_name = last_name
         self.tabs = tabs
-        self.calling_active = self.calling_active
+        self.calling_active = calling_active
         self.client_id = client_id
         self.group_id = group_id
         self.phone_no = phone_number

@@ -5,7 +5,7 @@ from project import db
 from project.api.models import Client
 from sqlalchemy import exc, or_
 from project.api.utils import authenticate_restful, is_admin, pagination_validator
-from project.api.users_util import register_user
+from project.api.users_util import based_user_register
 import logging
 
 logging.basicConfig(format='%(levelname)s:%(message)s', level=logging.INFO)
@@ -27,7 +27,7 @@ class Clients(Resource):
             tabs = post_data.get('tabs')
             client = Client(client_name=client_name, client_prefix=client_prefix, primary_email=primary_email, tabs=tabs)
             db.session.add(client)
-            user = register_user(post_data)
+            user = based_user_register(post_data)
             db.session.add(user)
             db.session.commit()
             response_object['status'] = 'success'

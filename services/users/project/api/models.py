@@ -35,7 +35,7 @@ class User(db.Model):
     login_as = db.Column(db.Integer, db.ForeignKey('users.id'))
 
     def __init__(self, username, email, password, first_name=None, last_name=None,
-                 tabs=None, calling_active=False, client_id=None, group_id=None):
+                 tabs=None, calling_active=False, client_id=None, group_id=None, phone_number=None):
         self.username = username
         self.email = email
         self.password = bcrypt.generate_password_hash(
@@ -47,6 +47,7 @@ class User(db.Model):
         self.calling_active = self.calling_active
         self.client_id = client_id
         self.group_id = group_id
+        self.phone_no = phone_number
 
     def to_json(self):
         return {

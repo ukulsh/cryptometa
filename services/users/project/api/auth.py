@@ -103,14 +103,15 @@ def get_user_status(resp):
             response_object = {
                 'status': 'success',
                 'message': 'success',
-                'data': user.to_json()
+                'data': user.to_json(),
             }
         else:
             login_as_user_id = user.login_as if user.login_as else user.id
             login_as_user = User.query.filter_by(id=login_as_user_id).first()
             data = login_as_user.to_json()
             response_object['data'] = data
-            response_object['is_super_admin'] = True
+            if login_as_user.id != user.id:
+                response_object['parent_username'] = user.username
             response_object['status'] = 'success'
         return jsonify(response_object), 200
     except Exception as e:

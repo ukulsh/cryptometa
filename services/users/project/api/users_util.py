@@ -9,7 +9,7 @@ def register_user(data):
     password = data.get('password')
     email = data.get('primary_email')
     tabs = data.get('tabs')
-    phone_number = data.get('phone_number')
+    phone_number = data.get('phone_no')
     client_prefix = data.get('client_prefix')
     calling_active = True if data.get('calling_active') else False
     client = Client.query.filter_by(client_prefix=client_prefix).first()

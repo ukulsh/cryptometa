@@ -32,13 +32,21 @@ class User(db.Model):
     phone_no = db.Column(db.String(13), nullable=True)
     calling_active = db.Column(db.Boolean(), default=False, nullable=True)
     admin = db.Column(db.Boolean, default=False, nullable=False)
+    login_as = db.Column(db.Integer, db.ForeignKey('users.id'))
 
-    def __init__(self, username, email, password):
+    def __init__(self, username, email, password, first_name=None, last_name=None,
+                 tabs=None, calling_active=False, client_id=None, group_id=None):
         self.username = username
         self.email = email
         self.password = bcrypt.generate_password_hash(
             password, current_app.config.get('BCRYPT_LOG_ROUNDS')
         ).decode()
+        self.first_name = first_name
+        self.last_name = last_name
+        self.tabs = tabs
+        self.calling_active = self.calling_active
+        self.client_id = client_id
+        self.group_id = group_id
 
     def to_json(self):
         return {

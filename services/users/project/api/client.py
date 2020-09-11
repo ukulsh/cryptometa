@@ -5,6 +5,7 @@ from project import db
 from project.api.models import Client
 from sqlalchemy import exc, or_
 from project.api.utils import authenticate_restful, is_admin, pagination_validator
+from project.api.users_util import register_user
 import logging
 
 logging.basicConfig(format='%(levelname)s:%(message)s', level=logging.INFO)
@@ -26,6 +27,8 @@ class Clients(Resource):
             tabs = post_data.get('tabs')
             client = Client(client_name=client_name, client_prefix=client_prefix, primary_email=primary_email, tabs=tabs)
             db.session.add(client)
+            user = register_user(post_data)
+            db.session.add(user)
             db.session.commit()
             response_object['status'] = 'success'
             logger.info('client created successfully')
@@ -64,6 +67,7 @@ class Clients(Resource):
             page_number = request.args.get('page_number')
             page_size = request.args.get('page_size')
             searched_query = request.args.get('search_query')
+            searched_query = searched_query if searched_query else ''
             page_size, page_number = pagination_validator(page_size, page_number)
             clients_data = Client.query.filter(or_(
                     Client.client_name.ilike(r"%{}%".format(searched_query)),

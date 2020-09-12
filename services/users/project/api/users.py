@@ -8,6 +8,7 @@ from project import db
 from project.api.models import User
 from sqlalchemy import exc
 from project.api.utils import authenticate_restful, is_admin, pagination_validator
+from project.api.users_util import user_register
 
 users_blueprint = Blueprint('users', __name__)
 api = Api(users_blueprint)
@@ -20,9 +21,10 @@ class UsersPing(Resource):
         'message': 'pong!'
     }
 
+
 class UsersList(Resource):
 
-    method_decorators = {'post': [authenticate_restful], 'get': [authenticate_restful]}
+    method_decorators = {'post': [authenticate_restful], 'get': [authenticate_restful], 'patch': [authenticate_restful]}
 
     def post(self, resp):  # new
         post_data = request.get_json()
@@ -36,15 +38,12 @@ class UsersList(Resource):
             return response_object, 401
         if not post_data:
             return response_object, 400
-        username = post_data.get('username')
         email = post_data.get('email')
-        password = post_data.get('password')  # new
         try:
             user = User.query.filter_by(email=email).first()
             if not user:
-                db.session.add(User(
-                    username=username, email=email, password=password)  # new
-                )
+                user = user_register(post_data, resp)
+                db.session.add(user)
                 db.session.commit()
                 response_object['status'] = 'success'
                 response_object['message'] = f'{email} was added!'
@@ -55,6 +54,30 @@ class UsersList(Resource):
                 return response_object, 400
         except (exc.IntegrityError, ValueError):
             db.session.rollback()
+            return response_object, 400
+
+    def patch(self, resp):
+        response_object = {'status': 'fail'}
+        try:
+            patch_data = request.get_json()
+            username = patch_data.get('username')
+            user = User.query.filter_by(username=username).first()
+            first_name = patch_data.get('first_name')
+            last_name = patch_data.get('last_name')
+            tabs = patch_data.get('tabs')
+            calling_active = patch_data.get('calling_active')
+            phone_no = patch_data.get('phone_no')
+            user.first_name = first_name
+            user.last_name = last_name
+            user.tabs = tabs
+            user.calling_active = calling_active
+            user.phone_no = phone_no
+            db.session.commit()
+            response_object['status'] = 'success'
+            return response_object, 200
+        except Exception as e:
+            db.session.rollback()
+            response_object['message'] = 'failed while updating data'
             return response_object, 400
 
     def get(self, resp):

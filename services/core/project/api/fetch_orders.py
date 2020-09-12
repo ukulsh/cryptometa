@@ -419,14 +419,24 @@ def fetch_magento_orders(cur, channel):
 
     updated_after = channel[7].strftime("%Y-%m-%d %X")
     filter_idx=0
-    magento_orders_url = """%s/V1/orders?searchCriteria[filter_groups][0][filters][0][field]=updated_at&searchCriteria[filter_groups][0][filters][0][value]=%s&searchCriteria[filter_groups][0][filters][0][condition_type]=gt""" % (
+    magento_orders_url_1 = """%s/V1/orders?searchCriteria[filter_groups][0][filters][0][field]=updated_at&searchCriteria[filter_groups][0][filters][0][value]=%s&searchCriteria[filter_groups][0][filters][0][condition_type]=gt""" % (
         channel[5], updated_after)
     for fetch_status in channel[15]:
-        magento_orders_url += """&searchCriteria[filter_groups][1][filters][__IDX__][field]=status&searchCriteria[filter_groups][1][filters][__IDX__][value]=__STATUS__&searchCriteria[filter_groups][1][filters][__IDX__][condition_type]=eq""".replace('__IDX__', str(filter_idx)).replace('__STATUS__', fetch_status)
+        magento_orders_url_1 += """&searchCriteria[filter_groups][1][filters][__IDX__][field]=status&searchCriteria[filter_groups][1][filters][__IDX__][value]=__STATUS__&searchCriteria[filter_groups][1][filters][__IDX__][condition_type]=eq""".replace('__IDX__', str(filter_idx)).replace('__STATUS__', fetch_status)
+        filter_idx += 1
+    filter_idx = 0
+    magento_orders_url_2 = """%s/V1/orders?searchCriteria[filter_groups][0][filters][0][field]=updated_at&searchCriteria[filter_groups][0][filters][0][value]=%s&searchCriteria[filter_groups][0][filters][0][condition_type]=gt""" % (
+        channel[5], updated_after)
+    channel[15].reverse()
+    for fetch_status in channel[15]:
+        magento_orders_url_2 += """&searchCriteria[filter_groups][1][filters][__IDX__][field]=status&searchCriteria[filter_groups][1][filters][__IDX__][value]=__STATUS__&searchCriteria[filter_groups][1][filters][__IDX__][condition_type]=eq""".replace(
+            '__IDX__', str(filter_idx)).replace('__STATUS__', fetch_status)
         filter_idx += 1
     headers = {'Authorization': "Bearer "+channel[3],
                'Content-Type': 'application/json'}
-    data = requests.get(magento_orders_url, headers=headers)
+    data = requests.get(magento_orders_url_1, headers=headers)
+    if 'items' in data.json() and not data.json()['items']:
+        data = requests.get(magento_orders_url_2, headers=headers)
     logger.info(str(len(data.json())))
     if data.status_code==200:
         data = data.json()

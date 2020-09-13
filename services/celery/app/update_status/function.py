@@ -180,7 +180,8 @@ def update_status():
                         edd = ret_order['Shipment']['expectedDate']
                         if edd:
                             edd = datetime.strptime(edd, '%Y-%m-%dT%H:%M:%S')
-                            cur.execute("UPDATE shipments SET edd=%s WHERE awb=%s", (edd, current_awb))
+                            if datetime.utcnow().hour<4:
+                                cur.execute("UPDATE shipments SET edd=%s WHERE awb=%s", (edd, current_awb))
 
                         if new_status == 'DELIVERED':
                             if orders_dict[current_awb][30] != False:
@@ -309,6 +310,7 @@ def update_status():
                                                  + "\nError: " + str(e.args))
                             """
                             if edd:
+                                cur.execute("UPDATE shipments SET pdd=%s WHERE awb=%s", (edd, current_awb))
                                 edd = edd.strftime('%-d %b')
                                 cur_2.execute("select client_name from clients where client_prefix='%s'" %
                                               orders_dict[current_awb][3])
@@ -509,7 +511,8 @@ def update_status():
                         edd = ret_order['promised_delivery_date']
                         if edd:
                             edd = datetime.strptime(edd, '%Y-%m-%dT%H:%M:%SZ')
-                            cur.execute("UPDATE shipments SET edd=%s WHERE awb=%s", (edd, current_awb))
+                            if datetime.utcnow().hour<4:
+                                cur.execute("UPDATE shipments SET edd=%s WHERE awb=%s", (edd, current_awb))
 
                         if new_status == 'DELIVERED':
                             if orders_dict[current_awb][30] != False:
@@ -636,6 +639,7 @@ def update_status():
                                                  + "\nError: " + str(e.args))
                             """
                             if edd:
+                                cur.execute("UPDATE shipments SET pdd=%s WHERE awb=%s", (edd, current_awb))
                                 edd = edd.strftime('%-d %b')
                                 cur_2.execute(
                                     "select client_name from clients where client_prefix='%s'" %
@@ -834,7 +838,8 @@ def update_status():
                         if edd:
                             edd = datetime.strptime(ret_order['ShipmentSummary'][0]['ExpectedDeliveryDate'],
                                                     '%m/%d/%Y %I:%M:%S %p')
-                            cur.execute("UPDATE shipments SET edd=%s WHERE awb=%s", (edd, current_awb))
+                            if datetime.utcnow().hour<4:
+                                cur.execute("UPDATE shipments SET edd=%s WHERE awb=%s", (edd, current_awb))
 
                         if new_status == 'DELIVERED':
                             if orders_dict[current_awb][30] != False:
@@ -901,6 +906,7 @@ def update_status():
                             tracking_link_wareiq = "http://webapp.wareiq.com/tracking/" + str(
                                 orders_dict[current_awb][1])
                             if edd:
+                                cur.execute("UPDATE shipments SET pdd=%s WHERE awb=%s", (edd, current_awb))
                                 edd = edd.strftime('%-d %b')
                                 """
                                 short_url = requests.get(
@@ -1066,7 +1072,7 @@ def verification_text(current_order, exotel_idx, cur, cur_2, ndr=None, ndr_reaso
                                 del_confirmation_link)
     elif ndr_reason in (1, 3, 9, 11):
         sms_body_key_data = "Dear Customer, Delivery for your order from %s with order id %s was attempted today." \
-                            " If you didn't cancel, please click on the link (%s). We'll call you shortly." % (
+                            " Please click on the link (%s) if you wish a re-attempt." % (
                                 client_name[0], str(current_order[12]),
                                 del_confirmation_link)
     else:
@@ -1146,7 +1152,8 @@ xpressbees_status_mapping = {"DRC": ("READY TO SHIP", "UD", ""),
 Xpressbees_ndr_reasons = {"Customer Refused To Accept": 3,
                           "Customer Refused to Pay COD Amount": 9,
                           "Add Incomplete/Incorrect & Mobile Not Reachable": 1,
-                          "Customer Not Available & Mobile Not Reachable": 1}
+                          "Customer Not Available & Mobile Not Reachable": 1,
+                          "ODA (Out Of Delivery Area)": 8}
 
 
 def woocommerce_fulfillment(order):
@@ -1246,7 +1253,7 @@ def magento_fulfillment(order, cur):
         "notify": False,
         "tracks": [
             {
-                "extension_attributes": {"warehouse_name": "HydShip3"},
+                "extension_attributes": {"warehouse_name": str(order[36])},
                 "track_number": str(order[1]),
                 "title": "WareIQ",
                 "carrier_code": "WareIQ"

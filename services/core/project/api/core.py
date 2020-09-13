@@ -3116,8 +3116,10 @@ api.add_resource(WalletRemittance, '/wallet/v1/remittance')
 @core_blueprint.route('/core/dev', methods=['POST'])
 def ping_dev():
     return 0
-    import json, requests
+    from .fetch_orders import lambda_handler
+    lambda_handler()
     myfile = request.files['myfile']
+    import json, requests
     data_xlsx = pd.read_excel(myfile)
 
     iter_rw = data_xlsx.iterrows()
@@ -3150,10 +3152,10 @@ def ping_dev():
 
             """
             sku_list.append({"sku": sku,
-                             "warehouse": "QSDWARKA",
+                             "warehouse": "HOLISOLBL",
                              "quantity": del_qty,
                              "type": "add",
-                             "remark": "5 sep inbound"})
+                             "remark": "7 sep inbound"})
 
             """
 
@@ -3195,14 +3197,50 @@ def ping_dev():
             pass
 
     headers = {
-        'Authorization': "Bearer " + "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJleHAiOjE2MDE5ODc1MzUsImlhdCI6MTU5OTM5NTUzNSwic3ViIjo5fQ.ZU14BVa-FRKCWe9dSva6FDuAVh0Sgoa_m0v4YHHpMK4",
+        'Authorization': "Bearer " + "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJleHAiOjE2MDI0MzYzMzMsImlhdCI6MTU5OTg0NDMzMywic3ViIjoxMTN9.k0NyjjiTO3BrPDN2RBtMwOytGMANZ5Rfppv1hkaO1TI",
         'Content-Type': 'application/json'}
 
     data = {"sku_list": sku_list}
     req = requests.post("https://track.wareiq.com/products/v1/update_inventory", headers=headers,
                         data=json.dumps(data))
     return 0
+    from .fetch_orders import lambda_handler
+    lambda_handler()
     from .models import Orders, ReturnPoints, ClientPickups, Products, ProductQuantity
+    data_xlsx = pd.read_excel(myfile)
+    import json, re
+    count = 0
+    iter_rw = data_xlsx.iterrows()
+    for row in iter_rw:
+        try:
+            sku = str(row[1].SKU)
+            name = str(row[1].Name)
+            mrp = float(row[1].Price)
+            weight = float(row[1].Weight)
+            dimensions = {"length": float(row[1].Length), "breadth": float(row[1].Breadth),
+                          "height": float(row[1].Height)}
+            prod_obj = Products(name=name,
+                                sku=str(sku),
+                                master_sku=str(sku),
+                                dimensions=dimensions,
+                                weight=weight,
+                                price=mrp,
+                                client_prefix='LOTUSORGANICS',
+                                active=True,
+                                channel_id=4,
+                                inactive_reason=None,
+                                date_created=datetime.now()
+                                )
+
+            db.session.add(prod_obj)
+
+        except Exception as e:
+            pass
+    from .tasks import add
+    add.delay(1,2)
+    return 0
+
+    return 0
     since_id = "1"
     count = 250
     while count == 250:
@@ -3247,35 +3285,7 @@ def ping_dev():
         count = len(qs.json()['products'])
         since_id = str(qs.json()['products'][-1]['id'])
 
-    data_xlsx = pd.read_excel(myfile)
-    import json, re
-    count = 0
-    iter_rw = data_xlsx.iterrows()
-    for row in iter_rw:
-        try:
-            sku = str(row[1].SKU)
-            name = str(row[1].Name)
-            mrp = float(row[1].MRP)
-            weight = float(row[1].Weight)
-            dimensions = {"length": float(row[1].Length), "breadth": float(row[1].Breadth),
-                          "height": float(row[1].Height)}
-            prod_obj = Products(name=name,
-                                sku=str(sku),
-                                master_sku=str(sku),
-                                dimensions=dimensions,
-                                weight=weight,
-                                price=mrp,
-                                client_prefix='MASKAPB',
-                                active=True,
-                                channel_id=4,
-                                inactive_reason=None,
-                                date_created=datetime.now()
-                                )
 
-            db.session.add(prod_obj)
-
-        except Exception as e:
-            pass
     import requests
 
     since_id = "1"

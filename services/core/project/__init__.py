@@ -5,6 +5,7 @@ from flask_cors import CORS
 from flask_debugtoolbar import DebugToolbarExtension
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
+from celery import Celery
 
 
 # instantiate the extensions
@@ -25,6 +26,8 @@ def create_app(script_info=None):
     # set config
     app_settings = os.getenv('APP_SETTINGS')
     app.config.from_object(app_settings)
+    app.config['CELERY_BACKEND'] = "amqp://ravi:Kad97711@rabbitmq:5672"
+    app.config['CELERY_BROKER_URL'] = "amqp://ravi:Kad97711@rabbitmq:5672"
     # set up extensions
     toolbar.init_app(app)
     cors.init_app(app)
@@ -38,12 +41,14 @@ def create_app(script_info=None):
     from project.api.products.index import products_blueprint
     from project.api.orders.index import orders_blueprint
     from project.api.billing.index import billing_blueprint
+    from project.api.webhooks.index import webhooks_blueprint
     app.register_blueprint(base_blueprint)
     app.register_blueprint(core_blueprint)
     app.register_blueprint(dashboard_blueprint)
     app.register_blueprint(products_blueprint)
     app.register_blueprint(orders_blueprint)
     app.register_blueprint(billing_blueprint)
+    app.register_blueprint(webhooks_blueprint)
 
     # shell context for flask cli
     @app.shell_context_processor
@@ -51,3 +56,20 @@ def create_app(script_info=None):
         return {'app': app, 'db': db}
 
     return app
+
+
+def make_celery(app):
+    celery = Celery(
+        app.import_name,
+        backend=app.config['CELERY_BACKEND'],
+        broker=app.config['CELERY_BROKER_URL']
+    )
+    celery.conf.update(app.config)
+
+    class ContextTask(celery.Task):
+        def __call__(self, *args, **kwargs):
+            with app.app_context():
+                return self.run(*args, **kwargs)
+
+    celery.Task = ContextTask
+    return celery

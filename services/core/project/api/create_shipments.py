@@ -132,6 +132,9 @@ def ship_delhivery_orders(cur, courier, courier_name, order_ids, order_id_tuple,
                 if order[17].lower() in ("bengaluru", "bangalore", "banglore") and courier[1] == "KAMAAYURVEDA":
                     continue
 
+                if courier[1] == "ZLADE" and courier[10]=="Delhivery Surface Standard" and (str(order[18]).startswith("5") or str(order[18]).startswith("6")):
+                    continue
+
                 if not order[52]:
                     weight = order[34][0] * order[35][0]
                     volumetric_weight = (order[33][0]['length'] * order[33][0]['breadth'] * order[33][0]['height'])*order[35][0] / 5000
@@ -187,9 +190,10 @@ def ship_delhivery_orders(cur, courier, courier_name, order_ids, order_id_tuple,
                         try:  ## Cod confirmation  text
                             sms_to_key, sms_body_key, customer_phone, sms_body_key_data = cod_verification_text(
                                 order, exotel_idx, cur)
-                            exotel_sms_data[sms_to_key] = customer_phone
-                            exotel_sms_data[sms_body_key] = sms_body_key_data
-                            exotel_idx += 1
+                            if not order[53]:
+                                exotel_sms_data[sms_to_key] = customer_phone
+                                exotel_sms_data[sms_body_key] = sms_body_key_data
+                                exotel_idx += 1
                         except Exception as e:
                             logger.error(
                                 "Cod confirmation not sent. Order id: " + str(order[0]))
@@ -531,9 +535,10 @@ def ship_shadowfax_orders(cur, courier, courier_name, order_ids, order_id_tuple,
                     try:  ## Cod confirmation  text
                         sms_to_key, sms_body_key, customer_phone, sms_body_key_data = cod_verification_text(
                             order, exotel_idx, cur)
-                        exotel_sms_data[sms_to_key] = customer_phone
-                        exotel_sms_data[sms_body_key] = sms_body_key_data
-                        exotel_idx += 1
+                        if not order[53]:
+                            exotel_sms_data[sms_to_key] = customer_phone
+                            exotel_sms_data[sms_body_key] = sms_body_key_data
+                            exotel_idx += 1
                     except Exception as e:
                         logger.error(
                             "Cod confirmation not sent. Order id: " + str(order[0]))
@@ -810,9 +815,10 @@ def ship_xpressbees_orders(cur, courier, courier_name, order_ids, order_id_tuple
                         try:  ## Cod confirmation  text
                             sms_to_key, sms_body_key, customer_phone, sms_body_key_data = cod_verification_text(
                                 order, exotel_idx, cur)
-                            exotel_sms_data[sms_to_key] = customer_phone
-                            exotel_sms_data[sms_body_key] = sms_body_key_data
-                            exotel_idx += 1
+                            if not order[53]:
+                                exotel_sms_data[sms_to_key] = customer_phone
+                                exotel_sms_data[sms_body_key] = sms_body_key_data
+                                exotel_idx += 1
                         except Exception as e:
                             logger.error(
                                 "Cod confirmation not sent. Order id: " + str(order[0]))
@@ -1125,9 +1131,10 @@ def ship_ecom_orders(cur, courier, courier_name, order_ids, order_id_tuple, back
                         try:  ## Cod confirmation  text
                             sms_to_key, sms_body_key, customer_phone, sms_body_key_data = cod_verification_text(
                                 order, exotel_idx, cur)
-                            exotel_sms_data[sms_to_key] = customer_phone
-                            exotel_sms_data[sms_body_key] = sms_body_key_data
-                            exotel_idx += 1
+                            if not order[53]:
+                                exotel_sms_data[sms_to_key] = customer_phone
+                                exotel_sms_data[sms_body_key] = sms_body_key_data
+                                exotel_idx += 1
                         except Exception as e:
                             logger.error(
                                 "Cod confirmation not sent. Order id: " + str(order[0]))
@@ -1432,9 +1439,10 @@ def ship_bluedart_orders(cur, courier, courier_name, order_ids, order_id_tuple, 
                     try:  ## Cod confirmation  text
                         sms_to_key, sms_body_key, customer_phone, sms_body_key_data = cod_verification_text(
                             order, exotel_idx, cur)
-                        exotel_sms_data[sms_to_key] = customer_phone
-                        exotel_sms_data[sms_body_key] = sms_body_key_data
-                        exotel_idx += 1
+                        if not order[53]:
+                            exotel_sms_data[sms_to_key] = customer_phone
+                            exotel_sms_data[sms_body_key] = sms_body_key_data
+                            exotel_idx += 1
                     except Exception as e:
                         logger.error(
                             "Cod confirmation not sent. Order id: " + str(order[0]))
@@ -1869,7 +1877,7 @@ def ship_vinculum_orders(cur, courier, courier_name, order_ids, order_id_tuple):
 
 backup_courier_partners = {"Delhivery Surface Standard": "Xpressbees Surface",
                            "Xpressbees Surface": "Delhivery Surface Standard",
-                           "Delhivery": "Xpressbees",
+                           "Delhivery": "Delhivery Surface Standard",
                            "Xpressbees": "Delhivery",
                            "Bluedart_COUNTRYBEAN": "Delhivery Surface Standard",
                            }

@@ -90,7 +90,7 @@ def fetch_shopify_orders(cur, channel):
 
             cur.execute("SELECT count(*) FROM client_pickups WHERE client_prefix='%s';" % str(channel[1]))
             pickup_count = cur.fetchone()[0]
-            if pickup_count == 1:
+            if pickup_count == 1 and not channel[17]:
                 cur.execute(
                     "SELECT id, client_prefix FROM client_pickups WHERE client_prefix='%s';" % str(channel[1]))
                 pickup_data_id = cur.fetchone()[0]
@@ -249,8 +249,9 @@ def fetch_shopify_orders(cur, channel):
 
 def fetch_woocommerce_orders(cur, channel):
     time_after = channel[7] - timedelta(days=10)
-    cur.execute("SELECT order_id_channel_unique from orders WHERE order_date>%s "
-                "and client_prefix=%s and order_id_channel_unique is not null;", (time_after, channel[1]))
+    cur.execute("""SELECT order_id_channel_unique from orders aa
+                    left join client_channel bb on aa.client_channel_id=bb.id
+                    WHERE order_date>%s and aa.client_prefix=%s and bb.channel_id=5;""", (time_after, channel[1]))
 
     fetch_status = ",".join(channel[15])
     exclude_ids = ""
@@ -279,7 +280,7 @@ def fetch_woocommerce_orders(cur, channel):
         try:
             cur.execute("SELECT count(*) FROM client_pickups WHERE client_prefix='%s';" % str(channel[1]))
             pickup_count = cur.fetchone()[0]
-            if pickup_count == 1:
+            if pickup_count == 1 and not channel[17]:
                 cur.execute(
                     "SELECT id, client_prefix FROM client_pickups WHERE client_prefix='%s';" % str(channel[1]))
                 pickup_data_id = cur.fetchone()[0]
@@ -418,14 +419,24 @@ def fetch_magento_orders(cur, channel):
 
     updated_after = channel[7].strftime("%Y-%m-%d %X")
     filter_idx=0
-    magento_orders_url = """%s/V1/orders?searchCriteria[filter_groups][0][filters][0][field]=updated_at&searchCriteria[filter_groups][0][filters][0][value]=%s&searchCriteria[filter_groups][0][filters][0][condition_type]=gt""" % (
+    magento_orders_url_1 = """%s/V1/orders?searchCriteria[filter_groups][0][filters][0][field]=updated_at&searchCriteria[filter_groups][0][filters][0][value]=%s&searchCriteria[filter_groups][0][filters][0][condition_type]=gt""" % (
         channel[5], updated_after)
     for fetch_status in channel[15]:
-        magento_orders_url += """&searchCriteria[filter_groups][1][filters][__IDX__][field]=status&searchCriteria[filter_groups][1][filters][__IDX__][value]=__STATUS__&searchCriteria[filter_groups][1][filters][__IDX__][condition_type]=eq""".replace('__IDX__', str(filter_idx)).replace('__STATUS__', fetch_status)
+        magento_orders_url_1 += """&searchCriteria[filter_groups][1][filters][__IDX__][field]=status&searchCriteria[filter_groups][1][filters][__IDX__][value]=__STATUS__&searchCriteria[filter_groups][1][filters][__IDX__][condition_type]=eq""".replace('__IDX__', str(filter_idx)).replace('__STATUS__', fetch_status)
+        filter_idx += 1
+    filter_idx = 0
+    magento_orders_url_2 = """%s/V1/orders?searchCriteria[filter_groups][0][filters][0][field]=updated_at&searchCriteria[filter_groups][0][filters][0][value]=%s&searchCriteria[filter_groups][0][filters][0][condition_type]=gt""" % (
+        channel[5], updated_after)
+    channel[15].reverse()
+    for fetch_status in channel[15]:
+        magento_orders_url_2 += """&searchCriteria[filter_groups][1][filters][__IDX__][field]=status&searchCriteria[filter_groups][1][filters][__IDX__][value]=__STATUS__&searchCriteria[filter_groups][1][filters][__IDX__][condition_type]=eq""".replace(
+            '__IDX__', str(filter_idx)).replace('__STATUS__', fetch_status)
         filter_idx += 1
     headers = {'Authorization': "Bearer "+channel[3],
                'Content-Type': 'application/json'}
-    data = requests.get(magento_orders_url, headers=headers)
+    data = requests.get(magento_orders_url_1, headers=headers)
+    if 'items' in data.json() and not data.json()['items']:
+        data = requests.get(magento_orders_url_2, headers=headers)
     logger.info(str(len(data.json())))
     if data.status_code==200:
         data = data.json()
@@ -446,7 +457,7 @@ def fetch_magento_orders(cur, channel):
                 continue
             cur.execute("SELECT count(*) FROM client_pickups WHERE client_prefix='%s';" % str(channel[1]))
             pickup_count = cur.fetchone()[0]
-            if pickup_count == 1:
+            if pickup_count == 1 and not channel[17]:
                 cur.execute(
                     "SELECT id, client_prefix FROM client_pickups WHERE client_prefix='%s';" % str(channel[1]))
                 pickup_data_id = cur.fetchone()[0]

@@ -252,6 +252,7 @@ class Shipments(db.Model):
     courier = db.relationship("MasterCouriers", backref=db.backref("shipments", uselist=True))
     routing_code = db.Column(db.String, nullable=True)
     edd = db.Column(db.DateTime)
+    pdd = db.Column(db.DateTime)
     channel_fulfillment_id = db.Column(db.String, nullable=True)
     tracking_link = db.Column(db.TEXT, nullable=True)
     remark = db.Column(db.Text, nullable=True)
@@ -592,6 +593,8 @@ class ClientMapping(db.Model):
     default_warehouse = db.Column(db.String, nullable=True)
     hide_products = db.Column(db.BOOLEAN, nullable=True, default=False)
     hide_address = db.Column(db.BOOLEAN, nullable=True, default=False)
+    loc_assign_inventory = db.Column(db.BOOLEAN, nullable=True, default=False)
+    cod_man_ver = db.Column(db.BOOLEAN, nullable=True, default=False)
 
 
 class MultiVendor(db.Model):

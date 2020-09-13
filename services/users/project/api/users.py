@@ -5,9 +5,9 @@ from flask import Blueprint, request, jsonify
 from flask_restful import Resource, Api
 
 from project import db
-from project.api.models import User
+from project.api.models import User, Client
 from sqlalchemy import exc, or_
-from project.api.utils import authenticate_restful, is_admin, pagination_validator
+from project.api.utils import authenticate_restful, pagination_validator
 from project.api.users_util import user_register
 
 users_blueprint = Blueprint('users', __name__)
@@ -85,13 +85,20 @@ class UsersList(Resource):
         """Get all users"""
         response_object = {'status': 'fail'}
         try:
+            user_group_filter = []
+            user = User.query.filter_by(id=resp).first()
+            if user.group_id != 1:
+                user_group_filter.append(User.client_id == user.client_id)
             page_number = request.args.get('page_number')
             page_size = request.args.get('page_size')
             searched_query = request.args.get('search_query')
             searched_query = searched_query if searched_query else ''
             page_size, page_number = pagination_validator(page_size, page_number)
-            users_data = User.query.filter(
-                User.username.ilike(r"%{}%".format(searched_query))).paginate(page=page_number, per_page=page_size, error_out=False)
+            users_data = User.query.join(Client).filter(or_(
+                User.username.ilike(r"%{}%".format(searched_query)),
+                User.email.ilike(r"%{}%".format(searched_query)),
+                Client.client_prefix.ilike(r"%{}%".format(searched_query))
+            )).filter(*user_group_filter).paginate(page=page_number, per_page=page_size, error_out=False)
             total_page = users_data.total // page_size if users_data.total % page_size == 0 else (users_data.total // page_size) + 1
             response_object = {
                 'status': 'success',

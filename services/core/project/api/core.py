@@ -3115,6 +3115,7 @@ api.add_resource(WalletRemittance, '/wallet/v1/remittance')
 
 @core_blueprint.route('/core/dev', methods=['POST'])
 def ping_dev():
+    return 0
     from .fetch_orders import lambda_handler
     lambda_handler()
     myfile = request.files['myfile']

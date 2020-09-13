@@ -90,7 +90,7 @@ def fetch_shopify_orders(cur, channel):
 
             cur.execute("SELECT count(*) FROM client_pickups WHERE client_prefix='%s';" % str(channel[1]))
             pickup_count = cur.fetchone()[0]
-            if pickup_count == 1:
+            if pickup_count == 1 and not channel[17]:
                 cur.execute(
                     "SELECT id, client_prefix FROM client_pickups WHERE client_prefix='%s';" % str(channel[1]))
                 pickup_data_id = cur.fetchone()[0]
@@ -280,7 +280,7 @@ def fetch_woocommerce_orders(cur, channel):
         try:
             cur.execute("SELECT count(*) FROM client_pickups WHERE client_prefix='%s';" % str(channel[1]))
             pickup_count = cur.fetchone()[0]
-            if pickup_count == 1:
+            if pickup_count == 1 and not channel[17]:
                 cur.execute(
                     "SELECT id, client_prefix FROM client_pickups WHERE client_prefix='%s';" % str(channel[1]))
                 pickup_data_id = cur.fetchone()[0]
@@ -458,7 +458,7 @@ def fetch_magento_orders(cur, channel):
                 continue
             cur.execute("SELECT count(*) FROM client_pickups WHERE client_prefix='%s';" % str(channel[1]))
             pickup_count = cur.fetchone()[0]
-            if pickup_count == 1:
+            if pickup_count == 1 and not channel[17]:
                 cur.execute(
                     "SELECT id, client_prefix FROM client_pickups WHERE client_prefix='%s';" % str(channel[1]))
                 pickup_data_id = cur.fetchone()[0]

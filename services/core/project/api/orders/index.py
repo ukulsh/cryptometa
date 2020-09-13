@@ -1308,6 +1308,20 @@ class OrderDetails(Resource):
                                          ClientPickups.pickup_id==PickupPoints.id).filter(ClientPickups.client_prefix==order.client_prefix, PickupPoints.warehouse_prefix==data.get('pickup_point')).first()
                 if client_pickup:
                     order.pickup_data = client_pickup
+                    order.status = 'NEW'
+                    db.session.query(OrderStatus).filter(OrderStatus.order_id == int(order_id)).delete()
+                    db.session.query(Shipments).filter(Shipments.order_id == int(order_id)).delete()
+                    if order.shipments and order.shipments[0].awb:
+                        if order.shipments[0].courier.id in (1,2,8,11,12):  #Cancel on delhievry #todo: cancel on other platforms too
+                            cancel_body = json.dumps({"waybill": order.shipments[0].awb, "cancellation": "true"})
+                            headers = {"Authorization": "Token " + order.shipments[0].courier.api_key,
+                                        "Content-Type": "application/json"}
+                            req_can = requests.post("https://track.delhivery.com/api/p/edit", headers=headers, data=cancel_body)
+                        if order.shipments[0].courier.id in (5,13):  #Cancel on Xpressbees
+                            cancel_body = json.dumps({"AWBNumber": order.shipments[0].awb, "XBkey": order.shipments[0].courier.api_key, "RTOReason": "Cancelled by seller"})
+                            headers = {"Authorization": "Basic " + order.shipments[0].courier.api_key,
+                                        "Content-Type": "application/json"}
+                            req_can = requests.post("http://xbclientapi.xbees.in/POSTShipmentService.svc/RTONotifyShipment", headers=headers, data=cancel_body)
 
             db.session.commit()
             return {'status': 'success', 'msg': "successfully updated"}, 200

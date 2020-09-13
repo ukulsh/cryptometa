@@ -1,7 +1,8 @@
 
 fetch_client_channels_query = """select aa.id,aa.client_prefix,aa.channel_id,aa.api_key,aa.api_password,aa.shop_url,
                                 aa.last_synced_order,aa.last_synced_time,aa.date_created,aa.date_updated,
-                                bb.id,bb.channel_name,bb.logo_url,bb.date_created,bb.date_updated,aa.fetch_status, cc.unique_parameter
+                                bb.id,bb.channel_name,bb.logo_url,bb.date_created,bb.date_updated,aa.fetch_status, 
+                                cc.unique_parameter, cc.loc_assign_inventory
                                 from client_channel aa
                                 left join master_channels bb
                                 on aa.channel_id=bb.id
@@ -108,7 +109,7 @@ get_orders_to_ship_query = """select aa.id,aa.channel_order_id,aa.order_date,aa.
                                 dd.subtotal,dd.order_id,ee.dimensions,ee.weights,ee.quan, ff.api_key, ff.api_password, 
                                 ff.shop_url, aa.order_id_channel_unique, ee.products_name, aa.pickup_data_id, xx.cod_verified, 
                                 xx.id, ee.ship_courier, gg.location_id, ff.channel_id, yy.verify_cod, yy.essential, ee.subcategories, 
-                                yy.cod_ship_unconfirmed, yy.client_name, aa.chargeable_weight
+                                yy.cod_ship_unconfirmed, yy.client_name, aa.chargeable_weight, yy.cod_man_ver
                                 from orders aa
                                 left join shipping_address cc
                                 on aa.delivery_address_id=cc.id
@@ -312,9 +313,11 @@ insert_into_courier_cost_query = """INSERT INTO courier_charges (weight_charged,
 
 get_details_cod_verify_ivr = """select aa.order_id, bb.customer_phone from cod_verification aa
                             left join orders bb on aa.order_id=bb.id
+                            left join client_mapping cc on cc.client_prefix=bb.client_prefix
                             where bb.status='NEW'
                             and order_date>'__ORDER_TIME__'
                             and cod_verified is null
+                            and cc.cod_man_ver is not true
                             order by bb.id"""
 
 get_details_ndr_verify_ivr = """select aa.order_id, bb.customer_phone from ndr_verification aa

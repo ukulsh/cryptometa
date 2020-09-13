@@ -1,6 +1,7 @@
 fetch_client_channels_query = """select aa.id,aa.client_prefix,aa.channel_id,aa.api_key,aa.api_password,aa.shop_url,
                                 aa.last_synced_order,aa.last_synced_time,aa.date_created,aa.date_updated,
-                                bb.id,bb.channel_name,bb.logo_url,bb.date_created,bb.date_updated,aa.fetch_status, cc.unique_parameter
+                                bb.id,bb.channel_name,bb.logo_url,bb.date_created,bb.date_updated,aa.fetch_status, 
+                                cc.unique_parameter, cc.loc_assign_inventory
                                 from client_channel aa
                                 left join master_channels bb
                                 on aa.channel_id=bb.id

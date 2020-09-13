@@ -252,6 +252,7 @@ class Shipments(db.Model):
     courier = db.relationship("MasterCouriers", backref=db.backref("shipments", uselist=True))
     routing_code = db.Column(db.String, nullable=True)
     edd = db.Column(db.DateTime)
+    pdd = db.Column(db.DateTime)
     channel_fulfillment_id = db.Column(db.String, nullable=True)
     tracking_link = db.Column(db.TEXT, nullable=True)
     remark = db.Column(db.Text, nullable=True)

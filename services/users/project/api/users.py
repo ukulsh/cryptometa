@@ -6,7 +6,7 @@ from flask_restful import Resource, Api
 
 from project import db
 from project.api.models import User
-from sqlalchemy import exc
+from sqlalchemy import exc, or_
 from project.api.utils import authenticate_restful, is_admin, pagination_validator
 from project.api.users_util import user_register
 
@@ -33,14 +33,13 @@ class UsersList(Resource):
             'message': 'Invalid payload.'
         }
         # new
-        if not is_admin(resp):
-            response_object['message'] = 'You do not have permission to do that.'
-            return response_object, 401
         if not post_data:
             return response_object, 400
         email = post_data.get('email')
+        username = post_data.get('username')
         try:
-            user = User.query.filter_by(email=email).first()
+            user = User.query.filter(
+                or_(User.username == username, User.email == email)).first()
             if not user:
                 user = user_register(post_data, resp)
                 db.session.add(user)
@@ -61,12 +60,14 @@ class UsersList(Resource):
         try:
             patch_data = request.get_json()
             username = patch_data.get('username')
-            user = User.query.filter_by(username=username).first()
+            email = patch_data.get('email')
             first_name = patch_data.get('first_name')
             last_name = patch_data.get('last_name')
             tabs = patch_data.get('tabs')
             calling_active = patch_data.get('calling_active')
             phone_no = patch_data.get('phone_no')
+            user = User.query.filter(
+                or_(User.username == username, User.email == email)).first()
             user.first_name = first_name
             user.last_name = last_name
             user.tabs = tabs

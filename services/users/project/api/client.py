@@ -2,9 +2,9 @@ from flask import Blueprint, request, jsonify
 from flask_restful import Resource, Api
 
 from project import db
-from project.api.models import Client
-from sqlalchemy import exc, or_
-from project.api.utils import authenticate_restful, is_admin, pagination_validator
+from project.api.models import Client, User
+from sqlalchemy import or_
+from project.api.utils import authenticate_restful, pagination_validator
 from project.api.users_util import based_user_register
 import logging
 
@@ -92,6 +92,9 @@ class Clients(Resource):
             return response_object, 400
 
 
+api.add_resource(Clients, '/users/v1/clients')
+
+
 @clients_blueprint.route('/users/v1/clients/updateStatus', methods=['POST'])
 @authenticate_restful
 def update_client_status(resp):
@@ -129,5 +132,19 @@ def check_client_prefix(resp):
         return jsonify(response_object), 400
 
 
-api.add_resource(Clients, '/users/v1/clients')
+@clients_blueprint.route('/users/v1/clients/getTabs', methods=['GET'])
+@authenticate_restful
+def get_client_tabs(resp):
+    response_object = {'status': 'fail'}
+    try:
+        user = User.query.filter_by(id=resp).first()
+        client = Client.query.filter_by(id=user.client_id).first()
+        response_object['data'] = client.tabs
+        response_object['status'] = 'success'
+        return jsonify(response_object), 200
+    except Exception as e:
+        logger.error('Failed while getting clients tabs', e)
+        response_object['message'] = 'failed while getting client tabs'
+        return jsonify(response_object), 400
+
 

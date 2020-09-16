@@ -96,10 +96,44 @@ def logout_user(resp):
 @auth_blueprint.route('/auth/status', methods=['GET'])
 @authenticate
 def get_user_status(resp):
-    user = User.query.filter_by(id=resp).first()
-    response_object = {
-        'status': 'success',
-        'message': 'success',
-        'data': user.to_json()
-    }
-    return jsonify(response_object), 200
+    response_object = {'status': 'fail'}
+    try:
+        user = User.query.filter_by(id=resp).first()
+        if user.group_id != 1:
+            response_object = {
+                'status': 'success',
+                'message': 'success',
+                'data': user.to_json(),
+            }
+        else:
+            login_as_user_id = user.login_as if user.login_as else user.id
+            login_as_user = User.query.filter_by(id=login_as_user_id).first()
+            data = login_as_user.to_json()
+            response_object['data'] = data
+            if login_as_user.id != user.id:
+                response_object['parent_username'] = user.username
+            response_object['status'] = 'success'
+        return jsonify(response_object), 200
+    except Exception as e:
+        response_object['message'] = 'failed while getting login status'
+        return jsonify(response_object), 400
+
+
+@auth_blueprint.route('/auth/loginAs', methods=['POST'])
+@authenticate
+def login_as(resp):
+    response_object = {'status': 'fail'}
+    try:
+        source_user = User.query.filter_by(id=resp).first()
+        if source_user.group_id != 1:
+            raise Exception("user doesnt have access to login as")
+        post_data = request.get_json()
+        username = post_data.get('username')
+        dest_user = User.query.filter_by(username=username).first()
+        source_user.login_as = dest_user.id
+        db.session.commit()
+        response_object['status'] = 'success'
+        return jsonify(response_object), 200
+    except Exception as e:
+        response_object['message'] = 'failed while logging as user'
+        return jsonify(response_object), 400

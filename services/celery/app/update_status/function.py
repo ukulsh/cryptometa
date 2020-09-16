@@ -914,15 +914,12 @@ def update_status():
                                 short_url_track = short_url.json()['url']['shortLink']
                                 """
                                 exotel_sms_data[
-                                    sms_body_key] = "Dear Customer, your %s order has been shipped via Xpressbees with AWB number %s. " \
-                                                    "It is expected to arrive by %s. You can track your order on this (%s) link." % (
-                                                        client_name[0], str(orders_dict[current_awb][1]), edd,
-                                                        tracking_link_wareiq)
+                                    sms_body_key] = "Dear Customer, your %s order has been shipped via Xpressbees with AWB number %s. It is expected to arrive by %s. Thank you!" % (
+                                                        client_name[0], str(orders_dict[current_awb][1]), edd)
                             else:
                                 exotel_sms_data[
-                                    sms_body_key] = "Dear Customer, your %s order has been shipped via Xpressbees with AWB number %s. You can track your order on this (%s) link." % (
-                                    client_name[0], str(orders_dict[current_awb][1]),
-                                    tracking_link_wareiq)
+                                    sms_body_key] = "Dear Customer, your %s order has been shipped via Xpressbees with AWB number %s. Thank you!" % (
+                                    client_name[0], str(orders_dict[current_awb][1]))
                             exotel_idx += 1
                             if order_picked_check:
                                 pickup_count += 1

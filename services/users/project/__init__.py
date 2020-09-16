@@ -26,7 +26,6 @@ def create_app(script_info=None):
     # set config
     app_settings = os.getenv('APP_SETTINGS')
     app.config.from_object(app_settings)
-
     # set up extensions
     db.init_app(app)
     toolbar.init_app(app)
@@ -40,6 +39,8 @@ def create_app(script_info=None):
     app.register_blueprint(users_blueprint)
     from project.api.auth import auth_blueprint  # new
     app.register_blueprint(auth_blueprint)  # new
+    from project.api.client import clients_blueprint
+    app.register_blueprint(clients_blueprint)
 
     # shell context for flask cli
     @app.shell_context_processor

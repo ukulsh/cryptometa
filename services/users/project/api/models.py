@@ -32,13 +32,22 @@ class User(db.Model):
     phone_no = db.Column(db.String(13), nullable=True)
     calling_active = db.Column(db.Boolean(), default=False, nullable=True)
     admin = db.Column(db.Boolean, default=False, nullable=False)
+    login_as = db.Column(db.Integer, db.ForeignKey('users.id'))
 
-    def __init__(self, username, email, password):
+    def __init__(self, username, email, password, first_name=None, last_name=None,
+                 tabs=None, calling_active=False, client_id=None, group_id=None, phone_number=None):
         self.username = username
         self.email = email
         self.password = bcrypt.generate_password_hash(
             password, current_app.config.get('BCRYPT_LOG_ROUNDS')
         ).decode()
+        self.first_name = first_name
+        self.last_name = last_name
+        self.tabs = tabs
+        self.calling_active = calling_active
+        self.client_id = client_id
+        self.group_id = group_id
+        self.phone_no = phone_number
 
     def to_json(self):
         return {
@@ -98,16 +107,24 @@ class Client(db.Model):
     client_name = db.Column(db.String(128), nullable=False)
     client_prefix = db.Column(db.String(32), unique=True, nullable=False)
     primary_email = db.Column(db.String(128), nullable=False)
+    tabs = db.Column(ARRAY(db.String(20)))
+    active = db.Column(db.Boolean(), default=True, server_default="true", nullable=False)
+    created_date = db.Column(db.DateTime, default=func.now(), server_default=func.now(), nullable=False)
 
-    def __init__(self, client_name, primary_email):
+    def __init__(self, client_name, primary_email, client_prefix, tabs):
         self.client_name = client_name
         self.primary_email = primary_email
+        self.client_prefix = client_prefix
+        self.tabs = tabs
 
     def to_json(self):
         return {
             'id': self.id,
             'client_name': self.client_name,
-            'primary_email': self.primary_email
+            'client_prefix': self.client_prefix,
+            'primary_email': self.primary_email,
+            'active': self.active,
+            'tabs': self.tabs if isinstance(self.tabs, list) else []
         }
 
 

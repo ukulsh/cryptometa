@@ -3116,8 +3116,6 @@ api.add_resource(WalletRemittance, '/wallet/v1/remittance')
 @core_blueprint.route('/core/dev', methods=['POST'])
 def ping_dev():
     return 0
-    from .fetch_orders import lambda_handler
-    lambda_handler()
     myfile = request.files['myfile']
     import json, requests
     data_xlsx = pd.read_excel(myfile)
@@ -3155,7 +3153,7 @@ def ping_dev():
                              "warehouse": "HOLISOLBL",
                              "quantity": del_qty,
                              "type": "add",
-                             "remark": "7 sep inbound"})
+                             "remark": "15 sep inbound"})
 
             """
 
@@ -3197,16 +3195,65 @@ def ping_dev():
             pass
 
     headers = {
-        'Authorization': "Bearer " + "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJleHAiOjE2MDI0MzYzMzMsImlhdCI6MTU5OTg0NDMzMywic3ViIjoxMTN9.k0NyjjiTO3BrPDN2RBtMwOytGMANZ5Rfppv1hkaO1TI",
+        'Authorization': "Bearer " + "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJleHAiOjE2MDI2NjE3NzksImlhdCI6MTYwMDA2OTc3OSwic3ViIjo5fQ.ECZGzAstuTL2DB3H4_gke08Pd9sMmqbPSdlGSFeJgZY",
         'Content-Type': 'application/json'}
 
     data = {"sku_list": sku_list}
     req = requests.post("https://track.wareiq.com/products/v1/update_inventory", headers=headers,
                         data=json.dumps(data))
+    from woocommerce import API
+    wcapi = API(
+        url="https://lmdot.com",
+        consumer_key="ck_c5b8db7f9451efc310dd4506a1eed5e8aecd6ffe",
+        consumer_secret="cs_71b436acd31c9c7f6d354330cdf84f26d05b7d94",
+        version="wc/v3"
+    )
+    r = wcapi.get('orders')
+    return 0
+    import requests
+    create_fulfillment_url = "https://33f054a0aafb5ca7b7412caeaac44fd5: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@wingreensindia.myshopify.com/admin/api/2020-07/orders.json"
+    qs = requests.get(create_fulfillment_url)
+    return 0
+    import json, requests
+    from .models import Orders, ReturnPoints, ClientPickups, Products, ProductQuantity
+    req = requests.post("https://www.sangeethamobiles.com/get-sku-list", data={"request_from":"warelq"})
+    count = 1
+    for prod in req.json()['data']:
+        prod_obj_x = Products(name=prod['product_name'],
+                              sku=prod['product_sku'],
+                              master_sku=prod['product_sku'],
+                              dimensions=None,
+                              weight=None,
+                              price=None,
+                              client_prefix='SANGEETHA',
+                              active=True,
+                              channel_id=4,
+                              date_created=datetime.now()
+                              )
+
+        db.session.add(prod_obj_x)
+        count += 1
+        if count%100==0:
+            db.session.commit()
+        # prod_quan_obj = ProductQuantity(product=prod_obj_x,
+        #                                 total_quantity=0,
+        #                                 approved_quantity=0,
+        #                                 available_quantity=0,
+        #                                 inline_quantity=0,
+        #                                 rto_quantity=0,
+        #                                 current_quantity=0,
+        #                                 warehouse_prefix="QSDWARKA",
+        #                                 status="APPROVED",
+        #                                 date_created=datetime.now()
+        #                                 )
+        #
+        # db.session.add(prod_quan_obj)
     return 0
     from .fetch_orders import lambda_handler
     lambda_handler()
-    from .models import Orders, ReturnPoints, ClientPickups, Products, ProductQuantity
+    return 0
+    from .fetch_orders import lambda_handler
+    lambda_handler()
     data_xlsx = pd.read_excel(myfile)
     import json, re
     count = 0
@@ -3352,9 +3399,7 @@ def ping_dev():
     import requests, json
 
     return 0
-    import requests
-    create_fulfillment_url = "https://7e589aaa86d4fd54f88efc3daedf0615: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@shri-wellness-india.myshopify.com/admin/api/2020-07/orders.json"
-    qs = requests.get(create_fulfillment_url)
+
     from .create_shipments import lambda_handler
     lambda_handler()
     return 0
@@ -3366,15 +3411,6 @@ def ping_dev():
     if not status_mark:
         status_mark = "completed"
     r = auth_session.post(url, data={"status": status_mark})
-    from woocommerce import API
-    wcapi = API(
-        url="https://www.zladeformen.com",
-        consumer_key="ck_cd462226a5d5c21c5936c7f75e1afca25b9853a6",
-        consumer_secret="cs_c897bf3e770e15f518cba5c619b32671b7cc527c",
-        version="wc/v3"
-    )
-    r = wcapi.get('orders/117929')
-    return 0
 
     from .fetch_orders import lambda_handler
     lambda_handler()

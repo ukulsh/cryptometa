@@ -1027,6 +1027,39 @@ def download_packlist(resp):
     }), 200
 
 
+@orders_blueprint.route('/orders/v1/<order_id>/cancel', methods=['GET'])
+@authenticate_restful
+def cancel_order_channel(resp, order_id):
+    auth_data = resp.get('data')
+    if not auth_data:
+        return jsonify({"success": False, "msg": "Auth Failed"}), 404
+
+    orders_qs = db.session.query(Orders).filter(Orders.order_id_channel_unique == str(order_id), Orders.client_prefix==auth_data.get('client_prefix')).all()
+
+    for order in orders_qs:
+        order.status = 'CANCELED'
+        if order.shipments and order.shipments[0].awb:
+            if order.shipments[0].courier.id in (
+            1, 2, 8, 11, 12):  # Cancel on delhievry #todo: cancel on other platforms too
+                cancel_body = json.dumps({"waybill": order.shipments[0].awb, "cancellation": "true"})
+                headers = {"Authorization": "Token " + order.shipments[0].courier.api_key,
+                           "Content-Type": "application/json"}
+                req_can = requests.post("https://track.delhivery.com/api/p/edit", headers=headers, data=cancel_body)
+            if order.shipments[0].courier.id in (5, 13):  # Cancel on Xpressbees
+                cancel_body = json.dumps(
+                    {"AWBNumber": order.shipments[0].awb, "XBkey": order.shipments[0].courier.api_key,
+                     "RTOReason": "Cancelled by seller"})
+                headers = {"Authorization": "Basic " + order.shipments[0].courier.api_key,
+                           "Content-Type": "application/json"}
+                req_can = requests.post("http://xbclientapi.xbees.in/POSTShipmentService.svc/RTONotifyShipment",
+                                        headers=headers, data=cancel_body)
+        db.session.query(OrderStatus).filter(OrderStatus.order_id == order.id).delete()
+
+    db.session.commit()
+
+    return jsonify({'status': 'success'}), 200
+
+
 @orders_blueprint.route('/orders/v1/download/manifest', methods=['POST'])
 @authenticate_restful
 def download_manifests(resp):

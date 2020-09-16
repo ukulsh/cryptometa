@@ -129,10 +129,10 @@ def ship_delhivery_orders(cur, courier, courier_name, order_ids, order_id_tuple,
                    "Content-Type": "application/json"}
         for order in all_new_orders:
             try:
-                if order[17].lower() in ("bengaluru", "bangalore", "banglore") and courier[1] == "KAMAAYURVEDA":
+                if order[17].lower() in ("bengaluru", "bangalore", "banglore") and courier[1] == "KAMAAYURVEDA" and order[26].lower() != 'pickup':
                     continue
 
-                if courier[1] == "ZLADE" and courier[10]=="Delhivery Surface Standard" and (str(order[18]).startswith("5") or str(order[18]).startswith("6")):
+                if courier[1] == "ZLADE" and courier[10]=="Delhivery Surface Standard" and (str(order[18]).startswith("5") or str(order[18]).startswith("6")) and order[26].lower() != 'pickup':
                     continue
 
                 if not order[52]:
@@ -974,11 +974,9 @@ def ship_xpressbees_orders(cur, courier, courier_name, order_ids, order_id_tuple
                         short_url_track = short_url.json()['url']['shortLink']
                         """
                         exotel_sms_data[
-                            sms_body_key] = "Dear Customer, thank you for ordering from %s. " \
-                                            "Your order will be shipped by Xpressbees with AWB number %s. " \
-                                            "You can track your order on this ( %s ) link." % (
-                                                client_name, str(return_data_raw['AddManifestDetails'][0]['AWBNo']),
-                                                tracking_link_wareiq)
+                            sms_body_key] = "Dear Customer, thank you for ordering from %s. Your order will be shipped by Xpressbees with AWB number %s. " \
+                                            "You can track your order using this AWB number." % (
+                                                client_name, str(return_data_raw['AddManifestDetails'][0]['AWBNo']))
                     except Exception:
                         exotel_sms_data[
                             sms_body_key] = "Dear Customer, thank you for ordering from %s. Your order will be shipped by Xpressbees with AWB number %s. " \

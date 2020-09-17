@@ -16,6 +16,7 @@ from reportlab.pdfgen import canvas
 from psycopg2.extras import RealDictCursor
 from .generate_manifest import fill_manifest_data
 from .worker import celery
+#from .tasks import consume_ecom_scan
 
 from project import db
 from .queries import product_count_query, available_warehouse_product_quantity, fetch_warehouse_to_pick_from, \
@@ -2017,6 +2018,25 @@ def verification_passthru(type):
     except Exception as e:
         return jsonify({"success": False, "msg": str(e.args[0])}), 404
 
+
+@core_blueprint.route('/core/v1/scan/ecom', methods=['POST'])
+@authenticate_restful
+def upload_orders(resp):
+    auth_data = resp.get('data')
+    if not auth_data:
+        return {"success": False, "msg": "Auth Failed"}, 404
+
+    payload = json.loads(request.data)
+
+    consume_ecom_scan.delay(payload)
+
+    return jsonify({
+        'status': True,
+        'awb': payload['awb'],
+        "status_update_number": payload['status_update_number']
+    }), 200
+
+
 '''
 @core_blueprint.route('/orders/v1/ivrcalls/call', methods=['GET'])
 @authenticate_restful
@@ -3116,6 +3136,10 @@ api.add_resource(WalletRemittance, '/wallet/v1/remittance')
 @core_blueprint.route('/core/dev', methods=['POST'])
 def ping_dev():
     return 0
+    import requests
+    create_fulfillment_url = "https://a7fbb056a952edaf2890962707d6fb15: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@shopperbee-in.myshopify.com/admin/api/2020-07/orders.json"
+    qs = requests.get(create_fulfillment_url)
+    return 0
     myfile = request.files['myfile']
     import json, requests
     data_xlsx = pd.read_excel(myfile)
@@ -3210,9 +3234,7 @@ def ping_dev():
     )
     r = wcapi.get('orders')
     return 0
-    import requests
-    create_fulfillment_url = "https://33f054a0aafb5ca7b7412caeaac44fd5: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@wingreensindia.myshopify.com/admin/api/2020-07/orders.json"
-    qs = requests.get(create_fulfillment_url)
+
     return 0
     import json, requests
     from .models import Orders, ReturnPoints, ClientPickups, Products, ProductQuantity

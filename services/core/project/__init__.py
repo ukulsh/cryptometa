@@ -42,6 +42,7 @@ def create_app(script_info=None):
     from project.api.orders.index import orders_blueprint
     from project.api.billing.index import billing_blueprint
     from project.api.webhooks.index import webhooks_blueprint
+    from project.api.core_features.channels.index import channels_blueprint
     app.register_blueprint(base_blueprint)
     app.register_blueprint(core_blueprint)
     app.register_blueprint(dashboard_blueprint)
@@ -49,6 +50,7 @@ def create_app(script_info=None):
     app.register_blueprint(orders_blueprint)
     app.register_blueprint(billing_blueprint)
     app.register_blueprint(webhooks_blueprint)
+    app.register_blueprint(channels_blueprint)
 
     # shell context for flask cli
     @app.shell_context_processor

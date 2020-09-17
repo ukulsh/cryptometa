@@ -1,12 +1,6 @@
 from project.api.models import ClientChannel
 
 
-def param_validators(api_key, api_password, shop_url):
-    if api_key and api_password and shop_url:
-        return
-    raise Exception('Validation failed....')
-
-
 def get_channel_integration_object(post_data, client_prefix,  channel_id):
     store_name = post_data.get('store_name')
     api_key = post_data.get('api_key').strip()
@@ -23,14 +17,14 @@ def get_channel_integration_object(post_data, client_prefix,  channel_id):
     delivered_status = post_data.get('delivered_status')
     fetch_status = post_data.get('fetch_status')
     sync_inventory = post_data.get('sync_inventory')
-    param_validators(api_key, api_password, shop_url)
+    mark_returned = post_data.get('mark_returned')
+    returned_status = post_data.get('returned_status')
     if not isinstance(fetch_status, list):
         fetch_status = []
-
     channel_int = ClientChannel(client_prefix=client_prefix, store_name=store_name, channel_id=channel_id, api_key=api_key,
                                 api_password=api_password, shop_url=shop_url, shared_secret=shared_secret,
                                 mark_shipped=mark_shipped, shipped_status=shipped_status, mark_invoiced=mark_invoiced,
                                 invoiced_status=invoiced_status, mark_canceled=mark_canceled, canceled_status=canceled_status,
-                                mark_delivered=mark_delivered, delivered_status=delivered_status, sync_inventory=sync_inventory,
-                                fetch_status=fetch_status)
+                                mark_delivered=mark_delivered, delivered_status=delivered_status, mark_returned=mark_returned,
+                                returned_status=returned_status, sync_inventory=sync_inventory, fetch_status=fetch_status)
     return channel_int

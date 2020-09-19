@@ -119,6 +119,7 @@ class MasterChannels(db.Model):
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     channel_name = db.Column(db.String, nullable=False)
     logo_url = db.Column(db.String, nullable=True)
+    integrated = db.Column(db.BOOLEAN, default=False, nullable=False)
     date_created = db.Column(db.DateTime, default=datetime.now)
     date_updated = db.Column(db.DateTime, onupdate=datetime.now)
 
@@ -311,8 +312,8 @@ class ClientChannel(db.Model):
     delivered_status = db.Column(db.String, nullable=True, default='delivered')
     mark_invoiced = db.Column(db.BOOLEAN, nullable=True, default=True)
     invoiced_status = db.Column(db.String, nullable=True, default='invoiced')
-    status = db.Column(db.BOOLEAN, default=True)
-    connection_status = db.Column(db.BOOLEAN, default=True)
+    status = db.Column(db.BOOLEAN, default=True, nullable=False)
+    connection_status = db.Column(db.BOOLEAN, default=True, nullable=False)
     unique_parameter = db.Column(db.String, nullable=True)
     sync_inventory = db.Column(db.BOOLEAN, nullable=True)
     date_created = db.Column(db.DateTime, default=datetime.now)

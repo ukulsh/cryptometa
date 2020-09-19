@@ -99,7 +99,7 @@ class ClientChannelIntegration(Resource):
 def get_channel(resp):
     response_object = {'status': 'fail'}
     try:
-        channels_data = MasterChannels.query.all()
+        channels_data = MasterChannels.query.order_by(MasterChannels.integrated.desc()).all()
         response_object['data'] = [channel.to_json() for channel in channels_data]
         response_object['status'] = 'success'
         return jsonify(response_object), 200

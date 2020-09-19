@@ -127,7 +127,8 @@ class MasterChannels(db.Model):
         return {
             'id': self.id,
             'channel_name': self.channel_name,
-            'logo_url': self.logo_url
+            'logo_url': self.logo_url,
+            'integrated': self.integrated
         }
 
 class MasterCouriers(db.Model):
@@ -351,6 +352,7 @@ class ClientChannel(db.Model):
             'api_key': self.api_key,
             'api_password': self.api_password,
             'store_name': self.store_name,
+            'shop_url': self.shop_url,
             'shared_secret': self.shared_secret,
             'mark_shipped': self.mark_shipped,
             'shipped_status': self.shipped_status,

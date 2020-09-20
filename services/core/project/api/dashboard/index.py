@@ -17,7 +17,6 @@ conn_2 = DbConnection.get_pincode_db_connection_instance()
 @dashboard_blueprint.route('/dashboard', methods=['GET'])
 @authenticate_restful
 def get_dashboard(resp):
-    print('Yes In....')
     response = dict()
     auth_data = resp.get('data')
     if not auth_data:

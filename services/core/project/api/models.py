@@ -119,9 +119,17 @@ class MasterChannels(db.Model):
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     channel_name = db.Column(db.String, nullable=False)
     logo_url = db.Column(db.String, nullable=True)
+    integrated = db.Column(db.BOOLEAN, default=False, nullable=False)
     date_created = db.Column(db.DateTime, default=datetime.now)
     date_updated = db.Column(db.DateTime, onupdate=datetime.now)
 
+    def to_json(self):
+        return {
+            'id': self.id,
+            'channel_name': self.channel_name,
+            'logo_url': self.logo_url,
+            'integrated': self.integrated
+        }
 
 class MasterCouriers(db.Model):
     __tablename__ = "master_couriers"
@@ -209,7 +217,6 @@ class Orders(db.Model):
                       )
 
 
-
 class OrdersPayments(db.Model):
     __tablename__ = "orders_payments"
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
@@ -288,8 +295,10 @@ class ClientChannel(db.Model):
     client_prefix = db.Column(db.String, nullable=True)
     channel_id = db.Column(db.Integer, db.ForeignKey('master_channels.id'))
     channel = db.relationship("MasterChannels", backref=db.backref("client_channel", uselist=True))
+    store_name = db.Column(db.String, nullable=True)
     api_key = db.Column(db.String, nullable=True)
     api_password = db.Column(db.String, nullable=True)
+    shared_secret = db.Column(db.String, nullable=True)
     shop_url = db.Column(db.String, nullable=True)
     last_synced_order = db.Column(db.String, nullable=True)
     last_synced_time = db.Column(db.DateTime, nullable=True)
@@ -304,9 +313,63 @@ class ClientChannel(db.Model):
     delivered_status = db.Column(db.String, nullable=True, default='delivered')
     mark_invoiced = db.Column(db.BOOLEAN, nullable=True, default=True)
     invoiced_status = db.Column(db.String, nullable=True, default='invoiced')
+    status = db.Column(db.BOOLEAN, default=True, nullable=False)
+    connection_status = db.Column(db.BOOLEAN, default=True, nullable=False)
     unique_parameter = db.Column(db.String, nullable=True)
+    sync_inventory = db.Column(db.BOOLEAN, nullable=True)
     date_created = db.Column(db.DateTime, default=datetime.now)
     date_updated = db.Column(db.DateTime, onupdate=datetime.now)
+
+    def __init__(self, client_prefix=None, store_name=None, channel_id=None, api_key=None,  api_password=None, shop_url=None, shared_secret=None,
+                 mark_shipped=None, shipped_status=None, mark_invoiced=None, invoiced_status=None, mark_canceled=None,
+                 canceled_status=None, mark_delivered=None, delivered_status=None, mark_returned=None, returned_status=None,
+                 sync_inventory=None, fetch_status=[]):
+        self.client_prefix = client_prefix
+        self.store_name = store_name
+        self.channel_id = channel_id
+        self.api_key = api_key
+        self.api_password = api_password
+        self.shop_url = shop_url
+        self.shared_secret = shared_secret
+        self.mark_shipped = mark_shipped
+        self.shipped_status = shipped_status
+        self.mark_invoiced = mark_invoiced
+        self.invoiced_status = invoiced_status
+        self.mark_canceled = mark_canceled
+        self.canceled_status = canceled_status
+        self.mark_delivered = mark_delivered
+        self.delivered_status = delivered_status
+        self.mark_returned = mark_returned
+        self.returned_status = returned_status
+        self.sync_inventory = sync_inventory
+        self.fetch_status = fetch_status
+
+    def to_json(self):
+        return {
+            'id': self.id,
+            'channel_name': self.channel.channel_name,
+            'logo_url': self.channel.logo_url,
+            'api_key': self.api_key,
+            'api_password': self.api_password,
+            'store_name': self.store_name,
+            'shop_url': self.shop_url,
+            'shared_secret': self.shared_secret,
+            'mark_shipped': self.mark_shipped,
+            'shipped_status': self.shipped_status,
+            'mark_invoiced': self.mark_invoiced,
+            'invoiced_status': self.invoiced_status,
+            'mark_canceled': self.mark_canceled,
+            'canceled_status': self.canceled_status,
+            'mark_delivered': self.mark_delivered,
+            'delivered_status': self.delivered_status,
+            'mark_returned': self.mark_returned,
+            'returned_status': self.returned_status,
+            'sync_inventory': self.sync_inventory,
+            'fetch_status': self.fetch_status if isinstance(self.fetch_status, list) else [],
+            'status': self.status,
+            'connection_status': self.connection_status,
+            'last_synced_time': str(self.last_synced_time) if self.last_synced_time else None
+        }
 
 
 class ShippingAddress(db.Model):

@@ -51,6 +51,16 @@ services:
       dockerfile: Dockerfile-prod
     ports:
       - 5000
+    environment:
+      - FLASK_ENV=production
+      - USERS_SERVICE_URL=http://users:5000
+      - SECRET_KEY=my_precious
+      - DATABASE_URL=postgres://postgres:aSderRFgd23@wareiq-core-prod2.cvqssxsqruyc.us-east-1.rds.amazonaws.com:5432/core_prod
+      - DATABASE_HOST=wareiq-core-prod2.cvqssxsqruyc.us-east-1.rds.amazonaws.com
+      - DATABASE_HOST_PINCODE=wareiq-core-prod.cvqssxsqruyc.us-east-1.rds.amazonaws.com
+      - DATABASE_NAME=core_prod
+      - DATABASE_USER=postgres
+      - DATABASE_PASSWORD=aSderRFgd23
     depends_on:
       - rabbitmq
 

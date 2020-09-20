@@ -5,6 +5,6 @@ from flask import current_app
 celery_app = make_celery(current_app)
 
 
-@celery_app.task(name='add_nos')
-def add(a,b):
+@celery_app.task(name='consume_ecom_scan')
+def consume_ecom_scan(payload):
     return 0

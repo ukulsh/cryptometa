@@ -484,6 +484,26 @@ class OrderStatus(db.Model):
     location = db.Column(db.String, nullable=True)
     location_city = db.Column(db.String, nullable=True)
     status_time = db.Column(db.DateTime, default=datetime.now)
+    __table_args__ = (
+        db.UniqueConstraint('order_id', 'courier_id', 'shipment_id', 'status', name='ord_cr_shp_st_unique'),
+    )
+
+
+class OrderScans(db.Model):
+    __tablename__ = "order_scans"
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    order_id = db.Column(db.Integer, db.ForeignKey('orders.id'))
+    order = db.relationship("Orders", backref=db.backref("order_scans", uselist=True))
+    courier_id = db.Column(db.Integer, db.ForeignKey('master_couriers.id'))
+    courier = db.relationship("MasterCouriers", backref=db.backref("order_scans", uselist=True))
+    shipment_id = db.Column(db.Integer, db.ForeignKey('shipments.id'))
+    shipment = db.relationship("Shipments", backref=db.backref("order_scans", uselist=True))
+    status_code = db.Column(db.String, nullable=True)
+    status = db.Column(db.String, nullable=True)
+    status_text = db.Column(db.String, nullable=True)
+    location = db.Column(db.String, nullable=True)
+    location_city = db.Column(db.String, nullable=True)
+    status_time = db.Column(db.DateTime, default=datetime.now)
 
 
 class CodVerification(db.Model):

@@ -1,9 +1,12 @@
-from flask import Flask
+from flask import Flask, request, jsonify
 from celery import Celery
+import json
 from datetime import timedelta
 from celery.schedules import crontab
 from .update_status.function import update_status
 from .fetch_orders.function import fetch_orders
+from .core_app_jobs.tasks import *
+from .core_app_jobs.utils import authenticate_username_password
 
 
 def make_celery(app):
@@ -23,6 +26,7 @@ def make_celery(app):
 app = Flask(__name__)
 app.config['CELERY_BACKEND'] = "amqp://ravi:Kad97711@rabbitmq:5672"
 app.config['CELERY_BROKER_URL'] = "amqp://ravi:Kad97711@rabbitmq:5672"
+app.config['USERS_SERVICE_URL'] = os.environ.get('USERS_SERVICE_URL')
 
 
 app.config['CELERYBEAT_SCHEDULE'] = {
@@ -53,7 +57,21 @@ def orders_fetch():
     return 'successfully completed fetch_orders'
 
 
-@celery_app.task(name='add_nos')
-def add(a,b):
-    return a+b
+@celery_app.task(name='consume_ecom_scan')
+def consume_ecom_scan(payload):
+    msg = consume_ecom_scan_util(payload)
+    return msg
+
+
+@app.route('/scans/v1/consume/ecom', methods = ['POST'])
+@authenticate_username_password
+def ecom_scan(resp):
+    auth_data = resp.get('data')
+    if not auth_data:
+        return jsonify({"success": False, "msg": "Auth Failed"}), 404
+    if auth_data.get("username")!="ecomexpress" or auth_data.get("user_group")!="courier":
+        return jsonify({"success": False, "msg": "Not allowed"}), 404
+    data = json.loads(request.data)
+    consume_ecom_scan.delay(data)
+    return jsonify({"awb": data['awb'], "status": True, "status_update_number": data['status_update_number'] }), 200
 

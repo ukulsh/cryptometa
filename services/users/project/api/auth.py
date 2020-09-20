@@ -83,6 +83,37 @@ def login_user():
         return jsonify(response_object), 500
 
 
+@auth_blueprint.route('/auth/loginAPI', methods=['POST'])
+def login_user_api():
+    # get post data
+    post_data = request.get_json()
+    response_object = {
+        'status': 'fail',
+        'message': 'Invalid payload.'
+    }
+    if not post_data:
+        return jsonify(response_object), 400
+    username = post_data.get('username')
+    password = post_data.get('password')
+    try:
+        # fetch the user data
+        user = User.query.filter_by(username=username).first()
+        if user and bcrypt.check_password_hash(user.password, password):
+            auth_token = user.encode_auth_token(user.id)
+            if auth_token:
+                response_object['status'] = 'success'
+                response_object['data'] = user.to_json()
+                response_object['message'] = 'Successfully logged in.'
+                response_object['auth_token'] = auth_token.decode()
+                return jsonify(response_object), 200
+        else:
+            response_object['message'] = 'User does not exist.'
+            return jsonify(response_object), 404
+    except Exception:
+        response_object['message'] = 'Try again.'
+        return jsonify(response_object), 500
+
+
 @auth_blueprint.route('/auth/logout', methods=['GET'])
 @authenticate
 def logout_user(resp):

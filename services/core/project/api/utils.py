@@ -612,7 +612,7 @@ def fill_invoice_data(c, order, client_name):
     order_date = order.order_date.strftime("%d/%m/%Y")
     invoice_date = datetime.utcnow() + timedelta(hours=5.5)
     invoice_date = invoice_date.strftime("%d/%m/%Y")
-    c.drawString(3.6 * inch, 9.7 * inch, invoice_date)
+    c.drawString(3.6 * inch, 9.7 * inch, order_date)
     c.drawString(3.6 * inch, 9.45 * inch, order_date)
     c.drawString(3.7 * inch, 9.2 * inch, order.payments[0].payment_mode.lower())
     c.drawString(5.5 * inch, 9.45 * inch, order.channel_order_id)

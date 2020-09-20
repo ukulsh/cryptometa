@@ -3,8 +3,8 @@ from project.api.models import ClientChannel
 
 def get_channel_integration_object(post_data, client_prefix,  channel_id):
     store_name = post_data.get('store_name')
-    api_key = post_data.get('api_key').strip()
-    api_password = post_data.get('api_password').strip()
+    api_key = post_data.get('api_key')
+    api_password = post_data.get('api_password')
     shop_url = post_data.get('shop_url').strip()
     shared_secret = post_data.get('shared_secret')
     mark_shipped = post_data.get('mark_shipped')

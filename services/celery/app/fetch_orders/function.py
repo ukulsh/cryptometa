@@ -38,7 +38,7 @@ def fetch_orders():
             except Exception as e:
                 logger.error("Couldn't fetch orders: " + str(channel[1]) + "\nError: " + str(e.args))
 
-        elif channel[11] == "Magento":
+        elif channel[11] == "Magento 2":
             try:
                 fetch_magento_orders(cur, channel)
             except Exception as e:
@@ -51,7 +51,18 @@ def fetch_orders():
 
 
 def fetch_shopify_orders(cur, channel):
-    updated_after = (channel[7] - timedelta(hours=5.5)).strftime("%Y-%m-%dT%X")
+
+    if channel[7]:
+        if 21 <= datetime.utcnow().hour <22:
+            updated_after = channel[7] - timedelta(days=1)
+            updated_after = updated_after.strftime("%Y-%m-%dT%X")
+        else:
+            updated_after = (channel[7] - timedelta(hours=5.5)).strftime("%Y-%m-%dT%X")
+
+    else:
+        updated_after = datetime.utcnow() - timedelta(days=30)
+        updated_after = updated_after.strftime("%Y-%m-%dT%X")
+
     shopify_orders_url = "https://%s:%s@%s/admin/api/2020-07/orders.json?updated_at_min=%s&limit=250&fulfillment_status=unfulfilled" % (
         channel[3], channel[4], channel[5], updated_after)
     data = requests.get(shopify_orders_url).json()
@@ -248,8 +259,12 @@ def fetch_shopify_orders(cur, channel):
 
 
 def fetch_woocommerce_orders(cur, channel):
-    time_after = channel[7] - timedelta(days=10)
-    time_after_ids = channel[7] - timedelta(days=2)
+    if channel[7]:
+        time_after = channel[7] - timedelta(days=10)
+        time_after_ids = channel[7] - timedelta(days=2)
+    else:
+        time_after = datetime.utcnow() - timedelta(days=10)
+        time_after_ids = datetime.utcnow() - timedelta(days=2)
     cur.execute("""SELECT order_id_channel_unique from orders aa
                     left join client_channel bb on aa.client_channel_id=bb.id
                     WHERE order_date>%s and aa.client_prefix=%s and bb.channel_id=5;""", (time_after_ids, channel[1]))
@@ -260,15 +275,26 @@ def fetch_woocommerce_orders(cur, channel):
     for fetch_id in all_fetched_ids:
         exclude_ids += str(fetch_id[0]) + ","
 
-    auth_session = API(
+    url = 'orders?per_page=100&after=%s&order=asc&exclude=%s&status=%s&consumer_key=%s&consumer_secret=%s' % (
+    time_after.isoformat(), exclude_ids, fetch_status, channel[3], channel[4])
+    last_order_time = datetime.utcnow() + timedelta(hours=5.5)
+    try:
+        auth_session = API(
+                url=channel[5],
+                consumer_key=channel[3],
+                consumer_secret=channel[4],
+                version="wc/v3"
+            )
+        r = auth_session.get(url)
+    except Exception:
+        auth_session = API(
             url=channel[5],
             consumer_key=channel[3],
             consumer_secret=channel[4],
-            version="wc/v3"
+            version="wc/v3",
+            verify_ssl=False
         )
-    url = 'orders?per_page=100&after=%s&order=asc&exclude=%s&status=%s&consumer_key=%s&consumer_secret=%s' % (time_after.isoformat(), exclude_ids, fetch_status, channel[3], channel[4])
-    last_order_time = datetime.utcnow() + timedelta(hours=5.5)
-    r = auth_session.get(url)
+        r = auth_session.get(url)
     data = list()
     try:
         data = r.json()
@@ -279,6 +305,15 @@ def fetch_woocommerce_orders(cur, channel):
         return None
     for order in data:
         try:
+            cur.execute("SELECT id from orders where order_id_channel_unique='%s' and client_prefix='%s'" % (
+                str(order['id']), channel[1]))
+            try:
+                existing_order = cur.fetchone()[0]
+            except Exception as e:
+                existing_order = False
+                pass
+            if existing_order:
+                continue
             cur.execute("SELECT count(*) FROM client_pickups WHERE client_prefix='%s';" % str(channel[1]))
             pickup_count = cur.fetchone()[0]
             if pickup_count == 1 and not channel[17]:
@@ -418,7 +453,17 @@ def fetch_woocommerce_orders(cur, channel):
 
 def fetch_magento_orders(cur, channel):
 
-    updated_after = channel[7].strftime("%Y-%m-%d %X")
+    if channel[7]:
+        if 21 <= datetime.utcnow().hour <22:
+            updated_after = channel[7] - timedelta(days=1)
+            updated_after = updated_after.strftime("%Y-%m-%d %X")
+        else:
+            updated_after = channel[7].strftime("%Y-%m-%d %X")
+
+    else:
+        updated_after = datetime.utcnow() - timedelta(days=30)
+        updated_after = updated_after.strftime("%Y-%m-%d %X")
+
     filter_idx = 0
     magento_orders_url_1 = """%s/V1/orders?searchCriteria[filter_groups][0][filters][0][field]=updated_at&searchCriteria[filter_groups][0][filters][0][value]=%s&searchCriteria[filter_groups][0][filters][0][condition_type]=gt""" % (
         channel[5], updated_after)

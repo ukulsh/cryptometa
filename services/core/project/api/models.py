@@ -131,6 +131,7 @@ class MasterChannels(db.Model):
             'integrated': self.integrated
         }
 
+
 class MasterCouriers(db.Model):
     __tablename__ = "master_couriers"
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
@@ -142,6 +143,14 @@ class MasterCouriers(db.Model):
     integrated = db.Column(db.BOOLEAN, nullable=True, default=None)
     date_created = db.Column(db.DateTime, default=datetime.now)
     date_updated = db.Column(db.DateTime, onupdate=datetime.now)
+
+    def to_json(self):
+        return {
+            'id': self.id,
+            'courier_name': self.courier_name,
+            'logo_url': self.logo_url,
+            'integrated': self.integrated
+        }
 
 
 class PickupPoints(db.Model):
@@ -420,6 +429,21 @@ class ClientCouriers(db.Model):
     active = db.Column(db.BOOLEAN, nullable=True, default=None)
     date_created = db.Column(db.DateTime, default=datetime.now)
     date_updated = db.Column(db.DateTime, onupdate=datetime.now)
+
+    def __init__(self, client_prefix=None, courier_id=None, priority=None, active=None):
+        self.client_prefix = client_prefix
+        self.courier_id = courier_id
+        self.priority = priority
+        self.active = active
+        self.unique_parameter = client_prefix
+
+    def to_json(self):
+        return {
+            'client_prefix': self.client_prefix,
+            'courier_name': self.courier.courier_name,
+            'priority': self.priority,
+            'active': self.active,
+        }
 
 
 class ClientPickups(db.Model):

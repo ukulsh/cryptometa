@@ -167,6 +167,18 @@ class PickupPoints(db.Model):
     pincode = db.Column(db.Integer, nullable=False)
     warehouse_prefix = db.Column(db.String, nullable=True)
 
+    def __init__(self, pickup_location, name, phone, address, address_two, city, state, country, pincode, warehouse_prefix):
+        self.pickup_location = pickup_location
+        self.name = name
+        self.phone = phone
+        self.address = address
+        self.address_two = address_two
+        self.city = city
+        self.state = state
+        self.country = country
+        self.pincode = pincode
+        self.warehouse_prefix = warehouse_prefix
+
 
 class ReturnPoints(db.Model):
     __tablename__ = "return_points"
@@ -181,6 +193,18 @@ class ReturnPoints(db.Model):
     country = db.Column(db.String, nullable=False)
     pincode = db.Column(db.Integer, nullable=False)
     warehouse_prefix = db.Column(db.String, nullable=True)
+
+    def __init__(self, return_location, name, phone, address, address_two, city, state, country, pincode, warehouse_prefix):
+        self.return_location = return_location
+        self.name = name
+        self.phone = phone
+        self.address = address
+        self.address_two = address_two
+        self.city = city
+        self.state = state
+        self.country = country
+        self.pincode = pincode
+        self.warehouse_prefix = warehouse_prefix
 
 
 class OPAssociation(db.Model):
@@ -442,7 +466,7 @@ class ClientCouriers(db.Model):
             'client_prefix': self.client_prefix,
             'courier_name': self.courier.courier_name,
             'priority': self.priority,
-            'active': self.active,
+            'active': self .active,
         }
 
 
@@ -455,8 +479,28 @@ class ClientPickups(db.Model):
     return_point_id = db.Column(db.Integer, db.ForeignKey('return_points.id'))
     return_point = db.relationship("ReturnPoints", backref=db.backref("client_returns", uselist=True))
     gstin = db.Column(db.String, nullable=True)
+    active = db.Column(db.BOOLEAN, nullable=True, default=True)
     date_created = db.Column(db.DateTime, default=datetime.now)
     date_updated = db.Column(db.DateTime, onupdate=datetime.now)
+
+    def __init__(self, client_prefix, pickup_id, return_point_id, gstin):
+        self.id = id
+        self.client_prefix = client_prefix
+        self.pickup_id = pickup_id
+        self.return_point_id = return_point_id
+        self.gstin = gstin
+
+    def to_json(self):
+        return {
+            'client_prefix': self.client_prefix,
+            'pickup_address': self.pickup.address,
+            'pickup_name': self.pickup.name,
+            'pickup_location': self.pickup.pickup_location,
+            'gstin': self.gstin,
+            'return_point_address': self.return_point.address,
+            'return_point_name': self.return_point.name,
+            'return_point_location': self.return_point.return_location
+        }
 
 
 class PickupRequests(db.Model):

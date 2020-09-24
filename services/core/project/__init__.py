@@ -44,6 +44,7 @@ def create_app(script_info=None):
     from project.api.webhooks.index import webhooks_blueprint
     from project.api.core_features.channels.index import channels_blueprint
     from project.api.core_features.couriers.index import couriers_blueprint
+    from project.api.core_features.warehouse_management.index import warehouse_blueprint
     app.register_blueprint(base_blueprint)
     app.register_blueprint(core_blueprint)
     app.register_blueprint(dashboard_blueprint)
@@ -53,6 +54,7 @@ def create_app(script_info=None):
     app.register_blueprint(webhooks_blueprint)
     app.register_blueprint(channels_blueprint)
     app.register_blueprint(couriers_blueprint)
+    app.register_blueprint(warehouse_blueprint)
     # shell context for flask cli
     @app.shell_context_processor
     def ctx():

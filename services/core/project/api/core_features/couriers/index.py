@@ -71,7 +71,7 @@ class CourierIntegration(Resource):
 def get_couriers(resp):
     response_object = {'status': 'fail'}
     try:
-        couriers_data = MasterCouriers.query.order_by(MasterCouriers.integrated).all()
+        couriers_data = MasterCouriers.query.filter_by(integrated=True)
         response_object['data'] = [courier.to_json() for courier in couriers_data]
         response_object['status'] = 'success'
         return jsonify(response_object), 200

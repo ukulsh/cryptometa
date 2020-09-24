@@ -502,6 +502,7 @@ class ClientPickups(db.Model):
             'pickup_state': self.pickup.state,
             'pickup_country': self.pickup.country,
             'pickup_pincode': self.pickup.pincode,
+            'pickup_warehouse_prefix': self.pickup.warehouse_prefix,
             'gstin': self.gstin,
             'return_address': self.return_point.address,
             'return_address_two': self.return_point.address_two,
@@ -512,6 +513,7 @@ class ClientPickups(db.Model):
             'return_state': self.return_point.state,
             'return_country': self.return_point.country,
             'return_pincode': self.return_point.pincode,
+            'return_warehouse_prefix': self.return_point.warehouse_prefix,
             'active': self.active,
         }
 

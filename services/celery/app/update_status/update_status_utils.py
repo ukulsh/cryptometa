@@ -7,8 +7,8 @@ from .order_shipped import order_shipped
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
-email_server = smtplib.SMTP_SSL('smtpout.secureserver.net', 465)
-email_server.login("noreply@wareiq.com", "Berlin@123")
+#email_server = smtplib.SMTP_SSL('smtpout.secureserver.net', 465)
+#email_server.login("noreply@wareiq.com", "Berlin@123")
 
 
 def send_bulk_emails(emails):

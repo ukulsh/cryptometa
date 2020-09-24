@@ -75,3 +75,16 @@ def ecom_scan(resp):
     consume_ecom_scan.delay(data)
     return jsonify({"awb": data['awb'], "status": True, "status_update_number": data['status_update_number'] }), 200
 
+
+@celery_app.task(name='sync_channel_products')
+def sync_channel_prods(client_prefix):
+    msg = sync_all_products_with_channel(client_prefix)
+    return msg
+
+
+@app.route('/scans/v1/sync/products', methods = ['GET'])
+def sync_channel_products():
+    client_prefix=request.args.get('tab')
+    sync_channel_prods.delay(client_prefix)
+    return jsonify({"msg": "Task received"}), 200
+

@@ -484,7 +484,6 @@ class ClientPickups(db.Model):
     date_updated = db.Column(db.DateTime, onupdate=datetime.now)
 
     def __init__(self, client_prefix, pickup_id, return_point_id, gstin):
-        self.id = id
         self.client_prefix = client_prefix
         self.pickup_id = pickup_id
         self.return_point_id = return_point_id
@@ -492,14 +491,28 @@ class ClientPickups(db.Model):
 
     def to_json(self):
         return {
+            'id': self.id,
             'client_prefix': self.client_prefix,
             'pickup_address': self.pickup.address,
+            'pickup_address_two': self.pickup.address_two,
             'pickup_name': self.pickup.name,
             'pickup_location': self.pickup.pickup_location,
+            'pickup_phone': self.pickup.phone,
+            'pickup_city': self.pickup.city,
+            'pickup_state': self.pickup.state,
+            'pickup_country': self.pickup.country,
+            'pickup_pincode': self.pickup.pincode,
             'gstin': self.gstin,
-            'return_point_address': self.return_point.address,
-            'return_point_name': self.return_point.name,
-            'return_point_location': self.return_point.return_location
+            'return_address': self.return_point.address,
+            'return_address_two': self.return_point.address_two,
+            'return_name': self.return_point.name,
+            'return_location': self.return_point.return_location,
+            'return_phone': self.return_point.phone,
+            'return_city': self.return_point.city,
+            'return_state': self.return_point.state,
+            'return_country': self.return_point.country,
+            'return_pincode': self.return_point.pincode,
+            'active': self.active,
         }
 
 

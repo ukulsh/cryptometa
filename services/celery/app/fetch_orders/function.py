@@ -114,6 +114,9 @@ def fetch_shopify_orders(cur, channel):
             if not customer_name:
                 customer_name = order['shipping_address']['first_name']
 
+            if not customer_name and order['customer']['last_name']:
+                customer_name = order['customer']['last_name']
+
             customer_phone = order['customer']['phone'] if order['customer']['phone'] else \
                 order['shipping_address']['phone']
             customer_phone = ''.join(e for e in str(customer_phone) if e.isalnum())

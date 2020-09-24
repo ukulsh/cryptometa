@@ -40,8 +40,8 @@ session = boto3.Session(
 conn = psycopg2.connect(host=os.environ.get('DATABASE_HOST'), database=os.environ.get('DATABASE_NAME'), user=os.environ.get('DATABASE_USER'), password=os.environ.get('DATABASE_PASSWORD'))
 conn_2 = psycopg2.connect(host=os.environ.get('DATABASE_HOST_PINCODE'), database=os.environ.get('DATABASE_NAME'), user=os.environ.get('DATABASE_USER'), password=os.environ.get('DATABASE_PASSWORD'))
 
-email_server = smtplib.SMTP_SSL('smtpout.secureserver.net', 465)
-email_server.login("noreply@wareiq.com", "Berlin@123")
+#email_server = smtplib.SMTP_SSL('smtpout.secureserver.net', 465)
+#email_server.login("noreply@wareiq.com", "Berlin@123")
 
 
 ORDERS_DOWNLOAD_HEADERS = ["Order ID", "Customer Name", "Customer Email", "Customer Phone", "Order Date",

@@ -231,6 +231,14 @@ def update_status():
                                             "Couldn't cancel on woocommerce for: " + str(orders_dict[current_awb][0])
                                             + "\nError: " + str(e.args))
 
+                                elif orders_dict[current_awb][14] == 1:  # Shopify Cancelled
+                                    try:
+                                        shopify_cancel(orders_dict[current_awb])
+                                    except Exception as e:
+                                        logger.error(
+                                            "Couldn't cancel on Shopify for: " + str(orders_dict[current_awb][0])
+                                            + "\nError: " + str(e.args))
+
                         """
                             if orders_dict[current_awb][6] and orders_dict[current_awb][5]:
                                 complete_fulfillment_url = "https://%s:%s@%s/admin/api/2019-10/orders/%s/fulfillments/%s/complete.json" % (
@@ -560,6 +568,14 @@ def update_status():
                                         logger.error(
                                             "Couldn't cancel on woocommerce for: " + str(orders_dict[current_awb][0])
                                             + "\nError: " + str(e.args))
+
+                                elif orders_dict[current_awb][14] == 1:  # Shopify Cancelled
+                                    try:
+                                        shopify_cancel(orders_dict[current_awb])
+                                    except Exception as e:
+                                        logger.error(
+                                            "Couldn't cancel on Shopify for: " + str(orders_dict[current_awb][0])
+                                            + "\nError: " + str(e.args))
                         """
                             if orders_dict[current_awb][6] and orders_dict[current_awb][5]:
                                 complete_fulfillment_url = "https://%s:%s@%s/admin/api/2019-10/orders/%s/fulfillments/%s/complete.json" % (
@@ -888,6 +904,14 @@ def update_status():
                                             "Couldn't cancel on woocommerce for: " + str(orders_dict[current_awb][0])
                                             + "\nError: " + str(e.args))
 
+                                elif orders_dict[current_awb][14] == 1:  # Shopify Cancelled
+                                    try:
+                                        shopify_cancel(orders_dict[current_awb])
+                                    except Exception as e:
+                                        logger.error(
+                                            "Couldn't cancel on Shopify for: " + str(orders_dict[current_awb][0])
+                                            + "\nError: " + str(e.args))
+
                         if orders_dict[current_awb][2] in (
                                 'READY TO SHIP', 'PICKUP REQUESTED', 'NOT PICKED') and new_status == 'IN TRANSIT' and order_picked_check:
 
@@ -1164,6 +1188,10 @@ def woocommerce_fulfillment(order):
     if not status_mark:
         status_mark = "completed"
     r = wcapi.post('orders/%s' % str(order[5]), data={"status": status_mark})
+    try:
+        r = wcapi.post('orders/%s/shipment-trackings' % str(order[5]), data={"tracking_provider": "WareIQ", "tracking_number":order[1]})
+    except Exception:
+        pass
 
 
 def woocommerce_returned(order):
@@ -1228,6 +1256,17 @@ def shopify_markpaid(order):
         }
     }
     req_ful = requests.post(get_transactions_url, data=json.dumps(transaction_data),
+                            headers=tra_header)
+
+
+def shopify_cancel(order):
+    get_cancel_url = "https://%s:%s@%s/admin/api/2019-10/orders/%s/cancel.json" % (
+        order[7], order[8],
+        order[9], order[5])
+
+    tra_header = {'Content-Type': 'application/json'}
+    cancel_data = {}
+    req_ful = requests.post(get_cancel_url, data=json.dumps(cancel_data),
                             headers=tra_header)
 
 

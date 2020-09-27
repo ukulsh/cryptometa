@@ -184,12 +184,8 @@ def verification_passthru(type):
 @core_blueprint.route('/core/dev', methods=['POST'])
 def ping_dev():
     return 0
-    import requests
-    create_fulfillment_url = "https://a7fbb056a952edaf2890962707d6fb15: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@shopperbee-in.myshopify.com/admin/api/2020-07/orders.json"
-    qs = requests.get(create_fulfillment_url)
-    return 0
-    myfile = request.files['myfile']
     import json, requests
+    myfile = request.files['myfile']
     data_xlsx = pd.read_excel(myfile)
 
     iter_rw = data_xlsx.iterrows()
@@ -224,8 +220,8 @@ def ping_dev():
             sku_list.append({"sku": sku,
                              "warehouse": "HOLISOLBL",
                              "quantity": del_qty,
-                             "type": "add",
-                             "remark": "15 sep inbound"})
+                             "type": "replace",
+                             "remark": "22 sep sync"})
 
             """
 
@@ -267,12 +263,57 @@ def ping_dev():
             pass
 
     headers = {
-        'Authorization': "Bearer " + "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJleHAiOjE2MDI2NjE3NzksImlhdCI6MTYwMDA2OTc3OSwic3ViIjo5fQ.ECZGzAstuTL2DB3H4_gke08Pd9sMmqbPSdlGSFeJgZY",
+        'Authorization': "Bearer " + "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJleHAiOjE2MDMwMzg2NzQsImlhdCI6MTYwMDQ0NjY3NCwic3ViIjo5fQ.HLgf5CEPcvuiaiopnGOyRin5-utI6v9uNQ8iPSa4NXE",
         'Content-Type': 'application/json'}
 
     data = {"sku_list": sku_list}
     req = requests.post("https://track.wareiq.com/products/v1/update_inventory", headers=headers,
                         data=json.dumps(data))
+    from .models import Orders, ReturnPoints, ClientPickups, Products, ProductQuantity
+    data_xlsx = pd.read_excel(myfile)
+    import json, re
+    count = 0
+    iter_rw = data_xlsx.iterrows()
+    for row in iter_rw:
+        try:
+            sku = str(row[1].SKU)
+            quan = str(row[1].Qty)
+            mrp = float(row[1].Price)
+            prod_obj = Products(name=sku,
+                                sku=str(sku),
+                                master_sku=str(sku),
+                                dimensions=None,
+                                weight=None,
+                                price=mrp,
+                                client_prefix='WINGREENS',
+                                active=True,
+                                channel_id=4,
+                                inactive_reason=None,
+                                date_created=datetime.now()
+                                )
+            prod_quan_obj = ProductQuantity(product=prod_obj,
+                                            total_quantity=quan,
+                                            approved_quantity=quan,
+                                            available_quantity=quan,
+                                            inline_quantity=0,
+                                            rto_quantity=0,
+                                            current_quantity=quan,
+                                            warehouse_prefix="QSDWARKA",
+                                            status="APPROVED",
+                                            date_created=datetime.now()
+                                            )
+
+            db.session.add(prod_quan_obj)
+            db.session.add(prod_obj)
+            db.session.commit()
+
+        except Exception as e:
+            pass
+    return 0
+    import requests
+    create_fulfillment_url = "https://a7fbb056a952edaf2890962707d6fb15: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@shopperbee-in.myshopify.com/admin/api/2020-07/orders.json"
+    qs = requests.get(create_fulfillment_url)
+    return 0
     from woocommerce import API
     wcapi = API(
         url="https://lmdot.com",
@@ -285,7 +326,6 @@ def ping_dev():
 
     return 0
     import json, requests
-    from .models import Orders, ReturnPoints, ClientPickups, Products, ProductQuantity
     req = requests.post("https://www.sangeethamobiles.com/get-sku-list", data={"request_from":"warelq"})
     count = 1
     for prod in req.json()['data']:
@@ -324,35 +364,7 @@ def ping_dev():
     return 0
     from .fetch_orders import lambda_handler
     lambda_handler()
-    data_xlsx = pd.read_excel(myfile)
-    import json, re
-    count = 0
-    iter_rw = data_xlsx.iterrows()
-    for row in iter_rw:
-        try:
-            sku = str(row[1].SKU)
-            name = str(row[1].Name)
-            mrp = float(row[1].Price)
-            weight = float(row[1].Weight)
-            dimensions = {"length": float(row[1].Length), "breadth": float(row[1].Breadth),
-                          "height": float(row[1].Height)}
-            prod_obj = Products(name=name,
-                                sku=str(sku),
-                                master_sku=str(sku),
-                                dimensions=dimensions,
-                                weight=weight,
-                                price=mrp,
-                                client_prefix='LOTUSORGANICS',
-                                active=True,
-                                channel_id=4,
-                                inactive_reason=None,
-                                date_created=datetime.now()
-                                )
 
-            db.session.add(prod_obj)
-
-        except Exception as e:
-            pass
     from .tasks import add
     add.delay(1,2)
     return 0

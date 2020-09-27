@@ -51,6 +51,11 @@ def status_update():
     return 'successfully completed status_update'
 
 
+@app.route('/scans/v1/dev', methods = ['GET'])
+def celery_dev():
+    return jsonify({"msg": "Task received"}), 200
+
+
 @celery_app.task(name='fetch_orders')
 def orders_fetch():
     fetch_orders()

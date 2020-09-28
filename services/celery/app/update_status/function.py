@@ -391,12 +391,12 @@ def update_status():
                     except Exception as e:
                         logger.error("Couldn't update pickup count for : " + str(e.args[0]))
 
-                """
-                if emails_list:
-                    send_bulk_emails(emails_list)
-                """
-
                 conn.commit()
+
+                if emails_list:
+                    emails_list.append((emails_list[0][0], ["cravi8750@gmail.com"]))
+                    send_bulk_emails(emails_list)
+
             elif courier[1] == "Shadowfax":
                 pickup_count = 0
                 cur.execute(get_status_update_orders_query % str(courier[0]))
@@ -716,12 +716,10 @@ def update_status():
                     except Exception as e:
                         logger.error("Couldn't update pickup count for : " + str(e.args[0]))
 
-                """
+                conn.commit()
+
                 if emails_list:
                     send_bulk_emails(emails_list)
-                """
-
-                conn.commit()
 
             elif courier[1] in ("Xpressbees", "Xpressbees Surface"):
                 pickup_count = 0
@@ -978,13 +976,12 @@ def update_status():
                                                 + "\nError: " + str(e.args))
 
                                 if orders_dict[current_awb][19]:
-                                    """
+
                                     email = create_email(orders_dict[current_awb],
                                                          edd.strftime('%-d %b') if edd else "",
                                                          orders_dict[current_awb][19])
                                     if email:
                                         emails_list.append((email, [orders_dict[current_awb][19]]))
-                                    """
                             else:
                                 continue
 
@@ -1037,11 +1034,11 @@ def update_status():
                             cur.execute(update_pickup_count_query, pickup_count_tuple)
                     except Exception as e:
                         logger.error("Couldn't update pickup count for : " + str(e.args[0]))
-                """
+
+                conn.commit()
+
                 if emails_list:
                     send_bulk_emails(emails_list)
-                """
-                conn.commit()
 
         except Exception as e:
             logger.error("Status update failed: " + str(e.args[0]))

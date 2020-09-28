@@ -184,6 +184,84 @@ def verification_passthru(type):
 @core_blueprint.route('/core/dev', methods=['POST'])
 def ping_dev():
     return 0
+    import boto3
+    from botocore.exceptions import ClientError
+
+    # Replace sender@example.com with your "From" address.
+    # This address must be verified with Amazon SES.
+    SENDER = "WareIQ <noreply@wareiq.com>"
+
+    # Replace recipient@example.com with a "To" address. If your account
+    # is still in the sandbox, this address must be verified.
+    RECIPIENT = "ravi@wareiq.com"
+
+    # Specify a configuration set. If you do not want to use a configuration
+    # set, comment the following variable, and the
+    # ConfigurationSetName=CONFIGURATION_SET argument below.
+    CONFIGURATION_SET = "ConfigSet"
+
+    # If necessary, replace us-west-2 with the AWS Region you're using for Amazon SES.
+    AWS_REGION = "us-east-1"
+
+    # The subject line for the email.
+    SUBJECT = "Amazon SES Test (SDK for Python)"
+
+    # The email body for recipients with non-HTML email clients.
+    BODY_TEXT = ("Amazon SES Test (Python)\r\n"
+                 "This email was sent with Amazon SES using the "
+                 "AWS SDK for Python (Boto)."
+                 )
+
+    # The HTML body of the email.
+    BODY_HTML = """<html>
+    <head></head>
+    <body>
+      <h1>Amazon SES Test (SDK for Python)</h1>
+      <p>This email was sent with
+        <a href='https://aws.amazon.com/ses/'>Amazon SES</a> using the
+        <a href='https://aws.amazon.com/sdk-for-python/'>
+          AWS SDK for Python (Boto)</a>.</p>
+    </body>
+    </html>
+                """
+
+    # The character encoding for the email.
+    CHARSET = "UTF-8"
+
+    # Create a new SES resource and specify a region.
+    client = boto3.client('ses', region_name=AWS_REGION, aws_access_key_id='AKIAWRT2R3KC3YZUBFXY',
+    aws_secret_access_key='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')
+
+    # Try to send the email.
+    try:
+        # Provide the contents of the email.
+        response = client.send_email(
+            Destination={
+                'ToAddresses': [
+                    RECIPIENT,
+                ],
+            },
+            Message={
+                'Body': {
+                    'Text': {
+                        'Charset': CHARSET,
+                        'Data': BODY_TEXT,
+                    },
+                },
+                'Subject': {
+                    'Charset': CHARSET,
+                    'Data': SUBJECT,
+                },
+            },
+            Source=SENDER,
+        )
+    # Display an error if something goes wrong.
+    except ClientError as e:
+        print(e.response['Error']['Message'])
+    else:
+        print("Email sent! Message ID:"),
+        print(response['MessageId'])
+    return 0
     import json, requests
     myfile = request.files['myfile']
     data_xlsx = pd.read_excel(myfile)
@@ -218,10 +296,10 @@ def ping_dev():
 
             """
             sku_list.append({"sku": sku,
-                             "warehouse": "HOLISOLBL",
+                             "warehouse": "QSBHIWANDI",
                              "quantity": del_qty,
-                             "type": "replace",
-                             "remark": "22 sep sync"})
+                             "type": "add",
+                             "remark": "18 sep inbound"})
 
             """
 
@@ -269,6 +347,33 @@ def ping_dev():
     data = {"sku_list": sku_list}
     req = requests.post("https://track.wareiq.com/products/v1/update_inventory", headers=headers,
                         data=json.dumps(data))
+
+    exotel_idx = 0
+    exotel_sms_data = {
+        'From': '01141182252'
+    }
+
+    myfile = request.files['myfile']
+    data_xlsx = pd.read_excel(myfile)
+
+    iter_rw = data_xlsx.iterrows()
+    for row in iter_rw:
+        sms_to_key = "Messages[%s][To]" % str(exotel_idx)
+        sms_body_key = "Messages[%s][Body]" % str(exotel_idx)
+        sms_From_key = "Messages[%s][From]" % str(exotel_idx)
+
+        exotel_sms_data[sms_to_key] = "0"+str(row[1].Number)
+        exotel_sms_data[sms_From_key] = "01141182252"
+        exotel_sms_data[
+            sms_body_key] = str(row[1].SMS) + ". Thanks!"
+        exotel_idx += 1
+
+    lad = requests.post(
+        'https://ff2064142bc89ac5e6c52a6398063872f95f759249509009:783fa09c0ba1110309f606c7411889192335bab2e908a079@api.exotel.com/v1/Accounts/wareiq1/Sms/bulksend',
+        data=exotel_sms_data)
+
+    return 0
+
     from .models import Orders, ReturnPoints, ClientPickups, Products, ProductQuantity
     data_xlsx = pd.read_excel(myfile)
     import json, re

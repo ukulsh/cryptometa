@@ -1,4 +1,4 @@
-import smtplib, logging
+import logging, boto3
 from datetime import datetime
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -10,12 +10,21 @@ logger.setLevel(logging.INFO)
 #email_server = smtplib.SMTP_SSL('smtpout.secureserver.net', 465)
 #email_server.login("noreply@wareiq.com", "Berlin@123")
 
+email_client = boto3.client('ses', region_name="us-east-1", aws_access_key_id='AKIAWRT2R3KC3YZUBFXY',
+    aws_secret_access_key='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')
+
 
 def send_bulk_emails(emails):
     logger.info("Sending Emails....count: " + str(len(emails)) + "  Time: " + str(datetime.utcnow()))
     for email in emails:
         try:
-            email_server.sendmail(email[0]['From'], email[1], email[0].as_string())
+            response = email_client.send_raw_email(
+                Source=email[0]['From'],
+                Destinations=email[1],
+                RawMessage={
+                    'Data': email[0].as_string(),
+                },
+            )
         except Exception as e:
             logger.error("Couldn't send email: " + str(email['TO'])+"\nError: "+str(e.args[0]))
 

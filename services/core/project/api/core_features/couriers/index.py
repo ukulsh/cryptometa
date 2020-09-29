@@ -56,7 +56,7 @@ class CourierIntegration(Resource):
         try:
             authz_data = resp.get('data')
             client_prefix = authz_data.get('client_prefix')
-            client_couriers = ClientCouriers.query.filter_by(client_prefix=client_prefix)
+            client_couriers = ClientCouriers.query.filter_by(client_prefix=client_prefix).order_by(ClientCouriers.priority)
             response_object['data'] = [iterator.to_json() for iterator in client_couriers]
             response_object['status'] = 'success'
             return response_object, 200

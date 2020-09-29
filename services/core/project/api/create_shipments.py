@@ -154,11 +154,11 @@ def ship_delhivery_orders(cur, courier, courier_name, order_ids, order_id_tuple,
                     weight_counted = weight if weight > volumetric_weight else volumetric_weight
                     new_courier_name = None
                     if weight_counted > 14:
-                        new_courier_name = "Delhivery Heavy 2"
+                        new_courier_name = "Delhivery 20 KG"
                     elif weight_counted > 6:
-                        new_courier_name = "Delhivery Heavy"
+                        new_courier_name = "Delhivery 10 KG"
                     elif weight_counted > 1.5:
-                        new_courier_name = "Delhivery Bulk"
+                        new_courier_name = "Delhivery 2 KG"
                     if new_courier_name:
                         try:
                             cur.execute("""SELECT id, courier_name, logo_url, date_created, date_updated, api_key, 
@@ -245,7 +245,7 @@ def ship_delhivery_orders(cur, courier, courier_name, order_ids, order_id_tuple,
                 shipment_data['total_amount'] = order[27]
                 shipment_data['country'] = order[20]
                 shipment_data['client'] = courier[15]
-                shipment_data['order'] = order[1]
+                shipment_data['order'] = str(order[0])
                 shipment_data['products_desc'] = package_string
                 shipment_data['return_add'] = pickup_point[13]
                 if pickup_point[14]:
@@ -263,7 +263,7 @@ def ship_delhivery_orders(cur, courier, courier_name, order_ids, order_id_tuple,
 
                 shipments.append(shipment_data)
             except Exception as e:
-                print("couldn't assign order: " + str(order[1]) + "\nError: " + str(e))
+                print("couldn't assign order: " + str(order[0]) + "\nError: " + str(e))
 
         pick_add = pickup_point[4]
         if pickup_point[5]:
@@ -318,7 +318,7 @@ def ship_delhivery_orders(cur, courier, courier_name, order_ids, order_id_tuple,
 
         orders_dict = dict()
         for prev_order in all_orders:
-            orders_dict[prev_order[1]] = (prev_order[0], prev_order[33], prev_order[34], prev_order[35],
+            orders_dict[str(prev_order[0])] = (prev_order[0], prev_order[33], prev_order[34], prev_order[35],
                                           prev_order[36], prev_order[37], prev_order[38], prev_order[39],
                                           prev_order[5], prev_order[9], prev_order[45], prev_order[46], prev_order[51], prev_order[52])
 
@@ -345,7 +345,7 @@ def ship_delhivery_orders(cur, courier, courier_name, order_ids, order_id_tuple,
                     short_url_track = short_url.json()['url']['shortLink']
                     """
                     exotel_sms_data[
-                        sms_body_key] = "Received: Your order from %s. Track here: %s. Thanks!" % (
+                        sms_body_key] = "Received: Your order from %s. Track here: %s . Thanks!" % (
                                             client_name, tracking_link_wareiq)
                 except Exception:
                     pass
@@ -612,7 +612,7 @@ def ship_shadowfax_orders(cur, courier, courier_name, order_ids, order_id_tuple,
                         short_url_track = short_url.json()['url']['shortLink']
                         """
                         exotel_sms_data[
-                            sms_body_key] = "Received: Your order from %s. Track here: %s. Thanks!" % (client_name, tracking_link_wareiq)
+                            sms_body_key] = "Received: Your order from %s. Track here: %s . Thanks!" % (client_name, tracking_link_wareiq)
                     except Exception:
                         pass
 
@@ -705,6 +705,54 @@ def ship_xpressbees_orders(cur, courier, courier_name, order_ids, order_id_tuple
         pickup_point = cur.fetchone()  # change this as we get to dynamic pickups
 
         for order in all_new_orders:
+
+            if not order[52]:
+                weight = order[34][0] * order[35][0]
+                volumetric_weight = (order[33][0]['length'] * order[33][0]['breadth'] * order[33][0]['height']) * \
+                                    order[35][0] / 5000
+                for idx, dim in enumerate(order[33]):
+                    if idx == 0:
+                        continue
+                    volumetric_weight += (dim['length'] * dim['breadth'] * dim['height']) * order[35][idx] / 5000
+                    weight += order[34][idx] * (order[35][idx])
+            else:
+                weight = float(order[52])
+                volumetric_weight = float(order[52])
+
+            if courier[10] == "Xpressbees Surface":
+                weight_counted = weight if weight > volumetric_weight else volumetric_weight
+                new_courier_name = None
+                if weight_counted > 14:
+                    new_courier_name = "Delhivery 20 KG"
+                elif weight_counted > 6:
+                    new_courier_name = "Delhivery 10 KG"
+                elif weight_counted > 1.5:
+                    new_courier_name = "Delhivery 2 KG"
+                if new_courier_name:
+                    try:
+                        cur.execute("""SELECT id, courier_name, logo_url, date_created, date_updated, api_key, 
+                                                                        api_password, api_url FROM master_couriers
+                                                                        WHERE courier_name='%s'""" % new_courier_name)
+                        courier_data = cur.fetchone()
+                        courier_new = list(courier)
+                        courier_new[2] = courier_data[0]
+                        courier_new[3] = 1
+                        courier_new[9] = courier_data[0]
+                        courier_new[10] = courier_data[1]
+                        courier_new[11] = courier_data[2]
+                        courier_new[12] = courier_data[3]
+                        courier_new[13] = courier_data[4]
+                        courier_new[14] = courier_data[5]
+                        courier_new[15] = courier_data[6]
+                        courier_new[16] = courier_data[7]
+                        ship_delhivery_orders(cur, tuple(courier_new), new_courier_name, [order[0]],
+                                              "(" + str(order[0]) + ")", backup_param=False)
+                    except Exception as e:
+                        logger.error("Couldn't assign backup courier for: " + str(order[0]) + "\nError: " + str(e.args))
+                        pass
+
+                    continue
+
             if order[26].lower()=='pickup':
                 try:
                     cur.execute("""SELECT id, courier_name, logo_url, date_created, date_updated, api_key, 
@@ -878,7 +926,7 @@ def ship_xpressbees_orders(cur, courier, courier_name, order_ids, order_id_tuple
                         short_url_track = short_url.json()['url']['shortLink']
                         """
                         exotel_sms_data[
-                            sms_body_key] = "Received: Your order from %s. Track here: %s. Thanks!" % (client_name, tracking_link_wareiq)
+                            sms_body_key] = "Received: Your order from %s. Track here: %s . Thanks!" % (client_name, tracking_link_wareiq)
                     except Exception:
                         pass
 
@@ -1162,7 +1210,7 @@ def ship_ecom_orders(cur, courier, courier_name, order_ids, order_id_tuple, back
                         short_url_track = short_url.json()['url']['shortLink']
                         """
                         exotel_sms_data[
-                            sms_body_key] = "Received: Your order from %s. Track here: %s. Thanks!" % (client_name, tracking_link_wareiq)
+                            sms_body_key] = "Received: Your order from %s. Track here: %s . Thanks!" % (client_name, tracking_link_wareiq)
                     except Exception:
                         pass
                     exotel_idx += 1
@@ -1442,7 +1490,7 @@ def ship_bluedart_orders(cur, courier, courier_name, order_ids, order_id_tuple, 
                         short_url_track = short_url.json()['url']['shortLink']
                         """
                         exotel_sms_data[
-                            sms_body_key] = "Received: Your order from %s. Track here: %s. Thanks!" % (client_name, tracking_link_wareiq)
+                            sms_body_key] = "Received: Your order from %s. Track here: %s . Thanks!" % (client_name, tracking_link_wareiq)
                     except Exception:
                         pass
 

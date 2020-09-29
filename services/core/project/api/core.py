@@ -770,11 +770,11 @@ def ping_dev():
                 dimensions = re.findall(r"[-+]?\d*\.\d+|\d+", str(row[1].Dimensions))
                 inactive_reason = "Delhivery Surface Standard"
                 if float(dimensions[0]) > 41:
-                    inactive_reason = "Delhivery Heavy 2"
+                    inactive_reason = "Delhivery 20 KG"
                 elif float(dimensions[0]) > 40:
-                    inactive_reason = "Delhivery Heavy"
+                    inactive_reason = "Delhivery 10 KG"
                 elif float(dimensions[0]) > 19:
-                    inactive_reason = "Delhivery Bulk"
+                    inactive_reason = "Delhivery 2 KG"
 
                 dimensions = {"length": float(dimensions[0]), "breadth": float(dimensions[1]),
                               "height": float(dimensions[2])}

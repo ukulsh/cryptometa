@@ -28,8 +28,8 @@ def update_status():
     for courier in cur.fetchall():
         try:
             if courier[1] in (
-                    "Delhivery", "Delhivery Surface Standard", "Delhivery Bulk", "Delhivery Heavy",
-                    "Delhivery Heavy 2"):
+                    "Delhivery", "Delhivery Surface Standard", "Delhivery 2 KG", "Delhivery 10 KG",
+                    "Delhivery 20 KG"):
                 cur.execute(get_status_update_orders_query % str(courier[0]))
                 all_orders = cur.fetchall()
                 pickup_count = 0
@@ -289,65 +289,24 @@ def update_status():
                                                      orders_dict[current_awb][19])
                                 if email:
                                     emails_list.append((email, [orders_dict[current_awb][19]]))
-                            """
-                            if orders_dict[current_awb][5] and not orders_dict[current_awb][6]:
-                                create_fulfillment_url = "https://%s:%s@%s/admin/api/2019-10/orders/%s/fulfillments.json"  % (
-                                    orders_dict[current_awb][7], orders_dict[current_awb][8],
-                                    orders_dict[current_awb][9], orders_dict[current_awb][5])
-                                tracking_link = "https://www.delhivery.com/track/package/%s" % str(current_awb)
-                                ful_header = {'Content-Type': 'application/json'}
-                                fulfil_data = {
-                                    "fulfillment": {
-                                        "tracking_number": str(current_awb),
-                                        "tracking_urls": [
-                                            tracking_link
-                                        ],
-                                        "tracking_company": "Delhivery",
-                                        "location_id": 16721477681,
-                                        "notify_customer": False
-                                    }
-                                }
-                                try:
-                                    req_ful = requests.post(create_fulfillment_url, data=json.dumps(fulfil_data),
-                                                            headers=ful_header)
-                                    fulfillment_id = str(req_ful.json()['fulfillment']['id'])
-                                    cur.execute("UPDATE shipments SET channel_fulfillment_id=%s, tracking_link=%s WHERE awb=%s;",
-                                        (fulfillment_id, tracking_link, current_awb))
-                                except Exception as e:
-                                    logger.error("Couldn't update shopify for: " + str(orders_dict[current_awb][0])
-                                                 + "\nError: " + str(e.args))
-                            """
-                            if edd:
-                                cur.execute("UPDATE shipments SET pdd=%s WHERE awb=%s", (edd, current_awb))
-                                edd = edd.strftime('%-d %b')
-                                cur_2.execute("select client_name from clients where client_prefix='%s'" %
-                                              orders_dict[current_awb][3])
-                                client_name = cur_2.fetchone()
-                                customer_phone = orders_dict[current_awb][4].replace(" ", "")
-                                customer_phone = "0" + customer_phone[-10:]
 
-                                sms_to_key = "Messages[%s][To]" % str(exotel_idx)
-                                sms_body_key = "Messages[%s][Body]" % str(exotel_idx)
+                            cur.execute("UPDATE shipments SET pdd=%s WHERE awb=%s", (edd, current_awb))
+                            cur_2.execute("select client_name from clients where client_prefix='%s'" %
+                                          orders_dict[current_awb][3])
+                            client_name = cur_2.fetchone()
+                            customer_phone = orders_dict[current_awb][4].replace(" ", "")
+                            customer_phone = "0" + customer_phone[-10:]
 
-                                exotel_sms_data[sms_to_key] = customer_phone
-                                try:
-                                    tracking_link_wareiq = "http://webapp.wareiq.com/tracking/" + str(
-                                        orders_dict[current_awb][1])
-                                    """
-                                    short_url = requests.get(
-                                        "https://cutt.ly/api/api.php?key=f445d0bb52699d2f870e1832a1f77ef3f9078&short=%s" % tracking_link_wareiq)
-                                    short_url_track = short_url.json()['url']['shortLink']
-                                    """
-                                    exotel_sms_data[
-                                        sms_body_key] = "Dear Customer, your %s order has been shipped via Delhivery with AWB number %s. " \
-                                                        "It is expected to arrive by %s. You can track your order on this (%s) link." % (
-                                                            client_name[0], str(orders_dict[current_awb][1]), edd,
-                                                            tracking_link_wareiq)
-                                except Exception:
-                                    exotel_sms_data[
-                                        sms_body_key] = "Dear Customer, your %s order has been shipped via Delhivery with AWB number %s. It is expected to arrive by %s. Thank you for Ordering." % (
-                                        client_name[0], orders_dict[current_awb][1], edd)
-                                exotel_idx += 1
+                            sms_to_key = "Messages[%s][To]" % str(exotel_idx)
+                            sms_body_key = "Messages[%s][Body]" % str(exotel_idx)
+
+                            exotel_sms_data[sms_to_key] = customer_phone
+
+                            tracking_link_wareiq = "http://webapp.wareiq.com/tracking/" + str(orders_dict[current_awb][1])
+
+                            exotel_sms_data[sms_body_key] = "Shipped: Your %s order via Delhivery. Track here: %s . Thanks!" % (client_name[0], tracking_link_wareiq)
+
+                            exotel_idx += 1
 
                         if orders_dict[current_awb][2] != new_status:
                             status_update_tuple = (new_status, status_type, status_detail, orders_dict[current_awb][0])

@@ -62,7 +62,7 @@ def lambda_handler():
             if time_now.hour < 7:
                 cur.execute(insert_manifest_data_query, manifest_data_tuple)
 
-            if courier in ("Delhivery", "Delhivery Surface Standard", "Delhivery Bulk", "Delhivery Heavy", "Delhivery Heavy 2"):
+            if courier in ("Delhivery", "Delhivery Surface Standard", "Delhivery 2 KG", "Delhivery 10 KG", "Delhivery 20 KG"):
                 pickup_request_api_body = json.dumps({ "pickup_time": time_string,
                                             "pickup_date": pickup_date.strftime("%Y-%m-%d"),
                                             "pickup_location": pick_req[2],

@@ -28,7 +28,7 @@ def lambda_handler():
     for courier in cur.fetchall():
         try:
             if courier[1] in (
-            "Delhivery", "Delhivery Surface Standard", "Delhivery Bulk", "Delhivery Heavy", "Delhivery Heavy 2"):
+            "Delhivery", "Delhivery Surface Standard", "Delhivery 2 KG", "Delhivery 10 KG", "Delhivery 20 KG"):
                 cur.execute(get_status_update_orders_query % str(courier[0]))
                 all_orders = cur.fetchall()
                 pickup_count = 0

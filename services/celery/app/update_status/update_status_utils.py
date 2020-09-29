@@ -1,5 +1,6 @@
 import logging, boto3
 from datetime import datetime
+from time import sleep
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from .order_shipped import order_shipped
@@ -25,6 +26,7 @@ def send_bulk_emails(emails):
                     'Data': email[0].as_string(),
                 },
             )
+            sleep(0.08)
         except Exception as e:
             logger.error("Couldn't send email: " + str(email['TO'])+"\nError: "+str(e.args[0]))
 

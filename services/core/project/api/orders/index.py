@@ -1904,6 +1904,7 @@ class PincodeServiceabilty(Resource):
                 if days_for_delivery == 0:
                     days_for_delivery = 1
 
+            days_for_delivery += 1
             if days_for_delivery == 1:
                 label_url = "https://logourls.s3.amazonaws.com/wareiq_next_day.jpeg"
             elif days_for_delivery == 2:

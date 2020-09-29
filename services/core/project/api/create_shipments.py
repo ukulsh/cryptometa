@@ -706,20 +706,47 @@ def ship_xpressbees_orders(cur, courier, courier_name, order_ids, order_id_tuple
 
         for order in all_new_orders:
 
-            if not order[52]:
-                weight = order[34][0] * order[35][0]
-                volumetric_weight = (order[33][0]['length'] * order[33][0]['breadth'] * order[33][0]['height']) * \
-                                    order[35][0] / 5000
-                for idx, dim in enumerate(order[33]):
-                    if idx == 0:
-                        continue
-                    volumetric_weight += (dim['length'] * dim['breadth'] * dim['height']) * order[35][idx] / 5000
-                    weight += order[34][idx] * (order[35][idx])
-            else:
-                weight = float(order[52])
-                volumetric_weight = float(order[52])
+            if order[26].lower()=='pickup':
+                try:
+                    cur.execute("""SELECT id, courier_name, logo_url, date_created, date_updated, api_key, 
+                                                                    api_password, api_url FROM master_couriers
+                                                                    WHERE courier_name='%s'""" %"Delhivery Surface Standard")
+                    courier_data = cur.fetchone()
+                    courier_new = list(courier)
+                    courier_new[2] = courier_data[0]
+                    courier_new[3] = 1
+                    courier_new[9] = courier_data[0]
+                    courier_new[10] = courier_data[1]
+                    courier_new[11] = courier_data[2]
+                    courier_new[12] = courier_data[3]
+                    courier_new[13] = courier_data[4]
+                    courier_new[14] = courier_data[5]
+                    courier_new[15] = courier_data[6]
+                    courier_new[16] = courier_data[7]
+                    ship_delhivery_orders(cur, tuple(courier_new), "Delhivery Surface Standard", [order[0]], "(" + str(order[0]) + ")", backup_param=False)
+                except Exception as e:
+                    logger.error("Couldn't assign backup courier for: " + str(order[0]) + "\nError: " + str(e.args))
+                    pass
 
-            if courier[10] == "Xpressbees Surface":
+                continue
+
+            weight = float(order[52]) if order[52] else 0
+            volumetric_weight = float(order[52]) if order[52] else 0
+
+            if not order[52]:
+                try:
+                    weight = order[34][0] * order[35][0]
+                    volumetric_weight = (order[33][0]['length'] * order[33][0]['breadth'] * order[33][0]['height']) * \
+                                        order[35][0] / 5000
+                    for idx, dim in enumerate(order[33]):
+                        if idx == 0:
+                            continue
+                        volumetric_weight += (dim['length'] * dim['breadth'] * dim['height']) * order[35][idx] / 5000
+                        weight += order[34][idx] * (order[35][idx])
+                except Exception:
+                    pass
+
+            if courier[10] == "Xpressbees Surface" and weight and volumetric_weight:
                 weight_counted = weight if weight > volumetric_weight else volumetric_weight
                 new_courier_name = None
                 if weight_counted > 14:
@@ -752,30 +779,6 @@ def ship_xpressbees_orders(cur, courier, courier_name, order_ids, order_id_tuple
                         pass
 
                     continue
-
-            if order[26].lower()=='pickup':
-                try:
-                    cur.execute("""SELECT id, courier_name, logo_url, date_created, date_updated, api_key, 
-                                                                    api_password, api_url FROM master_couriers
-                                                                    WHERE courier_name='%s'""" %"Delhivery Surface Standard")
-                    courier_data = cur.fetchone()
-                    courier_new = list(courier)
-                    courier_new[2] = courier_data[0]
-                    courier_new[3] = 1
-                    courier_new[9] = courier_data[0]
-                    courier_new[10] = courier_data[1]
-                    courier_new[11] = courier_data[2]
-                    courier_new[12] = courier_data[3]
-                    courier_new[13] = courier_data[4]
-                    courier_new[14] = courier_data[5]
-                    courier_new[15] = courier_data[6]
-                    courier_new[16] = courier_data[7]
-                    ship_delhivery_orders(cur, tuple(courier_new), "Delhivery Surface Standard", [order[0]], "(" + str(order[0]) + ")", backup_param=False)
-                except Exception as e:
-                    logger.error("Couldn't assign backup courier for: " + str(order[0]) + "\nError: " + str(e.args))
-                    pass
-
-                continue
 
             time_2_days = datetime.utcnow() + timedelta(hours=5.5) - timedelta(days=1)
             if order[47] and not (order[50] and order[2] < time_2_days):

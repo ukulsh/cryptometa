@@ -57,7 +57,7 @@ class CompanySetting(Resource):
             client_ref.gst_number = data.get('gst_number')
             client_ref.pan_number = data.get('pan_number')
             client_ref.account_name = data.get('account_name')
-            client_ref.account_no = data.get('account_no')
+            client_ref.account_no = data.get('account_number')
             client_ref.bank_name = data.get('bank_name')
             client_ref.bank_branch = data.get('bank_branch')
             client_ref.account_type = data.get('account_type')

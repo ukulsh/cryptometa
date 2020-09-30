@@ -62,26 +62,22 @@ class CompanySetting(Resource):
             client_ref.bank_branch = data.get('bank_branch')
             client_ref.account_type = data.get('account_type')
             client_ref.ifsc_code = data.get('ifsc_code')
-            canceled_cheque_link = data.get('canceled_cheque_link')
-            gst_cert_url = data.get('gst_cert_url')
-            pan_link = data.get('pan_link')
-            signed_agreement_link = data.get('signed_agreement_link')
             gst_file = request.files.get('gst_file')
             canceled_cheque_file = request.files.get('canceled_cheque_file')
             pan_file = request.files.get('pan_file')
             signed_agreement_file = request.files.get('signed_agreement_file')
             if gst_file:
                 gst_cert_url = process_upload_file(client_prefix, gst_file, 'gst_file')
+                client_ref.gst_cert_url = gst_cert_url
             if canceled_cheque_file:
                 canceled_cheque_link = process_upload_file(client_prefix, canceled_cheque_file, 'canceled_cheque_file')
+                client_ref.canceled_cheque_link = canceled_cheque_link
             if pan_file:
                 pan_link = process_upload_file(client_prefix, pan_file, 'pan_file')
+                client_ref.pan_link = pan_link
             if signed_agreement_file:
                 signed_agreement_link = process_upload_file(client_prefix, signed_agreement_file, 'signed_agreement_file')
-            client_ref.canceled_cheque_link = canceled_cheque_link
-            client_ref.gst_cert_url = gst_cert_url
-            client_ref.pan_link = pan_link
-            client_ref.signed_agreement_link = signed_agreement_link
+                client_ref.signed_agreement_link = signed_agreement_link
             db.session.commit()
             response_object['status'] = 'success'
             return response_object, 200

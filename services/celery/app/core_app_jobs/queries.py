@@ -30,8 +30,10 @@ get_order_details_query = """select aa.id, bb.awb, aa.status, aa.client_prefix, 
                                     on aa.client_prefix=nn.client_prefix   
                                     where bb.awb = '%s';"""
 
-insert_scan_query = "INSERT INTO order_scans (order_id, courier_id, shipment_id, status_code, status, status_text, " \
-                    "location, location_city, status_time) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s);"
+insert_scan_query = """INSERT INTO order_scans (order_id, courier_id, shipment_id, status_code, status, status_text, 
+                    location, location_city, status_time) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                    ON CONFLICT (order_id, courier_id, shipment_id, status, status_time) 
+                    DO NOTHING;"""
 
 insert_status_query = """INSERT INTO order_status (order_id, courier_id, shipment_id, status_code, status, status_text, 
                       location, location_city, status_time) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s) 

@@ -184,6 +184,105 @@ def verification_passthru(type):
 @core_blueprint.route('/core/dev', methods=['POST'])
 def ping_dev():
     return 0
+    import requests
+    create_fulfillment_url = "https://9bf9e5f5fb698274d52d0e8a734354d7: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@actifiber.myshopify.com/admin/api/2020-07/orders/2803065618582.json"
+    qs = requests.get(create_fulfillment_url)
+    import json, requests
+    myfile = request.files['myfile']
+    data_xlsx = pd.read_excel(myfile)
+
+    iter_rw = data_xlsx.iterrows()
+    source_items = list()
+    sku_list = list()
+    for row in iter_rw:
+        try:
+
+            sku = str(row[1].SKU)
+            del_qty = int(row[1].Qty)
+            # cb_qty = int(row[1].CBQT)
+            # mh_qty = int(row[1].MHQT)
+            """
+            source_items.append({
+                "sku": sku,
+                "source_code": "default",
+                "quantity": del_qty + cb_qty + mh_qty,
+                "status": 1
+            })
+            """
+
+            """
+            data = {"sku_list": [{"sku": sku,
+                                  "warehouse": "DLWHEC",
+                                  "quantity": del_qty,
+                                  "type": "replace",
+                                  "remark": "30th aug resync"}]}
+            req = requests.post("http://track.wareiq.com/products/v1/update_inventory", headers=headers,
+                                data=json.dumps(data))
+
+            """
+            sku_list.append({"sku": sku,
+                             "warehouse": "HOLISOLBL",
+                             "quantity": del_qty,
+                             "type": "add",
+                             "remark": "30 sep inbound"})
+
+            """
+
+            data = {"sku_list": [{"sku": sku,
+                                  "warehouse": "MHWHECB2C",
+                                  "quantity": mh_qty,
+                                  "type": "replace",
+                                  "remark": "30th aug resync"}]}
+            req = requests.post("http://track.wareiq.com/products/v1/update_inventory", headers=headers,
+                                data=json.dumps(data))
+
+            combo = str(row[1].SKU)
+            combo_prod = str(row[1].childsku)
+            combo = db.session.query(Products).filter(Products.master_sku == combo,
+                                                      Products.client_prefix == 'URBANGABRU').first()
+            combo_prod = db.session.query(Products).filter(Products.master_sku == combo_prod,
+                                                           Products.client_prefix == 'URBANGABRU').first()
+            if combo and combo_prod:
+                combo_obj = ProductsCombos(combo=combo,
+                                           combo_prod=combo_prod,
+                                           quantity=int(row[1].qty))
+                db.session.add(combo_obj)
+            else:
+                pass
+
+            if row[0]%200==0:
+                headers = {
+                    'Authorization': "Bearer " + "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJleHAiOjE2MDE3NDQwNzksImlhdCI6MTU5OTE1MjA3OSwic3ViIjo5fQ.lPSECo8JK0zJgv6oAO0fLyJ5JvsnJjVHp-97cKNO6E0",
+                    'Content-Type': 'application/json'}
+
+                data = {"sku_list": sku_list}
+                req = requests.post("http://track.wareiq.com/products/v1/update_inventory", headers=headers,
+                                    data=json.dumps(data))
+
+                sku_list = list()
+            """
+
+        except Exception as e:
+            pass
+
+    headers = {
+        'Authorization': "Bearer " + "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJleHAiOjE2MDMwMzg2NzQsImlhdCI6MTYwMDQ0NjY3NCwic3ViIjo5fQ.HLgf5CEPcvuiaiopnGOyRin5-utI6v9uNQ8iPSa4NXE",
+        'Content-Type': 'application/json'}
+
+    data = {"sku_list": sku_list}
+    req = requests.post("https://track.wareiq.com/products/v1/update_inventory", headers=headers,
+                        data=json.dumps(data))
+    from woocommerce import API
+    wcapi = API(
+        url="https://nchantstore.com",
+        consumer_key="ck_9b1c9a4774b6453e99cacceb15d99da56843a54d",
+        consumer_secret="cs_ba1766d2e5f3a070e419039308a1c59f18ad57bf",
+        version="wc/v3",
+        verify_ssl=False
+    )
+    r = wcapi.get('orders')
+    return 0
+    return 0
     import boto3
     from botocore.exceptions import ClientError
 
@@ -262,91 +361,7 @@ def ping_dev():
         print("Email sent! Message ID:"),
         print(response['MessageId'])
     return 0
-    import json, requests
-    myfile = request.files['myfile']
-    data_xlsx = pd.read_excel(myfile)
 
-    iter_rw = data_xlsx.iterrows()
-    source_items = list()
-    sku_list = list()
-    for row in iter_rw:
-        try:
-
-            sku = str(row[1].SKU)
-            del_qty = int(row[1].Qty)
-            # cb_qty = int(row[1].CBQT)
-            # mh_qty = int(row[1].MHQT)
-            """
-            source_items.append({
-                "sku": sku,
-                "source_code": "default",
-                "quantity": del_qty + cb_qty + mh_qty,
-                "status": 1
-            })
-            """
-
-            """
-            data = {"sku_list": [{"sku": sku,
-                                  "warehouse": "DLWHEC",
-                                  "quantity": del_qty,
-                                  "type": "replace",
-                                  "remark": "30th aug resync"}]}
-            req = requests.post("http://track.wareiq.com/products/v1/update_inventory", headers=headers,
-                                data=json.dumps(data))
-
-            """
-            sku_list.append({"sku": sku,
-                             "warehouse": "QSBHIWANDI",
-                             "quantity": del_qty,
-                             "type": "add",
-                             "remark": "18 sep inbound"})
-
-            """
-
-            data = {"sku_list": [{"sku": sku,
-                                  "warehouse": "MHWHECB2C",
-                                  "quantity": mh_qty,
-                                  "type": "replace",
-                                  "remark": "30th aug resync"}]}
-            req = requests.post("http://track.wareiq.com/products/v1/update_inventory", headers=headers,
-                                data=json.dumps(data))
-
-            combo = str(row[1].SKU)
-            combo_prod = str(row[1].childsku)
-            combo = db.session.query(Products).filter(Products.master_sku == combo,
-                                                      Products.client_prefix == 'URBANGABRU').first()
-            combo_prod = db.session.query(Products).filter(Products.master_sku == combo_prod,
-                                                           Products.client_prefix == 'URBANGABRU').first()
-            if combo and combo_prod:
-                combo_obj = ProductsCombos(combo=combo,
-                                           combo_prod=combo_prod,
-                                           quantity=int(row[1].qty))
-                db.session.add(combo_obj)
-            else:
-                pass
-
-            if row[0]%200==0:
-                headers = {
-                    'Authorization': "Bearer " + "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJleHAiOjE2MDE3NDQwNzksImlhdCI6MTU5OTE1MjA3OSwic3ViIjo5fQ.lPSECo8JK0zJgv6oAO0fLyJ5JvsnJjVHp-97cKNO6E0",
-                    'Content-Type': 'application/json'}
-
-                data = {"sku_list": sku_list}
-                req = requests.post("http://track.wareiq.com/products/v1/update_inventory", headers=headers,
-                                    data=json.dumps(data))
-
-                sku_list = list()
-            """
-
-        except Exception as e:
-            pass
-
-    headers = {
-        'Authorization': "Bearer " + "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJleHAiOjE2MDMwMzg2NzQsImlhdCI6MTYwMDQ0NjY3NCwic3ViIjo5fQ.HLgf5CEPcvuiaiopnGOyRin5-utI6v9uNQ8iPSa4NXE",
-        'Content-Type': 'application/json'}
-
-    data = {"sku_list": sku_list}
-    req = requests.post("https://track.wareiq.com/products/v1/update_inventory", headers=headers,
-                        data=json.dumps(data))
 
     exotel_idx = 0
     exotel_sms_data = {
@@ -415,9 +430,7 @@ def ping_dev():
         except Exception as e:
             pass
     return 0
-    import requests
-    create_fulfillment_url = "https://a7fbb056a952edaf2890962707d6fb15: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@shopperbee-in.myshopify.com/admin/api/2020-07/orders.json"
-    qs = requests.get(create_fulfillment_url)
+
     return 0
     from woocommerce import API
     wcapi = API(

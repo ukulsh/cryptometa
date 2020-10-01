@@ -587,7 +587,9 @@ class OrderScans(db.Model):
     location = db.Column(db.String, nullable=True)
     location_city = db.Column(db.String, nullable=True)
     status_time = db.Column(db.DateTime, default=datetime.now)
-
+    __table_args__ = (
+        db.UniqueConstraint('order_id', 'courier_id', 'shipment_id', 'status', 'status_time', name='ord_cr_shp_st_sttime_unique'),
+    )
 
 class CodVerification(db.Model):
     __tablename__ = "cod_verification"

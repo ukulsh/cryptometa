@@ -6,7 +6,6 @@ import jwt
 from sqlalchemy.sql import func
 from sqlalchemy.dialects.postgresql import ARRAY
 from flask import current_app
-
 from project import db, bcrypt
 
 
@@ -108,6 +107,25 @@ class Client(db.Model):
     client_prefix = db.Column(db.String(32), unique=True, nullable=False)
     primary_email = db.Column(db.String(128), nullable=False)
     tabs = db.Column(ARRAY(db.String(20)))
+    client_url = db.Column(db.String, nullable=True)
+    gst_cert_url = db.Column(db.String, nullable=True)
+    address = db.Column(db.String, nullable=True)
+    city = db.Column(db.String, nullable=True)
+    state = db.Column(db.String, nullable=True)
+    country = db.Column(db.String, nullable=True)
+    pincode = db.Column(db.Integer, nullable=True)
+    gst_number = db.Column(db.String, nullable=True)
+    pan_number = db.Column(db.String, nullable=True)
+    account_name = db.Column(db.String, nullable=True)
+    account_no = db.Column(db.String, nullable=True)
+    bank_name = db.Column(db.String, nullable=True)
+    bank_branch = db.Column(db.String, nullable=True)
+    account_type = db.Column(db.String, nullable=True)
+    ifsc_code = db.Column(db.String, nullable=True)
+    canceled_cheque_link = db.Column(db.String, nullable=True)
+    pan_link = db.Column(db.String, nullable=True)
+    signed_agreement_link = db.Column(db.String, nullable=True)
+    kyc_verified = db.Column(db.Boolean, default=False, server_default="false", nullable=False)
     active = db.Column(db.Boolean(), default=True, server_default="true", nullable=False)
     created_date = db.Column(db.DateTime, default=func.now(), server_default=func.now(), nullable=False)
 
@@ -125,6 +143,36 @@ class Client(db.Model):
             'primary_email': self.primary_email,
             'active': self.active,
             'tabs': self.tabs if isinstance(self.tabs, list) else []
+
+        }
+
+    def to_full_json(self):
+        return {
+            'id': self.id,
+            'client_name': self.client_name,
+            'client_prefix': self.client_prefix,
+            'primary_email': self.primary_email,
+            'active': self.active,
+            'tabs': self.tabs if isinstance(self.tabs, list) else [],
+            'website_url': self.client_url,
+            'gst_cert_url': self.gst_cert_url,
+            'address': self.address,
+            'city': self.city,
+            'state': self.state,
+            'country': self.country,
+            'pincode': self.pincode,
+            'gst_number': self.gst_number,
+            'pan_number': self.pan_number,
+            'account_name': self.account_name,
+            'account_number': self.account_no,
+            'bank_name': self.bank_name,
+            'bank_branch': self.bank_branch,
+            'account_type': self.account_type,
+            'ifsc_code': self.ifsc_code,
+            'canceled_cheque_link': self.canceled_cheque_link,
+            'pan_link': self.pan_link,
+            'signed_agreement_link': self.signed_agreement_link,
+            'kyc_verified': self.kyc_verified
         }
 
 

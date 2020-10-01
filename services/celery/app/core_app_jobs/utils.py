@@ -347,7 +347,7 @@ def exotel_send_shipped_sms(order, courier):
         tracking_link_wareiq = "http://webapp.wareiq.com/tracking/" + str(order[1])
 
         exotel_sms_data[sms_body_key] = "Shipped: Your %s order via %s. Track here: %s . Thanks!" % (
-        client_name[0], courier, tracking_link_wareiq)
+        client_name, courier, tracking_link_wareiq)
         logger.info("Sending shipped message to:" + str(customer_phone))
         lad = requests.post(
             'https://ff2064142bc89ac5e6c52a6398063872f95f759249509009:783fa09c0ba1110309f606c7411889192335bab2e908a079@api.exotel.com/v1/Accounts/wareiq1/Sms/bulksend',
@@ -393,10 +393,12 @@ def create_email(order, edd, email):
         courier_name = "WareIQ"
         if order[23] in (1,2,8,11,12):
             courier_name = "Delhivery"
-        elif order[23] in (5,13):
+        elif order[23] in (5,13,17):
             courier_name = "Xpressbees"
-        elif order[23] in (4):
+        elif order[23] in (4,):
             courier_name = "Shadowfax"
+        elif order[23] in (15,):
+            courier_name = "Ecom Express"
 
         edd = edd if edd else ""
         awb_number = str(order[1]) if order[1] else ""

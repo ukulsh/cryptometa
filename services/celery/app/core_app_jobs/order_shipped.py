@@ -16,7 +16,6 @@ order_shipped = """<!-- THIS EMAIL WAS BUILT AND TESTED WITH LITMUS http://litmu
       font-family: 'Poppins', sans-serif, Helvetica, Arial !important;
     }
   </style>
-  <title>Alerts - WareIQ</title> <!-- The title tag shows in email notifications, like Android 4.4. -->
 
   <!-- Web Font / @font-face : BEGIN -->
   <!-- NOTE: If web fonts are not required, lines 10 - 27 can be safely removed. -->

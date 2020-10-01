@@ -3,7 +3,7 @@ ecom_express_status_mapping = {"303": ("IN TRANSIT", "UD", "In Transit", "Shipme
                              "003": ("IN TRANSIT", "UD", "In Transit", "Bag scanned at DC"),
                              "002": ("IN TRANSIT", "UD", "In Transit", "Shipment in-scan"),
                              "005": ("IN TRANSIT", "UD", "In Transit", "Shipment in-scan at DC"),
-                             "0011": ("IN TRANSIT", "UD", "Picked", "Shipment Picked Up"),
+                             "0011": ("IN TRANSIT", "UD", "Picked", "Shipment picked up"),
                              "21601": ("IN TRANSIT", "UD", "In Transit", "Late arrival-Misconnection/After cut off"),
                              "006": ("DISPATCHED", "UD", "Out for delivery", "Shipment out for delivery"),
                              "888": ("DAMAGED", "UD", "", "Transit Damage"),

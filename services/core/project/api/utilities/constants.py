@@ -1,0 +1,5 @@
+aws_access_key_id = 'AKIAWRT2R3KC3YZUBFXY'
+aws_secret_access_key = '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'
+aws_region = 's3.us-east-1.amazonaws.com'
+aws_client_data_bucket = 'logourls'
+aws_region_prefix = 'us-east-1'

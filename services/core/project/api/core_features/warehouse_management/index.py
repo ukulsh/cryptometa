@@ -1,6 +1,7 @@
 from project.api.models import PickupPoints, ReturnPoints, ClientPickups
 from flask_restful import Api, Resource
 from flask import Blueprint, request, jsonify
+from sqlalchemy import and_
 from project.api.utils import authenticate_restful, pagination_validator
 from project.api.core_features.warehouse_management.utils import parse_client_mapping
 from project import db
@@ -123,5 +124,39 @@ def check_warehouse_prefix(resp):
         response_object['message'] = 'Failed while checking warehouse prefix'
         return jsonify(response_object), 400
 
+
 api.add_resource(ClientPickupsAndReturns, '/core/v1/clientPickupsAndReturns')
 
+
+@warehouse_blueprint.route('/core/v1/getWarehousePickups', methods=['GET'])
+@authenticate_restful
+def get_warehouse_pickups(resp):
+    response_object = {'status': 'fail'}
+    try:
+        authz_data = resp.get('data')
+        page_number = request.args.get('page_number')
+        page_size = request.args.get('page_size')
+        searched_query = request.args.get('search_query')
+        searched_query = searched_query if searched_query else ''
+        page_size, page_number = pagination_validator(page_size, page_number)
+        client_prefix = authz_data.get('client_prefix')
+        pickups_data = ClientPickups.query.join(PickupPoints).filter(and_(ClientPickups.client_prefix == client_prefix,
+                                                                          ClientPickups.active == True,
+                                                                          PickupPoints.warehouse_prefix.ilike(r"%{}%".format(searched_query))
+                                                                          )).paginate(page=page_number, per_page=page_size, error_out=False)
+        print(pickups_data.total, pickups_data.items)
+        total_page = pickups_data.total // page_size if pickups_data.total % page_size == 0 else (pickups_data.total // page_size) + 1
+        response_object = {
+            'status': 'success',
+            'data': {
+                'pickups': [_iterator.pickup.to_json() for _iterator in pickups_data.items]
+            },
+            'page_number': page_number,
+            'page_size': page_size,
+            'total_page': total_page
+        }
+        return jsonify(response_object), 200
+    except Exception as e:
+        logger.error('Failed while getting warehouse pickups', e)
+        response_object['message'] = 'Failed while getting warehouse pickups'
+        return jsonify(response_object), 400

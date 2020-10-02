@@ -179,6 +179,14 @@ class PickupPoints(db.Model):
         self.pincode = pincode
         self.warehouse_prefix = warehouse_prefix
 
+    def to_json(self):
+        return {
+            'id': self.id,
+            'pickup_location': self.pickup_location,
+            'name': self.name,
+            'warehouse_prefix': self.warehouse_prefix
+        }
+
 
 class ReturnPoints(db.Model):
     __tablename__ = "return_points"
@@ -773,6 +781,7 @@ class ClientMapping(db.Model):
     client_logo = db.Column(db.String, nullable=True)
     theme_color = db.Column(db.String, nullable=True)
     api_token = db.Column(db.String, nullable=True)
+    verify_ndr = db.Column(db.BOOLEAN, nullable=True, server_default='true', default=True)
     verify_cod = db.Column(db.BOOLEAN, nullable=True, default=True)
     essential = db.Column(db.BOOLEAN, nullable=True, default=True)
     custom_email = db.Column(db.Text, nullable=True)
@@ -780,7 +789,7 @@ class ClientMapping(db.Model):
     unique_parameter = db.Column(db.String, nullable=True)
     cod_ship_unconfirmed = db.Column(db.BOOLEAN, nullable=True, default=True)
     hide_weights = db.Column(db.BOOLEAN, nullable=True, default=True)
-    order_split = db.Column(db.BOOLEAN, nullable=True, default=True)
+    order_split = db.Column(db.BOOLEAN, nullable=True, server_default='false', default=False)
     default_warehouse = db.Column(db.String, nullable=True)
     hide_products = db.Column(db.BOOLEAN, nullable=True, default=False)
     hide_address = db.Column(db.BOOLEAN, nullable=True, default=False)
@@ -788,10 +797,31 @@ class ClientMapping(db.Model):
     cod_man_ver = db.Column(db.BOOLEAN, nullable=True, default=False)
     auto_pur = db.Column(db.BOOLEAN, nullable=True, default=None)
     auto_pur_time = db.Column(db.Integer, nullable=True)
+    shipping_label = db.Column(db.String, nullable=True)
 
     def __init__(self, client_name, client_prefix):
         self.client_name = client_name
         self.client_prefix = client_prefix
+
+    def to_json(self):
+        return {
+            'id': self.id,
+            'client_prefix': self.client_prefix,
+            'client_name': self.client_name,
+            'client_logo': self.client_logo,
+            'theme_color': self.theme_color,
+            'verify_ndr': self.verify_ndr,
+            'verify_cod': self.verify_cod,
+            'cod_ship_unconfirmed': self.cod_ship_unconfirmed,
+            'verify_cod_manual': self.cod_man_ver,
+            'hide_products': self.hide_products,
+            'hide_shipper_address': self.hide_address,
+            'shipping_label': self.shipping_label,
+            'default_warehouse': self.default_warehouse,
+            'order_split': self.order_split,
+            'auto_pur': self.auto_pur,
+            'auto_pur_time': self.auto_pur_time
+        }
 
 
 class MultiVendor(db.Model):

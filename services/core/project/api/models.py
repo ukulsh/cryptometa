@@ -296,6 +296,7 @@ class Shipments(db.Model):
     channel_fulfillment_id = db.Column(db.String, nullable=True)
     tracking_link = db.Column(db.TEXT, nullable=True)
     remark = db.Column(db.Text, nullable=True)
+    zone = db.Column(db.String, nullable=True)
     __table_args__ = (UniqueConstraint('order_id', name='order_id_unique'),
                       )
 
@@ -548,8 +549,26 @@ class Manifests(db.Model):
     total_picked = db.Column(db.Integer, nullable=True)
     pickup_date = db.Column(db.DateTime, nullable=True)
     manifest_url = db.Column(db.TEXT, nullable=False)
+    auto_pur = db.Column(db.BOOLEAN, nullable=True, default=None)
+    auto_pur_time = db.Column(db.Integer, nullable=True)
     date_created = db.Column(db.DateTime, default=datetime.now)
     date_updated = db.Column(db.DateTime, onupdate=datetime.now)
+
+
+class OrderPickups(db.Model):
+    __tablename__ = "order_pickups"
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    manifest_id = db.Column(db.Integer, db.ForeignKey('manifests.id'))
+    manifest = db.relationship("Manifests", backref=db.backref("order_pickups"))
+    order_id = db.Column(db.Integer, db.ForeignKey('orders.id'))
+    order = db.relationship("Orders", backref=db.backref("order_pickups"))
+    picked = db.Column(db.BOOLEAN, nullable=True, default=None)
+    pickup_time = db.Column(db.DateTime, default=None)
+    date_created = db.Column(db.DateTime, default=datetime.now)
+    date_updated = db.Column(db.DateTime, onupdate=datetime.now)
+    __table_args__ = (
+        db.UniqueConstraint('order_id', 'manifest_id', name='ord_mnf_unique'),
+    )
 
 
 class OrderStatus(db.Model):
@@ -684,9 +703,15 @@ class CostToClients(db.Model):
     zone_c = db.Column(db.FLOAT, nullable=True)
     zone_d = db.Column(db.FLOAT, nullable=True)
     zone_e = db.Column(db.FLOAT, nullable=True)
+    a_step = db.Column(db.FLOAT, nullable=True)
+    b_step = db.Column(db.FLOAT, nullable=True)
+    c_step = db.Column(db.FLOAT, nullable=True)
+    d_step = db.Column(db.FLOAT, nullable=True)
+    e_step = db.Column(db.FLOAT, nullable=True)
     cod_min = db.Column(db.FLOAT, nullable=True)
     cod_ratio = db.Column(db.FLOAT, nullable=True)
     rto_ratio = db.Column(db.FLOAT, nullable=True)
+    rvp_ratio = db.Column(db.FLOAT, nullable=True)
     management_fee = db.Column(db.FLOAT, nullable=True)
     date_created = db.Column(db.DateTime, default=datetime.now)
     date_updated = db.Column(db.DateTime, onupdate=datetime.now)

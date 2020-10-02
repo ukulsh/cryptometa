@@ -549,8 +549,6 @@ class Manifests(db.Model):
     total_picked = db.Column(db.Integer, nullable=True)
     pickup_date = db.Column(db.DateTime, nullable=True)
     manifest_url = db.Column(db.TEXT, nullable=False)
-    auto_pur = db.Column(db.BOOLEAN, nullable=True, default=None)
-    auto_pur_time = db.Column(db.Integer, nullable=True)
     date_created = db.Column(db.DateTime, default=datetime.now)
     date_updated = db.Column(db.DateTime, onupdate=datetime.now)
 
@@ -788,6 +786,8 @@ class ClientMapping(db.Model):
     hide_address = db.Column(db.BOOLEAN, nullable=True, default=False)
     loc_assign_inventory = db.Column(db.BOOLEAN, nullable=True, default=False)
     cod_man_ver = db.Column(db.BOOLEAN, nullable=True, default=False)
+    auto_pur = db.Column(db.BOOLEAN, nullable=True, default=None)
+    auto_pur_time = db.Column(db.Integer, nullable=True)
 
 
 class MultiVendor(db.Model):

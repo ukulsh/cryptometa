@@ -789,6 +789,10 @@ class ClientMapping(db.Model):
     auto_pur = db.Column(db.BOOLEAN, nullable=True, default=None)
     auto_pur_time = db.Column(db.Integer, nullable=True)
 
+    def __init__(self, client_name, client_prefix):
+        self.client_name = client_name
+        self.client_prefix = client_prefix
+
 
 class MultiVendor(db.Model):
     __tablename__ = "multi_vendor"

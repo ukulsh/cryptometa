@@ -8,8 +8,11 @@ from project.api.users_util import based_user_register
 from project.api.s3_utils import process_upload_file, get_presigned_url
 import urllib
 import json
+import requests
 import os
 import logging
+
+CORE_SERVICE_URL = os.environ.get('CORE_SERVICE_URL') or 'http://localhost:5010'
 
 logging.basicConfig(format='%(levelname)s:%(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -45,6 +48,7 @@ class CompanySetting(Resource):
             user = User.query.filter_by(id=resp).first()
             client_prefix = user.client.client_prefix
             client_ref = user.client
+            old_client_name = client_ref.client_name
             data = json.loads(request.form.get('data'))
             client_ref.client_name = data.get('client_name')
             client_ref.primary_email = data.get('primary_email')
@@ -79,9 +83,15 @@ class CompanySetting(Resource):
                 signed_agreement_link = process_upload_file(client_prefix, signed_agreement_file, 'signed_agreement_file')
                 client_ref.signed_agreement_link = signed_agreement_link
             db.session.commit()
+            if data.get('client_name') != old_client_name:
+                body = {'client_name': data.get('client_name'), 'client_prefix': client_prefix}
+                res = requests.patch(CORE_SERVICE_URL + '/core/v1/clientManagement', json=body)
+                if res.status_code != 200:
+                    raise Exception('Failed to update the record in clientMapping')
             response_object['status'] = 'success'
             return response_object, 200
         except Exception as e:
+            db.session.rollback()
             logger.error('Failed while updating company settings', e)
             response_object['message'] = 'Failed while updating the Company Settings'
             return response_object, 400

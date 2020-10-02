@@ -11,6 +11,7 @@ services:
     environment:
       - FLASK_ENV=production
       - APP_SETTINGS=project.config.ProductionConfig
+      - CORE_SERVICE_URL=http://users:5000
       - DATABASE_URL=postgres://postgres:aSderRFgd23@wareiq-core-prod2.cvqssxsqruyc.us-east-1.rds.amazonaws.com:5432/users_prod  # new
       - SECRET_KEY=${SECRET_KEY}
 

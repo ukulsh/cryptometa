@@ -11,7 +11,7 @@ services:
     environment:
       - FLASK_ENV=staging
       - APP_SETTINGS=project.config.StagingConfig
-      - CORE_SERVICE_URL=http://users:5000
+      - CORE_SERVICE_URL=http://core:5000
       - DATABASE_URL=postgres://postgres:aSderRFgd23@wareiq-core-qa.cvqssxsqruyc.us-east-1.rds.amazonaws.com:5432/users_prod  # new
       - SECRET_KEY=${SECRET_KEY}
 

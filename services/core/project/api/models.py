@@ -489,6 +489,7 @@ class ClientPickups(db.Model):
     return_point = db.relationship("ReturnPoints", backref=db.backref("client_returns", uselist=True))
     gstin = db.Column(db.String, nullable=True)
     active = db.Column(db.BOOLEAN, nullable=True, default=True)
+    wareiq_location = db.Column(db.BOOLEAN, nullable=False, server_default='false', default=False)
     date_created = db.Column(db.DateTime, default=datetime.now)
     date_updated = db.Column(db.DateTime, onupdate=datetime.now)
 
@@ -524,6 +525,7 @@ class ClientPickups(db.Model):
             'return_pincode': self.return_point.pincode,
             'return_warehouse_prefix': self.return_point.warehouse_prefix,
             'active': self.active,
+            'wareiq_location': self.wareiq_location
         }
 
 

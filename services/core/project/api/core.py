@@ -184,9 +184,6 @@ def verification_passthru(type):
 @core_blueprint.route('/core/dev', methods=['POST'])
 def ping_dev():
     return 0
-    import requests
-    create_fulfillment_url = "https://9bf9e5f5fb698274d52d0e8a734354d7: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@actifiber.myshopify.com/admin/api/2020-07/orders/2803065618582.json"
-    qs = requests.get(create_fulfillment_url)
     import json, requests
     myfile = request.files['myfile']
     data_xlsx = pd.read_excel(myfile)
@@ -194,6 +191,31 @@ def ping_dev():
     iter_rw = data_xlsx.iterrows()
     source_items = list()
     sku_list = list()
+    cur = conn_2.cursor()
+    for row in iter_rw:
+        pickup_city = str(row[1].pickup_city)
+        cur.execute("SELECT city FROM city_pin_mapping where pincode='%s'" % str(row[1].pickup_pincode))
+        try:
+            pickup_city = cur.fetchone()[0]
+        except Exception:
+            cur.execute("INSERT INTO city_pin_mapping (pincode, city, district) VALUES (%s,%s,%s)", (str(row[1].pickup_pincode), pickup_city, pickup_city))
+
+        del_city = str(row[1].des_city)
+        cur.execute("SELECT city FROM city_pin_mapping where pincode='%s'" % str(row[1].delivery_pincode))
+        try:
+            del_city = cur.fetchone()[0]
+        except Exception:
+            cur.execute("INSERT INTO city_pin_mapping (pincode, city, district) VALUES (%s,%s,%s)", (str(row[1].delivery_pincode), del_city, del_city))
+
+        for courier_id in (1,2):
+            cur.execute("SELECT zone_value from city_zone_mapping where zone='%s' and city='%s' and courier_id=%s" %(pickup_city, del_city, str(courier_id)))
+            ent = None
+            try:
+                ent = cur.fetchone()[0]
+            except Exception:
+                pass
+            if not ent:
+                cur.execute("INSERT INTO city_zone_mapping (zone, city, zone_value, courier_id) VALUES (%s,%s,%s,%s)", (pickup_city, del_city, str(row[1].zone), courier_id))
     for row in iter_rw:
         try:
 

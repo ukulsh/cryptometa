@@ -12,3 +12,4 @@ pyjwt==1.7.1
 boto3==1.10.27
 boto==2.49.0
 botocore==1.13.27
+requests==2.21.0

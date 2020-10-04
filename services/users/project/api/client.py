@@ -4,9 +4,13 @@ from flask_restful import Resource, Api
 from project import db
 from project.api.models import Client, User
 from sqlalchemy import or_
+import requests
 from project.api.utils import authenticate_restful, pagination_validator
 from project.api.users_util import based_user_register
 import logging
+import os
+
+CORE_SERVICE_URL = os.environ.get('CORE_SERVICE_URL') or 'http://localhost:5010'
 
 logging.basicConfig(format='%(levelname)s:%(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -30,6 +34,10 @@ class Clients(Resource):
             user = based_user_register(post_data)
             db.session.add(user)
             db.session.commit()
+            body = {'client_name': client_name, 'client_prefix': client_prefix}
+            res = requests.post(CORE_SERVICE_URL+'/core/v1/clientManagement', json=body)
+            if res.status_code != 201:
+                raise Exception('Failed to create the record in clientMapping')
             response_object['status'] = 'success'
             logger.info('client created successfully')
             return response_object, 201
@@ -52,6 +60,11 @@ class Clients(Resource):
             client.primary_email = primary_email
             client.tabs = tabs
             db.session.commit()
+            body = {'client_name': client_name, 'client_prefix': client_prefix}
+            if client.client_name != client_name:
+                res = requests.patch(CORE_SERVICE_URL+'/core/v1/clientManagement', json=body)
+                if res.status_code != 200:
+                    raise Exception('Failed to update the record in clientMapping')
             response_object['status'] = 'success'
             logger.info('client created successfully')
             return response_object, 200

@@ -184,9 +184,6 @@ def verification_passthru(type):
 @core_blueprint.route('/core/dev', methods=['POST'])
 def ping_dev():
     return 0
-    import requests
-    create_fulfillment_url = "https://9bf9e5f5fb698274d52d0e8a734354d7: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@actifiber.myshopify.com/admin/api/2020-07/orders/2803065618582.json"
-    qs = requests.get(create_fulfillment_url)
     import json, requests
     myfile = request.files['myfile']
     data_xlsx = pd.read_excel(myfile)
@@ -221,10 +218,10 @@ def ping_dev():
 
             """
             sku_list.append({"sku": sku,
-                             "warehouse": "HOLISOLBL",
+                             "warehouse": "QSBHIWANDI",
                              "quantity": del_qty,
-                             "type": "add",
-                             "remark": "30 sep inbound"})
+                             "type": "replace",
+                             "remark": "5 oct upload"})
 
             """
 
@@ -249,18 +246,19 @@ def ping_dev():
                 db.session.add(combo_obj)
             else:
                 pass
-
-            if row[0]%200==0:
+            
+            if row[0]%40==0:
                 headers = {
-                    'Authorization': "Bearer " + "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJleHAiOjE2MDE3NDQwNzksImlhdCI6MTU5OTE1MjA3OSwic3ViIjo5fQ.lPSECo8JK0zJgv6oAO0fLyJ5JvsnJjVHp-97cKNO6E0",
+                    'Authorization': "Bearer " + "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJleHAiOjE2MDMwMzg2NzQsImlhdCI6MTYwMDQ0NjY3NCwic3ViIjo5fQ.HLgf5CEPcvuiaiopnGOyRin5-utI6v9uNQ8iPSa4NXE",
                     'Content-Type': 'application/json'}
 
                 data = {"sku_list": sku_list}
-                req = requests.post("http://track.wareiq.com/products/v1/update_inventory", headers=headers,
+                req = requests.post("https://track.wareiq.com/products/v1/update_inventory", headers=headers,
                                     data=json.dumps(data))
 
                 sku_list = list()
             """
+
 
         except Exception as e:
             pass
@@ -272,18 +270,19 @@ def ping_dev():
     data = {"sku_list": sku_list}
     req = requests.post("https://track.wareiq.com/products/v1/update_inventory", headers=headers,
                         data=json.dumps(data))
+
+    return 0
+    return 0
+    import boto3
+    return 0
     from woocommerce import API
     wcapi = API(
         url="https://nchantstore.com",
         consumer_key="ck_9b1c9a4774b6453e99cacceb15d99da56843a54d",
         consumer_secret="cs_ba1766d2e5f3a070e419039308a1c59f18ad57bf",
-        version="wc/v3",
-        verify_ssl=False
+        version="wc/v3"
     )
-    r = wcapi.get('orders')
-    return 0
-    return 0
-    import boto3
+    r = wcapi.get('products?per_page=100&page=1')
     from botocore.exceptions import ClientError
 
     # Replace sender@example.com with your "From" address.

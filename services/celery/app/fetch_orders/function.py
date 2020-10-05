@@ -3,6 +3,7 @@ from datetime import datetime, timedelta
 from requests_oauthlib.oauth1_session import OAuth1Session
 from woocommerce import API
 import logging
+from app.db_utils import DbConnection
 
 from .queries import *
 
@@ -15,10 +16,9 @@ user = os.environ('DTATBASE_USER')
 password = os.environ('DTATBASE_PASSWORD')
 conn = psycopg2.connect(host=host, database=database, user=user, password=password)
 """
-conn = psycopg2.connect(host="wareiq-core-prod2.cvqssxsqruyc.us-east-1.rds.amazonaws.com", database="core_prod",
-                        user="postgres", password="aSderRFgd23")
-conn_2 = psycopg2.connect(host="wareiq-core-prod.cvqssxsqruyc.us-east-1.rds.amazonaws.com", database="core_prod",
-                          user="postgres", password="aSderRFgd23")
+
+conn = DbConnection.get_db_connection_instance()
+conn_2 = DbConnection.get_pincode_db_connection_instance()
 
 
 def fetch_orders():

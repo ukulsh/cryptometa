@@ -58,11 +58,12 @@ class OrderList(Resource):
         try:
             hide_weights = None
             cur = conn.cursor()
-            response = {'status':'success', 'data': dict(), "meta": dict()}
+            response = {'status': 'success', 'data': dict(), "meta": dict()}
             data = json.loads(request.data)
             page = data.get('page', 1)
             per_page = data.get('per_page', 10)
             search_key = data.get('search_key', '')
+            search_key_on_customer_detail = data.get('search_key_on_customer_detail', '')
             since_id = data.get('since_id', None)
             filters = data.get('filters', {})
             download_flag = request.args.get("download", None)
@@ -71,7 +72,7 @@ class OrderList(Resource):
                 return {"success": False, "msg": "Auth Failed"}, 404
 
             client_prefix = auth_data.get('client_prefix')
-            cur.execute("SELECT hide_weights FROM client_mapping WHERE client_prefix='%s'"%client_prefix)
+            cur.execute("SELECT hide_weights FROM client_mapping WHERE client_prefix='%s'" % client_prefix)
             try:
                 hide_weights = cur.fetchone()[0]
             except Exception:
@@ -82,11 +83,11 @@ class OrderList(Resource):
                                             __CLIENT_FILTER__
                                             order by bb.warehouse_prefix) xx"""
             if auth_data['user_group'] == 'super-admin':
-                pickup_points_select_query = pickup_points_select_query.replace("__CLIENT_FILTER__","")
+                pickup_points_select_query = pickup_points_select_query.replace("__CLIENT_FILTER__", "")
             elif auth_data['user_group'] == 'client':
-                pickup_points_select_query = pickup_points_select_query.replace("__CLIENT_FILTER__","where aa.client_prefix='%s'"%str(client_prefix))
+                pickup_points_select_query = pickup_points_select_query.replace("__CLIENT_FILTER__", "where aa.client_prefix='%s'" % str(client_prefix))
             elif auth_data['user_group'] == 'multi-vendor':
-                pickup_points_select_query = pickup_points_select_query.replace("__CLIENT_FILTER__","where aa.client_prefix in (select unnest(vendor_list) from multi_vendor where client_prefix='%s')"%str(client_prefix))
+                pickup_points_select_query = pickup_points_select_query.replace("__CLIENT_FILTER__", "where aa.client_prefix in (select unnest(vendor_list) from multi_vendor where client_prefix='%s')"%str(client_prefix))
             else:
                 pickup_points_select_query = None
 
@@ -99,8 +100,21 @@ class OrderList(Resource):
                     pass
 
             query_to_run = select_orders_list_query
+
+            if search_key:
+                regex_check = "where (aa.channel_order_id ilike '%__SEARCH_KEY__%' or awb ilike '%__SEARCH_KEY__%')"
+                query_to_run = query_to_run.replace("__SEARCH_KEY_FILTER__", regex_check)
+                query_to_run = query_to_run.replace("__SEARCH_KEY__", search_key)
+            else:
+                query_to_run = query_to_run.replace("__SEARCH_KEY_FILTER__", "where (1=1)")
+
+            if search_key_on_customer_detail:
+                regex_check_customer_details = " AND (customer_name ilike '%__SEARCH_KEY_ON_CUSTOMER_DETAILS__%' or customer_phone ilike '%__SEARCH_KEY_ON_CUSTOMER_DETAILS__%' or customer_email ilike '%__SEARCH_KEY_ON_CUSTOMER_DETAILS__%')"
+                query_to_run = query_to_run.replace("__SEARCH_KEY_FILTER_ON_CUSTOMER__", regex_check_customer_details)
+                query_to_run = query_to_run.replace("__SEARCH_KEY_ON_CUSTOMER_DETAILS__", search_key_on_customer_detail)
+
             if auth_data['user_group'] == 'client':
-                query_to_run = query_to_run.replace("__CLIENT_FILTER__", "AND aa.client_prefix = '%s'"%client_prefix)
+                query_to_run = query_to_run.replace("__CLIENT_FILTER__", "AND aa.client_prefix = '%s'" % client_prefix)
             if auth_data['user_group'] == 'warehouse':
                 query_to_run = query_to_run.replace("__PICKUP_FILTER__", "AND ii.warehouse_prefix = '%s'" % auth_data.get('warehouse_prefix'))
             if auth_data['user_group'] == 'multi-vendor':
@@ -111,8 +125,7 @@ class OrderList(Resource):
                 query_to_run = query_to_run.replace("__MV_CLIENT_FILTER__", "")
 
             if since_id:
-                query_to_run = query_to_run.replace("__SINCE_ID_FILTER__", "AND id>%s"%str(since_id))
-            query_to_run = query_to_run.replace("__SEARCH_KEY__", search_key)
+                query_to_run = query_to_run.replace("__SINCE_ID_FILTER__", "AND id>%s" % str(since_id))
 
             if type == 'new':
                 query_to_run = query_to_run.replace("__TAB_STATUS_FILTER__", "AND aa.status = 'NEW'")
@@ -135,13 +148,15 @@ class OrderList(Resource):
                         status_tuple = "('"+filters['status'][0]+"')"
                     else:
                         status_tuple = str(tuple(filters['status']))
-                    query_to_run = query_to_run.replace("__STATUS_FILTER__", "AND aa.status in %s"%status_tuple)
+                    query_to_run = query_to_run.replace("__STATUS_FILTER__", "AND aa.status in %s"% status_tuple)
+
                 if 'courier' in filters:
                     if len(filters['courier']) == 1:
                         courier_tuple = "('"+filters['courier'][0]+"')"
                     else:
                         courier_tuple = str(tuple(filters['courier']))
-                    query_to_run = query_to_run.replace("__COURIER_FILTER__", "AND courier_name in %s"%courier_tuple)
+                    query_to_run = query_to_run.replace("__COURIER_FILTER__", "AND courier_name in %s" %courier_tuple)
+
                 if 'client' in filters and auth_data['user_group'] != 'client':
                     if len(filters['client']) == 1:
                         client_tuple = "('"+filters['client'][0]+"')"
@@ -270,11 +285,10 @@ class OrderList(Resource):
             count_query = re.sub(r"""__.+?__""", "", count_query)
             cur.execute(count_query)
             total_count = cur.fetchone()[0]
-            query_to_run = query_to_run.replace('__PAGINATION__', "OFFSET %s LIMIT %s"%(str((page-1)*per_page), str(per_page)))
+            query_to_run = query_to_run.replace('__PAGINATION__', "OFFSET %s LIMIT %s" % (str((page-1)*per_page), str(per_page)))
             query_to_run = re.sub(r"""__.+?__""", "", query_to_run)
             cur.execute(query_to_run)
             orders_qs_data = cur.fetchall()
-
             response_data = list()
             for order in orders_qs_data:
                 resp_obj=dict()

@@ -171,7 +171,7 @@ def sync_all_products_with_channel(client_prefix):
                                 cur.execute("""INSERT INTO products (name, sku, active, channel_id, date_created, price, master_sku, client_prefix) VALUES 
                                                                                 (%s,%s,%s,%s,%s,%s,%s,%s);""",
                                             (prod_name, str(prod['id']), True, channel[4], datetime.now(),
-                                             float(prod['price']), prod['sku'], client_prefix))
+                                             float(prod['price']) if prod['price'] else None, prod['sku'], client_prefix))
                             conn.commit()
 
                     count = len(all_prods)

@@ -218,7 +218,7 @@ class ReturnPoints(db.Model):
 class OPAssociation(db.Model):
     __tablename__ = 'op_association'
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    order_id = db.Column('order_id', db.Integer, db.ForeignKey('orders.id'))
+    order_id = db.Column('order_id', db.Integer, db.ForeignKey('orders.id'), index=True)
     product_id = db.Column('product_id', db.Integer, db.ForeignKey('products.id'))
     quantity = db.Column(db.Integer)
     amount = db.Column(db.FLOAT, nullable=True)
@@ -254,7 +254,7 @@ class Orders(db.Model):
     date_created = db.Column(db.DateTime, default=datetime.now)
     date_updated = db.Column(db.DateTime, onupdate=datetime.now)
     __table_args__ = (UniqueConstraint('channel_order_id', 'client_prefix', name='id_client_unique'),
-                      Index('orders_id_date_idx_2','order_date', 'id'),
+                      Index('orders_id_date_idx_2', 'order_date', 'id'),
                       )
 
 
@@ -266,7 +266,7 @@ class OrdersPayments(db.Model):
     subtotal = db.Column(db.FLOAT, nullable=True)
     shipping_charges = db.Column(db.FLOAT, nullable=True)
     currency = db.Column(db.String, nullable=False, default='INR')
-    order_id = db.Column(db.Integer, db.ForeignKey('orders.id'))
+    order_id = db.Column(db.Integer, db.ForeignKey('orders.id'), unique=True, index=True)
     order = db.relationship("Orders", backref=db.backref("payments", uselist=True))
 
 
@@ -318,7 +318,7 @@ class NDRReasons(db.Model):
 class NDRShipments(db.Model):
     __tablename__ = "ndr_shipments"
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    order_id = db.Column(db.Integer, db.ForeignKey('orders.id'))
+    order_id = db.Column(db.Integer, db.ForeignKey('orders.id'), index=True)
     order = db.relationship("Orders", backref=db.backref("ndr_shipments"))
     shipment_id = db.Column(db.Integer, db.ForeignKey('shipments.id'))
     shipment = db.relationship("Shipments", backref=db.backref("ndr_shipments"))
@@ -621,7 +621,7 @@ class OrderScans(db.Model):
 class CodVerification(db.Model):
     __tablename__ = "cod_verification"
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    order_id = db.Column(db.Integer, db.ForeignKey('orders.id'))
+    order_id = db.Column(db.Integer, db.ForeignKey('orders.id'), unique=True, index=True)
     order = db.relationship("Orders", backref=db.backref("exotel_data", uselist=True))
     call_sid = db.Column(db.String, nullable=True)
     recording_url = db.Column(db.String, nullable=True)
@@ -639,7 +639,7 @@ class CodVerification(db.Model):
 class NDRVerification(db.Model):
     __tablename__ = "ndr_verification"
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    order_id = db.Column(db.Integer, db.ForeignKey('orders.id'))
+    order_id = db.Column(db.Integer, db.ForeignKey('orders.id'), index=True)
     order = db.relationship("Orders", backref=db.backref("ndr_verification", uselist=True))
     call_sid = db.Column(db.String, nullable=True)
     recording_url = db.Column(db.String, nullable=True)

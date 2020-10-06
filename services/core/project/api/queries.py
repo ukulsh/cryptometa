@@ -417,8 +417,9 @@ select_orders_list_query = """select distinct on (aa.order_date, aa.id) aa.chann
                              left join cod_verification mm on mm.order_id=aa.id
                              left join ndr_verification nn on nn.order_id=aa.id
                              left join (select ss.id, ss.order_id, tt.id as reason_id, tt.reason, ss.date_created from ndr_shipments ss left join ndr_reasons tt on ss.reason_id=tt.id ) rr
-                             on aa.id=rr.order_id                                   
-                             WHERE (aa.channel_order_id ilike '%__SEARCH_KEY__%' or awb ilike '%__SEARCH_KEY__%' or customer_name ilike '%__SEARCH_KEY__%' or customer_phone ilike '%__SEARCH_KEY__%')
+                             on aa.id=rr.order_id
+                             __SEARCH_KEY_FILTER__
+                             __SEARCH_KEY_FILTER_ON_CUSTOMER__
                              __ORDER_DATE_FILTER__
                              __MANIFEST_DATE_FILTER__
                              __PICKUP_TIME_FILTER__

@@ -1,4 +1,4 @@
-import json
+import json, random, string
 import math
 import re
 from datetime import datetime, timedelta
@@ -16,11 +16,12 @@ from reportlab.lib.pagesizes import landscape, A4
 from reportlab.lib.units import inch
 from reportlab.pdfgen import canvas
 from sqlalchemy import func, or_, not_, and_
+from sqlalchemy.dialects.postgresql import insert
 
 from project import db
 from project.api.models import NDRReasons, MultiVendor, NDRShipments, Orders, ClientPickups, MasterCouriers, \
     PickupPoints, Shipments, Products, ShippingAddress, OPAssociation, OrdersPayments, ClientMapping, WarehouseMapping, \
-    Manifests, OrderStatus, IVRHistory
+    Manifests, OrderStatus, IVRHistory, OrderPickups
 from project.api.queries import select_orders_list_query, available_warehouse_product_quantity, \
     fetch_warehouse_to_pick_from
 from project.api.utils import authenticate_restful, fill_shiplabel_data_thermal, \
@@ -849,6 +850,77 @@ def download_shiplabels(resp):
         'status': 'success',
         'url': shiplabel_url,
         "failed_ids": failed_ids
+    }), 200
+
+
+@orders_blueprint.route('/orders/v1/request_pickups', methods=['POST'])
+@authenticate_restful
+def request_pickups(resp):
+    try:
+        data = json.loads(request.data)
+        auth_data = resp.get('data')
+        if not auth_data:
+            return jsonify({"success": False, "msg": "Auth Failed"}), 401
+
+        if auth_data['user_group'] != 'client':
+            return jsonify({"success": False, "msg": "Not allowed"}), 400
+
+        order_ids = data['order_ids']
+        orders_qs = db.session.query(Orders, Shipments).outerjoin(Shipments, Orders.id==Shipments.order_id).filter(Orders.id.in_(order_ids),
+                                                    Orders.shipments!=None).all() #todo: client/wh filters here
+
+        pur_dict = dict()
+
+        for order in orders_qs:
+            if order[0].pickup_data_id not in pur_dict:
+                pur_dict[order[0].pickup_data_id] = {order[1].courier_id: [order[0]]}
+            elif order[1].courier_id not in pur_dict[order[0].pickup_data_id]:
+                pur_dict[order[0].pickup_data_id][order[1].courier_id] = [order[0]]
+            else:
+                pur_dict[order[0].pickup_data_id][order[1].courier_id].append(order[0])
+
+        pickup_time_ist = datetime.utcnow() + timedelta(hours=5.5)
+        if pickup_time_ist.hour>13:
+            pickup_time_ist = pickup_time_ist + timedelta(days=1)
+        pickup_time_str = pickup_time_ist.strftime("%Y-%m-%d")
+        for pickup_data_id, courier_dict in pur_dict.items():
+            for courier_id, order_list in courier_dict.items():
+                manifest_qs = db.session.query(Manifests).filter(Manifests.client_pickup_id==pickup_data_id,
+                                                                 Manifests.courier_id==courier_id,
+                                                                 Manifests.pickup_date>=pickup_time_str).first()
+                if not manifest_qs:
+                    manifest_id_str = pickup_time_ist.strftime('%Y_%m_%d_') + ''.join(
+                        random.choices(string.ascii_uppercase, k=8)) + "_" + str(auth_data.get('client_prefix'))
+
+                    manifest_qs = Manifests(manifest_id=manifest_id_str,
+                                            warehouse_prefix=order_list[0].pickup_data.pickup.warehouse_prefix,
+                                            courier_id=courier_id,
+                                            client_pickup_id=pickup_data_id,
+                                            pickup_id=order_list[0].pickup_data.pickup.id,
+                                            pickup_date=pickup_time_ist,
+                                            manifest_url="",
+                                            total_scheduled=len(order_list)
+                                            )
+
+                    db.session.add(manifest_qs)
+                    db.session.flush()
+
+                manifest_id = manifest_qs.id
+
+                for order in order_list:
+                    stmt = insert(OrderPickups).values(manifest_id=manifest_id, order_id=order.id, picked=False)
+                    stmt = stmt.on_conflict_do_nothing()
+                    db.session.execute(stmt)
+                    order.status = "PICKUP REQUESTED"
+
+        db.session.commit()
+    except Exception as e:
+        return jsonify({
+            'status': 'failed'
+        }), 400
+
+    return jsonify({
+        'status': 'success'
     }), 200
 
 

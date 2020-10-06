@@ -157,13 +157,10 @@ delete_failed_shipments_query = """DELETE FROM 	order_status where shipment_id i
 #########################request pickups
 
 
-get_pickup_requests_query = """select aa.id,aa.client_prefix,bb.warehouse_prefix,aa.pickup_id, cc.id as pr_id,
-                                cc.pickup_after_hours
+get_pickup_requests_query = """select aa.id,aa.client_prefix,bb.warehouse_prefix,aa.pickup_id, auto_pur, auto_pur_time
                                 from client_pickups aa
-                                left join pickup_points bb
-                                on aa.pickup_id=bb.id
-                                left join pickup_requests cc
-                                on aa.client_prefix=cc.client_prefix;"""
+                                left join pickup_points bb on aa.pickup_id=bb.id
+                                left join client_mapping cc on aa.client_prefix=cc.client_prefix;"""
 
 get_request_pickup_orders_data_query = """select aa.channel_order_id, aa.order_date, aa.client_prefix, 
                                 bb.weight, cc.courier_name, cc.api_key, cc.api_url, dd.prod_names, 
@@ -188,18 +185,15 @@ get_request_pickup_orders_data_query = """select aa.channel_order_id, aa.order_d
                                 on aa.delivery_address_id=ff.id
                                 where aa.status in __ORDER_STATUS__
                                 and aa.pickup_data_id=%s
-                                and aa.order_date<%s
                                 order by aa.id;"""
 
-update_order_status_query = """UPDATE orders SET status='PICKUP REQUESTED' WHERE id=%s"""
+update_order_status_query = """UPDATE orders SET status='PICKUP REQUESTED' WHERE id=%s;
+                                INSERT INTO order_pickups (manifest_id, order_id, picked, date_created)
+                                VALUES (%s,%s,%s,%s) ON CONFLICT (manifest_id, order_id) DO NOTHING;"""
 
 insert_manifest_data_query = """INSERT INTO manifests (manifest_id, warehouse_prefix, courier_id, pickup_id, 
                                 total_scheduled, pickup_date, manifest_url, date_created, client_pickup_id) VALUES 
-                                (%s,%s,%s,%s,%s,%s,%s,%s,%s)"""
-
-update_pickup_requests_query = """UPDATE pickup_requests SET last_picked_order_id=%s, last_pickup_request_date=%s
-                                  WHERE client_prefix=%s"""
-
+                                (%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id;"""
 
 #########################update status
 

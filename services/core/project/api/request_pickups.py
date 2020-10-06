@@ -20,22 +20,25 @@ def lambda_handler():
     for pick_req in all_pickups:
         pickup_request_dict = dict()
 
-        time_now = datetime.utcnow()
-        time_before = time_now + timedelta(hours=5.5) - timedelta(hours=pick_req[5] if pick_req[5] else 0)
+        time_now = datetime.utcnow() + timedelta(hours=5.5)
 
-        time_before = time_before.strftime("%Y-%m-%d %H:%M")
+        """
+        if pick_req[5] and pick_req[5]!=time_now.hour:
+            continue
+        """
 
-        get_orders_data_tuple = (pick_req[0], time_before)
-        if time_now.hour<7:
-            time_string = "14:00:00"
-            cur.execute(get_request_pickup_orders_data_query.replace("__ORDER_STATUS__", "('READY TO SHIP', 'PICKUP REQUESTED')"), get_orders_data_tuple)
-        else:
-            time_string = "16:00:00"
-            cur.execute(get_request_pickup_orders_data_query.replace("__ORDER_STATUS__", "('READY TO SHIP')"), get_orders_data_tuple)
+        get_orders_data_tuple = (pick_req[0],)
+        cur.execute(get_request_pickup_orders_data_query.replace("__ORDER_STATUS__", "('READY TO SHIP', 'PICKUP REQUESTED')"), get_orders_data_tuple)
 
         all_orders = cur.fetchall()
+
         if not all_orders:
             continue
+
+        if time_now.hour<12:
+            time_string = "14:00:00"
+        else:
+            time_string = "16:00:00"
 
         order = None
         for order in all_orders:
@@ -44,24 +47,8 @@ def lambda_handler():
             else:
                 pickup_request_dict[order[4]]['orders'].append(order)
 
-            cur.execute(update_order_status_query%str(order[21]))
-
-        if order:
-            last_picked_update_id = order[21]
-        else:
-            continue
-
         for courier, values in pickup_request_dict.items():
-            manifest_url = fill_manifest_data(values['orders'], courier, pick_req[2], pick_req[2])
-            current_time = datetime.now()
             pickup_date = datetime.today()
-            manifest_id = current_time.strftime('%Y_%m_%d_') +''.join(random.choices(string.ascii_uppercase, k=8)) +"_"+ pick_req[1]
-            pickup_date_string = pickup_date.strftime("%Y-%m-%d ")+ time_string
-            manifest_data_tuple = (manifest_id, pick_req[2], values['courier_id'], pick_req[3], len(values['orders']),
-                                   pickup_date_string, manifest_url, current_time, pick_req[0])
-            if time_now.hour < 7:
-                cur.execute(insert_manifest_data_query, manifest_data_tuple)
-
             if courier in ("Delhivery", "Delhivery Surface Standard", "Delhivery 2 KG", "Delhivery 10 KG", "Delhivery 20 KG"):
                 pickup_request_api_body = json.dumps({ "pickup_time": time_string,
                                             "pickup_date": pickup_date.strftime("%Y-%m-%d"),
@@ -75,9 +62,18 @@ def lambda_handler():
 
                 req = requests.post(pickup_request_api_url, headers=headers, data=pickup_request_api_body)
 
-        if last_picked_update_id:
-            update_pickup_requests_tuple = (last_picked_update_id, datetime.now(), pick_req[1])
-            cur.execute(update_pickup_requests_query, update_pickup_requests_tuple)
+            if pick_req[4]:
+                manifest_url = fill_manifest_data(values['orders'], courier, pick_req[2], pick_req[2])
+                current_time = datetime.now()
+                manifest_id = current_time.strftime('%Y_%m_%d_') +''.join(random.choices(string.ascii_uppercase, k=8)) +"_"+ pick_req[1]
+                pickup_date_string = pickup_date.strftime("%Y-%m-%d ")+ time_string
+                manifest_data_tuple = (manifest_id, pick_req[2], values['courier_id'], pick_req[3], len(values['orders']),
+                                       pickup_date_string, manifest_url, current_time, pick_req[0])
+                cur.execute(insert_manifest_data_query, manifest_data_tuple)
+                manifest_temp = cur.fetchone()
+                manifest_id = manifest_temp[0]
+                for order in values['orders']:
+                    cur.execute(update_order_status_query, (order[21], manifest_id, order[21], False, current_time))
 
         conn.commit()
 

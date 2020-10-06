@@ -777,26 +777,43 @@ def download_shiplabels(resp):
     if not orders_qs:
         return jsonify({"success": False, "msg": "No valid order ID"}), 404
 
-    sl_type_pref = auth_data.get('warehouse_prefix')
-    if not sl_type_pref:
-        sl_type_pref = auth_data.get('client_prefix')
+    shiplabel_url, failed_ids = shiplabel_download_util(orders_qs, auth_data)
 
-    shiplabel_type = db.session.query(WarehouseMapping).filter(WarehouseMapping.warehouse_prefix==sl_type_pref).first()
+    return jsonify({
+        'status': 'success',
+        'url': shiplabel_url,
+        "failed_ids": failed_ids
+    }), 200
+
+
+def shiplabel_download_util(orders_qs, auth_data):
+    shiplabel_type = "A41"
+    if auth_data['user_group'] in ('client', 'super-admin', 'multi-vendor'):
+        qs = db.session.query(ClientMapping).filter(
+            ClientMapping.client_prefix == auth_data.get('client_prefix')).first()
+        if qs and qs.shipping_label:
+            shiplabel_type = qs.shipping_label
+    if auth_data['user_group'] == 'warehouse':
+        qs = db.session.query(WarehouseMapping).filter(
+            WarehouseMapping.warehouse_prefix == auth_data.get('warehouse_prefix')).first()
+        if qs and qs.shiplabel_type:
+            shiplabel_type = qs.shiplabel_type
+
     file_pref = auth_data['client_prefix'] if auth_data['client_prefix'] else auth_data['warehouse_prefix']
-    file_name = "shiplabels_"+str(file_pref)+"_"+str(datetime.now().strftime("%d_%b_%Y_%H_%M_%S"))+".pdf"
-    if shiplabel_type and shiplabel_type.shiplabel_type=='TH1':
+    file_name = "shiplabels_" + str(file_pref) + "_" + str(datetime.now().strftime("%d_%b_%Y_%H_%M_%S")) + ".pdf"
+    if shiplabel_type == 'TH1':
         c = canvas.Canvas(file_name, pagesize=(288, 432))
         create_shiplabel_blank_page_thermal(c)
     else:
         c = canvas.Canvas(file_name, pagesize=landscape(A4))
         create_shiplabel_blank_page(c)
     failed_ids = dict()
-    idx=0
+    idx = 0
     for ixx, order in enumerate(orders_qs):
         try:
             if not order[0].shipments or not order[0].shipments[0].awb:
                 continue
-            if shiplabel_type and shiplabel_type.shiplabel_type=='TH1':
+            if shiplabel_type == 'TH1':
                 try:
                     fill_shiplabel_data_thermal(c, order[0], order[1])
                 except Exception:
@@ -806,7 +823,7 @@ def download_shiplabels(resp):
                     c.showPage()
                     create_shiplabel_blank_page_thermal(c)
 
-            elif shiplabel_type and shiplabel_type.shiplabel_type=='A41':
+            elif shiplabel_type == 'A41':
                 offset = 3.913
                 try:
                     fill_shiplabel_data(c, order[0], offset, order[1])
@@ -819,12 +836,12 @@ def download_shiplabels(resp):
                     c.showPage()
                     create_shiplabel_blank_page(c)
             else:
-                offset_dict = {0:0.20, 1:3.913, 2:7.676}
+                offset_dict = {0: 0.20, 1: 3.913, 2: 7.676}
                 try:
-                    fill_shiplabel_data(c, order[0], offset_dict[idx%3], order[1])
+                    fill_shiplabel_data(c, order[0], offset_dict[idx % 3], order[1])
                 except Exception:
                     pass
-                if idx%3==2 and ixx!=(len(orders_qs)-1):
+                if idx % 3 == 2 and ixx != (len(orders_qs) - 1):
                     c.showPage()
                     create_shiplabel_blank_page(c)
             idx += 1
@@ -832,25 +849,20 @@ def download_shiplabels(resp):
             failed_ids[order[0].channel_order_id] = str(e.args[0])
             pass
 
-    if not (shiplabel_type and shiplabel_type.shiplabel_type in ('A41','TH1')):
+    if not (shiplabel_type in ('A41', 'TH1')):
         c.setFillColorRGB(1, 1, 1)
-        if idx%3==1:
-            c.rect(2.917 * inch, -1.0 * inch, 10 * inch, 10*inch, fill=1)
-        if idx%3==2:
-            c.rect(6.680 * inch, -1.0 * inch, 10 * inch, 10*inch, fill=1)
+        if idx % 3 == 1:
+            c.rect(2.917 * inch, -1.0 * inch, 10 * inch, 10 * inch, fill=1)
+        if idx % 3 == 2:
+            c.rect(6.680 * inch, -1.0 * inch, 10 * inch, 10 * inch, fill=1)
 
     c.save()
     s3 = session.resource('s3')
     bucket = s3.Bucket("wareiqshiplabels")
-    bucket.upload_file(file_name, file_name, ExtraArgs={'ACL':'public-read'})
+    bucket.upload_file(file_name, file_name, ExtraArgs={'ACL': 'public-read'})
     shiplabel_url = "https://wareiqshiplabels.s3.us-east-2.amazonaws.com/" + file_name
     os.remove(file_name)
-
-    return jsonify({
-        'status': 'success',
-        'url': shiplabel_url,
-        "failed_ids": failed_ids
-    }), 200
+    return shiplabel_url, failed_ids
 
 
 @orders_blueprint.route('/orders/v1/request_pickups', methods=['POST'])
@@ -921,6 +933,74 @@ def request_pickups(resp):
 
     return jsonify({
         'status': 'success'
+    }), 200
+
+
+@orders_blueprint.route('/orders/v1/<pickup_id>/pick_orders', methods=['GET'])
+@authenticate_restful
+def pick_orders(resp, pickup_id):
+    response = list()
+    try:
+        auth_data = resp.get('data')
+        if not auth_data:
+            return jsonify({"success": False, "msg": "Auth Failed"}), 401
+
+        manifest_id=int(pickup_id)
+
+        order_qs = db.session.query(OrderPickups).filter(OrderPickups.manifest_id==manifest_id).all()
+        for order in order_qs:
+            res_obj = dict()
+            res_obj['unique_id'] = order.order_id
+            res_obj['order_id'] = order.order.channel_order_id
+            res_obj['awb'] = order.order.shipments[0].awb if order.order.shipments[0] else None
+            res_obj['picked'] = order.picked
+            res_obj['picked_time'] = order.pickup_time
+            response.append(res_obj)
+
+    except Exception as e:
+        return jsonify({
+            'status': 'failed'
+        }), 400
+
+    return jsonify({
+        'status': 'success',
+        'data': response
+    }), 200
+
+
+@orders_blueprint.route('/orders/v1/<pickup_id>/download', methods=['GET'])
+@authenticate_restful
+def pickup_download(resp, pickup_id):
+    response = list()
+    try:
+        auth_data = resp.get('data')
+        if not auth_data:
+            return jsonify({"success": False, "msg": "Auth Failed"}), 401
+
+        flag = request.args.get('flag')
+        if not flag:
+            return jsonify({"success": False, "msg": "Bad request"}), 400
+
+        manifest_id=int(pickup_id)
+        download_url = ""
+
+        if flag=="labels":
+            orders_qs = db.session.query(Orders, ClientMapping).outerjoin(ClientMapping,
+                                                              Orders.client_prefix == ClientMapping.client_prefix).outerjoin(
+                OrderPickups, Orders.id == OrderPickups.order_id).filter(OrderPickups.manifest_id == manifest_id).all()
+            if not orders_qs:
+                return jsonify({"success": False, "msg": "No valid order ID"}), 400
+
+            download_url, failed_ids = shiplabel_download_util(orders_qs, auth_data)
+
+    except Exception as e:
+        return jsonify({
+            'status': 'failed'
+        }), 400
+
+    return jsonify({
+        'status': 'success',
+        'download_url': download_url
     }), 200
 
 
@@ -1216,6 +1296,7 @@ def get_manifests(resp):
         manifest_dict['total_picked'] = manifest.total_picked
         manifest_dict['pickup_date'] = manifest.pickup_date
         manifest_dict['manifest_url'] = manifest.manifest_url
+        manifest_dict['pickup_id'] = manifest.id
         return_data.append(manifest_dict)
 
     response['data'] = return_data

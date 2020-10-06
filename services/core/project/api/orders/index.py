@@ -787,7 +787,7 @@ def download_shiplabels(resp):
 
 
 def shiplabel_download_util(orders_qs, auth_data):
-    shiplabel_type = "A41"
+    shiplabel_type = "A4"
     if auth_data['user_group'] in ('client', 'super-admin', 'multi-vendor'):
         qs = db.session.query(ClientMapping).filter(
             ClientMapping.client_prefix == auth_data.get('client_prefix')).first()

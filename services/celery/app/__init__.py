@@ -32,7 +32,7 @@ app.config['USERS_SERVICE_URL'] = os.environ.get('USERS_SERVICE_URL')
 app.config['CELERYBEAT_SCHEDULE'] = {
     'run-status-update': {
             'task': 'status_update',
-            'schedule': crontab(minute='31', hour='*/2')
+            'schedule': crontab(minute='38', hour='*/2')
         },
     'run-fetch-orders': {
                 'task': 'fetch_orders',

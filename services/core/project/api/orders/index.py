@@ -971,7 +971,6 @@ def pick_orders(resp, pickup_id):
 @orders_blueprint.route('/orders/v1/<pickup_id>/download', methods=['GET'])
 @authenticate_restful
 def pickup_download(resp, pickup_id):
-    response = list()
     try:
         auth_data = resp.get('data')
         if not auth_data:
@@ -992,6 +991,39 @@ def pickup_download(resp, pickup_id):
                 return jsonify({"success": False, "msg": "No valid order ID"}), 400
 
             download_url, failed_ids = shiplabel_download_util(orders_qs, auth_data)
+
+        elif flag=="invoice":
+            orders_qs = db.session.query(Orders, ClientMapping).outerjoin(ClientMapping,
+                                                              Orders.client_prefix == ClientMapping.client_prefix).outerjoin(
+                OrderPickups, Orders.id == OrderPickups.order_id).filter(OrderPickups.manifest_id == manifest_id).all()
+            if not orders_qs:
+                return jsonify({"success": False, "msg": "No valid order ID"}), 400
+
+            download_url, failed_ids = download_invoice_util(orders_qs, auth_data)
+
+        elif flag=="picklist":
+            orders_qs = db.session.query(Orders).outerjoin(
+                OrderPickups, Orders.id == OrderPickups.order_id).filter(OrderPickups.manifest_id == manifest_id).all()
+            if not orders_qs:
+                return jsonify({"success": False, "msg": "No valid order ID"}), 400
+
+            download_url = download_picklist_util(orders_qs, auth_data)
+
+        elif flag=="packlist":
+            orders_qs = db.session.query(Orders).outerjoin(
+                OrderPickups, Orders.id == OrderPickups.order_id).filter(OrderPickups.manifest_id == manifest_id).all()
+            if not orders_qs:
+                return jsonify({"success": False, "msg": "No valid order ID"}), 400
+
+            download_url = download_packlist_util(orders_qs, auth_data)
+
+        elif flag=="manifest":
+            orders_qs = db.session.query(Orders).outerjoin(
+                OrderPickups, Orders.id == OrderPickups.order_id).filter(OrderPickups.manifest_id == manifest_id).all()
+            if not orders_qs:
+                return jsonify({"success": False, "msg": "No valid order ID"}), 400
+
+            download_url = download_manifest_util(orders_qs, auth_data)
 
     except Exception as e:
         return jsonify({
@@ -1022,12 +1054,22 @@ def download_invoice(resp):
     if not orders_qs:
         return jsonify({"success": False, "msg": "No valid order ID"}), 404
 
+    invoice_url, failed_ids = download_invoice_util(orders_qs, auth_data)
+
+    return jsonify({
+        'status': 'success',
+        'url': invoice_url,
+        "failed_ids": failed_ids
+    }), 200
+
+
+def download_invoice_util(orders_qs, auth_data):
     file_pref = auth_data['client_prefix'] if auth_data['client_prefix'] else auth_data['warehouse_prefix']
-    file_name = "invoice_"+str(file_pref)+"_"+str(datetime.now().strftime("%d_%b_%Y_%H_%M_%S"))+".pdf"
+    file_name = "invoice_" + str(file_pref) + "_" + str(datetime.now().strftime("%d_%b_%Y_%H_%M_%S")) + ".pdf"
     c = canvas.Canvas(file_name, pagesize=A4)
     create_invoice_blank_page(c)
     failed_ids = dict()
-    idx=0
+    idx = 0
     for order in orders_qs:
         try:
             try:
@@ -1045,15 +1087,10 @@ def download_invoice(resp):
     c.save()
     s3 = session.resource('s3')
     bucket = s3.Bucket("wareiqinvoices")
-    bucket.upload_file(file_name, file_name, ExtraArgs={'ACL':'public-read'})
+    bucket.upload_file(file_name, file_name, ExtraArgs={'ACL': 'public-read'})
     invoice_url = "https://wareiqinvoices.s3.us-east-2.amazonaws.com/" + file_name
     os.remove(file_name)
-
-    return jsonify({
-        'status': 'success',
-        'url': invoice_url,
-        "failed_ids": failed_ids
-    }), 200
+    return invoice_url, failed_ids
 
 
 @orders_blueprint.route('/orders/v1/download/picklist', methods=['POST'])
@@ -1073,6 +1110,15 @@ def download_picklist(resp):
     if not orders_qs:
         return jsonify({"success": False, "msg": "No valid order ID"}), 404
 
+    invoice_url = download_picklist_util(orders_qs, auth_data)
+
+    return jsonify({
+        'status': 'success',
+        'url': invoice_url,
+    }), 200
+
+
+def download_picklist_util(orders_qs, auth_data):
     products_dict = dict()
     order_count = dict()
 
@@ -1088,33 +1134,32 @@ def download_picklist(resp):
                 for new_prod in prod.product.combo:
                     if new_prod.combo_prod_id not in products_dict[order.client_prefix]:
                         sku = new_prod.combo_prod.master_sku if new_prod.combo_prod.master_sku else new_prod.combo_prod.sku
-                        products_dict[order.client_prefix][new_prod.combo_prod_id] = {"sku": sku, "name": new_prod.combo_prod.name,
-                                                                               "quantity": prod.quantity * new_prod.quantity}
+                        products_dict[order.client_prefix][new_prod.combo_prod_id] = {"sku": sku,
+                                                                                      "name": new_prod.combo_prod.name,
+                                                                                      "quantity": prod.quantity * new_prod.quantity}
                     else:
-                        products_dict[order.client_prefix][new_prod.combo_prod_id]['quantity'] += prod.quantity*new_prod.quantity
+                        products_dict[order.client_prefix][new_prod.combo_prod_id][
+                            'quantity'] += prod.quantity * new_prod.quantity
             else:
                 if prod.product_id not in products_dict[order.client_prefix]:
                     sku = prod.product.master_sku if prod.product.master_sku else prod.product.sku
-                    products_dict[order.client_prefix][prod.product_id] = {"sku": sku, "name": prod.product.name, "quantity": prod.quantity}
+                    products_dict[order.client_prefix][prod.product_id] = {"sku": sku, "name": prod.product.name,
+                                                                           "quantity": prod.quantity}
                 else:
                     products_dict[order.client_prefix][prod.product_id]['quantity'] += prod.quantity
 
     file_pref = auth_data['client_prefix'] if auth_data['client_prefix'] else auth_data['warehouse_prefix']
-    file_name = "picklist_"+str(file_pref)+"_"+str(datetime.now().strftime("%d_%b_%Y_%H_%M_%S"))+".pdf"
+    file_name = "picklist_" + str(file_pref) + "_" + str(datetime.now().strftime("%d_%b_%Y_%H_%M_%S")) + ".pdf"
     c = canvas.Canvas(file_name, pagesize=A4)
     c = generate_picklist(c, products_dict, order_count)
 
     c.save()
     s3 = session.resource('s3')
     bucket = s3.Bucket("wareiqpicklist")
-    bucket.upload_file(file_name, file_name, ExtraArgs={'ACL':'public-read'})
+    bucket.upload_file(file_name, file_name, ExtraArgs={'ACL': 'public-read'})
     invoice_url = "https://wareiqpicklist.s3.us-east-2.amazonaws.com/" + file_name
     os.remove(file_name)
-
-    return jsonify({
-        'status': 'success',
-        'url': invoice_url,
-    }), 200
+    return invoice_url
 
 
 @orders_blueprint.route('/orders/v1/download/packlist', methods=['POST'])
@@ -1134,6 +1179,15 @@ def download_packlist(resp):
     if not orders_qs:
         return jsonify({"success": False, "msg": "No valid order ID"}), 404
 
+    invoice_url = download_packlist_util(orders_qs, auth_data)
+
+    return jsonify({
+        'status': 'success',
+        'url': invoice_url,
+    }), 200
+
+
+def download_packlist_util(orders_qs, auth_data):
     orders_dict = dict()
     order_count = dict()
 
@@ -1150,34 +1204,34 @@ def download_packlist(resp):
                 for new_prod in prod.product.combo:
                     sku = new_prod.combo_prod.master_sku if new_prod.combo_prod.master_sku else new_prod.combo_prod.sku
                     if new_prod.combo_prod_id not in orders_dict[order.client_prefix][order.channel_order_id]:
-                        orders_dict[order.client_prefix][order.channel_order_id][new_prod.combo_prod_id] = {"sku": sku, "name": new_prod.combo_prod.name,
-                                                                               "quantity": prod.quantity * new_prod.quantity}
+                        orders_dict[order.client_prefix][order.channel_order_id][new_prod.combo_prod_id] = {"sku": sku,
+                                                                                                            "name": new_prod.combo_prod.name,
+                                                                                                            "quantity": prod.quantity * new_prod.quantity}
                     else:
-                        orders_dict[order.client_prefix][order.channel_order_id][new_prod.combo_prod_id]['quantity'] += prod.quantity * new_prod.quantity
+                        orders_dict[order.client_prefix][order.channel_order_id][new_prod.combo_prod_id][
+                            'quantity'] += prod.quantity * new_prod.quantity
             else:
                 sku = prod.product.master_sku if prod.product.master_sku else prod.product.sku
                 if prod.product_id not in orders_dict[order.client_prefix][order.channel_order_id]:
-                    orders_dict[order.client_prefix][order.channel_order_id][prod.product_id] = {"sku": sku, "name": prod.product.name, "quantity": prod.quantity}
+                    orders_dict[order.client_prefix][order.channel_order_id][prod.product_id] = {"sku": sku,
+                                                                                                 "name": prod.product.name,
+                                                                                                 "quantity": prod.quantity}
                 else:
-                    orders_dict[order.client_prefix][order.channel_order_id][prod.product_id]['quantity'] += prod.quantity
-
+                    orders_dict[order.client_prefix][order.channel_order_id][prod.product_id][
+                        'quantity'] += prod.quantity
 
     file_pref = auth_data['client_prefix'] if auth_data['client_prefix'] else auth_data['warehouse_prefix']
-    file_name = "packlist_"+str(file_pref)+"_"+str(datetime.now().strftime("%d_%b_%Y_%H_%M_%S"))+".pdf"
+    file_name = "packlist_" + str(file_pref) + "_" + str(datetime.now().strftime("%d_%b_%Y_%H_%M_%S")) + ".pdf"
     c = canvas.Canvas(file_name, pagesize=A4)
     c = generate_packlist(c, orders_dict, order_count)
 
     c.save()
     s3 = session.resource('s3')
     bucket = s3.Bucket("wareiqpacklist")
-    bucket.upload_file(file_name, file_name, ExtraArgs={'ACL':'public-read'})
+    bucket.upload_file(file_name, file_name, ExtraArgs={'ACL': 'public-read'})
     invoice_url = "https://wareiqpacklist.s3.us-east-2.amazonaws.com/" + file_name
     os.remove(file_name)
-
-    return jsonify({
-        'status': 'success',
-        'url': invoice_url,
-    }), 200
+    return invoice_url
 
 
 @orders_blueprint.route('/orders/v1/<order_id>/cancel', methods=['GET'])
@@ -1230,6 +1284,15 @@ def download_manifests(resp):
     if not orders_qs:
         return jsonify({"success": False, "msg": "No valid order ID"}), 404
 
+    manifest_url = download_manifest_util(orders_qs, auth_data)
+
+    return jsonify({
+        'status': 'success',
+        'url': manifest_url,
+    }), 200
+
+
+def download_manifest_util(orders_qs, auth_data):
     orders_list = list()
     warehouse = auth_data['client_prefix'] if auth_data['client_prefix'] else auth_data['warehouse_prefix']
     courier = None
@@ -1249,18 +1312,18 @@ def download_manifests(resp):
             prod_names.append(prod.product.name)
             prod_quan.append(prod.quantity)
 
-        order_tuple = (order.channel_order_id, order.order_date, order.client_prefix, order.shipments[0].weight, None, None,
-                       None, prod_names, prod_quan, order.payments[0].payment_mode, order.payments[0].amount,
-                       order.delivery_address.first_name, order.delivery_address.last_name, order.delivery_address.address_one,
-                       order.delivery_address.address_two, order.delivery_address.city, order.delivery_address.pincode, order.delivery_address.state,
-                       order.delivery_address.country, order.delivery_address.phone, order.shipments[0].awb, None, None)
+        order_tuple = (
+        order.channel_order_id, order.order_date, order.client_prefix, order.shipments[0].weight, None, None,
+        None, prod_names, prod_quan, order.payments[0].payment_mode, order.payments[0].amount,
+        order.delivery_address.first_name, order.delivery_address.last_name, order.delivery_address.address_one,
+        order.delivery_address.address_two, order.delivery_address.city, order.delivery_address.pincode,
+        order.delivery_address.state,
+        order.delivery_address.country, order.delivery_address.phone, order.shipments[0].awb, None, None)
 
         orders_list.append(order_tuple)
 
-    return jsonify({
-        'status': 'success',
-        'url': fill_manifest_data(orders_list, courier, store, warehouse),
-    }), 200
+    manifest_url = fill_manifest_data(orders_list, courier, store, warehouse)
+    return manifest_url
 
 
 @orders_blueprint.route('/orders/v1/manifests', methods=['POST'])

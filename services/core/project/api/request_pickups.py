@@ -22,10 +22,8 @@ def lambda_handler():
 
         time_now = datetime.utcnow() + timedelta(hours=5.5)
 
-        """
         if pick_req[5] and pick_req[5]!=time_now.hour:
             continue
-        """
 
         get_orders_data_tuple = (pick_req[0],)
         cur.execute(get_request_pickup_orders_data_query.replace("__ORDER_STATUS__", "('READY TO SHIP', 'PICKUP REQUESTED')"), get_orders_data_tuple)

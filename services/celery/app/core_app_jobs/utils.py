@@ -366,6 +366,12 @@ def send_shipped_email(order):
             send_bulk_emails(emails_list)
 
 
+def mark_order_picked_pickups(order, cur):
+    time_now = datetime.utcnow() + timedelta(hours=5.5)
+    cur.execute("UPDATE order_pickups SET picked=%s, pickup_time=%s WHERE order_id=%s",
+                (True, time_now, order[0]))
+
+
 def send_bulk_emails(emails):
     logger.info("Sending Emails....count: " + str(len(emails)) + "  Time: " + str(datetime.utcnow()))
     for email in emails:

@@ -18,14 +18,13 @@ conn = psycopg2.connect(host=host, database=database, user=user, password=passwo
 
 conn = DbConnection.get_db_connection_instance()
 
+
 def update_status():
     cur = conn.cursor()
     cur.execute(get_courier_id_and_key_query)
     for courier in cur.fetchall():
         try:
-            if courier[1] in (
-                    "Delhivery", "Delhivery Surface Standard", "Delhivery 2 KG", "Delhivery 10 KG",
-                    "Delhivery 20 KG"):
+            if courier[1].startswith('Delhivery'):
                 cur.execute(get_status_update_orders_query % str(courier[0]))
                 all_orders = cur.fetchall()
                 pickup_count = 0
@@ -256,7 +255,8 @@ def update_status():
                                 pickup_dict[orders_dict[current_awb][11]] = 1
                             else:
                                 pickup_dict[orders_dict[current_awb][11]] += 1
-                            # cur.execute(update_prod_quantity_query_pickup%str(orders_dict[current_awb][0]))
+                            time_now=datetime.utcnow() + timedelta(hours=5.5)
+                            cur.execute("UPDATE order_pickups SET picked=%s, pickup_time=%s WHERE order_id=%s", (True, time_now, orders_dict[current_awb][0]))
                             if orders_dict[current_awb][26] != False:
                                 if orders_dict[current_awb][14] == 5:
                                     try:
@@ -550,7 +550,9 @@ def update_status():
                                 pickup_dict[orders_dict[current_awb][11]] = 1
                             else:
                                 pickup_dict[orders_dict[current_awb][11]] += 1
-                            # cur.execute(update_prod_quantity_query_pickup%str(orders_dict[current_awb][0]))
+                            time_now = datetime.utcnow() + timedelta(hours=5.5)
+                            cur.execute("UPDATE order_pickups SET picked=%s, pickup_time=%s WHERE order_id=%s",
+                                        (True, time_now, orders_dict[current_awb][0]))
                             if orders_dict[current_awb][26] != False:
                                 if orders_dict[current_awb][14] == 5:
                                     try:
@@ -670,7 +672,7 @@ def update_status():
                 if emails_list:
                     send_bulk_emails(emails_list)
 
-            elif courier[1] in ("Xpressbees", "Xpressbees Surface"):
+            elif courier[1].startswith('Xpressbees'):
                 pickup_count = 0
                 cur.execute(get_status_update_orders_query % str(courier[0]))
                 all_orders = cur.fetchall()
@@ -894,7 +896,9 @@ def update_status():
                                     pickup_dict[orders_dict[current_awb][11]] = 1
                                 else:
                                     pickup_dict[orders_dict[current_awb][11]] += 1
-                                # cur.execute(update_prod_quantity_query_pickup % str(orders_dict[current_awb][0]))
+                                time_now = datetime.utcnow() + timedelta(hours=5.5)
+                                cur.execute("UPDATE order_pickups SET picked=%s, pickup_time=%s WHERE order_id=%s",
+                                            (True, time_now, orders_dict[current_awb][0]))
                                 if orders_dict[current_awb][26] != False:
                                     if orders_dict[current_awb][14] == 5:
                                         try:

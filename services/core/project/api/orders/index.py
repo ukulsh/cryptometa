@@ -23,7 +23,7 @@ from project.api.models import NDRReasons, MultiVendor, NDRShipments, Orders, Cl
     PickupPoints, Shipments, Products, ShippingAddress, OPAssociation, OrdersPayments, ClientMapping, WarehouseMapping, \
     Manifests, OrderStatus, IVRHistory, OrderPickups
 from project.api.queries import select_orders_list_query, available_warehouse_product_quantity, \
-    fetch_warehouse_to_pick_from
+    fetch_warehouse_to_pick_from, select_pickups_list_query
 from project.api.utils import authenticate_restful, fill_shiplabel_data_thermal, \
     create_shiplabel_blank_page, fill_shiplabel_data, create_shiplabel_blank_page_thermal, \
     create_invoice_blank_page, fill_invoice_data, generate_picklist, generate_packlist
@@ -1329,42 +1329,83 @@ def download_manifest_util(orders_qs, auth_data):
 @orders_blueprint.route('/orders/v1/manifests', methods=['POST'])
 @authenticate_restful
 def get_manifests(resp):
+    cur = conn.cursor()
     response = {'status': 'success', 'data': dict(), "meta": dict()}
     auth_data = resp.get('data')
     data = json.loads(request.data)
     page = data.get('page', 1)
     per_page = data.get('per_page', 10)
+    filters = data.get('filters', {})
     if not auth_data:
         return jsonify({"success": False, "msg": "Auth Failed"}), 404
 
-    return_data = list()
-    manifest_qs = db.session.query(Manifests).join(ClientPickups, Manifests.client_pickup_id==ClientPickups.id).join(PickupPoints, Manifests.pickup_id==PickupPoints.id)
+    client_prefix = auth_data.get('client_prefix')
+    query_to_run = select_pickups_list_query
     if auth_data['user_group'] == 'client':
-        manifest_qs= manifest_qs.filter(ClientPickups.client_prefix==auth_data['client_prefix'])
-    if auth_data['user_group'] == 'multi-vendor':
-        vendor_list = db.session.query(MultiVendor).filter(MultiVendor.client_prefix==auth_data['client_prefix']).first()
-        manifest_qs= manifest_qs.filter(ClientPickups.client_prefix.in_(vendor_list.vendor_list))
+        query_to_run = query_to_run.replace("__CLIENT_FILTER__", "AND cc.client_prefix = '%s'" % client_prefix)
     if auth_data['user_group'] == 'warehouse':
-        manifest_qs= manifest_qs.filter(PickupPoints.warehouse_prefix==auth_data['warehouse_prefix'])
-    manifest_qs = manifest_qs.order_by(Manifests.pickup_date.desc(), Manifests.total_scheduled.desc())
+        query_to_run = query_to_run.replace("__PICKUP_FILTER__",
+                                            "AND dd.warehouse_prefix = '%s'" % auth_data.get('warehouse_prefix'))
+    if auth_data['user_group'] == 'multi-vendor':
+        cur.execute("SELECT vendor_list FROM multi_vendor WHERE client_prefix='%s';" % client_prefix)
+        vendor_list = cur.fetchone()[0]
+        query_to_run = query_to_run.replace("__MV_CLIENT_FILTER__",
+                                            "AND cc.client_prefix in %s" % str(tuple(vendor_list)))
+    else:
+        query_to_run = query_to_run.replace("__MV_CLIENT_FILTER__", "")
 
-    manifest_qs_data = manifest_qs.limit(per_page).offset((page - 1) * per_page).all()
+    if filters:
+        if 'courier' in filters:
+            if len(filters['courier']) == 1:
+                courier_tuple = "('" + filters['courier'][0] + "')"
+            else:
+                courier_tuple = str(tuple(filters['courier']))
+            query_to_run = query_to_run.replace("__COURIER_FILTER__", "AND bb.courier_name in %s" % courier_tuple)
+        if 'client' in filters and auth_data['user_group'] != 'client':
+            if len(filters['client']) == 1:
+                client_tuple = "('" + filters['client'][0] + "')"
+            else:
+                client_tuple = str(tuple(filters['client']))
+            query_to_run = query_to_run.replace("__CLIENT_FILTER__", "AND cc.client_prefix in %s" % client_tuple)
 
-    for manifest in manifest_qs_data:
-        manifest_dict = dict()
-        manifest_dict['manifest_id'] = manifest.manifest_id
-        manifest_dict['courier'] = manifest.courier.courier_name
-        manifest_dict['pickup_point'] = manifest.pickup.warehouse_prefix
-        manifest_dict['total_scheduled'] = manifest.total_scheduled
-        manifest_dict['total_picked'] = manifest.total_picked
-        manifest_dict['pickup_date'] = manifest.pickup_date
-        manifest_dict['manifest_url'] = manifest.manifest_url
-        manifest_dict['pickup_id'] = manifest.id
-        return_data.append(manifest_dict)
+        if 'pickup_point' in filters:
+            if len(filters['pickup_point']) == 1:
+                pickup_tuple = "('" + filters['pickup_point'][0] + "')"
+            else:
+                pickup_tuple = str(tuple(filters['pickup_point']))
+            query_to_run = query_to_run.replace("__PICKUP_FILTER__", "AND dd.warehouse_prefix in %s" % pickup_tuple)
+
+        if 'pickup_time' in filters:
+            filter_date_start = filters['pickup_time'][0][0:19].replace('T', ' ')
+            filter_date_end = filters['pickup_time'][1][0:19].replace('T', ' ')
+            query_to_run = query_to_run.replace("__PICKUP_TIME_FILTER__", "AND aa.pickup_date between '%s' and '%s'" % (
+            filter_date_start, filter_date_end))
+
+    count_query = "select count(*) from (" + query_to_run.replace('__PAGINATION__', "") + ") xx"
+    count_query = re.sub(r"""__.+?__""", "", count_query)
+    cur.execute(count_query)
+    total_count = cur.fetchone()[0]
+    query_to_run = query_to_run.replace('__PAGINATION__',
+                                        "OFFSET %s LIMIT %s" % (str((page - 1) * per_page), str(per_page)))
+    query_to_run = re.sub(r"""__.+?__""", "", query_to_run)
+    cur.execute(query_to_run)
+    orders_qs_data = cur.fetchall()
+
+    return_data = list()
+    for order in orders_qs_data:
+        resp_obj = dict()
+        resp_obj['manifest_id'] = order[1]
+        resp_obj['pickup_id'] = order[0]
+        resp_obj['courier'] = order[2]
+        resp_obj['pickup_point'] = order[6]
+        resp_obj['total_scheduled'] = order[4] if order[4] else order[8]
+        resp_obj['total_picked'] = order[3] if order[3] else order[7]
+        resp_obj['pickup_date'] = order[5]
+        resp_obj['manifest_url'] = order[9]
+        return_data.append(resp_obj)
 
     response['data'] = return_data
 
-    total_count = manifest_qs.count()
     total_pages = math.ceil(total_count / per_page)
     response['meta']['pagination'] = {'total': total_count,
                                       'per_page': per_page,

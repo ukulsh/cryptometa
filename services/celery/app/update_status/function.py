@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 from .queries import *
 from .update_status_utils import *
 from woocommerce import API
-
+from app.db_utils import DbConnection
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -15,21 +15,16 @@ user = os.environ('DTATBASE_USER')
 password = os.environ('DTATBASE_PASSWORD')
 conn = psycopg2.connect(host=host, database=database, user=user, password=password)
 """
-conn = psycopg2.connect(host="wareiq-core-prod2.cvqssxsqruyc.us-east-1.rds.amazonaws.com", database="core_prod",
-                        user="postgres", password="aSderRFgd23")
-conn_2 = psycopg2.connect(host="wareiq-core-prod2.cvqssxsqruyc.us-east-1.rds.amazonaws.com", database="users_prod",
-                          user="postgres", password="aSderRFgd23")
+
+conn = DbConnection.get_db_connection_instance()
 
 
 def update_status():
     cur = conn.cursor()
-    cur_2 = conn_2.cursor()
     cur.execute(get_courier_id_and_key_query)
     for courier in cur.fetchall():
         try:
-            if courier[1] in (
-                    "Delhivery", "Delhivery Surface Standard", "Delhivery 2 KG", "Delhivery 10 KG",
-                    "Delhivery 20 KG"):
+            if courier[1].startswith('Delhivery'):
                 cur.execute(get_status_update_orders_query % str(courier[0]))
                 all_orders = cur.fetchall()
                 pickup_count = 0
@@ -260,7 +255,8 @@ def update_status():
                                 pickup_dict[orders_dict[current_awb][11]] = 1
                             else:
                                 pickup_dict[orders_dict[current_awb][11]] += 1
-                            # cur.execute(update_prod_quantity_query_pickup%str(orders_dict[current_awb][0]))
+                            time_now=datetime.utcnow() + timedelta(hours=5.5)
+                            cur.execute("UPDATE order_pickups SET picked=%s, pickup_time=%s WHERE order_id=%s", (True, time_now, orders_dict[current_awb][0]))
                             if orders_dict[current_awb][26] != False:
                                 if orders_dict[current_awb][14] == 5:
                                     try:
@@ -291,9 +287,7 @@ def update_status():
                                     emails_list.append((email, [orders_dict[current_awb][19]]))
 
                             cur.execute("UPDATE shipments SET pdd=%s WHERE awb=%s", (edd, current_awb))
-                            cur_2.execute("select client_name from clients where client_prefix='%s'" %
-                                          orders_dict[current_awb][3])
-                            client_name = cur_2.fetchone()
+                            client_name = orders_dict[current_awb][20]
                             customer_phone = orders_dict[current_awb][4].replace(" ", "")
                             customer_phone = "0" + customer_phone[-10:]
 
@@ -304,7 +298,7 @@ def update_status():
 
                             tracking_link_wareiq = "http://webapp.wareiq.com/tracking/" + str(orders_dict[current_awb][1])
 
-                            exotel_sms_data[sms_body_key] = "Shipped: Your %s order via Delhivery. Track here: %s . Thanks!" % (client_name[0], tracking_link_wareiq)
+                            exotel_sms_data[sms_body_key] = "Shipped: Your %s order via Delhivery. Track here: %s . Thanks!" % (client_name, tracking_link_wareiq)
 
                             exotel_idx += 1
 
@@ -316,7 +310,7 @@ def update_status():
                                 try:  # NDR check text
                                     ndr_reason = delhivery_status_code_mapping_dict[status_code]
                                     sms_to_key, sms_body_key, customer_phone, sms_body_key_data = verification_text(
-                                        orders_dict[current_awb], exotel_idx, cur, cur_2, ndr=True,
+                                        orders_dict[current_awb], exotel_idx, cur, ndr=True,
                                         ndr_reason=ndr_reason)
                                     if sms_body_key_data:
                                         exotel_sms_data[sms_to_key] = customer_phone
@@ -556,7 +550,9 @@ def update_status():
                                 pickup_dict[orders_dict[current_awb][11]] = 1
                             else:
                                 pickup_dict[orders_dict[current_awb][11]] += 1
-                            # cur.execute(update_prod_quantity_query_pickup%str(orders_dict[current_awb][0]))
+                            time_now = datetime.utcnow() + timedelta(hours=5.5)
+                            cur.execute("UPDATE order_pickups SET picked=%s, pickup_time=%s WHERE order_id=%s",
+                                        (True, time_now, orders_dict[current_awb][0]))
                             if orders_dict[current_awb][26] != False:
                                 if orders_dict[current_awb][14] == 5:
                                     try:
@@ -616,11 +612,7 @@ def update_status():
                             if edd:
                                 cur.execute("UPDATE shipments SET pdd=%s WHERE awb=%s", (edd, current_awb))
                                 edd = edd.strftime('%-d %b')
-                                cur_2.execute(
-                                    "select client_name from clients where client_prefix='%s'" %
-                                    orders_dict[current_awb][
-                                        3])
-                                client_name = cur_2.fetchone()
+                                client_name = orders_dict[current_awb][20]
                                 customer_phone = orders_dict[current_awb][4].replace(" ", "")
                                 customer_phone = "0" + customer_phone[-10:]
 
@@ -630,7 +622,7 @@ def update_status():
                                 exotel_sms_data[sms_to_key] = customer_phone
                                 exotel_sms_data[
                                     sms_body_key] = "Dear Customer, your %s order has been shipped via Shadowfax with AWB number %s. It is expected to arrive by %s. Thank you for ordering." % (
-                                    client_name[0], orders_dict[current_awb][1], edd)
+                                    client_name, orders_dict[current_awb][1], edd)
                                 exotel_idx += 1
 
                         if orders_dict[current_awb][2] != new_status:
@@ -640,7 +632,7 @@ def update_status():
                                     and shadowfax_status_mapping[new_status][2]:
                                 try:  # NDR check text
                                     sms_to_key, sms_body_key, customer_phone, sms_body_key_data = verification_text(
-                                        orders_dict[current_awb], exotel_idx, cur, cur_2, ndr=True,
+                                        orders_dict[current_awb], exotel_idx, cur, ndr=True,
                                         ndr_reason=shadowfax_status_mapping[new_status][2])
                                     if sms_body_key_data:
                                         exotel_sms_data[sms_to_key] = customer_phone
@@ -680,7 +672,7 @@ def update_status():
                 if emails_list:
                     send_bulk_emails(emails_list)
 
-            elif courier[1] in ("Xpressbees", "Xpressbees Surface"):
+            elif courier[1].startswith('Xpressbees'):
                 pickup_count = 0
                 cur.execute(get_status_update_orders_query % str(courier[0]))
                 all_orders = cur.fetchall()
@@ -872,11 +864,7 @@ def update_status():
                         if orders_dict[current_awb][2] in (
                                 'READY TO SHIP', 'PICKUP REQUESTED', 'NOT PICKED') and new_status == 'IN TRANSIT' and order_picked_check:
 
-                            cur_2.execute(
-                                "select client_name from clients where client_prefix='%s'" %
-                                orders_dict[current_awb][
-                                    3])
-                            client_name = cur_2.fetchone()
+                            client_name = orders_dict[current_awb][20]
                             customer_phone = orders_dict[current_awb][4].replace(" ", "")
                             customer_phone = "0" + customer_phone[-10:]
 
@@ -896,11 +884,11 @@ def update_status():
                                 """
                                 exotel_sms_data[
                                     sms_body_key] = "Dear Customer, your %s order has been shipped via Xpressbees with AWB number %s. It is expected to arrive by %s. Thank you!" % (
-                                                        client_name[0], str(orders_dict[current_awb][1]), edd)
+                                                        client_name, str(orders_dict[current_awb][1]), edd)
                             else:
                                 exotel_sms_data[
                                     sms_body_key] = "Dear Customer, your %s order has been shipped via Xpressbees with AWB number %s. Thank you!" % (
-                                    client_name[0], str(orders_dict[current_awb][1]))
+                                    client_name, str(orders_dict[current_awb][1]))
                             exotel_idx += 1
                             if order_picked_check:
                                 pickup_count += 1
@@ -908,7 +896,9 @@ def update_status():
                                     pickup_dict[orders_dict[current_awb][11]] = 1
                                 else:
                                     pickup_dict[orders_dict[current_awb][11]] += 1
-                                # cur.execute(update_prod_quantity_query_pickup % str(orders_dict[current_awb][0]))
+                                time_now = datetime.utcnow() + timedelta(hours=5.5)
+                                cur.execute("UPDATE order_pickups SET picked=%s, pickup_time=%s WHERE order_id=%s",
+                                            (True, time_now, orders_dict[current_awb][0]))
                                 if orders_dict[current_awb][26] != False:
                                     if orders_dict[current_awb][14] == 5:
                                         try:
@@ -936,9 +926,7 @@ def update_status():
 
                                 if orders_dict[current_awb][19]:
 
-                                    email = create_email(orders_dict[current_awb],
-                                                         edd.strftime('%-d %b') if edd else "",
-                                                         orders_dict[current_awb][19])
+                                    email = create_email(orders_dict[current_awb],"",orders_dict[current_awb][19])
                                     if email:
                                         emails_list.append((email, [orders_dict[current_awb][19]]))
                             else:
@@ -958,7 +946,7 @@ def update_status():
                                     if ret_order['ShipmentSummary'][0]['Status'] in Xpressbees_ndr_reasons:
                                         ndr_reason = Xpressbees_ndr_reasons[ret_order['ShipmentSummary'][0]['Status']]
                                     sms_to_key, sms_body_key, customer_phone, sms_body_key_data = verification_text(
-                                        orders_dict[current_awb], exotel_idx, cur, cur_2, ndr=True,
+                                        orders_dict[current_awb], exotel_idx, cur, ndr=True,
                                         ndr_reason=ndr_reason)
                                     if sms_body_key_data:
                                         exotel_sms_data[sms_to_key] = customer_phone
@@ -1005,7 +993,7 @@ def update_status():
     cur.close()
 
 
-def verification_text(current_order, exotel_idx, cur, cur_2, ndr=None, ndr_reason=None):
+def verification_text(current_order, exotel_idx, cur, ndr=None, ndr_reason=None):
     if not ndr:
         del_confirmation_link = "http://track.wareiq.com/core/v1/passthru/delivery?CustomField=%s" % str(
             current_order[0])
@@ -1034,8 +1022,8 @@ def verification_text(current_order, exotel_idx, cur, cur_2, ndr=None, ndr_reaso
                 cur.execute(
                     "INSERT INTO ndr_verification (order_id, verification_link, date_created) VALUES (%s,%s,%s);",
                     insert_cod_ver_tuple)
-    cur_2.execute("select client_name from clients where client_prefix='%s'" % current_order[3])
-    client_name = cur_2.fetchone()
+
+    client_name = current_order[20]
     customer_phone = current_order[4].replace(" ", "")
     customer_phone = "0" + customer_phone[-10:]
 
@@ -1045,12 +1033,12 @@ def verification_text(current_order, exotel_idx, cur, cur_2, ndr=None, ndr_reaso
     if not ndr:
         sms_body_key_data = "Dear Customer, your order from %s with order id %s was delivered today." \
                             " Please click on the link (%s) to report any issue. We'll call you back shortly." % (
-                                client_name[0], str(current_order[12]),
+                                client_name, str(current_order[12]),
                                 del_confirmation_link)
     elif ndr_reason in (1, 3, 9, 11):
         sms_body_key_data = "Dear Customer, Delivery for your order from %s with order id %s was attempted today." \
                             " Please click on the link (%s) if you wish a re-attempt." % (
-                                client_name[0], str(current_order[12]),
+                                client_name, str(current_order[12]),
                                 del_confirmation_link)
     else:
         sms_body_key_data = None

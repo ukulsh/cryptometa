@@ -451,6 +451,23 @@ select_wallet_deductions_query = """SELECT aa.status_time, aa.status, bb.courier
                                     __PAGINATION__"""
 
 
+select_pickups_list_query = """select aa.id, aa.manifest_id, bb.courier_name, ee.total_picked, ee.total_scheduled, aa.pickup_date, 
+                                dd.warehouse_prefix, aa.total_picked, aa.total_scheduled, aa.manifest_url from manifests aa
+                                left join master_couriers bb on aa.courier_id=bb.id
+                                left join client_pickups cc on aa.client_pickup_id=cc.id
+                                left join pickup_points dd on cc.pickup_id=dd.id
+                                left join (select manifest_id, count(1) as total_scheduled, count(1) filter (where picked is true) as total_picked 
+                                           from order_pickups group by manifest_id) ee on aa.id=ee.manifest_id
+                                where 1=1
+                                 __PICKUP_FILTER__
+                                 __CLIENT_FILTER__
+                                 __MV_CLIENT_FILTER__
+                                 __COURIER_FILTER__
+                                 __PICKUP_TIME_FILTER__
+                                order by pickup_date DESC, ee.total_scheduled DESC
+                                __PAGINATION__"""
+
+
 select_wallet_remittance_query = """select * from
                                     (select xx.unique_id, xx.client_prefix, xx.remittance_id, xx.date as remittance_date, 
                                      xx.status, xx.transaction_id, sum(yy.amount) as remittance_total from

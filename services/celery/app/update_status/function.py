@@ -320,6 +320,8 @@ def update_status():
                                     logger.error(
                                         "NDR confirmation not sent. Order id: " + str(orders_dict[current_awb][0]))
 
+                        conn.commit()
+
                     except Exception as e:
                         logger.error("status update failed for " + str(orders_dict[current_awb][0]) + "    err:" + str(
                             e.args[0]))
@@ -642,6 +644,8 @@ def update_status():
                                     logger.error(
                                         "NDR confirmation not sent. Order id: " + str(orders_dict[current_awb][0]))
 
+                        conn.commit()
+
                     except Exception as e:
                         logger.error("status update failed for " + str(orders_dict[current_awb][0]) + "    err:" + str(
                             e.args[0]))
@@ -955,6 +959,8 @@ def update_status():
                                 except Exception as e:
                                     logger.error(
                                         "NDR confirmation not sent. Order id: " + str(orders_dict[current_awb][0]))
+
+                        conn.commit()
 
                     except Exception as e:
                         logger.error("status update failed for " + str(orders_dict[current_awb][0]) + "    err:" + str(

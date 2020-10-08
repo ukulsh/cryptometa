@@ -141,6 +141,8 @@ class MasterCouriers(db.Model):
     api_url = db.Column(db.String, nullable=True)
     logo_url = db.Column(db.String, nullable=True)
     integrated = db.Column(db.BOOLEAN, nullable=True, default=None)
+    weight_offset = db.Column(db.FLOAT, default=0.0, server_default="0.0")
+    additional_weight_offset = db.Column(db.FLOAT, default=0.0, server_default="0.0")
     date_created = db.Column(db.DateTime, default=datetime.now)
     date_updated = db.Column(db.DateTime, onupdate=datetime.now)
 

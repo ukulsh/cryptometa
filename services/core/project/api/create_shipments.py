@@ -749,12 +749,8 @@ def ship_xpressbees_orders(cur, courier, courier_name, order_ids, order_id_tuple
             if courier[10] == "Xpressbees Surface" and weight and volumetric_weight:
                 weight_counted = weight if weight > volumetric_weight else volumetric_weight
                 new_courier_name = None
-                if weight_counted > 14:
-                    new_courier_name = "Delhivery 20 KG"
-                elif weight_counted > 6:
-                    new_courier_name = "Delhivery 10 KG"
-                elif weight_counted > 1.5:
-                    new_courier_name = "Delhivery 2 KG"
+                if weight_counted > 3:
+                    new_courier_name = "Xpressbees 5 KG"
                 if new_courier_name:
                     try:
                         cur.execute("""SELECT id, courier_name, logo_url, date_created, date_updated, api_key, 
@@ -772,7 +768,7 @@ def ship_xpressbees_orders(cur, courier, courier_name, order_ids, order_id_tuple
                         courier_new[14] = courier_data[5]
                         courier_new[15] = courier_data[6]
                         courier_new[16] = courier_data[7]
-                        ship_delhivery_orders(cur, tuple(courier_new), new_courier_name, [order[0]],
+                        ship_xpressbees_orders(cur, tuple(courier_new), new_courier_name, [order[0]],
                                               "(" + str(order[0]) + ")", backup_param=False)
                     except Exception as e:
                         logger.error("Couldn't assign backup courier for: " + str(order[0]) + "\nError: " + str(e.args))
@@ -1175,6 +1171,9 @@ def ship_ecom_orders(cur, courier, courier_name, order_ids, order_id_tuple, back
 
                 if order[26].lower() == "cod":
                     json_input["COLLECTABLE_VALUE"] = order[27]
+                else:
+                    json_input["COLLECTABLE_VALUE"] = 0
+
                 ecom_url = courier[16] + "/apiv3/manifest_awb/"
                 req = requests.post(ecom_url,  data={"username": courier[14] , "password": courier[15],
                                                     "json_input": json.dumps([json_input])})

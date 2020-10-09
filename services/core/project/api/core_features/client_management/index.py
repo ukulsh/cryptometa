@@ -4,6 +4,7 @@ from flask import Blueprint, request, jsonify
 from project import db
 from project.api.utils import authenticate_restful
 from project.api.utilities.s3_utils import process_upload_logo_file
+from project.api.core_features.client_management.utils import get_cost_to_clients
 import json
 import logging
 
@@ -24,6 +25,8 @@ class ClientManagement(Resource):
             client_name = posted_data['client_name']
             client_mapping_ref = ClientMapping(client_name, client_prefix)
             db.session.add(client_mapping_ref)
+            cost_to_client_ref = get_cost_to_clients(posted_data)
+            db.session.add(cost_to_client_ref)
             db.session.commit()
             response_object['status'] = 'success'
             return response_object, 201

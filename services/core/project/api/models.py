@@ -726,6 +726,24 @@ class CostToClients(db.Model):
     date_created = db.Column(db.DateTime, default=datetime.now)
     date_updated = db.Column(db.DateTime, onupdate=datetime.now)
 
+    def __init__(self, client_prefix, courier_id, zone_a, zone_b, zone_c, zone_d, zone_e, a_step,
+                 b_step, c_step, d_step, e_step, cod_min, cod_ratio, rvp_ratio):
+        self.client_prefix = client_prefix
+        self.courier_id = courier_id
+        self.zone_a = zone_a
+        self.zone_b = zone_b
+        self.zone_c = zone_c
+        self.zone_d = zone_d
+        self.zone_e = zone_e
+        self.a_step = a_step
+        self.b_step = b_step
+        self.c_step = c_step
+        self.d_step = d_step
+        self.e_step = e_step
+        self.cod_min = cod_min
+        self.cod_ratio = cod_ratio
+        self.rvp_ratio = rvp_ratio
+
 
 class ClientRecharges(db.Model):
     __tablename__ = "client_recharges"

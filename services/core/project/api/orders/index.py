@@ -924,7 +924,7 @@ def request_pickups(resp):
                                             courier_id=courier_id,
                                             client_pickup_id=pickup_data_id,
                                             pickup_id=order_list[0].pickup_data.pickup.id,
-                                            pickup_date=pickup_time_ist,
+                                            pickup_date=pickup_time_ist.replace(hour=13, minute=0, second=0),
                                             manifest_url="",
                                             total_scheduled=len(order_list)
                                             )

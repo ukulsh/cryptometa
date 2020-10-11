@@ -61,15 +61,28 @@ def lambda_handler():
                 req = requests.post(pickup_request_api_url, headers=headers, data=pickup_request_api_body)
 
             if pick_req[4]:
-                manifest_url = fill_manifest_data(values['orders'], courier, pick_req[2], pick_req[2])
-                current_time = datetime.now()
-                manifest_id = current_time.strftime('%Y_%m_%d_') +''.join(random.choices(string.ascii_uppercase, k=8)) +"_"+ pick_req[1]
-                pickup_date_string = pickup_date.strftime("%Y-%m-%d ")+ time_string
-                manifest_data_tuple = (manifest_id, pick_req[2], values['courier_id'], pick_req[3], len(values['orders']),
-                                       pickup_date_string, manifest_url, current_time, pick_req[0])
-                cur.execute(insert_manifest_data_query, manifest_data_tuple)
-                manifest_temp = cur.fetchone()
-                manifest_id = manifest_temp[0]
+                manifest_url = ""
+                current_time = datetime.utcnow() + timedelta(hours=5.5)
+                pickup_time_ist = current_time
+                if pickup_time_ist.hour > 13:
+                    pickup_time_ist = pickup_time_ist + timedelta(days=1)
+                pickup_time_str = pickup_time_ist.strftime("%Y-%m-%d")
+                manifest_id=None
+                cur.execute("SELECT id from manifests WHERE client_pickup_id=%s and courier_id=%s and pickup_date>%s;",
+                                          (pick_req[0], values['courier_id'], pickup_time_str))
+                try:
+                    manifest_id=cur.fetchone()[0]
+                except Exception:
+                    pass
+                if not manifest_id:
+                    manifest_id = current_time.strftime('%Y_%m_%d_') +''.join(random.choices(string.ascii_uppercase, k=8)) +"_"+ pick_req[1]
+                    pickup_date_string = pickup_date.strftime("%Y-%m-%d ")+ time_string
+                    manifest_data_tuple = (manifest_id, pick_req[2], values['courier_id'], pick_req[3], len(values['orders']),
+                                           pickup_date_string, manifest_url, current_time, pick_req[0])
+                    cur.execute(insert_manifest_data_query, manifest_data_tuple)
+                    manifest_temp = cur.fetchone()
+                    manifest_id = manifest_temp[0]
+
                 for order in values['orders']:
                     cur.execute(update_order_status_query, (order[21], manifest_id, order[21], False, current_time))
 

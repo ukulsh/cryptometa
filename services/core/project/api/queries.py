@@ -385,7 +385,7 @@ select_orders_list_query = """select distinct on (aa.order_date, aa.id) aa.chann
                              bb.volumetric_weight,bb.remark, aa.customer_name, aa.customer_phone, aa.customer_email, dd.address_one, dd.address_two, 
                              dd.city, dd.state, dd.country, dd.pincode, ee.delivered_time, ff.pickup_time, gg.payment_mode, gg.amount, ii.warehouse_prefix,
                              ll.product_names, ll.skus, ll.quantity,mm.id,  mm.cod_verified, mm.verified_via, nn.id,  nn.ndr_verified, nn.verified_via, 
-                             pp.logo_url, qq.manifest_time, rr.reason_id, rr.reason, rr.date_created, aa.client_prefix, ll.weights, ll.dimensions
+                             pp.logo_url, qq.manifest_time, rr.reason_id, rr.reason, rr.date_created, aa.client_prefix, ll.weights, ll.dimensions, bb.pdd
                              from orders aa
                              left join shipments bb
                              on aa.id=bb.order_id

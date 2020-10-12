@@ -13,7 +13,7 @@ user = os.environ('DTATBASE_USER')
 password = os.environ('DTATBASE_PASSWORD')
 conn = psycopg2.connect(host=host, database=database, user=user, password=password)
 """
-conn = psycopg2.connect(host="wareiq-core-qa.cvqssxsqruyc.us-east-1.rds.amazonaws.com", database="core_prod", user="postgres", password="aSderRFgd23")
+conn = psycopg2.connect(host="wareiq-core-prod2.cvqssxsqruyc.us-east-1.rds.amazonaws.com", database="core_prod", user="postgres", password="aSderRFgd23")
 conn_2 = psycopg2.connect(host="wareiq-core-prod.cvqssxsqruyc.us-east-1.rds.amazonaws.com", database="core_prod", user="postgres", password="aSderRFgd23")
 
 
@@ -27,57 +27,59 @@ def lambda_handler():
 
     for order in all_orders:
         try:
-            courier_id = order[2]
-            if courier_id in (4,8,11,12,13):
-                courier_id=1
-
-            if courier_id in (5,):
-                courier_id=2
-
-            cur_2.execute("SELECT city from city_pin_mapping where pincode='%s';"%order[7])
-            pickup_city = cur_2.fetchone()
-            if not pickup_city:
-                logger.info("pickup city not found: " + str(order[0]))
-                continue
-            pickup_city = pickup_city[0]
-            cur_2.execute("SELECT city from city_pin_mapping where pincode='%s';" % order[8])
-            deliver_city = cur_2.fetchone()
-            if not deliver_city:
-                logger.info("deliver city not found: " + str(order[0]))
-                continue
-            deliver_city = deliver_city[0]
-            zone_select_tuple = (pickup_city, deliver_city, courier_id)
-            cur_2.execute("SELECT zone_value from city_zone_mapping where zone=%s and city=%s and courier_id=%s;", zone_select_tuple)
-            delivery_zone = cur_2.fetchone()
+            delivery_zone = order[15]
             if not delivery_zone:
-                logger.info("deliver zone not found: " + str(order[0]))
-                continue
-            delivery_zone = delivery_zone[0]
-            if not delivery_zone:
-                logger.info("deliver zone not found: " + str(order[0]))
-                continue
+                courier_id = order[2]
+                if courier_id in (4, 8, 11, 12, 13):
+                    courier_id = 1
 
-            calculate_courier_cost(cur, delivery_zone, order)
+                if courier_id in (5,):
+                    courier_id = 2
+                cur_2.execute("SELECT city from city_pin_mapping where pincode='%s';"%order[7])
+                pickup_city = cur_2.fetchone()
+                if not pickup_city:
+                    logger.info("pickup city not found: " + str(order[0]))
+                    continue
+                pickup_city = pickup_city[0]
+                cur_2.execute("SELECT city from city_pin_mapping where pincode='%s';" % order[8])
+                deliver_city = cur_2.fetchone()
+                if not deliver_city:
+                    logger.info("deliver city not found: " + str(order[0]))
+                    continue
+                deliver_city = deliver_city[0]
 
-            if delivery_zone in ('D1', 'D2'):
-                delivery_zone='D'
-            if delivery_zone in ('C1', 'C2'):
-                delivery_zone='C'
+                zone_select_tuple = (pickup_city, deliver_city, courier_id)
+                cur_2.execute("SELECT zone_value from city_zone_mapping where zone=%s and city=%s and courier_id=%s;", zone_select_tuple)
+                delivery_zone = cur_2.fetchone()
+                if not delivery_zone:
+                    logger.info("deliver zone not found: " + str(order[0]))
+                    continue
+                delivery_zone = delivery_zone[0]
+                if not delivery_zone:
+                    logger.info("deliver zone not found: " + str(order[0]))
+                    continue
+
+                calculate_courier_cost(cur, delivery_zone, order)
+
+                if delivery_zone in ('D1', 'D2'):
+                    delivery_zone='D'
+                if delivery_zone in ('C1', 'C2'):
+                    delivery_zone='C'
 
             charged_weight = order[4] if order[4] else 0
+
+            #if order[6] != 'NASHER':
+            if order[3] and order[3] > charged_weight:
+                charged_weight = order[3]
             '''
-            if order[6] != 'NASHER':
-                if order[3] and order[3]>charged_weight:
-                    charged_weight=order[3]
             else:
-            '''
             if courier_id==1:
                 volumetric_weight = (order[14]['length']*order[14]['breadth']*order[14]['height'])/4500
             else:
                 volumetric_weight = (order[14]['length']*order[14]['breadth']*order[14]['height'])/5000
             if volumetric_weight > charged_weight:
                 charged_weight = volumetric_weight
-
+            '''
             if not charged_weight:
                 logger.info("charged weight not found: " + str(order[0]))
                 continue
@@ -85,12 +87,12 @@ def lambda_handler():
             try:
                 #if order[6] != 'NASHER' or (order[6] == 'NASHER' and charged_weight < 10.0):
                 cost_select_tuple = (order[6], order[2])
-                cur.execute("SELECT __ZONE__, cod_min, cod_ratio, rto_ratio, __ZONE_STEP__ from cost_to_clients WHERE client_prefix=%s and courier_id=%s;".replace(
+                cur.execute("SELECT __ZONE__, cod_min, cod_ratio, rto_ratio, __ZONE_STEP__, rvp_ratio from cost_to_clients WHERE client_prefix=%s and courier_id=%s;".replace(
                     '__ZONE__', zone_column_mapping[delivery_zone]).replace('__ZONE_STEP__', zone_step_charge_column_mapping[delivery_zone]), cost_select_tuple)
                 charge_rate_values = cur.fetchone()
                 if not charge_rate_values:
                     cur.execute(
-                        "SELECT __ZONE__, cod_min, cod_ratio, rto_ratio, __ZONE_STEP__ from cost_to_clients WHERE client_prefix=%s and courier_id=%s;".replace(
+                        "SELECT __ZONE__, cod_min, cod_ratio, rto_ratio, __ZONE_STEP__, rvp_ratio from cost_to_clients WHERE client_prefix=%s and courier_id=%s;".replace(
                             '__ZONE__', zone_column_mapping[delivery_zone]).replace('__ZONE_STEP__', zone_step_charge_column_mapping[delivery_zone]), (order[6], 16)) #16 is rate for all
                     charge_rate_values = cur.fetchone()
                 if not charge_rate_values:
@@ -118,9 +120,12 @@ def lambda_handler():
                 rto_charge_gst = 0
                 cod_charge = 0
                 cod_charged_gst = 0
-                if order[13] in ('RTO','DTO'):
+                if order[13] == 'RTO':
                     rto_charge = forward_charge*charge_rate_values[3]
                     rto_charge_gst = forward_charge_gst*charge_rate_values[3]
+                elif order[13] == 'DTO':
+                    rto_charge = forward_charge * charge_rate_values[5]
+                    rto_charge_gst = forward_charge_gst * charge_rate_values[5]
                 else:
                     if order[11] and order[11].lower() == 'cod':
                         if order[12]:

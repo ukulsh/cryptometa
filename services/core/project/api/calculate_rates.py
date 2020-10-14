@@ -2,7 +2,7 @@ import psycopg2, requests, os, json
 import logging
 from math import ceil
 from datetime import datetime, timedelta
-from .queries import *
+from project.api.queries import *
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -27,102 +27,116 @@ def lambda_handler():
 
     for order in all_orders:
         try:
-            courier_id = order[2]
-            if courier_id in (4,8,11,12,13):
-                courier_id=1
-
-            if courier_id in (5,):
-                courier_id=2
-
-            cur_2.execute("SELECT city from city_pin_mapping where pincode='%s';"%order[7])
-            pickup_city = cur_2.fetchone()
-            if not pickup_city:
-                logger.info("pickup city not found: " + str(order[0]))
-                continue
-            pickup_city = pickup_city[0]
-            cur_2.execute("SELECT city from city_pin_mapping where pincode='%s';" % order[8])
-            deliver_city = cur_2.fetchone()
-            if not deliver_city:
-                logger.info("deliver city not found: " + str(order[0]))
-                continue
-            deliver_city = deliver_city[0]
-            zone_select_tuple = (pickup_city, deliver_city, courier_id)
-            cur_2.execute("SELECT zone_value from city_zone_mapping where zone=%s and city=%s and courier_id=%s;", zone_select_tuple)
-            delivery_zone = cur_2.fetchone()
+            delivery_zone = order[15]
             if not delivery_zone:
-                logger.info("deliver zone not found: " + str(order[0]))
-                continue
-            delivery_zone = delivery_zone[0]
-            if not delivery_zone:
-                logger.info("deliver zone not found: " + str(order[0]))
-                continue
+                courier_id = order[2]
+                if courier_id in (4, 8, 11, 12, 13):
+                    courier_id = 1
 
-            calculate_courier_cost(cur, delivery_zone, order)
+                if courier_id in (5,):
+                    courier_id = 2
+                cur_2.execute("SELECT city from city_pin_mapping where pincode='%s';"%order[7])
+                pickup_city = cur_2.fetchone()
+                if not pickup_city:
+                    logger.info("pickup city not found: " + str(order[0]))
+                    continue
+                pickup_city = pickup_city[0]
+                cur_2.execute("SELECT city from city_pin_mapping where pincode='%s';" % order[8])
+                deliver_city = cur_2.fetchone()
+                if not deliver_city:
+                    logger.info("deliver city not found: " + str(order[0]))
+                    continue
+                deliver_city = deliver_city[0]
 
-            if delivery_zone in ('D1', 'D2'):
-                delivery_zone='D'
-            if delivery_zone in ('C1', 'C2'):
-                delivery_zone='C'
+                zone_select_tuple = (pickup_city, deliver_city, courier_id)
+                cur_2.execute("SELECT zone_value from city_zone_mapping where zone=%s and city=%s and courier_id=%s;", zone_select_tuple)
+                delivery_zone = cur_2.fetchone()
+                if not delivery_zone:
+                    logger.info("deliver zone not found: " + str(order[0]))
+                    continue
+                delivery_zone = delivery_zone[0]
+                if not delivery_zone:
+                    logger.info("deliver zone not found: " + str(order[0]))
+                    continue
 
-            charged_weight=order[4] if order[4] else 0
-            if order[6] != 'NASHER':
-                if order[3] and order[3]>charged_weight:
-                    charged_weight=order[3]
+                calculate_courier_cost(cur, delivery_zone, order)
+
+                if delivery_zone in ('D1', 'D2'):
+                    delivery_zone='D'
+                if delivery_zone in ('C1', 'C2'):
+                    delivery_zone='C'
+
+            charged_weight = order[4] if order[4] else 0
+
+            #if order[6] != 'NASHER':
+            if order[3] and order[3] > charged_weight:
+                charged_weight = order[3]
+            '''
             else:
-                if courier_id==1:
-                    volumetric_weight = (order[14]['length']*order[14]['breadth']*order[14]['height'])/4500
-                else:
-                    volumetric_weight = (order[14]['length']*order[14]['breadth']*order[14]['height'])/5000
-                if volumetric_weight>charged_weight:
-                    charged_weight = volumetric_weight
-
+            if courier_id==1:
+                volumetric_weight = (order[14]['length']*order[14]['breadth']*order[14]['height'])/4500
+            else:
+                volumetric_weight = (order[14]['length']*order[14]['breadth']*order[14]['height'])/5000
+            if volumetric_weight > charged_weight:
+                charged_weight = volumetric_weight
+            '''
             if not charged_weight:
                 logger.info("charged weight not found: " + str(order[0]))
                 continue
 
             try:
-                if order[6] != 'NASHER' or (order[6] == 'NASHER' and charged_weight<10.0):
-                    cost_select_tuple = (order[6], order[2])
-                    cur.execute("SELECT __ZONE__, cod_min, cod_ratio, rto_ratio from cost_to_clients WHERE client_prefix=%s and courier_id=%s;".replace(
-                        '__ZONE__', zone_column_mapping[delivery_zone]), cost_select_tuple)
+                #if order[6] != 'NASHER' or (order[6] == 'NASHER' and charged_weight < 10.0):
+                cost_select_tuple = (order[6], order[2])
+                cur.execute("SELECT __ZONE__, cod_min, cod_ratio, rto_ratio, __ZONE_STEP__, rvp_ratio from cost_to_clients WHERE client_prefix=%s and courier_id=%s;".replace(
+                    '__ZONE__', zone_column_mapping[delivery_zone]).replace('__ZONE_STEP__', zone_step_charge_column_mapping[delivery_zone]), cost_select_tuple)
+                charge_rate_values = cur.fetchone()
+                if not charge_rate_values:
+                    cur.execute(
+                        "SELECT __ZONE__, cod_min, cod_ratio, rto_ratio, __ZONE_STEP__, rvp_ratio from cost_to_clients WHERE client_prefix=%s and courier_id=%s;".replace(
+                            '__ZONE__', zone_column_mapping[delivery_zone]).replace('__ZONE_STEP__', zone_step_charge_column_mapping[delivery_zone]), (order[6], 16)) #16 is rate for all
                     charge_rate_values = cur.fetchone()
-                    if not charge_rate_values:
-                        cur.execute(
-                            "SELECT __ZONE__, cod_min, cod_ratio, rto_ratio from cost_to_clients WHERE client_prefix=%s and courier_id=%s;".replace(
-                                '__ZONE__', zone_column_mapping[delivery_zone]), (order[6], 16)) #16 is rate for all
-                        charge_rate_values = cur.fetchone()
-                    if not charge_rate_values:
-                        cur.execute(
-                            """INSERT INTO client_deductions (weight_charged, zone, shipment_id) VALUES (%s,%s,%s) RETURNING id;""",
-                            (charged_weight, delivery_zone, order[0]))
+                if not charge_rate_values:
+                    cur.execute(
+                        """INSERT INTO client_deductions (weight_charged, zone, shipment_id) VALUES (%s,%s,%s) RETURNING id;""",
+                        (charged_weight, delivery_zone, order[0]))
 
-                        logger.info("charge_rate_values not found: " + str(order[0]))
-                        continue
+                    logger.info("charge_rate_values not found: " + str(order[0]))
+                    continue
 
-                    charge_rate = charge_rate_values[0]
-
-                    multiple = ceil(charged_weight/0.5)
-
-                    forward_charge = charge_rate*multiple
-                    forward_charge_gst = forward_charge*1.18
-
-                    rto_charge = 0
-                    rto_charge_gst = 0
-                    cod_charge = 0
-                    cod_charged_gst = 0
-                    if order[13] in ('RTO','DTO'):
-                        rto_charge = forward_charge*charge_rate_values[3]
-                        rto_charge_gst = forward_charge_gst*charge_rate_values[3]
-                    else:
-                        if order[11] and order[11].lower() == 'cod':
-                            if order[12]:
-                                cod_charge = order[12]*(charge_rate_values[2]/100)
-                                if charge_rate_values[1]>cod_charge:
-                                    cod_charge = charge_rate_values[1]
-                            else:
+                cur.execute("select weight_offset, additional_weight_offset from master_couriers where id=%s;", (str(order[2])))
+                courier_data = cur.fetchone()
+                charge_rate = charge_rate_values[0]
+                forward_charge = charge_rate
+                per_step_charge = charge_rate_values[4] if charge_rate_values and len(charge_rate_values) >= 5 else 0.0
+                per_step_charge = 0.0 if per_step_charge is None else per_step_charge
+                if per_step_charge and courier_data[0] != 0 and courier_data[1] != 0:
+                    if ceil(charged_weight) > courier_data[0]:
+                        forward_charge = charge_rate + ceil((ceil(charged_weight)-courier_data[0]*1.0)/courier_data[1])*per_step_charge
+                else:
+                    multiple = ceil(charged_weight / 0.5)
+                    forward_charge = charge_rate * multiple
+                forward_charge_gst = forward_charge*1.18
+                rto_charge = 0
+                rto_charge_gst = 0
+                cod_charge = 0
+                cod_charged_gst = 0
+                if order[13] == 'RTO':
+                    rto_charge = forward_charge*charge_rate_values[3]
+                    rto_charge_gst = forward_charge_gst*charge_rate_values[3]
+                elif order[13] == 'DTO':
+                    rto_charge = forward_charge * charge_rate_values[5]
+                    rto_charge_gst = forward_charge_gst * charge_rate_values[5]
+                else:
+                    if order[11] and order[11].lower() == 'cod':
+                        if order[12]:
+                            cod_charge = order[12]*(charge_rate_values[2]/100)
+                            if charge_rate_values[1]>cod_charge:
                                 cod_charge = charge_rate_values[1]
+                        else:
+                            cod_charge = charge_rate_values[1]
 
-                            cod_charged_gst = cod_charge*1.18
+                        cod_charged_gst = cod_charge * 1.18
+                '''
                 else:
                     charge_rate_values = (None, 32, 1.5, 1)
                     intial_charge = nasher_zonal_mapping[delivery_zone][0]
@@ -150,6 +164,7 @@ def lambda_handler():
                                 cod_charge = charge_rate_values[1]
 
                             cod_charged_gst = cod_charge * 1.18
+                '''
 
                 if order[9]:
                     deduction_time=order[9]
@@ -283,6 +298,14 @@ zone_column_mapping = {
                        'E': 'zone_e',
                        }
 
+zone_step_charge_column_mapping = {
+                        'A': 'a_step',
+                        'B': 'b_step',
+                        'C': 'c_step',
+                        'D': 'd_step',
+                        'E': 'e_step'
+                     }
+
 zone_column_mapping_courier = {
                        'A': 'zone_a',
                        'B': 'zone_b',
@@ -380,3 +403,5 @@ def ndr_push_reattempts(cur):
                 req = requests.post(xpress_url, headers=headers, data=json.dumps(body))
         except Exception as e:
             logger.error("NDR push failed for: " + order[0])
+
+lambda_handler()

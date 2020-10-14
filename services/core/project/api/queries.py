@@ -157,13 +157,10 @@ delete_failed_shipments_query = """DELETE FROM 	order_status where shipment_id i
 #########################request pickups
 
 
-get_pickup_requests_query = """select aa.id,aa.client_prefix,bb.warehouse_prefix,aa.pickup_id, cc.id as pr_id,
-                                cc.pickup_after_hours
+get_pickup_requests_query = """select aa.id,aa.client_prefix,bb.warehouse_prefix,aa.pickup_id, auto_pur, auto_pur_time
                                 from client_pickups aa
-                                left join pickup_points bb
-                                on aa.pickup_id=bb.id
-                                left join pickup_requests cc
-                                on aa.client_prefix=cc.client_prefix;"""
+                                left join pickup_points bb on aa.pickup_id=bb.id
+                                left join client_mapping cc on aa.client_prefix=cc.client_prefix;"""
 
 get_request_pickup_orders_data_query = """select aa.channel_order_id, aa.order_date, aa.client_prefix, 
                                 bb.weight, cc.courier_name, cc.api_key, cc.api_url, dd.prod_names, 
@@ -188,18 +185,15 @@ get_request_pickup_orders_data_query = """select aa.channel_order_id, aa.order_d
                                 on aa.delivery_address_id=ff.id
                                 where aa.status in __ORDER_STATUS__
                                 and aa.pickup_data_id=%s
-                                and aa.order_date<%s
                                 order by aa.id;"""
 
-update_order_status_query = """UPDATE orders SET status='PICKUP REQUESTED' WHERE id=%s"""
+update_order_status_query = """UPDATE orders SET status='PICKUP REQUESTED' WHERE id=%s;
+                                INSERT INTO order_pickups (manifest_id, order_id, picked, date_created)
+                                VALUES (%s,%s,%s,%s) ON CONFLICT (manifest_id, order_id) DO NOTHING;"""
 
 insert_manifest_data_query = """INSERT INTO manifests (manifest_id, warehouse_prefix, courier_id, pickup_id, 
                                 total_scheduled, pickup_date, manifest_url, date_created, client_pickup_id) VALUES 
-                                (%s,%s,%s,%s,%s,%s,%s,%s,%s)"""
-
-update_pickup_requests_query = """UPDATE pickup_requests SET last_picked_order_id=%s, last_pickup_request_date=%s
-                                  WHERE client_prefix=%s"""
-
+                                (%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id;"""
 
 #########################update status
 
@@ -287,7 +281,7 @@ update_pickup_count_query = """UPDATE manifests SET total_picked=COALESCE(total_
 select_orders_to_calculate_query = """select aa.id, aa.awb, aa.courier_id, aa.volumetric_weight, aa.weight, 
                                         bb.channel_order_id, bb.client_prefix, cc.pincode as pickup_pincode,
                                         dd.pincode as delivery_pincode, ff.status_time, bb.order_date, gg.payment_mode, 
-                                        gg.amount, bb.status, aa.dimensions from shipments aa
+                                        gg.amount, bb.status, aa.dimensions, aa.zone from shipments aa
                                         left join orders bb on aa.order_id=bb.id
                                         left join pickup_points cc on aa.pickup_id=cc.id
                                         left join shipping_address dd on bb.delivery_address_id=dd.id
@@ -391,7 +385,7 @@ select_orders_list_query = """select distinct on (aa.order_date, aa.id) aa.chann
                              bb.volumetric_weight,bb.remark, aa.customer_name, aa.customer_phone, aa.customer_email, dd.address_one, dd.address_two, 
                              dd.city, dd.state, dd.country, dd.pincode, ee.delivered_time, ff.pickup_time, gg.payment_mode, gg.amount, ii.warehouse_prefix,
                              ll.product_names, ll.skus, ll.quantity,mm.id,  mm.cod_verified, mm.verified_via, nn.id,  nn.ndr_verified, nn.verified_via, 
-                             pp.logo_url, qq.manifest_time, rr.reason_id, rr.reason, rr.date_created, aa.client_prefix, ll.weights, ll.dimensions
+                             pp.logo_url, qq.manifest_time, rr.reason_id, rr.reason, rr.date_created, aa.client_prefix, ll.weights, ll.dimensions, bb.pdd
                              from orders aa
                              left join shipments bb
                              on aa.id=bb.order_id
@@ -455,6 +449,23 @@ select_wallet_deductions_query = """SELECT aa.status_time, aa.status, bb.courier
                                     AND aa.status_time>'2020-04-01'
                                     ORDER BY status_time DESC
                                     __PAGINATION__"""
+
+
+select_pickups_list_query = """select aa.id, aa.manifest_id, bb.courier_name, ee.total_picked, ee.total_scheduled, aa.pickup_date, 
+                                dd.warehouse_prefix, aa.total_picked, aa.total_scheduled, aa.manifest_url from manifests aa
+                                left join master_couriers bb on aa.courier_id=bb.id
+                                left join client_pickups cc on aa.client_pickup_id=cc.id
+                                left join pickup_points dd on cc.pickup_id=dd.id
+                                left join (select manifest_id, count(1) as total_scheduled, count(1) filter (where picked is true) as total_picked 
+                                           from order_pickups group by manifest_id) ee on aa.id=ee.manifest_id
+                                where 1=1
+                                 __PICKUP_FILTER__
+                                 __CLIENT_FILTER__
+                                 __MV_CLIENT_FILTER__
+                                 __COURIER_FILTER__
+                                 __PICKUP_TIME_FILTER__
+                                order by pickup_date DESC, ee.total_scheduled DESC
+                                __PAGINATION__"""
 
 
 select_wallet_remittance_query = """select * from

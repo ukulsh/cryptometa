@@ -32,11 +32,13 @@ app.config['USERS_SERVICE_URL'] = os.environ.get('USERS_SERVICE_URL')
 app.config['CELERYBEAT_SCHEDULE'] = {
     'run-status-update': {
             'task': 'status_update',
-            'schedule': crontab(minute='31', hour='*/2')
+            'schedule': crontab(minute='38', hour='*/2'),
+            'options': {'queue': 'update_status'}
         },
     'run-fetch-orders': {
                 'task': 'fetch_orders',
-                'schedule': crontab(minute='*/20')
+                'schedule': crontab(minute='*/20'),
+                'options': {'queue': 'fetch_orders'}
             },
 }
 
@@ -77,7 +79,7 @@ def ecom_scan(resp):
     if auth_data.get("username")!="ecomexpress" or auth_data.get("user_group")!="courier":
         return jsonify({"success": False, "msg": "Not allowed"}), 404
     data = json.loads(request.data)
-    consume_ecom_scan.delay(data)
+    consume_ecom_scan.apply_async(queue='consume_scans', args=(data, ))
     return jsonify({"awb": data['awb'], "status": True, "status_update_number": data['status_update_number'] }), 200
 
 
@@ -90,6 +92,6 @@ def sync_channel_prods(client_prefix):
 @app.route('/scans/v1/sync/products', methods = ['GET'])
 def sync_channel_products():
     client_prefix=request.args.get('tab')
-    sync_channel_prods.delay(client_prefix)
+    sync_channel_prods.apply_async(queue='consume_scans', args=(client_prefix, ))
     return jsonify({"msg": "Task received"}), 200
 

@@ -60,10 +60,9 @@ services:
       - DATABASE_HOST=wareiq-core-prod2.cvqssxsqruyc.us-east-1.rds.amazonaws.com
       - DATABASE_HOST_PINCODE=wareiq-core-prod.cvqssxsqruyc.us-east-1.rds.amazonaws.com
       - DATABASE_NAME=core_prod
+      - DATABASE_NAME_USER=users_prod
       - DATABASE_USER=postgres
       - DATABASE_PASSWORD=aSderRFgd23
-    depends_on:
-      - rabbitmq
 
   rabbitmq:
     image: rabbitmq

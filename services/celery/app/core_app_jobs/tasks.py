@@ -67,6 +67,7 @@ def consume_ecom_scan_util(payload):
             mark_picked_channel(order, cur)
             exotel_send_shipped_sms(order, "Ecom Express")
             send_shipped_email(order)
+            mark_order_picked_pickups(order, cur)
 
         elif tracking_status == "Delivered":
             mark_delivered_channel(order)

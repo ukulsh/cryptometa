@@ -16,6 +16,8 @@ password = os.environ('DTATBASE_PASSWORD')
 conn = psycopg2.connect(host=host, database=database, user=user, password=password)
 """
 conn = psycopg2.connect(host="wareiq-core-prod2.cvqssxsqruyc.us-east-1.rds.amazonaws.com", database="core_prod", user="postgres", password="aSderRFgd23")
+conn_2 = psycopg2.connect(host="wareiq-core-prod.cvqssxsqruyc.us-east-1.rds.amazonaws.com", database="core_prod", user="postgres", password="aSderRFgd23")
+cur_2 = conn_2.cursor()
 
 
 def lambda_handler(courier_name=None, order_ids=None):
@@ -91,6 +93,35 @@ def cod_verification_text(order, exotel_idx, cur):
     return sms_to_key, sms_body_key, customer_phone, sms_body_key_data
 
 
+def get_delivery_zone(pick_pincode, del_pincode):
+    cur_2.execute("SELECT city from city_pin_mapping where pincode='%s';" % str(pick_pincode).rstrip())
+    pickup_city = cur_2.fetchone()
+    if not pickup_city:
+        return None
+    pickup_city = pickup_city[0]
+    cur_2.execute("SELECT city from city_pin_mapping where pincode='%s';" % str(del_pincode).rstrip())
+    deliver_city = cur_2.fetchone()
+    if not deliver_city:
+        return None
+    deliver_city = deliver_city[0]
+    zone_select_tuple = (pickup_city, deliver_city)
+    cur_2.execute("SELECT zone_value from city_zone_mapping where zone=%s and city=%s;",
+                  zone_select_tuple)
+    delivery_zone = cur_2.fetchone()
+    if not delivery_zone:
+        return None
+    delivery_zone = delivery_zone[0]
+    if not delivery_zone:
+        return None
+
+    if delivery_zone in ('D1', 'D2'):
+        delivery_zone = 'D'
+    if delivery_zone in ('C1', 'C2'):
+        delivery_zone = 'C'
+
+    return delivery_zone
+
+
 def ship_delhivery_orders(cur, courier, courier_name, order_ids, order_id_tuple, backup_param=True):
     exotel_idx = 0
     exotel_sms_data = {
@@ -112,6 +143,7 @@ def ship_delhivery_orders(cur, courier, courier_name, order_ids, order_id_tuple,
     cur.execute(orders_to_ship_query, get_orders_data_tuple)
     all_orders = cur.fetchall()
     pickup_point_order_dict = dict()
+    orders_dict = dict()
     for order in all_orders:
         if order[41]:
             if order[41] not in pickup_point_order_dict:
@@ -132,6 +164,17 @@ def ship_delhivery_orders(cur, courier, courier_name, order_ids, order_id_tuple,
                    "Content-Type": "application/json"}
         for order in all_new_orders:
             try:
+                zone = None
+                try:
+                    zone = get_delivery_zone(pickup_point[8], order[18])
+                except Exception as e:
+                    logger.error("couldn't find zone: " + str(order[0]) + "\nError: " + str(e))
+
+                orders_dict[str(order[0])] = (order[0], order[33], order[34], order[35],
+                                              order[36], order[37], order[38], order[39],
+                                              order[5], order[9], order[45], order[46],
+                                              order[51], order[52], zone)
+
                 if order[17].lower() in ("bengaluru", "bangalore", "banglore") and courier[1] in ("KAMAAYURVEDA", "SOHOMATTRESS") and order[26].lower() != 'pickup':
                     continue
 
@@ -210,12 +253,12 @@ def ship_delhivery_orders(cur, courier, courier_name, order_ids, order_id_tuple,
                     qs = cur.fetchone()
                     if not (qs and backup_param):
                         insert_shipments_data_query = """INSERT INTO SHIPMENTS (awb, status, order_id, pickup_id, courier_id, 
-                                                                dimensions, volumetric_weight, weight, remark, return_point_id, routing_code)
+                                                                dimensions, volumetric_weight, weight, remark, return_point_id, routing_code, zone)
                                                                 VALUES  %s"""
                         insert_shipments_data_tuple = list()
                         insert_shipments_data_tuple.append(("", "Fail", order[0], None,
                                                             None, None, None, None, "Pincode not serviceable", None,
-                                                            None), )
+                                                            None, zone), )
                         cur.execute(insert_shipments_data_query, tuple(insert_shipments_data_tuple))
                     continue
 
@@ -263,7 +306,7 @@ def ship_delhivery_orders(cur, courier, courier_name, order_ids, order_id_tuple,
 
                 shipments.append(shipment_data)
             except Exception as e:
-                print("couldn't assign order: " + str(order[0]) + "\nError: " + str(e))
+                logger.error("couldn't assign order: " + str(order[0]) + "\nError: " + str(e))
 
         pick_add = pickup_point[4]
         if pickup_point[5]:
@@ -308,19 +351,13 @@ def ship_delhivery_orders(cur, courier, courier_name, order_ids, order_id_tuple,
 
         insert_shipments_data_query = """INSERT INTO SHIPMENTS (awb, status, order_id, pickup_id, courier_id, 
                                         dimensions, volumetric_weight, weight, remark, return_point_id, routing_code, 
-                                        channel_fulfillment_id, tracking_link)
+                                        channel_fulfillment_id, tracking_link, zone)
                                         VALUES  %s"""
 
         for i in range(len(return_data) - 1):
             insert_shipments_data_query += ",%s"
 
         insert_shipments_data_query += " RETURNING id,awb;"
-
-        orders_dict = dict()
-        for prev_order in all_orders:
-            orders_dict[str(prev_order[0])] = (prev_order[0], prev_order[33], prev_order[34], prev_order[35],
-                                          prev_order[36], prev_order[37], prev_order[38], prev_order[39],
-                                          prev_order[5], prev_order[9], prev_order[45], prev_order[46], prev_order[51], prev_order[52])
 
         order_status_change_ids = list()
         insert_shipments_data_tuple = list()
@@ -389,7 +426,7 @@ def ship_delhivery_orders(cur, courier, courier_name, order_ids, order_id_tuple,
 
             data_tuple = (package['waybill'], package['status'], orders_dict[package['refnum']][0], pickup_point[1],
                           courier[9], json.dumps(dimensions), volumetric_weight, weight, remark, pickup_point[2],
-                          package['sort_code'], fulfillment_id, tracking_link)
+                          package['sort_code'], fulfillment_id, tracking_link, orders_dict[package['refnum']][14])
             insert_shipments_data_tuple.append(data_tuple)
             insert_order_status_dict[package['waybill']] = [orders_dict[package['refnum']][0], courier[9],
                                                             None, "UD", "Received", "Consignment Manifested",
@@ -473,6 +510,11 @@ def ship_shadowfax_orders(cur, courier, courier_name, order_ids, order_id_tuple,
         for order in all_new_orders:
             if order[17].lower() not in ("bengaluru", "bangalore", "banglore") and courier[1] == "MIRAKKI":
                 continue
+            zone = None
+            try:
+                zone = get_delivery_zone(pickup_point[8], order[18])
+            except Exception as e:
+                logger.error("couldn't find zone: " + str(order[0]) + "\nError: " + str(e))
             time_2_days = datetime.utcnow() + timedelta(hours=5.5) - timedelta(days=1)
             if order[47] and not (order[50] and order[2] < time_2_days):
                 if order[26].lower() == 'cod' and not order[42] and order[43]:
@@ -506,12 +548,12 @@ def ship_shadowfax_orders(cur, courier, courier_name, order_ids, order_id_tuple,
                     qs = cur.fetchone()
                     if not (qs and backup_param):
                         insert_shipments_data_query = """INSERT INTO SHIPMENTS (awb, status, order_id, pickup_id, courier_id, 
-                                                                            dimensions, volumetric_weight, weight, remark, return_point_id, routing_code)
+                                                                            dimensions, volumetric_weight, weight, remark, return_point_id, routing_code, zone)
                                                                             VALUES  %s"""
                         insert_shipments_data_tuple = list()
                         insert_shipments_data_tuple.append(("", "Fail", order[0], None,
                                                             None, None, None, None, "Pincode not serviceable", None,
-                                                            None), )
+                                                            None, zone), )
                         cur.execute(insert_shipments_data_query, tuple(insert_shipments_data_tuple))
                     continue
 
@@ -590,7 +632,7 @@ def ship_shadowfax_orders(cur, courier, courier_name, order_ids, order_id_tuple,
                 return_data_raw = req.json()
                 insert_shipments_data_query = """INSERT INTO SHIPMENTS (awb, status, order_id, pickup_id, courier_id, 
                                                                                                 dimensions, volumetric_weight, weight, remark, return_point_id, routing_code, 
-                                                                                                channel_fulfillment_id, tracking_link)
+                                                                                                channel_fulfillment_id, tracking_link, zone)
                                                                                                 VALUES  %s RETURNING id;"""
                 if not return_data_raw['errors']:
                     order_status_change_ids.append(order[0])
@@ -621,14 +663,14 @@ def ship_shadowfax_orders(cur, courier, courier_name, order_ids, order_id_tuple,
                     data_tuple = tuple([(
                         return_data['awb_number'], return_data_raw['message'], order[0], pickup_point[1],
                         courier[9], json.dumps(dimensions), volumetric_weight, weight, "", pickup_point[2],
-                        "", fulfillment_id, tracking_link)])
+                        "", fulfillment_id, tracking_link, zone)])
 
                 else:
                     data_tuple = tuple([(
                         "", return_data_raw['message'], order[0], pickup_point[1],
                         courier[9], json.dumps(dimensions), volumetric_weight, weight, return_data_raw['errors'],
                         pickup_point[2],
-                        "", fulfillment_id, tracking_link)])
+                        "", fulfillment_id, tracking_link, zone)])
 
                 cur.execute(insert_shipments_data_query, data_tuple)
                 ship_temp = cur.fetchone()
@@ -749,12 +791,8 @@ def ship_xpressbees_orders(cur, courier, courier_name, order_ids, order_id_tuple
             if courier[10] == "Xpressbees Surface" and weight and volumetric_weight:
                 weight_counted = weight if weight > volumetric_weight else volumetric_weight
                 new_courier_name = None
-                if weight_counted > 14:
-                    new_courier_name = "Delhivery 20 KG"
-                elif weight_counted > 6:
-                    new_courier_name = "Delhivery 10 KG"
-                elif weight_counted > 1.5:
-                    new_courier_name = "Delhivery 2 KG"
+                if weight_counted > 3:
+                    new_courier_name = "Xpressbees 5 KG"
                 if new_courier_name:
                     try:
                         cur.execute("""SELECT id, courier_name, logo_url, date_created, date_updated, api_key, 
@@ -772,13 +810,19 @@ def ship_xpressbees_orders(cur, courier, courier_name, order_ids, order_id_tuple
                         courier_new[14] = courier_data[5]
                         courier_new[15] = courier_data[6]
                         courier_new[16] = courier_data[7]
-                        ship_delhivery_orders(cur, tuple(courier_new), new_courier_name, [order[0]],
+                        ship_xpressbees_orders(cur, tuple(courier_new), new_courier_name, [order[0]],
                                               "(" + str(order[0]) + ")", backup_param=False)
                     except Exception as e:
                         logger.error("Couldn't assign backup courier for: " + str(order[0]) + "\nError: " + str(e.args))
                         pass
 
                     continue
+
+            zone = None
+            try:
+                zone = get_delivery_zone(pickup_point[8], order[18])
+            except Exception as e:
+                logger.error("couldn't find zone: " + str(order[0]) + "\nError: " + str(e))
 
             time_2_days = datetime.utcnow() + timedelta(hours=5.5) - timedelta(days=1)
             if order[47] and not (order[50] and order[2] < time_2_days):
@@ -903,7 +947,7 @@ def ship_xpressbees_orders(cur, courier, courier_name, order_ids, order_id_tuple
                 return_data_raw = req.json()
                 insert_shipments_data_query = """INSERT INTO SHIPMENTS (awb, status, order_id, pickup_id, courier_id, 
                                                                                                 dimensions, volumetric_weight, weight, remark, return_point_id, routing_code, 
-                                                                                                channel_fulfillment_id, tracking_link)
+                                                                                                channel_fulfillment_id, tracking_link, zone)
                                                                                                 VALUES  %s RETURNING id;"""
                 if return_data_raw['AddManifestDetails'][0]['ReturnMessage'] == 'successful':
                     order_status_change_ids.append(order[0])
@@ -911,7 +955,7 @@ def ship_xpressbees_orders(cur, courier, courier_name, order_ids, order_id_tuple
                         return_data_raw['AddManifestDetails'][0]['AWBNo'],
                         return_data_raw['AddManifestDetails'][0]['ReturnMessage'],
                         order[0], pickup_point[1], courier[9], json.dumps(dimensions), volumetric_weight, weight,
-                        "", pickup_point[2], "", fulfillment_id, tracking_link)])
+                        "", pickup_point[2], "", fulfillment_id, tracking_link, zone)])
                     client_name = str(order[51])
                     customer_phone = order[5].replace(" ", "")
                     customer_phone = "0" + customer_phone[-10:]
@@ -942,12 +986,12 @@ def ship_xpressbees_orders(cur, courier, courier_name, order_ids, order_id_tuple
                     qs = cur.fetchone()
                     if not (qs and backup_param):
                         insert_shipments_data_query = """INSERT INTO SHIPMENTS (awb, status, order_id, pickup_id, courier_id, 
-                                                                dimensions, volumetric_weight, weight, remark, return_point_id, routing_code)
+                                                                dimensions, volumetric_weight, weight, remark, return_point_id, routing_code, zone)
                                                                 VALUES  %s"""
                         insert_shipments_data_tuple = list()
                         insert_shipments_data_tuple.append(("", "Fail", order[0], None,
                                                             None, None, None, None, "Pincode not serviceable", None,
-                                                            None), )
+                                                            None, zone), )
                         cur.execute(insert_shipments_data_query, tuple(insert_shipments_data_tuple))
                     continue
 
@@ -1064,6 +1108,12 @@ def ship_ecom_orders(cur, courier, courier_name, order_ids, order_id_tuple, back
 
                 continue
 
+            zone = None
+            try:
+                zone = get_delivery_zone(pickup_point[8], order[18])
+            except Exception as e:
+                logger.error("couldn't find zone: " + str(order[0]) + "\nError: " + str(e))
+
             time_2_days = datetime.utcnow() + timedelta(hours=5.5) - timedelta(days=1)
             if order[47] and not (order[50] and order[2] < time_2_days):
                 if order[26].lower() == 'cod' and not order[42] and order[43]:
@@ -1175,6 +1225,9 @@ def ship_ecom_orders(cur, courier, courier_name, order_ids, order_id_tuple, back
 
                 if order[26].lower() == "cod":
                     json_input["COLLECTABLE_VALUE"] = order[27]
+                else:
+                    json_input["COLLECTABLE_VALUE"] = 0
+
                 ecom_url = courier[16] + "/apiv3/manifest_awb/"
                 req = requests.post(ecom_url,  data={"username": courier[14] , "password": courier[15],
                                                     "json_input": json.dumps([json_input])})
@@ -1186,7 +1239,7 @@ def ship_ecom_orders(cur, courier, courier_name, order_ids, order_id_tuple, back
                 return_data_raw = req.json()
                 insert_shipments_data_query = """INSERT INTO SHIPMENTS (awb, status, order_id, pickup_id, courier_id, 
                                                                                                 dimensions, volumetric_weight, weight, remark, return_point_id, routing_code, 
-                                                                                                channel_fulfillment_id, tracking_link)
+                                                                                                channel_fulfillment_id, tracking_link, zone)
                                                                                                 VALUES  %s RETURNING id;"""
                 if return_data_raw['shipments'][0]['success']:
                     order_status_change_ids.append(order[0])
@@ -1195,7 +1248,7 @@ def ship_ecom_orders(cur, courier, courier_name, order_ids, order_id_tuple, back
                         return_data_raw['shipments'][0]['awb'],
                         return_data_raw['shipments'][0]['reason'],
                         order[0], pickup_point[1], courier[9], json.dumps(dimensions), volumetric_weight, weight,
-                        "", pickup_point[2], "", fulfillment_id, tracking_link)])
+                        "", pickup_point[2], "", fulfillment_id, tracking_link, zone)])
                     client_name = str(order[51])
                     customer_phone = order[5].replace(" ", "")
                     customer_phone = "0" + customer_phone[-10:]
@@ -1224,12 +1277,12 @@ def ship_ecom_orders(cur, courier, courier_name, order_ids, order_id_tuple, back
                     qs = cur.fetchone()
                     if not (qs and backup_param):
                         insert_shipments_data_query = """INSERT INTO SHIPMENTS (awb, status, order_id, pickup_id, courier_id, 
-                                                                dimensions, volumetric_weight, weight, remark, return_point_id, routing_code)
+                                                                dimensions, volumetric_weight, weight, remark, return_point_id, routing_code, zone)
                                                                 VALUES  %s"""
                         insert_shipments_data_tuple = list()
                         insert_shipments_data_tuple.append(("", "Fail", order[0], None,
                                                             None, None, None, None, "Pincode not serviceable", None,
-                                                            None), )
+                                                            None, zone), )
                         cur.execute(insert_shipments_data_query, tuple(insert_shipments_data_tuple))
                     continue
 
@@ -1324,6 +1377,12 @@ def ship_bluedart_orders(cur, courier, courier_name, order_ids, order_id_tuple, 
                     }
         for order in all_new_orders:
 
+            zone = None
+            try:
+                zone = get_delivery_zone(pickup_point[8], order[18])
+            except Exception as e:
+                logger.error("couldn't find zone: " + str(order[0]) + "\nError: " + str(e))
+
             time_2_days = datetime.utcnow() + timedelta(hours=5.5) - timedelta(days=1)
             if order[47] and not (order[50] and order[2] < time_2_days):
                 if order[26].lower() == 'cod' and not order[42] and order[43]:
@@ -1357,12 +1416,12 @@ def ship_bluedart_orders(cur, courier, courier_name, order_ids, order_id_tuple, 
                     qs = cur.fetchone()
                     if not (qs and backup_param):
                         insert_shipments_data_query = """INSERT INTO SHIPMENTS (awb, status, order_id, pickup_id, courier_id, 
-                                                        dimensions, volumetric_weight, weight, remark, return_point_id, routing_code)
+                                                        dimensions, volumetric_weight, weight, remark, return_point_id, routing_code, zone)
                                                         VALUES  %s"""
                         insert_shipments_data_tuple = list()
                         insert_shipments_data_tuple.append(("", "Fail", order[0], None,
                                                             None, None, None, None, "Pincode not serviceable", None,
-                                                            None), )
+                                                            None, zone), )
                         cur.execute(insert_shipments_data_query, tuple(insert_shipments_data_tuple))
                     continue
 
@@ -1468,14 +1527,14 @@ def ship_bluedart_orders(cur, courier, courier_name, order_ids, order_id_tuple, 
                 req = waybill_client.service.GenerateWayBill(**request_data)
                 insert_shipments_data_query = """INSERT INTO SHIPMENTS (awb, status, order_id, pickup_id, courier_id, 
                                                                                                             dimensions, volumetric_weight, weight, remark, return_point_id, routing_code, 
-                                                                                                            channel_fulfillment_id, tracking_link)
+                                                                                                            channel_fulfillment_id, tracking_link, zone)
                                                                                                             VALUES  %s RETURNING id;"""
                 if req['AWBNo']:
                     order_status_change_ids.append(order[0])
 
                     data_tuple = tuple([(
                         req['AWBNo'],"",order[0], pickup_point[1], courier[9], json.dumps(dimensions), volumetric_weight, weight,
-                        "", pickup_point[2], "", fulfillment_id, tracking_link)])
+                        "", pickup_point[2], "", fulfillment_id, tracking_link, zone)])
                     client_name = str(order[51])
                     customer_phone = order[5].replace(" ", "")
                     customer_phone = "0" + customer_phone[-10:]
@@ -1505,12 +1564,12 @@ def ship_bluedart_orders(cur, courier, courier_name, order_ids, order_id_tuple, 
                     qs = cur.fetchone()
                     if not (qs and backup_param):
                         insert_shipments_data_query = """INSERT INTO SHIPMENTS (awb, status, order_id, pickup_id, courier_id, 
-                                                                            dimensions, volumetric_weight, weight, remark, return_point_id, routing_code)
+                                                                            dimensions, volumetric_weight, weight, remark, return_point_id, routing_code, zone)
                                                                             VALUES  %s"""
                         insert_shipments_data_tuple = list()
                         insert_shipments_data_tuple.append(("", "Fail", order[0], None,
                                                             None, None, None, None, "Pincode not serviceable", None,
-                                                            None), )
+                                                            None, zone), )
                         cur.execute(insert_shipments_data_query, tuple(insert_shipments_data_tuple))
                     continue
 

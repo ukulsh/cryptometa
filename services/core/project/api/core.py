@@ -246,7 +246,7 @@ def ping_dev():
                              "warehouse": "QSBHIWANDI",
                              "quantity": del_qty,
                              "type": "replace",
-                             "remark": "5 oct upload"})
+                             "remark": "6 oct resync"})
 
             """
 
@@ -271,8 +271,8 @@ def ping_dev():
                 db.session.add(combo_obj)
             else:
                 pass
-            
-            if row[0]%40==0:
+            """
+            if row[0]%100==0:
                 headers = {
                     'Authorization': "Bearer " + "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJleHAiOjE2MDMwMzg2NzQsImlhdCI6MTYwMDQ0NjY3NCwic3ViIjo5fQ.HLgf5CEPcvuiaiopnGOyRin5-utI6v9uNQ8iPSa4NXE",
                     'Content-Type': 'application/json'}
@@ -282,7 +282,7 @@ def ping_dev():
                                     data=json.dumps(data))
 
                 sku_list = list()
-            """
+
 
 
         except Exception as e:

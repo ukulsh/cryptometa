@@ -962,7 +962,7 @@ def pick_orders(resp, pickup_id):
 
         manifest_id=int(pickup_id)
 
-        order_qs = db.session.query(OrderPickups).filter(OrderPickups.manifest_id==manifest_id).all()
+        order_qs = db.session.query(OrderPickups).filter(OrderPickups.manifest_id==manifest_id).order_by(OrderPickups.pickup_time.desc()).all()
         for order in order_qs:
             res_obj = dict()
             res_obj['unique_id'] = order.order_id

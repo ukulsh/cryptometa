@@ -175,10 +175,10 @@ def ship_delhivery_orders(cur, courier, courier_name, order_ids, order_id_tuple,
                                               order[5], order[9], order[45], order[46],
                                               order[51], order[52], zone)
 
-                if order[17].lower() in ("bengaluru", "bangalore", "banglore") and courier[1] in ("KAMAAYURVEDA", "SOHOMATTRESS") and order[26].lower() != 'pickup':
+                if order[17].lower() in ("bengaluru", "bangalore", "banglore") and courier[1] in ("SOHOMATTRESS", ) and order[26].lower() != 'pickup':
                     continue
 
-                if courier[1] == "ZLADE" and courier[10]=="Delhivery Surface Standard" and (str(order[18]).startswith("5") or str(order[18]).startswith("6")) and order[26].lower() != 'pickup':
+                if courier[1] == "ZLADE" and courier[10]=="Delhivery Surface Standard" and zone and zone not in ('A','B') and order[26].lower() != 'pickup':
                     continue
 
                 if not order[52]:

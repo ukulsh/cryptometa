@@ -141,6 +141,8 @@ class MasterCouriers(db.Model):
     api_url = db.Column(db.String, nullable=True)
     logo_url = db.Column(db.String, nullable=True)
     integrated = db.Column(db.BOOLEAN, nullable=True, default=None)
+    weight_offset = db.Column(db.FLOAT, default=0.0, server_default="0.0")
+    additional_weight_offset = db.Column(db.FLOAT, default=0.0, server_default="0.0")
     date_created = db.Column(db.DateTime, default=datetime.now)
     date_updated = db.Column(db.DateTime, onupdate=datetime.now)
 
@@ -724,6 +726,47 @@ class CostToClients(db.Model):
     date_created = db.Column(db.DateTime, default=datetime.now)
     date_updated = db.Column(db.DateTime, onupdate=datetime.now)
 
+    def __init__(self, client_prefix, courier_id, zone_a, zone_b, zone_c, zone_d, zone_e, a_step,
+                 b_step, c_step, d_step, e_step, cod_min, cod_ratio, rvp_ratio, rto_ratio, management_fee):
+        self.client_prefix = client_prefix
+        self.courier_id = courier_id
+        self.zone_a = zone_a
+        self.zone_b = zone_b
+        self.zone_c = zone_c
+        self.zone_d = zone_d
+        self.zone_e = zone_e
+        self.a_step = a_step
+        self.b_step = b_step
+        self.c_step = c_step
+        self.d_step = d_step
+        self.e_step = e_step
+        self.cod_min = cod_min
+        self.cod_ratio = cod_ratio
+        self.rvp_ratio = rvp_ratio
+        self.rto_ratio = rto_ratio
+        self.management_fee = management_fee
+
+    def to_json(self):
+        return {
+            'client_prefix': self.client_prefix,
+            'courier_name': self.courier.courier_name,
+            'zona_a': self.zone_a,
+            'zone_b': self.zone_b,
+            'zone_c': self.zone_c,
+            'zone_d': self.zone_d,
+            'zone_e': self.zone_e,
+            'a_step': self.a_step,
+            'b_step': self.b_step,
+            'c_step': self.c_step,
+            'd_step': self.d_step,
+            'e_step': self.e_step,
+            'cod_min': self.cod_min,
+            'cod_ratio': self.cod_ratio,
+            'rvp_ratio': self.rvp_ratio,
+            'rto_ratio': self.rto_ratio,
+            'management_fee': self.management_fee
+        }
+
 
 class ClientRecharges(db.Model):
     __tablename__ = "client_recharges"
@@ -757,6 +800,51 @@ class ClientDeductions(db.Model):
     deduction_time = db.Column(db.DateTime, default=datetime.now)
     date_created = db.Column(db.DateTime, default=datetime.now)
     date_updated = db.Column(db.DateTime, onupdate=datetime.now)
+
+
+class ClientDefaultCost(db.Model):
+    __tablename__ = "client_default_cost"
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    courier_id = db.Column(db.Integer, db.ForeignKey('master_couriers.id'))
+    courier = db.relationship("MasterCouriers", backref=db.backref("client_default_cost", uselist=True))
+    zone_a = db.Column(db.FLOAT, nullable=True)
+    zone_b = db.Column(db.FLOAT, nullable=True)
+    zone_c = db.Column(db.FLOAT, nullable=True)
+    zone_d = db.Column(db.FLOAT, nullable=True)
+    zone_e = db.Column(db.FLOAT, nullable=True)
+    a_step = db.Column(db.FLOAT, nullable=True)
+    b_step = db.Column(db.FLOAT, nullable=True)
+    c_step = db.Column(db.FLOAT, nullable=True)
+    d_step = db.Column(db.FLOAT, nullable=True)
+    e_step = db.Column(db.FLOAT, nullable=True)
+    cod_min = db.Column(db.FLOAT, nullable=True)
+    cod_ratio = db.Column(db.FLOAT, nullable=True)
+    rto_ratio = db.Column(db.FLOAT, nullable=True)
+    rvp_ratio = db.Column(db.FLOAT, nullable=True)
+    management_fee = db.Column(db.FLOAT, nullable=True)
+
+    def to_json(self):
+        return {
+            'id': self.id,
+            'courier_name': self.courier.courier_name,
+            'weight_offset': self.courier.weight_offset,
+            'additional_weight_offset': self.courier.additional_weight_offset,
+            'zone_a': self.zone_a,
+            'zone_b': self.zone_b,
+            'zone_c': self.zone_c,
+            'zone_d': self.zone_d,
+            'zone_e': self.zone_e,
+            'a_step': self.a_step,
+            'b_step': self.b_step,
+            'c_step': self.c_step,
+            'd_step': self.d_step,
+            'e_step': self.e_step,
+            'cod_min': self.cod_min,
+            'cod_ratio': self.cod_ratio,
+            'rto_ratio': self.rto_ratio,
+            'rvp_ratio': self.rvp_ratio,
+            'management_fee': self.management_fee
+        }
 
 
 class CourierCharges(db.Model):

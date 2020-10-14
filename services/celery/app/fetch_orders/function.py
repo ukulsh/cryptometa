@@ -52,13 +52,9 @@ def fetch_orders():
 
 def fetch_shopify_orders(cur, channel):
 
-    if channel[7]:
-        if 21 <= datetime.utcnow().hour <22:
-            updated_after = channel[7] - timedelta(days=1)
-            updated_after = updated_after.strftime("%Y-%m-%dT%X")
-        else:
-            updated_after = (channel[7] - timedelta(hours=5.5)).strftime("%Y-%m-%dT%X")
-
+    time_now = datetime.utcnow()
+    if channel[7] and not (time_now.hour == 21 and 0<time_now.minute<30):
+        updated_after = (channel[7] - timedelta(hours=5.5)).strftime("%Y-%m-%dT%X")
     else:
         updated_after = datetime.utcnow() - timedelta(days=30)
         updated_after = updated_after.strftime("%Y-%m-%dT%X")
@@ -456,13 +452,9 @@ def fetch_woocommerce_orders(cur, channel):
 
 def fetch_magento_orders(cur, channel):
 
-    if channel[7]:
-        if 21 <= datetime.utcnow().hour <22:
-            updated_after = channel[7] - timedelta(days=1)
-            updated_after = updated_after.strftime("%Y-%m-%d %X")
-        else:
-            updated_after = channel[7].strftime("%Y-%m-%d %X")
-
+    time_now = datetime.utcnow()
+    if channel[7] and not (time_now.hour == 21 and 0<time_now.minute<30):
+        updated_after = channel[7].strftime("%Y-%m-%d %X")
     else:
         updated_after = datetime.utcnow() - timedelta(days=30)
         updated_after = updated_after.strftime("%Y-%m-%d %X")

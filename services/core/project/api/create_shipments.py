@@ -42,6 +42,12 @@ def lambda_handler(courier_name=None, order_ids=None):
 
     else:
         cur.execute(delete_failed_shipments_query)
+        time_now = datetime.utcnow()
+        if time_now.hour == 22 and 0<time_now.minute<30:
+            time_now = time_now-timedelta(days=30)
+            cur.execute("""delete from shipments where order_id in 
+                            (select id from orders where order_date>%s and status='NEW')
+                            and remark = 'Pincode not serviceable'""", (time_now, ))
         conn.commit()
         cur.execute(fetch_client_couriers_query)
         all_couriers=cur.fetchall()

@@ -59,13 +59,12 @@ def lambda_handler():
                     logger.info("deliver zone not found: " + str(order[0]))
                     continue
 
-                calculate_courier_cost(cur, delivery_zone, order)
-
                 if delivery_zone in ('D1', 'D2'):
                     delivery_zone='D'
                 if delivery_zone in ('C1', 'C2'):
                     delivery_zone='C'
 
+            calculate_courier_cost(cur, delivery_zone, order)
             charged_weight = order[4] if order[4] else 0
 
             #if order[6] != 'NASHER':
@@ -97,21 +96,28 @@ def lambda_handler():
                     charge_rate_values = cur.fetchone()
                 if not charge_rate_values:
                     cur.execute(
+                        "SELECT __ZONE__, cod_min, cod_ratio, rto_ratio, __ZONE_STEP__, rvp_ratio from client_default_cost WHERE courier_id=%s;".replace(
+                            '__ZONE__', zone_column_mapping[delivery_zone]).replace('__ZONE_STEP__', zone_step_charge_column_mapping[delivery_zone]), (order[2],))
+                    charge_rate_values = cur.fetchone()
+                if not charge_rate_values:
+                    cur.execute(
                         """INSERT INTO client_deductions (weight_charged, zone, shipment_id) VALUES (%s,%s,%s) RETURNING id;""",
                         (charged_weight, delivery_zone, order[0]))
 
                     logger.info("charge_rate_values not found: " + str(order[0]))
                     continue
 
-                cur.execute("select weight_offset, additional_weight_offset from master_couriers where id=%s;", (str(order[2])))
+                cur.execute("select weight_offset, additional_weight_offset from master_couriers where id=%s;", (order[2],))
                 courier_data = cur.fetchone()
                 charge_rate = charge_rate_values[0]
                 forward_charge = charge_rate
                 per_step_charge = charge_rate_values[4] if charge_rate_values and len(charge_rate_values) >= 5 else 0.0
                 per_step_charge = 0.0 if per_step_charge is None else per_step_charge
-                if per_step_charge and courier_data[0] != 0 and courier_data[1] != 0:
-                    if ceil(charged_weight) > courier_data[0]:
-                        forward_charge = charge_rate + ceil((ceil(charged_weight)-courier_data[0]*1.0)/courier_data[1])*per_step_charge
+                if courier_data[0] != 0 and courier_data[1] != 0:
+                    if not per_step_charge:
+                        per_step_charge = charge_rate
+                    if charged_weight > courier_data[0]:
+                        forward_charge = charge_rate + ceil((charged_weight-courier_data[0]*1.0)/courier_data[1])*per_step_charge
                 else:
                     multiple = ceil(charged_weight / 0.5)
                     forward_charge = charge_rate * multiple
@@ -403,5 +409,3 @@ def ndr_push_reattempts(cur):
                 req = requests.post(xpress_url, headers=headers, data=json.dumps(body))
         except Exception as e:
             logger.error("NDR push failed for: " + order[0])
-
-lambda_handler()

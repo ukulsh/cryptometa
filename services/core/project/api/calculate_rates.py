@@ -2,7 +2,7 @@ import psycopg2, requests, os, json
 import logging
 from math import ceil
 from datetime import datetime, timedelta
-from project.api.queries import *
+from .queries import *
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)

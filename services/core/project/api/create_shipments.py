@@ -369,75 +369,78 @@ def ship_delhivery_orders(cur, courier, courier_name, order_ids, order_id_tuple,
         insert_shipments_data_tuple = list()
         insert_order_status_dict = dict()
         for package in return_data:
-            fulfillment_id = None
-            tracking_link = None
-            if package['waybill']:
-                order_status_change_ids.append(orders_dict[package['refnum']][0])
-                client_name = str(orders_dict[package['refnum']][12])
-                customer_phone = orders_dict[package['refnum']][8].replace(" ", "")
-                customer_phone = "0" + customer_phone[-10:]
+            try:
+                fulfillment_id = None
+                tracking_link = None
+                if package['waybill']:
+                    order_status_change_ids.append(orders_dict[package['refnum']][0])
+                    client_name = str(orders_dict[package['refnum']][12])
+                    customer_phone = orders_dict[package['refnum']][8].replace(" ", "")
+                    customer_phone = "0" + customer_phone[-10:]
 
-                sms_to_key = "Messages[%s][To]" % str(exotel_idx)
-                sms_body_key = "Messages[%s][Body]" % str(exotel_idx)
+                    sms_to_key = "Messages[%s][To]" % str(exotel_idx)
+                    sms_body_key = "Messages[%s][Body]" % str(exotel_idx)
 
-                exotel_sms_data[sms_to_key] = customer_phone
-                try:
-                    tracking_link_wareiq = "http://webapp.wareiq.com/tracking/" + str(package['waybill'])
-                    """
-                    short_url = requests.get("https://cutt.ly/api/api.php?key=f445d0bb52699d2f870e1832a1f77ef3f9078&short=%s"%tracking_link_wareiq)
-                    short_url_track = short_url.json()['url']['shortLink']
-                    """
-                    exotel_sms_data[
-                        sms_body_key] = "Received: Your order from %s. Track here: %s . Thanks!" % (
-                                            client_name, tracking_link_wareiq)
-                except Exception:
-                    pass
-
-                exotel_idx += 1
-
-                if orders_dict[package['refnum']][9] == "NASHER":
+                    exotel_sms_data[sms_to_key] = customer_phone
                     try:
-                        nasher_url = "https://www.nashermiles.com/alexandria/api/v1/shipment/create"
-                        nasher_headers = {"Content-Type": "application/x-www-form-urlencoded",
-                                          "Authorization": "Basic c2VydmljZS5hcGl1c2VyOllQSGpBQXlXY3RWYzV5MWg="}
-                        nasher_body = {
-                            "order_id": package['refnum'],
-                            "awb_number": str(package['waybill']),
-                            "tracking_link": "http://webapp.wareiq.com/tracking/" + str(package['waybill'])}
-                        req = requests.post(nasher_url, headers=nasher_headers, data=json.dumps(nasher_body))
-                    except Exception as e:
-                        logger.error("Couldn't update shopify for: " + str(package['refnum'])
-                                     + "\nError: " + str(e.args))
+                        tracking_link_wareiq = "http://webapp.wareiq.com/tracking/" + str(package['waybill'])
+                        """
+                        short_url = requests.get("https://cutt.ly/api/api.php?key=f445d0bb52699d2f870e1832a1f77ef3f9078&short=%s"%tracking_link_wareiq)
+                        short_url_track = short_url.json()['url']['shortLink']
+                        """
+                        exotel_sms_data[
+                            sms_body_key] = "Received: Your order from %s. Track here: %s . Thanks!" % (
+                                                client_name, tracking_link_wareiq)
+                    except Exception:
+                        pass
 
-            remark = ''
-            if package['remarks']:
-                remark = package['remarks'][0]
+                    exotel_idx += 1
 
-            if not orders_dict[package['refnum']][13]:
-                dimensions = orders_dict[package['refnum']][1][0]
-                weight = orders_dict[package['refnum']][2][0] * orders_dict[package['refnum']][3][0]
-                volumetric_weight = (dimensions['length'] * dimensions['breadth'] * dimensions['height'])*orders_dict[package['refnum']][3][0]/5000
-                for idx, dim in enumerate(orders_dict[package['refnum']][1]):
-                    if idx == 0:
-                        continue
-                    volumetric_weight += (dim['length'] * dim['breadth'] * dim['height'])*orders_dict[package['refnum']][3][idx] / 5000
-                    weight += orders_dict[package['refnum']][2][idx] * (orders_dict[package['refnum']][3][idx])
+                    if orders_dict[package['refnum']][9] == "NASHER":
+                        try:
+                            nasher_url = "https://www.nashermiles.com/alexandria/api/v1/shipment/create"
+                            nasher_headers = {"Content-Type": "application/x-www-form-urlencoded",
+                                              "Authorization": "Basic c2VydmljZS5hcGl1c2VyOllQSGpBQXlXY3RWYzV5MWg="}
+                            nasher_body = {
+                                "order_id": package['refnum'],
+                                "awb_number": str(package['waybill']),
+                                "tracking_link": "http://webapp.wareiq.com/tracking/" + str(package['waybill'])}
+                            req = requests.post(nasher_url, headers=nasher_headers, data=json.dumps(nasher_body))
+                        except Exception as e:
+                            logger.error("Couldn't update shopify for: " + str(package['refnum'])
+                                         + "\nError: " + str(e.args))
 
-                if dimensions['length'] and dimensions['breadth']:
-                    dimensions['height'] = round((volumetric_weight * 5000) / (dimensions['length'] * dimensions['breadth']))
-            else:
-                dimensions = {"length": 1, "breadth": 1, "height": 1}
-                weight = float(orders_dict[package['refnum']][13])
-                volumetric_weight = float(orders_dict[package['refnum']][13])
+                remark = ''
+                if package['remarks']:
+                    remark = package['remarks'][0]
 
-            data_tuple = (package['waybill'], package['status'], orders_dict[package['refnum']][0], pickup_point[1],
-                          courier[9], json.dumps(dimensions), volumetric_weight, weight, remark, pickup_point[2],
-                          package['sort_code'], fulfillment_id, tracking_link, orders_dict[package['refnum']][14])
-            insert_shipments_data_tuple.append(data_tuple)
-            insert_order_status_dict[package['waybill']] = [orders_dict[package['refnum']][0], courier[9],
-                                                            None, "UD", "Received", "Consignment Manifested",
-                                                            pickup_point[6], pickup_point[6],
-                                                            datetime.utcnow() + timedelta(hours=5.5)]
+                if not orders_dict[package['refnum']][13]:
+                    dimensions = orders_dict[package['refnum']][1][0]
+                    weight = orders_dict[package['refnum']][2][0] * orders_dict[package['refnum']][3][0]
+                    volumetric_weight = (dimensions['length'] * dimensions['breadth'] * dimensions['height'])*orders_dict[package['refnum']][3][0]/5000
+                    for idx, dim in enumerate(orders_dict[package['refnum']][1]):
+                        if idx == 0:
+                            continue
+                        volumetric_weight += (dim['length'] * dim['breadth'] * dim['height'])*orders_dict[package['refnum']][3][idx] / 5000
+                        weight += orders_dict[package['refnum']][2][idx] * (orders_dict[package['refnum']][3][idx])
+
+                    if dimensions['length'] and dimensions['breadth']:
+                        dimensions['height'] = round((volumetric_weight * 5000) / (dimensions['length'] * dimensions['breadth']))
+                else:
+                    dimensions = {"length": 1, "breadth": 1, "height": 1}
+                    weight = float(orders_dict[package['refnum']][13])
+                    volumetric_weight = float(orders_dict[package['refnum']][13])
+
+                data_tuple = (package['waybill'], package['status'], orders_dict[package['refnum']][0], pickup_point[1],
+                              courier[9], json.dumps(dimensions), volumetric_weight, weight, remark, pickup_point[2],
+                              package['sort_code'], fulfillment_id, tracking_link, orders_dict[package['refnum']][14])
+                insert_shipments_data_tuple.append(data_tuple)
+                insert_order_status_dict[package['waybill']] = [orders_dict[package['refnum']][0], courier[9],
+                                                                None, "UD", "Received", "Consignment Manifested",
+                                                                pickup_point[6], pickup_point[6],
+                                                                datetime.utcnow() + timedelta(hours=5.5)]
+            except Exception as e:
+                logger.error("Order not shipped. Remarks: "+ str(package['remarks']) + "\nError: " + str(e.args[0]))
 
         if insert_shipments_data_tuple:
             insert_shipments_data_tuple = tuple(insert_shipments_data_tuple)
@@ -1379,7 +1382,7 @@ def ship_bluedart_orders(cur, courier, courier_name, order_ids, order_id_tuple, 
                         "LoginID": login_id,
                         "LicenceKey": courier[14],
                         "Api_type": "S",
-                        "Version": "1.9"
+                        "Version": "1.3"
                     }
         for order in all_new_orders:
 

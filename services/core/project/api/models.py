@@ -750,7 +750,9 @@ class CostToClients(db.Model):
         return {
             'client_prefix': self.client_prefix,
             'courier_name': self.courier.courier_name,
-            'zona_a': self.zone_a,
+            'weight_offset': self.courier.weight_offset,
+            'additional_weight_offset': self.courier.additional_weight_offset,
+            'zone_a': self.zone_a,
             'zone_b': self.zone_b,
             'zone_c': self.zone_c,
             'zone_d': self.zone_d,

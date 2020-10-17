@@ -358,12 +358,7 @@ def ship_delhivery_orders(cur, courier, courier_name, order_ids, order_id_tuple,
         insert_shipments_data_query = """INSERT INTO SHIPMENTS (awb, status, order_id, pickup_id, courier_id, 
                                         dimensions, volumetric_weight, weight, remark, return_point_id, routing_code, 
                                         channel_fulfillment_id, tracking_link, zone)
-                                        VALUES  %s"""
-
-        for i in range(len(return_data) - 1):
-            insert_shipments_data_query += ",%s"
-
-        insert_shipments_data_query += " RETURNING id,awb;"
+                                        VALUES  """
 
         order_status_change_ids = list()
         insert_shipments_data_tuple = list()
@@ -435,15 +430,19 @@ def ship_delhivery_orders(cur, courier, courier_name, order_ids, order_id_tuple,
                               courier[9], json.dumps(dimensions), volumetric_weight, weight, remark, pickup_point[2],
                               package['sort_code'], fulfillment_id, tracking_link, orders_dict[package['refnum']][14])
                 insert_shipments_data_tuple.append(data_tuple)
+                insert_shipments_data_query += "%s,"
                 insert_order_status_dict[package['waybill']] = [orders_dict[package['refnum']][0], courier[9],
                                                                 None, "UD", "Received", "Consignment Manifested",
                                                                 pickup_point[6], pickup_point[6],
                                                                 datetime.utcnow() + timedelta(hours=5.5)]
+
             except Exception as e:
                 logger.error("Order not shipped. Remarks: "+ str(package['remarks']) + "\nError: " + str(e.args[0]))
 
         if insert_shipments_data_tuple:
             insert_shipments_data_tuple = tuple(insert_shipments_data_tuple)
+            insert_shipments_data_query = insert_shipments_data_query.strip(",")
+            insert_shipments_data_query += " RETURNING id,awb;"
             cur.execute(insert_shipments_data_query, insert_shipments_data_tuple)
             shipment_ret = cur.fetchall()
             order_status_add_query = """INSERT INTO order_status (order_id, courier_id, shipment_id, 

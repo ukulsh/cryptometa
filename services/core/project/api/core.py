@@ -8,7 +8,7 @@ import re
 from flask_cors import cross_origin
 from datetime import datetime, timedelta
 from sqlalchemy import or_, func, not_, and_
-from flask import Blueprint, request, jsonify, make_response
+from flask import Blueprint, request, jsonify, make_response, render_template_string
 from flask_restful import Resource, Api
 from reportlab.lib.pagesizes import landscape, A4
 from reportlab.lib.units import inch
@@ -173,12 +173,67 @@ def verification_passthru(type):
             cod_ver.verification_time = current_time
 
             db.session.commit()
+            return_template = """<html>
+                              <head>
+                                <link href="https://fonts.googleapis.com/css?family=Nunito+Sans:400,400i,700,900&display=swap" rel="stylesheet">
+                              </head>
+                                <style>
+                                  body {
+                                    text-align: center;
+                                    padding: 40px 0;
+                                    background: #EBF0F5;
+                                  }
+                                    h1 {
+                                      color: #88B04B;
+                                      font-family: "Nunito Sans", "Helvetica Neue", sans-serif;
+                                      font-weight: 900;
+                                      font-size: 40px;
+                                      margin-bottom: 10px;
+                                    }
+                                    p {
+                                      color: #404F5E;
+                                      font-family: "Nunito Sans", "Helvetica Neue", sans-serif;
+                                      font-size:20px;
+                                      margin: 0;
+                                    }
+                                  i {
+                                    color: #9ABC66;
+                                    font-size: 100px;
+                                    line-height: 200px;
+                                    margin-left:-15px;
+                                  }
+                                  .card {
+                                    background: white;
+                                    padding: 60px;
+                                    border-radius: 4px;
+                                    box-shadow: 0 2px 3px #C8D0D8;
+                                    display: inline-block;
+                                    margin: 0 auto;
+                                  }
+                                </style>
+                                <body>
+                                  <div class="card">
+                                  <div style="border-radius:200px; height:200px; width:200px; background: #F8FAF5; margin:0 auto;">
+                                    <i class="checkmark">✓</i>
+                                  </div>
+                                    <h1>Success</h1> 
+                                    <p>__TEXT__. Thank You!</p>
+                                  </div>
+                                </body>
+                            </html>"""
 
-            return jsonify({"success": True}), 200
+            if type == 'cod':
+                return_template = return_template.replace("__TEXT__","COD order confirmed succesfully")
+            elif type=='delivery':
+                return_template = return_template.replace("__TEXT__","We'll call you soon")
+            elif type == 'ndr':
+                return_template = return_template.replace("__TEXT__","Delivery will be re-attempted soon")
+
+            return render_template_string(return_template), 200
         else:
             return jsonify({"success": False, "msg": "No Order"}), 400
     except Exception as e:
-        return jsonify({"success": False, "msg": str(e.args[0])}), 404
+        return jsonify({"success": False, "msg": str(e.args[0])}), 400
 
 
 @core_blueprint.route('/core/dev', methods=['POST'])

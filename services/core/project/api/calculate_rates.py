@@ -29,12 +29,7 @@ def lambda_handler():
         try:
             delivery_zone = order[15]
             if not delivery_zone:
-                courier_id = order[2]
-                if courier_id in (4, 8, 11, 12, 13):
-                    courier_id = 1
-
-                if courier_id in (5,):
-                    courier_id = 2
+                courier_id = 1
                 cur_2.execute("SELECT city from city_pin_mapping where pincode='%s';"%order[7])
                 pickup_city = cur_2.fetchone()
                 if not pickup_city:

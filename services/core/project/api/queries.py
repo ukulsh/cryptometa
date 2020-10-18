@@ -291,7 +291,7 @@ select_orders_to_calculate_query = """select aa.id, aa.awb, aa.courier_id, aa.vo
                                         left join orders_payments gg on bb.id=gg.order_id
                                         where bb.status in ('DELIVERED', 'RTO', 'DTO')
                                         and ee.shipment_id is null
-                                        and (ff.status_time>'__STATUS_TIME__' or ff.status_time is null)"""
+                                        and (ff.status_time>'__STATUS_TIME__')"""
 
 insert_into_deduction_query = """INSERT INTO client_deductions (weight_charged,zone,deduction_time,cod_charge,
                                 cod_charged_gst,forward_charge,forward_charge_gst,rto_charge,

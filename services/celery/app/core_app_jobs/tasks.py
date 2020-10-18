@@ -71,6 +71,7 @@ def consume_ecom_scan_util(payload):
 
         elif tracking_status == "Delivered":
             mark_delivered_channel(order)
+            exotel_send_delivered_sms(order)
 
         elif tracking_status == "RTO":
             mark_rto_channel(order)

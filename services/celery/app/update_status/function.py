@@ -178,6 +178,10 @@ def update_status():
                             if datetime.utcnow().hour<4:
                                 cur.execute("UPDATE shipments SET edd=%s WHERE awb=%s", (edd, current_awb))
 
+                        client_name = orders_dict[current_awb][20]
+                        customer_phone = orders_dict[current_awb][4].replace(" ", "")
+                        customer_phone = "0" + customer_phone[-10:]
+
                         if new_status == 'DELIVERED':
                             if orders_dict[current_awb][30] != False:
                                 if orders_dict[current_awb][14] == 6:  # Magento complete
@@ -197,6 +201,17 @@ def update_status():
                                     logger.error(
                                         "Couldn't mark paid Shopify for: " + str(orders_dict[current_awb][0])
                                         + "\nError: " + str(e.args))
+
+                            sms_to_key = "Messages[%s][To]" % str(exotel_idx)
+                            sms_body_key = "Messages[%s][Body]" % str(exotel_idx)
+
+                            exotel_sms_data[sms_to_key] = customer_phone
+
+                            exotel_sms_data[
+                                sms_body_key] = "Delivered: Your order from %s with order id %s was delivered today." % (
+                            client_name, str(orders_dict[current_awb][12]))
+
+                            exotel_idx += 1
 
                             """
                             if orders_dict[current_awb][13] and str(orders_dict[current_awb][13]).lower() == 'prepaid':
@@ -287,10 +302,6 @@ def update_status():
                                     emails_list.append((email, [orders_dict[current_awb][19]]))
 
                             cur.execute("UPDATE shipments SET pdd=%s WHERE awb=%s", (edd, current_awb))
-                            client_name = orders_dict[current_awb][20]
-                            customer_phone = orders_dict[current_awb][4].replace(" ", "")
-                            customer_phone = "0" + customer_phone[-10:]
-
                             sms_to_key = "Messages[%s][To]" % str(exotel_idx)
                             sms_body_key = "Messages[%s][Body]" % str(exotel_idx)
 
@@ -477,6 +488,10 @@ def update_status():
                             if datetime.utcnow().hour<4:
                                 cur.execute("UPDATE shipments SET edd=%s WHERE awb=%s", (edd, current_awb))
 
+                        client_name = orders_dict[current_awb][20]
+                        customer_phone = orders_dict[current_awb][4].replace(" ", "")
+                        customer_phone = "0" + customer_phone[-10:]
+
                         if new_status == 'DELIVERED':
                             if orders_dict[current_awb][30] != False:
                                 if orders_dict[current_awb][14] == 6:  # Magento complete
@@ -496,6 +511,17 @@ def update_status():
                                     logger.error(
                                         "Couldn't mark paid Shopify for: " + str(orders_dict[current_awb][0])
                                         + "\nError: " + str(e.args))
+
+                            sms_to_key = "Messages[%s][To]" % str(exotel_idx)
+                            sms_body_key = "Messages[%s][Body]" % str(exotel_idx)
+
+                            exotel_sms_data[sms_to_key] = customer_phone
+
+                            exotel_sms_data[
+                                sms_body_key] = "Delivered: Your order from %s with order id %s was delivered today." % (
+                                client_name, str(orders_dict[current_awb][12]))
+
+                            exotel_idx += 1
                             """
                             if orders_dict[current_awb][13] and str(orders_dict[current_awb][13]).lower() == 'prepaid':
                                 try:  ## Delivery check text
@@ -614,9 +640,6 @@ def update_status():
                             if edd:
                                 cur.execute("UPDATE shipments SET pdd=%s WHERE awb=%s", (edd, current_awb))
                                 edd = edd.strftime('%-d %b')
-                                client_name = orders_dict[current_awb][20]
-                                customer_phone = orders_dict[current_awb][4].replace(" ", "")
-                                customer_phone = "0" + customer_phone[-10:]
 
                                 sms_to_key = "Messages[%s][To]" % str(exotel_idx)
                                 sms_body_key = "Messages[%s][Body]" % str(exotel_idx)
@@ -810,6 +833,10 @@ def update_status():
                             if datetime.utcnow().hour<4:
                                 cur.execute("UPDATE shipments SET edd=%s WHERE awb=%s", (edd, current_awb))
 
+                        client_name = orders_dict[current_awb][20]
+                        customer_phone = orders_dict[current_awb][4].replace(" ", "")
+                        customer_phone = "0" + customer_phone[-10:]
+
                         if new_status == 'DELIVERED':
                             if orders_dict[current_awb][30] != False:
                                 if orders_dict[current_awb][14] == 6:  # Magento complete
@@ -829,6 +856,18 @@ def update_status():
                                     logger.error(
                                         "Couldn't mark paid Shopify for: " + str(orders_dict[current_awb][0])
                                         + "\nError: " + str(e.args))
+
+                            sms_to_key = "Messages[%s][To]" % str(exotel_idx)
+                            sms_body_key = "Messages[%s][Body]" % str(exotel_idx)
+
+                            exotel_sms_data[sms_to_key] = customer_phone
+
+                            exotel_sms_data[
+                                sms_body_key] = "Delivered: Your order from %s with order id %s was delivered today." % (
+                                client_name, str(orders_dict[current_awb][12]))
+
+                            exotel_idx += 1
+
                             """
                             if orders_dict[current_awb][13] and str(orders_dict[current_awb][13]).lower() == 'prepaid':
                                 try:  ## Delivery check text
@@ -867,10 +906,6 @@ def update_status():
 
                         if orders_dict[current_awb][2] in (
                                 'READY TO SHIP', 'PICKUP REQUESTED', 'NOT PICKED') and new_status == 'IN TRANSIT' and order_picked_check:
-
-                            client_name = orders_dict[current_awb][20]
-                            customer_phone = orders_dict[current_awb][4].replace(" ", "")
-                            customer_phone = "0" + customer_phone[-10:]
 
                             sms_to_key = "Messages[%s][To]" % str(exotel_idx)
                             sms_body_key = "Messages[%s][Body]" % str(exotel_idx)

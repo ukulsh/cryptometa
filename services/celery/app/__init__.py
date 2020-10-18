@@ -7,6 +7,7 @@ from .update_status.function import update_status
 from .fetch_orders.function import fetch_orders
 from .core_app_jobs.tasks import *
 from .core_app_jobs.utils import authenticate_username_password
+from app.order_price_reconciliation.index import process_order_price_reconciliation
 
 
 def make_celery(app):
@@ -95,3 +96,15 @@ def sync_channel_products():
     sync_channel_prods.apply_async(queue='consume_scans', args=(client_prefix, ))
     return jsonify({"msg": "Task received"}), 200
 
+
+@celery_app.task(name='order_price_reconciliation')
+def process_reconciliation(file_ref):
+    msg = process_order_price_reconciliation(file_ref)
+    return msg
+
+
+@app.route('/scans/v1/orderPriceReconciliation', methods=['POST'])
+def order_price_reconciliation():
+    recon_file = request.files.get('recon_file')
+    process_reconciliation.apply_async(queue='consume_scans', args=(recon_file,))
+    return jsonify({"msg": "Task received"}), 200

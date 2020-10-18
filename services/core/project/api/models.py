@@ -799,6 +799,7 @@ class ClientDeductions(db.Model):
     shipment = db.relationship("Shipments", backref=db.backref("client_deductions", uselist=True))
     weight_charged = db.Column(db.FLOAT, nullable=True)
     zone = db.Column(db.String, nullable=True)
+    type = db.Column(db.String, nullable=True)
     deduction_time = db.Column(db.DateTime, default=datetime.now)
     date_created = db.Column(db.DateTime, default=datetime.now)
     date_updated = db.Column(db.DateTime, onupdate=datetime.now)

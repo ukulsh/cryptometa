@@ -1374,9 +1374,13 @@ def ship_bluedart_orders(cur, courier, courier_name, order_ids, order_id_tuple, 
 
         pickup_point = cur.fetchone()  # change this as we get to dynamic pickups
 
+        pickup_pincode = str(pickup_point[8]).rstrip() if pickup_point[8] else None
+        if pickup_pincode and pickup_pincode[:2] in bluedart_area_code_mapping:
+            area_code = bluedart_area_code_mapping[pickup_pincode[:2]]
+        else:
+            continue
         login_id = courier[15].split('|')[0]
         customer_code = courier[15].split('|')[1]
-        area_code = courier[15].split('|')[2]
         client_profile = {
                         "LoginID": login_id,
                         "LicenceKey": courier[14],
@@ -1780,3 +1784,11 @@ def ship_vinculum_orders(cur, courier, courier_name, order_ids, order_id_tuple):
                 data=exotel_sms_data)
         except Exception as e:
             logger.error("messages not sent." + "   Error: " + str(e.args[0]))
+
+
+bluedart_area_code_mapping = {"50": "HYD",
+                              "64": "CJB",
+                              "11": "DEL",
+                              "56": "BLR",
+                              "40": "BOM",
+                              "41": "PNQ"}

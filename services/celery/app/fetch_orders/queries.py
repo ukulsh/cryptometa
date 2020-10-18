@@ -86,6 +86,7 @@ available_warehouse_product_quantity = """select pp.*, qq.pincode from
                                         left join pickup_points dd on cc.pickup_id=dd.id
                                         where bb.status in
                                         ('DELIVERED','DISPATCHED','IN TRANSIT','ON HOLD','PENDING','NEW','NOT PICKED','PICKUP REQUESTED','READY TO SHIP')
+                                        and cc.active=true
                                         and aa.product_id in 
                                         (select id from products where sku in __SKU_STR__ and client_prefix='__CLIENT_PREFIX__') 
                                          group by dd.warehouse_prefix, product_id) as xx

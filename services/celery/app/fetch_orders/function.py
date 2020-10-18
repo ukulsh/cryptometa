@@ -95,11 +95,11 @@ def fetch_shopify_orders(cur, channel):
             if not product_exists:
                 continue
 
-            cur.execute("SELECT count(*) FROM client_pickups WHERE client_prefix='%s';" % str(channel[1]))
+            cur.execute("SELECT count(*) FROM client_pickups WHERE client_prefix='%s' and active=true;" % str(channel[1]))
             pickup_count = cur.fetchone()[0]
             if pickup_count == 1 and not channel[17]:
                 cur.execute(
-                    "SELECT id, client_prefix FROM client_pickups WHERE client_prefix='%s';" % str(channel[1]))
+                    "SELECT id, client_prefix FROM client_pickups WHERE client_prefix='%s' and active=true;" % str(channel[1]))
                 pickup_data_id = cur.fetchone()[0]
             else:
                 pickup_data_id = None  # change this as we move to dynamic pickups
@@ -313,11 +313,11 @@ def fetch_woocommerce_orders(cur, channel):
                 pass
             if existing_order:
                 continue
-            cur.execute("SELECT count(*) FROM client_pickups WHERE client_prefix='%s';" % str(channel[1]))
+            cur.execute("SELECT count(*) FROM client_pickups WHERE client_prefix='%s' and active=true;" % str(channel[1]))
             pickup_count = cur.fetchone()[0]
             if pickup_count == 1 and not channel[17]:
                 cur.execute(
-                    "SELECT id, client_prefix FROM client_pickups WHERE client_prefix='%s';" % str(channel[1]))
+                    "SELECT id, client_prefix FROM client_pickups WHERE client_prefix='%s' and active=true;" % str(channel[1]))
                 pickup_data_id = cur.fetchone()[0]
             else:
                 pickup_data_id = None  # change this as we move to dynamic pickups
@@ -497,11 +497,11 @@ def fetch_magento_orders(cur, channel):
                 pass
             if existing_order:
                 continue
-            cur.execute("SELECT count(*) FROM client_pickups WHERE client_prefix='%s';" % str(channel[1]))
+            cur.execute("SELECT count(*) FROM client_pickups WHERE client_prefix='%s' and active=true;" % str(channel[1]))
             pickup_count = cur.fetchone()[0]
             if pickup_count == 1 and not channel[17]:
                 cur.execute(
-                    "SELECT id, client_prefix FROM client_pickups WHERE client_prefix='%s';" % str(channel[1]))
+                    "SELECT id, client_prefix FROM client_pickups WHERE client_prefix='%s' and active=true;" % str(channel[1]))
                 pickup_data_id = cur.fetchone()[0]
             else:
                 pickup_data_id = None  # change this as we move to dynamic pickups
@@ -723,7 +723,8 @@ def assign_pickup_points_for_unassigned(cur, cur_2):
                 elif order[6]:
                     cur.execute("""select aa.id from client_pickups aa
                                                 left join pickup_points bb on aa.pickup_id=bb.id
-                                                where bb.warehouse_prefix=%s and aa.client_prefix=%s""",
+                                                where bb.warehouse_prefix=%s and aa.client_prefix=%s
+                                                and aa.active=true;""",
                                 (order[6], order[1]))
 
                     pickup_id = cur.fetchone()
@@ -754,7 +755,7 @@ def assign_pickup_points_for_unassigned(cur, cur_2):
 
             cur.execute("""select aa.id from client_pickups aa
                             left join pickup_points bb on aa.pickup_id=bb.id
-                            where bb.warehouse_prefix=%s and aa.client_prefix=%s""", (final_wh[0],order[1]))
+                            where bb.warehouse_prefix=%s and aa.client_prefix=%s and active=true;""", (final_wh[0],order[1]))
 
             pickup_id = cur.fetchone()
             if not pickup_id:

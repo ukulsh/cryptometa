@@ -86,11 +86,6 @@ def lambda_handler():
                 charge_rate_values = cur.fetchone()
                 if not charge_rate_values:
                     cur.execute(
-                        "SELECT __ZONE__, cod_min, cod_ratio, rto_ratio, __ZONE_STEP__, rvp_ratio from cost_to_clients WHERE client_prefix=%s and courier_id=%s;".replace(
-                            '__ZONE__', zone_column_mapping[delivery_zone]).replace('__ZONE_STEP__', zone_step_charge_column_mapping[delivery_zone]), (order[6], 16)) #16 is rate for all
-                    charge_rate_values = cur.fetchone()
-                if not charge_rate_values:
-                    cur.execute(
                         "SELECT __ZONE__, cod_min, cod_ratio, rto_ratio, __ZONE_STEP__, rvp_ratio from client_default_cost WHERE courier_id=%s;".replace(
                             '__ZONE__', zone_column_mapping[delivery_zone]).replace('__ZONE_STEP__', zone_step_charge_column_mapping[delivery_zone]), (order[2],))
                     charge_rate_values = cur.fetchone()

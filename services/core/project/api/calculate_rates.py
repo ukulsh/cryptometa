@@ -178,9 +178,13 @@ def lambda_handler():
                 insert_rates_tuple = (charged_weight, delivery_zone, deduction_time, cod_charge, cod_charged_gst,
                                       forward_charge, forward_charge_gst,rto_charge,rto_charge_gst,order[0],
                                       total_charge,total_charge_gst,datetime.now(),datetime.now())
-
+                cur.execute(get_client_balance, (order[6],))
+                client_balance_data = cur.fetchone()
+                if client_balance_data[1] and client_balance_data[1].lower() == 'prepaid':
+                    current_balance = client_balance_data[0]
+                    current_balance -= total_charge_gst
+                    cur.execute(update_client_balance, (order[6], current_balance,))
                 cur.execute(insert_into_deduction_query, insert_rates_tuple)
-
             except Exception as e:
                 logger.error("couldn't calculate order: " + str(order[0]) + "\nError: " + str(e))
                 cur.execute(

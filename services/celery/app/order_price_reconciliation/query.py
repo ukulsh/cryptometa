@@ -11,3 +11,7 @@ insert_into_deduction_query = """INSERT INTO client_deductions (weight_charged,z
                                 cod_charged_gst,forward_charge,forward_charge_gst,rto_charge,
                                 rto_charge_gst,shipment_id,total_charge,total_charged_gst,date_created,date_updated,type) VALUES (%s,%s,%s,%s,%s,
                                 %s,%s,%s,%s,%s,%s,%s,%s,%s,%s);"""
+
+get_client_balance = """select current_balance, account_type from client_mapping where client_prefix=%s"""
+
+update_client_balance = """update client_mapping set current_balance=%s where client_prefix=%s"""

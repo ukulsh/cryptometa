@@ -891,6 +891,8 @@ class ClientMapping(db.Model):
     auto_pur = db.Column(db.BOOLEAN, nullable=True, default=None)
     auto_pur_time = db.Column(db.Integer, nullable=True)
     shipping_label = db.Column(db.String, nullable=True)
+    current_balance = db.Column(db.FLOAT, nullable=False, default=0.0, server_default="0.0")
+    account_type = db.Column(db.String, nullable=True)
 
     def __init__(self, client_name, client_prefix):
         self.client_name = client_name

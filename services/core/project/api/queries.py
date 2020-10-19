@@ -302,6 +302,9 @@ insert_into_courier_cost_query = """INSERT INTO courier_charges (weight_charged,
                                 forward_charge,rto_charge,shipment_id,total_charge,date_created,date_updated) VALUES 
                                 (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s);"""
 
+get_client_balance = """select current_balance, account_type from client_mapping where client_prefix=%s"""
+
+update_client_balance = """update client_mapping set current_balance=%s where client_prefix=%s"""
 
 ######################### Ivr verification
 

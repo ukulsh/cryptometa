@@ -7,7 +7,6 @@ import io
 import logging
 
 conn = DbConnection.get_db_connection_instance()
-conn_2 = DbConnection.get_pincode_db_connection_instance()
 recon_status = 'reconciliation'
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -29,7 +28,7 @@ zone_step_charge_column_mapping = {
 }
 
 
-def calculate_new_charge(current_data, charged_weight, source_courier_id, total_charged_data, cur, cur_2):
+def calculate_new_charge(current_data, charged_weight, source_courier_id, total_charged_data, cur):
     delivery_zone = current_data[1]
     try:
         cost_select_tuple = (current_data[16], source_courier_id)
@@ -109,11 +108,18 @@ def calculate_new_charge(current_data, charged_weight, source_courier_id, total_
         rto_charge_gst = max(rto_charge_gst-total_charged_data['rto_charge_gst'], 0)
         total_charge = forward_charge + cod_charge + rto_charge
         total_charge_gst = forward_charge_gst + rto_charge_gst + cod_charged_gst
-        insert_rates_tuple = (charged_weight, delivery_zone, deduction_time, cod_charge, cod_charged_gst,
-                              forward_charge, forward_charge_gst, rto_charge, rto_charge_gst, current_data[8],
-                              total_charge, total_charge_gst, datetime.now(), datetime.now(), recon_status,)
-        cur.execute(insert_into_deduction_query, insert_rates_tuple)
-        conn.commit()
+        if total_charge:
+            cur.execute(get_client_balance, (current_data[16],))
+            client_data = cur.fetchone()
+            if client_data[1] and client_data[1].lower() == 'prepaid':
+                current_balance = client_data[0]
+                current_balance -= total_charge_gst
+                cur.execute(update_client_balance, (current_balance, current_data[16],))
+            insert_rates_tuple = (charged_weight, delivery_zone, deduction_time, cod_charge, cod_charged_gst,
+                                  forward_charge, forward_charge_gst, rto_charge, rto_charge_gst, current_data[8],
+                                  total_charge, total_charge_gst, datetime.now(), datetime.now(), recon_status,)
+            cur.execute(insert_into_deduction_query, insert_rates_tuple)
+            conn.commit()
     except Exception as e:
         logger.error("couldn't calculate courier cost order: " + str(current_data[8]) + "\nError: " + str(e))
 
@@ -123,7 +129,6 @@ def process_order_price_reconciliation(file_ref):
     reader = csv.DictReader(stream)
     order_data = {}
     cur = conn.cursor()
-    cur_2 = conn_2.cursor()
     for row in reader:
         awb = row['awb']
         charged_weight = float(row['charged_weight'])
@@ -156,4 +161,5 @@ def process_order_price_reconciliation(file_ref):
 
     for _, iterator in group_by_awb.items():
         if order_data[iterator[12]][0] > iterator[0]:
-            calculate_new_charge(iterator, order_data[iterator[12]][0], order_data[iterator[12]][1], previous_charge_data[iterator[12]], cur, cur_2)
+            calculate_new_charge(iterator, order_data[iterator[12]][0], order_data[iterator[12]][1], previous_charge_data[iterator[12]], cur)
+    cur.close()

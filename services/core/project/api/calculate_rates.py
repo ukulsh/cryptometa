@@ -2,7 +2,7 @@ import psycopg2, requests, os, json
 import logging
 from math import ceil
 from datetime import datetime, timedelta
-from project.api.queries import *
+from .queries import *
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -29,12 +29,7 @@ def lambda_handler():
         try:
             delivery_zone = order[15]
             if not delivery_zone:
-                courier_id = order[2]
-                if courier_id in (4, 8, 11, 12, 13):
-                    courier_id = 1
-
-                if courier_id in (5,):
-                    courier_id = 2
+                courier_id = 1
                 cur_2.execute("SELECT city from city_pin_mapping where pincode='%s';"%order[7])
                 pickup_city = cur_2.fetchone()
                 if not pickup_city:
@@ -59,13 +54,12 @@ def lambda_handler():
                     logger.info("deliver zone not found: " + str(order[0]))
                     continue
 
-                calculate_courier_cost(cur, delivery_zone, order)
-
                 if delivery_zone in ('D1', 'D2'):
                     delivery_zone='D'
                 if delivery_zone in ('C1', 'C2'):
                     delivery_zone='C'
 
+            calculate_courier_cost(cur, delivery_zone, order)
             charged_weight = order[4] if order[4] else 0
 
             #if order[6] != 'NASHER':
@@ -92,8 +86,8 @@ def lambda_handler():
                 charge_rate_values = cur.fetchone()
                 if not charge_rate_values:
                     cur.execute(
-                        "SELECT __ZONE__, cod_min, cod_ratio, rto_ratio, __ZONE_STEP__, rvp_ratio from cost_to_clients WHERE client_prefix=%s and courier_id=%s;".replace(
-                            '__ZONE__', zone_column_mapping[delivery_zone]).replace('__ZONE_STEP__', zone_step_charge_column_mapping[delivery_zone]), (order[6], 16)) #16 is rate for all
+                        "SELECT __ZONE__, cod_min, cod_ratio, rto_ratio, __ZONE_STEP__, rvp_ratio from client_default_cost WHERE courier_id=%s;".replace(
+                            '__ZONE__', zone_column_mapping[delivery_zone]).replace('__ZONE_STEP__', zone_step_charge_column_mapping[delivery_zone]), (order[2],))
                     charge_rate_values = cur.fetchone()
                 if not charge_rate_values:
                     cur.execute(
@@ -103,15 +97,17 @@ def lambda_handler():
                     logger.info("charge_rate_values not found: " + str(order[0]))
                     continue
 
-                cur.execute("select weight_offset, additional_weight_offset from master_couriers where id=%s;", (str(order[2])))
+                cur.execute("select weight_offset, additional_weight_offset from master_couriers where id=%s;", (order[2],))
                 courier_data = cur.fetchone()
                 charge_rate = charge_rate_values[0]
                 forward_charge = charge_rate
                 per_step_charge = charge_rate_values[4] if charge_rate_values and len(charge_rate_values) >= 5 else 0.0
                 per_step_charge = 0.0 if per_step_charge is None else per_step_charge
-                if per_step_charge and courier_data[0] != 0 and courier_data[1] != 0:
-                    if ceil(charged_weight) > courier_data[0]:
-                        forward_charge = charge_rate + ceil((ceil(charged_weight)-courier_data[0]*1.0)/courier_data[1])*per_step_charge
+                if courier_data[0] != 0 and courier_data[1] != 0:
+                    if not per_step_charge:
+                        per_step_charge = charge_rate
+                    if charged_weight > courier_data[0]:
+                        forward_charge = charge_rate + ceil((charged_weight-courier_data[0]*1.0)/courier_data[1])*per_step_charge
                 else:
                     multiple = ceil(charged_weight / 0.5)
                     forward_charge = charge_rate * multiple
@@ -403,5 +399,3 @@ def ndr_push_reattempts(cur):
                 req = requests.post(xpress_url, headers=headers, data=json.dumps(body))
         except Exception as e:
             logger.error("NDR push failed for: " + order[0])
-
-lambda_handler()

@@ -261,6 +261,31 @@ def ping_dev():
     iter_rw = data_xlsx.iterrows()
     source_items = list()
     sku_list = list()
+    cur = conn_2.cursor()
+    for row in iter_rw:
+        pickup_city = str(row[1].pickup_city)
+        cur.execute("SELECT city FROM city_pin_mapping where pincode='%s'" % str(row[1].pickup_pincode))
+        try:
+            pickup_city = cur.fetchone()[0]
+        except Exception:
+            cur.execute("INSERT INTO city_pin_mapping (pincode, city, district) VALUES (%s,%s,%s)", (str(row[1].pickup_pincode), pickup_city, pickup_city))
+
+        del_city = str(row[1].des_city)
+        cur.execute("SELECT city FROM city_pin_mapping where pincode='%s'" % str(row[1].delivery_pincode))
+        try:
+            del_city = cur.fetchone()[0]
+        except Exception:
+            cur.execute("INSERT INTO city_pin_mapping (pincode, city, district) VALUES (%s,%s,%s)", (str(row[1].delivery_pincode), del_city, del_city))
+
+        for courier_id in (1,2):
+            cur.execute("SELECT zone_value from city_zone_mapping where zone='%s' and city='%s' and courier_id=%s" %(pickup_city, del_city, str(courier_id)))
+            ent = None
+            try:
+                ent = cur.fetchone()[0]
+            except Exception:
+                pass
+            if not ent:
+                cur.execute("INSERT INTO city_zone_mapping (zone, city, zone_value, courier_id) VALUES (%s,%s,%s,%s)", (pickup_city, del_city, str(row[1].zone), courier_id))
     for row in iter_rw:
         try:
 

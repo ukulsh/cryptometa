@@ -750,7 +750,9 @@ class CostToClients(db.Model):
         return {
             'client_prefix': self.client_prefix,
             'courier_name': self.courier.courier_name,
-            'zona_a': self.zone_a,
+            'weight_offset': self.courier.weight_offset,
+            'additional_weight_offset': self.courier.additional_weight_offset,
+            'zone_a': self.zone_a,
             'zone_b': self.zone_b,
             'zone_c': self.zone_c,
             'zone_d': self.zone_d,
@@ -797,6 +799,7 @@ class ClientDeductions(db.Model):
     shipment = db.relationship("Shipments", backref=db.backref("client_deductions", uselist=True))
     weight_charged = db.Column(db.FLOAT, nullable=True)
     zone = db.Column(db.String, nullable=True)
+    type = db.Column(db.String, nullable=True)
     deduction_time = db.Column(db.DateTime, default=datetime.now)
     date_created = db.Column(db.DateTime, default=datetime.now)
     date_updated = db.Column(db.DateTime, onupdate=datetime.now)
@@ -888,10 +891,13 @@ class ClientMapping(db.Model):
     auto_pur = db.Column(db.BOOLEAN, nullable=True, default=None)
     auto_pur_time = db.Column(db.Integer, nullable=True)
     shipping_label = db.Column(db.String, nullable=True)
+    current_balance = db.Column(db.FLOAT, nullable=False, default=0.0, server_default="0.0")
+    account_type = db.Column(db.String, nullable=True)
 
-    def __init__(self, client_name, client_prefix):
+    def __init__(self, client_name, client_prefix, account_type):
         self.client_name = client_name
         self.client_prefix = client_prefix
+        self.account_type = account_type
 
     def to_json(self):
         return {
@@ -910,7 +916,9 @@ class ClientMapping(db.Model):
             'default_warehouse': self.default_warehouse,
             'order_split': self.order_split,
             'auto_pur': self.auto_pur,
-            'auto_pur_time': self.auto_pur_time
+            'auto_pur_time': self.auto_pur_time,
+            'account_type': self.account_type,
+            'current_balance': self.current_balance
         }
 
 

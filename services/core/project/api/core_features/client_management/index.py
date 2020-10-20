@@ -21,9 +21,10 @@ class ClientManagement(Resource):
         response_object = {'status': 'fail'}
         try:
             posted_data = request.get_json()
-            client_prefix = posted_data['client_prefix']
-            client_name = posted_data['client_name']
-            client_mapping_ref = ClientMapping(client_name, client_prefix)
+            client_prefix = posted_data.get('client_prefix')
+            client_name = posted_data.get('client_name')
+            account_type = posted_data.get('account_type')
+            client_mapping_ref = ClientMapping(client_name, client_prefix, account_type)
             db.session.add(client_mapping_ref)
             cost_to_client_ref = get_cost_to_clients(posted_data)
             db.session.add_all(cost_to_client_ref)
@@ -39,8 +40,8 @@ class ClientManagement(Resource):
         response_object = {'status': 'fail'}
         try:
             posted_data = request.get_json()
-            client_prefix = posted_data['client_prefix']
-            client_name = posted_data['client_name']
+            client_prefix = posted_data.get('client_prefix')
+            client_name = posted_data.get('client_name')
             client_mapping_ref = ClientMapping.query.filter_by(client_prefix=client_prefix).first()
             client_mapping_ref.client_name = client_name
             db.session.commit()
@@ -126,7 +127,7 @@ def get_default_cost(resp):
 
 @client_management_blueprint.route('/core/v1/getClientCost', methods=['GET'])
 @authenticate_restful
-def geet_client_cost(resp):
+def get_client_cost(resp):
     response_object = {'status': 'fail'}
     try:
         authz_data = resp.get('data')

@@ -38,6 +38,7 @@ def calculate_new_charge(current_data, charged_weight, source_courier_id, total_
                                                                         zone_step_charge_column_mapping[
                                                                             delivery_zone]), cost_select_tuple)
         charge_rate_values = cur.fetchone()
+        '''
         if not charge_rate_values:
             cur.execute(
                 "SELECT __ZONE__, cod_min, cod_ratio, rto_ratio, __ZONE_STEP__, rvp_ratio from cost_to_clients WHERE client_prefix=%s and courier_id=%s;".replace(
@@ -46,6 +47,7 @@ def calculate_new_charge(current_data, charged_weight, source_courier_id, total_
                                                                                 delivery_zone]),
                 (current_data[16], 16))  # 16 is rate for all
             charge_rate_values = cur.fetchone()
+        '''
 
         if not charge_rate_values:
             cur.execute(

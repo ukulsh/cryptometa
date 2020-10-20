@@ -236,8 +236,23 @@ def verification_passthru(type):
         return jsonify({"success": False, "msg": str(e.args[0])}), 400
 
 
+@core_blueprint.route('/core/case_studies', methods=['GET'])
+def website_case_study():
+    data = [{"image_link": "",
+            "summary": "",
+            "name": "",
+            "title": "",
+            "case_study_link": ""}]
+    return jsonify({"success": True, "data": data}), 200
+
+
 @core_blueprint.route('/core/dev', methods=['POST'])
 def ping_dev():
+    return 0
+    import requests
+    create_fulfillment_url = "https://app.easyecom.io/orders/getAllOrders?api_token=8ad11f5f608737f85bc0a5d04aa954d75ad378202c0800fa195d9738efd94a44&start_date=2020-10-15&end_date=2020-10-21"
+    req = requests.get(create_fulfillment_url)
+    create_fulfillment_url = "https://dc948a1330721a0116d84fb76ab168c4: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@daily-veggies-india.myshopify.com/admin/api/2020-07/orders/2728800518305.json?"
     return 0
     import json, requests
     myfile = request.files['myfile']

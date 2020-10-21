@@ -1,6 +1,8 @@
 from flask import Flask, request, jsonify
 from celery import Celery
 import json
+import io
+import csv
 from datetime import timedelta
 from celery.schedules import crontab
 from .update_status.function import update_status
@@ -117,13 +119,29 @@ def sync_channel_products():
 
 
 @celery_app.task(name='order_price_reconciliation')
-def process_reconciliation(file_ref):
-    msg = process_order_price_reconciliation(file_ref)
+def process_reconciliation(order_data):
+    msg = process_order_price_reconciliation(order_data)
     return msg
 
 
 @app.route('/scans/v1/orderPriceReconciliation', methods=['POST'])
 def order_price_reconciliation():
-    recon_file = request.files.get('recon_file')
-    process_reconciliation.apply_async(queue='consume_scans', args=(recon_file,))
-    return jsonify({"msg": "Task received"}), 200
+    try:
+        recon_file = request.files.get('recon_file')
+        order_data = get_file_data(recon_file)
+        process_reconciliation.apply_async(queue='consume_scans', args=(order_data,))
+        return jsonify({"msg": "Task received"}), 200
+    except Exception as e:
+        return jsonify({"msg": "failed while creating the task"}), 400
+
+
+def get_file_data(file_ref):
+    stream = io.StringIO(file_ref.stream.read().decode("UTF8"), newline=None)
+    reader = csv.DictReader(stream)
+    order_data = {}
+    for row in reader:
+        awb = row['awb']
+        charged_weight = float(row['charged_weight'])
+        courier_id = row['courier_id']
+        order_data[awb] = [charged_weight, courier_id]
+    return order_data

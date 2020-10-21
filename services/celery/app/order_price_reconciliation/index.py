@@ -2,8 +2,6 @@ from math import ceil
 from datetime import datetime, timedelta
 from app.order_price_reconciliation.query import *
 from app.db_utils import DbConnection
-import csv
-import io
 import logging
 
 conn = DbConnection.get_db_connection_instance()
@@ -126,16 +124,8 @@ def calculate_new_charge(current_data, charged_weight, source_courier_id, total_
         logger.error("couldn't calculate courier cost order: " + str(current_data[8]) + "\nError: " + str(e))
 
 
-def process_order_price_reconciliation(file_ref):
-    stream = io.StringIO(file_ref.stream.read().decode("UTF8"), newline=None)
-    reader = csv.DictReader(stream)
-    order_data = {}
+def process_order_price_reconciliation(order_data):
     cur = conn.cursor()
-    for row in reader:
-        awb = row['awb']
-        charged_weight = float(row['charged_weight'])
-        courier_id = row['courier_id']
-        order_data[awb] = [charged_weight, courier_id]
     awb_values = ",".join(map(repr, order_data.keys()))
     modified_query = get_client_deduction_row.replace('__AWB_VALUES__', awb_values)
     cur.execute(modified_query)

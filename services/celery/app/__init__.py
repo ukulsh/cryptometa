@@ -5,6 +5,7 @@ from datetime import timedelta
 from celery.schedules import crontab
 from .update_status.function import update_status
 from .fetch_orders.function import fetch_orders
+from .ship_orders.function import ship_orders
 from .core_app_jobs.tasks import *
 from .core_app_jobs.utils import authenticate_username_password
 from app.order_price_reconciliation.index import process_order_price_reconciliation
@@ -41,6 +42,11 @@ app.config['CELERYBEAT_SCHEDULE'] = {
                 'schedule': crontab(minute='*/20'),
                 'options': {'queue': 'fetch_orders'}
             },
+    'run-ship-orders': {
+                'task': 'orders_ship',
+                'schedule': crontab(minute='*/30'),
+                'options': {'queue': 'ship_orders'}
+            },
 }
 
 app.config['CELERY_TIMEZONE'] = 'UTC'
@@ -52,6 +58,18 @@ celery_app = make_celery(app)
 def status_update():
     update_status()
     return 'successfully completed status_update'
+
+
+@celery_app.task(name='orders_ship')
+def orders_ship():
+    ship_orders()
+    return 'successfully completed ship_orders'
+
+
+@app.route('/scans/v1/orders/ship', methods = ['GET'])
+def ship_orders_api():
+    orders_ship.apply_async(queue='ship_orders')
+    return jsonify({"msg": "ship order task received"}), 200
 
 
 @app.route('/scans/v1/dev', methods = ['GET'])

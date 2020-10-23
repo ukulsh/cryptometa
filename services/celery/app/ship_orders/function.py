@@ -3,54 +3,49 @@ import logging
 from datetime import datetime, timedelta
 from requests_oauthlib.oauth1_session import OAuth1Session
 from zeep import Client
+from app.db_utils import DbConnection
 
 from .queries import *
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
-"""
-host = os.environ('DTATBASE_HOST')
-database = os.environ('DTATBASE_NAME')
-user = os.environ('DTATBASE_USER')
-password = os.environ('DTATBASE_PASSWORD')
-conn = psycopg2.connect(host=host, database=database, user=user, password=password)
-"""
-conn = psycopg2.connect(host="wareiq-core-prod2.cvqssxsqruyc.us-east-1.rds.amazonaws.com", database="core_prod", user="postgres", password="aSderRFgd23")
-conn_2 = psycopg2.connect(host="wareiq-core-prod.cvqssxsqruyc.us-east-1.rds.amazonaws.com", database="core_prod", user="postgres", password="aSderRFgd23")
+
+conn = DbConnection.get_db_connection_instance()
+conn_2 = DbConnection.get_pincode_db_connection_instance()
 cur_2 = conn_2.cursor()
 
 
-def lambda_handler(courier_name=None, order_ids=None):
+def ship_orders(courier_name=None, order_ids=None):
     cur = conn.cursor()
     order_id_tuple = "()"
-    if courier_name and order_ids: #creating courier details list for manual shipping
-        if len(order_ids)==1:
-            order_id_tuple = "('"+str(order_ids[0])+"')"
+    if courier_name and order_ids:  # creating courier details list for manual shipping
+        if len(order_ids) == 1:
+            order_id_tuple = "('" + str(order_ids[0]) + "')"
         else:
             order_id_tuple = str(tuple(order_ids))
         cur.execute("""DELETE FROM 	order_status where order_id in %s;
-                       DELETE FROM shipments where order_id in %s;"""%(order_id_tuple, order_id_tuple))
+                           DELETE FROM shipments where order_id in %s;""" % (order_id_tuple, order_id_tuple))
         conn.commit()
-        cur.execute("SELECT DISTINCT(client_prefix) from orders where id in %s"%order_id_tuple)
-        client_list  = cur.fetchall()
+        cur.execute("SELECT DISTINCT(client_prefix) from orders where id in %s" % order_id_tuple)
+        client_list = cur.fetchall()
         cur.execute("""SELECT bb.id,bb.courier_name,bb.logo_url,bb.date_created,bb.date_updated,bb.api_key,bb.api_password,
-                    bb.api_url FROM master_couriers bb WHERE courier_name='%s'"""%courier_name)
+                        bb.api_url FROM master_couriers bb WHERE courier_name='%s'""" % courier_name)
         courier_details = cur.fetchone()
         all_couriers = list()
         for client in client_list:
-            all_couriers.append((None, client[0], None, 1, None, None, None, None, "")+courier_details)
+            all_couriers.append((None, client[0], None, 1, None, None, None, None, "") + courier_details)
 
     else:
         cur.execute(delete_failed_shipments_query)
         time_now = datetime.utcnow()
-        if time_now.hour == 22 and 0<time_now.minute<30:
-            time_now = time_now-timedelta(days=30)
+        if time_now.hour == 22 and 0 < time_now.minute < 30:
+            time_now = time_now - timedelta(days=30)
             cur.execute("""delete from shipments where order_id in 
-                            (select id from orders where order_date>%s and status='NEW')
-                            and remark = 'Pincode not serviceable'""", (time_now, ))
+                                (select id from orders where order_date>%s and status='NEW')
+                                and remark = 'Pincode not serviceable'""", (time_now,))
         conn.commit()
         cur.execute(fetch_client_couriers_query)
-        all_couriers=cur.fetchall()
+        all_couriers = cur.fetchall()
 
     for courier in all_couriers:
         if courier[10].startswith('Delhivery'):
@@ -138,7 +133,7 @@ def ship_delhivery_orders(cur, courier, courier_name, order_ids, order_id_tuple,
                                                                 """and aa.id in %s""" % order_id_tuple)
     else:
         orders_to_ship_query = get_orders_to_ship_query.replace("__ORDER_SELECT_FILTERS__", """and aa.status='NEW'
-                                                                                            and ll.id is null""")
+                                                                                                and ll.id is null""")
     get_orders_data_tuple = (courier[1], courier[1])
     if courier[3] == 2:
         orders_to_ship_query = orders_to_ship_query.replace('__PRODUCT_FILTER__',
@@ -181,19 +176,22 @@ def ship_delhivery_orders(cur, courier, courier_name, order_ids, order_id_tuple,
                                               order[5], order[9], order[45], order[46],
                                               order[51], order[52], zone)
 
-                if order[17].lower() in ("bengaluru", "bangalore", "banglore") and courier[1] in ("SOHOMATTRESS", ) and order[26].lower() != 'pickup':
+                if order[17].lower() in ("bengaluru", "bangalore", "banglore") and courier[1] in ("SOHOMATTRESS",) and \
+                        order[26].lower() != 'pickup':
                     continue
 
-                if courier[1] == "ZLADE" and courier[10]=="Delhivery Surface Standard" and zone and zone not in ('A','B') and order[26].lower() != 'pickup':
+                if courier[1] == "ZLADE" and courier[10] == "Delhivery Surface Standard" and zone and zone not in (
+                'A', 'B') and order[26].lower() != 'pickup':
                     continue
 
                 if not order[52]:
                     weight = order[34][0] * order[35][0]
-                    volumetric_weight = (order[33][0]['length'] * order[33][0]['breadth'] * order[33][0]['height'])*order[35][0] / 5000
+                    volumetric_weight = (order[33][0]['length'] * order[33][0]['breadth'] * order[33][0]['height']) * \
+                                        order[35][0] / 5000
                     for idx, dim in enumerate(order[33]):
                         if idx == 0:
                             continue
-                        volumetric_weight += (dim['length'] * dim['breadth'] * dim['height'])*order[35][idx] / 5000
+                        volumetric_weight += (dim['length'] * dim['breadth'] * dim['height']) * order[35][idx] / 5000
                         weight += order[34][idx] * (order[35][idx])
                 else:
                     weight = float(order[52])
@@ -211,8 +209,8 @@ def ship_delhivery_orders(cur, courier, courier_name, order_ids, order_id_tuple,
                     if new_courier_name:
                         try:
                             cur.execute("""SELECT id, courier_name, logo_url, date_created, date_updated, api_key, 
-                                                                            api_password, api_url FROM master_couriers
-                                                                            WHERE courier_name='%s'""" % new_courier_name)
+                                                                                api_password, api_url FROM master_couriers
+                                                                                WHERE courier_name='%s'""" % new_courier_name)
                             courier_data = cur.fetchone()
                             courier_new = list(courier)
                             courier_new[2] = courier_data[0]
@@ -225,9 +223,11 @@ def ship_delhivery_orders(cur, courier, courier_name, order_ids, order_id_tuple,
                             courier_new[14] = courier_data[5]
                             courier_new[15] = courier_data[6]
                             courier_new[16] = courier_data[7]
-                            ship_delhivery_orders(cur, tuple(courier_new), new_courier_name, [order[0]], "(" + str(order[0]) + ")", backup_param=False)
+                            ship_delhivery_orders(cur, tuple(courier_new), new_courier_name, [order[0]],
+                                                  "(" + str(order[0]) + ")", backup_param=False)
                         except Exception as e:
-                            logger.error("Couldn't assign backup courier for: " + str(order[0]) + "\nError: " + str(e.args))
+                            logger.error(
+                                "Couldn't assign backup courier for: " + str(order[0]) + "\nError: " + str(e.args))
                             pass
 
                         continue
@@ -255,12 +255,13 @@ def ship_delhivery_orders(cur, courier, courier_name, order_ids, order_id_tuple,
                 check_url = "https://track.delhivery.com/c/api/pin-codes/json/?filter_codes=%s" % str(order[18])
                 req = requests.get(check_url, headers=headers)
                 if not req.json()['delivery_codes']:
-                    cur.execute("select * from client_couriers where client_prefix=%s and priority=%s;",(courier[1], courier[3]+1))
+                    cur.execute("select * from client_couriers where client_prefix=%s and priority=%s;",
+                                (courier[1], courier[3] + 1))
                     qs = cur.fetchone()
                     if not (qs and backup_param):
                         insert_shipments_data_query = """INSERT INTO SHIPMENTS (awb, status, order_id, pickup_id, courier_id, 
-                                                                dimensions, volumetric_weight, weight, remark, return_point_id, routing_code, zone)
-                                                                VALUES  %s"""
+                                                                    dimensions, volumetric_weight, weight, remark, return_point_id, routing_code, zone)
+                                                                    VALUES  %s"""
                         insert_shipments_data_tuple = list()
                         insert_shipments_data_tuple.append(("", "Fail", order[0], None,
                                                             None, None, None, None, "Pincode not serviceable", None,
@@ -334,21 +335,21 @@ def ship_delhivery_orders(cur, courier, courier_name, order_ids, order_id_tuple,
             delhivery_url = courier[16] + "api/cmu/create.json"
 
             req = requests.post(delhivery_url, headers=headers, data=delivery_shipments_body)
-            if req.json().get('rmk')=='ClientWarehouse matching query does not exist.':
+            if req.json().get('rmk') == 'ClientWarehouse matching query does not exist.':
                 pickup_phone = pickup_point[3].replace(" ", "")
                 pickup_phone = pickup_phone[-10:]
-                warehouse_creation = {  "phone": pickup_phone,
-                                        "city": pickup_point[6],
-                                        "name": pickup_point[9],
-                                        "pin": str(pickup_point[8]),
-                                        "address": pick_add,
-                                        "country": pickup_point[7],
-                                        "registered_name": pickup_point[11],
-                                        "return_address": str(pickup_point[13])+str(pickup_point[14]),
-                                        "return_pin": str(pickup_point[17]),
-                                        "return_city": pickup_point[15],
-                                        "return_state": pickup_point[19],
-                                        "return_country": pickup_point[16]}
+                warehouse_creation = {"phone": pickup_phone,
+                                      "city": pickup_point[6],
+                                      "name": pickup_point[9],
+                                      "pin": str(pickup_point[8]),
+                                      "address": pick_add,
+                                      "country": pickup_point[7],
+                                      "registered_name": pickup_point[11],
+                                      "return_address": str(pickup_point[13]) + str(pickup_point[14]),
+                                      "return_pin": str(pickup_point[17]),
+                                      "return_city": pickup_point[15],
+                                      "return_state": pickup_point[19],
+                                      "return_country": pickup_point[16]}
                 create_warehouse_url = courier[16] + "api/backend/clientwarehouse/create/"
                 requests.post(create_warehouse_url, headers=headers, data=json.dumps(warehouse_creation))
                 req = requests.post(delhivery_url, headers=headers, data=delivery_shipments_body)
@@ -356,9 +357,9 @@ def ship_delhivery_orders(cur, courier, courier_name, order_ids, order_id_tuple,
             return_data += req.json()['packages']
 
         insert_shipments_data_query = """INSERT INTO SHIPMENTS (awb, status, order_id, pickup_id, courier_id, 
-                                        dimensions, volumetric_weight, weight, remark, return_point_id, routing_code, 
-                                        channel_fulfillment_id, tracking_link, zone)
-                                        VALUES  """
+                                            dimensions, volumetric_weight, weight, remark, return_point_id, routing_code, 
+                                            channel_fulfillment_id, tracking_link, zone)
+                                            VALUES  """
 
         order_status_change_ids = list()
         insert_shipments_data_tuple = list()
@@ -385,7 +386,7 @@ def ship_delhivery_orders(cur, courier, courier_name, order_ids, order_id_tuple,
                         """
                         exotel_sms_data[
                             sms_body_key] = "Received: Your order from %s. Track here: %s . Thanks!" % (
-                                                client_name, tracking_link_wareiq)
+                            client_name, tracking_link_wareiq)
                     except Exception:
                         pass
 
@@ -412,15 +413,18 @@ def ship_delhivery_orders(cur, courier, courier_name, order_ids, order_id_tuple,
                 if not orders_dict[package['refnum']][13]:
                     dimensions = orders_dict[package['refnum']][1][0]
                     weight = orders_dict[package['refnum']][2][0] * orders_dict[package['refnum']][3][0]
-                    volumetric_weight = (dimensions['length'] * dimensions['breadth'] * dimensions['height'])*orders_dict[package['refnum']][3][0]/5000
+                    volumetric_weight = (dimensions['length'] * dimensions['breadth'] * dimensions['height']) * \
+                                        orders_dict[package['refnum']][3][0] / 5000
                     for idx, dim in enumerate(orders_dict[package['refnum']][1]):
                         if idx == 0:
                             continue
-                        volumetric_weight += (dim['length'] * dim['breadth'] * dim['height'])*orders_dict[package['refnum']][3][idx] / 5000
+                        volumetric_weight += (dim['length'] * dim['breadth'] * dim['height']) * \
+                                             orders_dict[package['refnum']][3][idx] / 5000
                         weight += orders_dict[package['refnum']][2][idx] * (orders_dict[package['refnum']][3][idx])
 
                     if dimensions['length'] and dimensions['breadth']:
-                        dimensions['height'] = round((volumetric_weight * 5000) / (dimensions['length'] * dimensions['breadth']))
+                        dimensions['height'] = round(
+                            (volumetric_weight * 5000) / (dimensions['length'] * dimensions['breadth']))
                 else:
                     dimensions = {"length": 1, "breadth": 1, "height": 1}
                     weight = float(orders_dict[package['refnum']][13])
@@ -437,7 +441,7 @@ def ship_delhivery_orders(cur, courier, courier_name, order_ids, order_id_tuple,
                                                                 datetime.utcnow() + timedelta(hours=5.5)]
 
             except Exception as e:
-                logger.error("Order not shipped. Remarks: "+ str(package['remarks']) + "\nError: " + str(e.args[0]))
+                logger.error("Order not shipped. Remarks: " + str(package['remarks']) + "\nError: " + str(e.args[0]))
 
         if insert_shipments_data_tuple:
             insert_shipments_data_tuple = tuple(insert_shipments_data_tuple)
@@ -446,8 +450,8 @@ def ship_delhivery_orders(cur, courier, courier_name, order_ids, order_id_tuple,
             cur.execute(insert_shipments_data_query, insert_shipments_data_tuple)
             shipment_ret = cur.fetchall()
             order_status_add_query = """INSERT INTO order_status (order_id, courier_id, shipment_id, 
-                                                            status_code, status, status_text, location, location_city, 
-                                                            status_time) VALUES """
+                                                                status_code, status, status_text, location, location_city, 
+                                                                status_time) VALUES """
             order_status_tuple_list = list()
             for ship_temp in shipment_ret:
                 insert_order_status_dict[ship_temp[1]][2] = ship_temp[0]
@@ -461,7 +465,7 @@ def ship_delhivery_orders(cur, courier, courier_name, order_ids, order_id_tuple,
 
         if last_shipped_order_id:
             last_shipped_data_tuple = (
-            last_shipped_order_id, datetime.now(tz=pytz.timezone('Asia/Calcutta')), courier[1])
+                last_shipped_order_id, datetime.now(tz=pytz.timezone('Asia/Calcutta')), courier[1])
             cur.execute(update_last_shipped_order_query, last_shipped_data_tuple)
 
         if order_status_change_ids:
@@ -492,7 +496,7 @@ def ship_shadowfax_orders(cur, courier, courier_name, order_ids, order_id_tuple,
                                                                 """and aa.id in %s""" % order_id_tuple)
     else:
         orders_to_ship_query = get_orders_to_ship_query.replace("__ORDER_SELECT_FILTERS__", """and aa.status='NEW'
-                                                                                            and ll.id is null""")
+                                                                                                and ll.id is null""")
     get_orders_data_tuple = (courier[1], courier[1])
 
     cur.execute(orders_to_ship_query, get_orders_data_tuple)
@@ -548,7 +552,7 @@ def ship_shadowfax_orders(cur, courier, courier_name, order_ids, order_id_tuple,
             try:
                 # check pincode serviceability
                 check_url = courier[16] + "/v1/serviceability/?pickup_pincode=%s&delivery_pincode=%s&format=json" % (
-                str(pickup_point[8]), str(order[18]))
+                    str(pickup_point[8]), str(order[18]))
                 req = requests.get(check_url, headers=headers)
                 if not req.json()['Serviceability']:
                     cur.execute("select * from client_couriers where client_prefix=%s and priority=%s;",
@@ -556,8 +560,8 @@ def ship_shadowfax_orders(cur, courier, courier_name, order_ids, order_id_tuple,
                     qs = cur.fetchone()
                     if not (qs and backup_param):
                         insert_shipments_data_query = """INSERT INTO SHIPMENTS (awb, status, order_id, pickup_id, courier_id, 
-                                                                            dimensions, volumetric_weight, weight, remark, return_point_id, routing_code, zone)
-                                                                            VALUES  %s"""
+                                                                                dimensions, volumetric_weight, weight, remark, return_point_id, routing_code, zone)
+                                                                                VALUES  %s"""
                         insert_shipments_data_tuple = list()
                         insert_shipments_data_tuple.append(("", "Fail", order[0], None,
                                                             None, None, None, None, "Pincode not serviceable", None,
@@ -639,9 +643,9 @@ def ship_shadowfax_orders(cur, courier, courier_name, order_ids, order_id_tuple,
                 req = requests.post(shadowfax_url, headers=headers, data=json.dumps(shadowfax_shipment_body))
                 return_data_raw = req.json()
                 insert_shipments_data_query = """INSERT INTO SHIPMENTS (awb, status, order_id, pickup_id, courier_id, 
-                                                                                                dimensions, volumetric_weight, weight, remark, return_point_id, routing_code, 
-                                                                                                channel_fulfillment_id, tracking_link, zone)
-                                                                                                VALUES  %s RETURNING id;"""
+                                                                                                    dimensions, volumetric_weight, weight, remark, return_point_id, routing_code, 
+                                                                                                    channel_fulfillment_id, tracking_link, zone)
+                                                                                                    VALUES  %s RETURNING id;"""
                 if not return_data_raw['errors']:
                     order_status_change_ids.append(order[0])
                     return_data = return_data_raw['data']
@@ -662,7 +666,8 @@ def ship_shadowfax_orders(cur, courier, courier_name, order_ids, order_id_tuple,
                         short_url_track = short_url.json()['url']['shortLink']
                         """
                         exotel_sms_data[
-                            sms_body_key] = "Received: Your order from %s. Track here: %s . Thanks!" % (client_name, tracking_link_wareiq)
+                            sms_body_key] = "Received: Your order from %s. Track here: %s . Thanks!" % (
+                        client_name, tracking_link_wareiq)
                     except Exception:
                         pass
 
@@ -683,8 +688,8 @@ def ship_shadowfax_orders(cur, courier, courier_name, order_ids, order_id_tuple,
                 cur.execute(insert_shipments_data_query, data_tuple)
                 ship_temp = cur.fetchone()
                 order_status_add_query = """INSERT INTO order_status (order_id, courier_id, shipment_id, 
-                                                                        status_code, status, status_text, location, location_city, 
-                                                                        status_time) VALUES %s"""
+                                                                            status_code, status, status_text, location, location_city, 
+                                                                            status_time) VALUES %s"""
 
                 order_status_add_tuple = [(order[0], courier[9],
                                            ship_temp[0], "UD", "Received", "Consignment Manifested",
@@ -728,7 +733,7 @@ def ship_xpressbees_orders(cur, courier, courier_name, order_ids, order_id_tuple
                                                                 """and aa.id in %s""" % order_id_tuple)
     else:
         orders_to_ship_query = get_orders_to_ship_query.replace("__ORDER_SELECT_FILTERS__", """and aa.status='NEW'
-                                                                                            and ll.id is null""")
+                                                                                                and ll.id is null""")
     get_orders_data_tuple = (courier[1], courier[1])
 
     cur.execute(orders_to_ship_query, get_orders_data_tuple)
@@ -756,11 +761,11 @@ def ship_xpressbees_orders(cur, courier, courier_name, order_ids, order_id_tuple
 
         for order in all_new_orders:
 
-            if order[26].lower()=='pickup':
+            if order[26].lower() == 'pickup':
                 try:
                     cur.execute("""SELECT id, courier_name, logo_url, date_created, date_updated, api_key, 
-                                                                    api_password, api_url FROM master_couriers
-                                                                    WHERE courier_name='%s'""" %"Delhivery Surface Standard")
+                                                                        api_password, api_url FROM master_couriers
+                                                                        WHERE courier_name='%s'""" % "Delhivery Surface Standard")
                     courier_data = cur.fetchone()
                     courier_new = list(courier)
                     courier_new[2] = courier_data[0]
@@ -773,7 +778,8 @@ def ship_xpressbees_orders(cur, courier, courier_name, order_ids, order_id_tuple
                     courier_new[14] = courier_data[5]
                     courier_new[15] = courier_data[6]
                     courier_new[16] = courier_data[7]
-                    ship_delhivery_orders(cur, tuple(courier_new), "Delhivery Surface Standard", [order[0]], "(" + str(order[0]) + ")", backup_param=False)
+                    ship_delhivery_orders(cur, tuple(courier_new), "Delhivery Surface Standard", [order[0]],
+                                          "(" + str(order[0]) + ")", backup_param=False)
                 except Exception as e:
                     logger.error("Couldn't assign backup courier for: " + str(order[0]) + "\nError: " + str(e.args))
                     pass
@@ -804,8 +810,8 @@ def ship_xpressbees_orders(cur, courier, courier_name, order_ids, order_id_tuple
                 if new_courier_name:
                     try:
                         cur.execute("""SELECT id, courier_name, logo_url, date_created, date_updated, api_key, 
-                                                                        api_password, api_url FROM master_couriers
-                                                                        WHERE courier_name='%s'""" % new_courier_name)
+                                                                            api_password, api_url FROM master_couriers
+                                                                            WHERE courier_name='%s'""" % new_courier_name)
                         courier_data = cur.fetchone()
                         courier_new = list(courier)
                         courier_new[2] = courier_data[0]
@@ -819,7 +825,7 @@ def ship_xpressbees_orders(cur, courier, courier_name, order_ids, order_id_tuple
                         courier_new[15] = courier_data[6]
                         courier_new[16] = courier_data[7]
                         ship_xpressbees_orders(cur, tuple(courier_new), new_courier_name, [order[0]],
-                                              "(" + str(order[0]) + ")", backup_param=False)
+                                               "(" + str(order[0]) + ")", backup_param=False)
                     except Exception as e:
                         logger.error("Couldn't assign backup courier for: " + str(order[0]) + "\nError: " + str(e.args))
                         pass
@@ -954,9 +960,9 @@ def ship_xpressbees_orders(cur, courier, courier_name, order_ids, order_id_tuple
                                         data=json.dumps(xpressbees_shipment_body))
                 return_data_raw = req.json()
                 insert_shipments_data_query = """INSERT INTO SHIPMENTS (awb, status, order_id, pickup_id, courier_id, 
-                                                                                                dimensions, volumetric_weight, weight, remark, return_point_id, routing_code, 
-                                                                                                channel_fulfillment_id, tracking_link, zone)
-                                                                                                VALUES  %s RETURNING id;"""
+                                                                                                    dimensions, volumetric_weight, weight, remark, return_point_id, routing_code, 
+                                                                                                    channel_fulfillment_id, tracking_link, zone)
+                                                                                                    VALUES  %s RETURNING id;"""
                 if return_data_raw['AddManifestDetails'][0]['ReturnMessage'] == 'successful':
                     order_status_change_ids.append(order[0])
                     data_tuple = tuple([(
@@ -981,7 +987,8 @@ def ship_xpressbees_orders(cur, courier, courier_name, order_ids, order_id_tuple
                         short_url_track = short_url.json()['url']['shortLink']
                         """
                         exotel_sms_data[
-                            sms_body_key] = "Received: Your order from %s. Track here: %s . Thanks!" % (client_name, tracking_link_wareiq)
+                            sms_body_key] = "Received: Your order from %s. Track here: %s . Thanks!" % (
+                        client_name, tracking_link_wareiq)
                     except Exception:
                         pass
 
@@ -994,8 +1001,8 @@ def ship_xpressbees_orders(cur, courier, courier_name, order_ids, order_id_tuple
                     qs = cur.fetchone()
                     if not (qs and backup_param):
                         insert_shipments_data_query = """INSERT INTO SHIPMENTS (awb, status, order_id, pickup_id, courier_id, 
-                                                                dimensions, volumetric_weight, weight, remark, return_point_id, routing_code, zone)
-                                                                VALUES  %s"""
+                                                                    dimensions, volumetric_weight, weight, remark, return_point_id, routing_code, zone)
+                                                                    VALUES  %s"""
                         insert_shipments_data_tuple = list()
                         insert_shipments_data_tuple.append(("", "Fail", order[0], None,
                                                             None, None, None, None, "Pincode not serviceable", None,
@@ -1006,8 +1013,8 @@ def ship_xpressbees_orders(cur, courier, courier_name, order_ids, order_id_tuple
                 cur.execute(insert_shipments_data_query, data_tuple)
                 ship_temp = cur.fetchone()
                 order_status_add_query = """INSERT INTO order_status (order_id, courier_id, shipment_id, 
-                                            status_code, status, status_text, location, location_city, 
-                                            status_time) VALUES %s"""
+                                                status_code, status, status_text, location, location_city, 
+                                                status_time) VALUES %s"""
 
                 order_status_add_tuple = [(order[0], courier[9],
                                            ship_temp[0], "UD", "Received", "Consignment Manifested",
@@ -1051,7 +1058,7 @@ def ship_ecom_orders(cur, courier, courier_name, order_ids, order_id_tuple, back
                                                                 """and aa.id in %s""" % order_id_tuple)
     else:
         orders_to_ship_query = get_orders_to_ship_query.replace("__ORDER_SELECT_FILTERS__", """and aa.status='NEW'
-                                                                                            and ll.id is null""")
+                                                                                                and ll.id is null""")
     get_orders_data_tuple = (courier[1], courier[1])
 
     cur.execute(orders_to_ship_query, get_orders_data_tuple)
@@ -1065,19 +1072,19 @@ def ship_ecom_orders(cur, courier, courier_name, order_ids, order_id_tuple, back
                 pickup_point_order_dict[order[41]].append(order)
 
     cur.execute("""select max(awb) from shipments aa
-                    left join orders bb on aa.order_id=bb.id
-                    left join orders_payments cc on cc.order_id=bb.id
-                    where courier_id=%s
-                    and payment_mode ilike 'cod';""" % str(courier[9]))
+                        left join orders bb on aa.order_id=bb.id
+                        left join orders_payments cc on cc.order_id=bb.id
+                        where courier_id=%s
+                        and payment_mode ilike 'cod';""" % str(courier[9]))
 
     last_assigned_awb_cod = cur.fetchone()[0]
     last_assigned_awb_cod = int(last_assigned_awb_cod)
 
     cur.execute("""select max(awb) from shipments aa
-                    left join orders bb on aa.order_id=bb.id
-                    left join orders_payments cc on cc.order_id=bb.id
-                    where courier_id=%s
-                    and (payment_mode ilike 'prepaid' or payment_mode ilike 'paid');""" % str(courier[9]))
+                        left join orders bb on aa.order_id=bb.id
+                        left join orders_payments cc on cc.order_id=bb.id
+                        where courier_id=%s
+                        and (payment_mode ilike 'prepaid' or payment_mode ilike 'paid');""" % str(courier[9]))
 
     last_assigned_awb_ppd = cur.fetchone()[0]
     last_assigned_awb_ppd = int(last_assigned_awb_ppd)
@@ -1092,11 +1099,11 @@ def ship_ecom_orders(cur, courier, courier_name, order_ids, order_id_tuple, back
         pickup_point = cur.fetchone()  # change this as we get to dynamic pickups
 
         for order in all_new_orders:
-            if order[26].lower()=='pickup':
+            if order[26].lower() == 'pickup':
                 try:
                     cur.execute("""SELECT id, courier_name, logo_url, date_created, date_updated, api_key, 
-                                                                    api_password, api_url FROM master_couriers
-                                                                    WHERE courier_name='%s'""" %"Delhivery Surface Standard")
+                                                                        api_password, api_url FROM master_couriers
+                                                                        WHERE courier_name='%s'""" % "Delhivery Surface Standard")
                     courier_data = cur.fetchone()
                     courier_new = list(courier)
                     courier_new[2] = courier_data[0]
@@ -1109,7 +1116,8 @@ def ship_ecom_orders(cur, courier, courier_name, order_ids, order_id_tuple, back
                     courier_new[14] = courier_data[5]
                     courier_new[15] = courier_data[6]
                     courier_new[16] = courier_data[7]
-                    ship_delhivery_orders(cur, tuple(courier_new), "Delhivery Surface Standard", [order[0]], "(" + str(order[0]) + ")", backup_param=False)
+                    ship_delhivery_orders(cur, tuple(courier_new), "Delhivery Surface Standard", [order[0]],
+                                          "(" + str(order[0]) + ")", backup_param=False)
                 except Exception as e:
                     logger.error("Couldn't assign backup courier for: " + str(order[0]) + "\nError: " + str(e.args))
                     pass
@@ -1197,39 +1205,39 @@ def ship_ecom_orders(cur, courier, courier_name, order_ids, order_id_tuple, back
                 if order[26].lower() in ("prepaid", "paid"):
                     order_type = "PPD"
                 json_input = {
-                        "PRODUCT": order_type,
-                        "ORDER_NUMBER": order[1],
-                        "AWB_NUMBER": str(last_assigned_awb),
-                        "PICKUP_NAME": pickup_point[9],
-                        "PICKUP_MOBILE": pickup_point[3][-10:],
-                        "PICKUP_PHONE": pickup_point[3][-10:],
-                        "PICKUP_ADDRESS_LINE1": pickup_address,
-                        "PICKUP_ADDRESS_LINE2": "",
-                        "PICKUP_PINCODE": pickup_point[8],
-                        "CONSIGNEE": customer_name,
-                        "CONSIGNEE_ADDRESS1": customer_address,
-                        "CONSIGNEE_ADDRESS2": "",
-                        "CONSIGNEE_ADDRESS3": "",
-                        "DESTINATION_CITY": order[17],
-                        "STATE": order[19],
-                        "MOBILE": customer_phone[-10:],
-                        "TELEPHONE": customer_phone[-10:],
-                        "PINCODE": order[18],
-                        "ITEM_DESCRIPTION": package_string,
-                        "PIECES": package_quantity,
-                        "RETURN_NAME": pickup_point[18],
-                        "RETURN_MOBILE": pickup_point[12][-10:],
-                        "RETURN_PHONE": pickup_point[12][-10:],
-                        "RETURN_ADDRESS_LINE1": rto_address,
-                        "RETURN_ADDRESS_LINE2": "",
-                        "RETURN_PINCODE": pickup_point[17],
-                        "ACTUAL_WEIGHT": sum(order[34]),
-                        "VOLUMETRIC_WEIGHT": volumetric_weight,
-                        "LENGTH": dimensions['length'],
-                        "BREADTH": dimensions['breadth'],
-                        "HEIGHT": dimensions['height'],
-                        "DG_SHIPMENT": "false",
-                        "DECLARED_VALUE": order[27]}
+                    "PRODUCT": order_type,
+                    "ORDER_NUMBER": order[1],
+                    "AWB_NUMBER": str(last_assigned_awb),
+                    "PICKUP_NAME": pickup_point[9],
+                    "PICKUP_MOBILE": pickup_point[3][-10:],
+                    "PICKUP_PHONE": pickup_point[3][-10:],
+                    "PICKUP_ADDRESS_LINE1": pickup_address,
+                    "PICKUP_ADDRESS_LINE2": "",
+                    "PICKUP_PINCODE": pickup_point[8],
+                    "CONSIGNEE": customer_name,
+                    "CONSIGNEE_ADDRESS1": customer_address,
+                    "CONSIGNEE_ADDRESS2": "",
+                    "CONSIGNEE_ADDRESS3": "",
+                    "DESTINATION_CITY": order[17],
+                    "STATE": order[19],
+                    "MOBILE": customer_phone[-10:],
+                    "TELEPHONE": customer_phone[-10:],
+                    "PINCODE": order[18],
+                    "ITEM_DESCRIPTION": package_string,
+                    "PIECES": package_quantity,
+                    "RETURN_NAME": pickup_point[18],
+                    "RETURN_MOBILE": pickup_point[12][-10:],
+                    "RETURN_PHONE": pickup_point[12][-10:],
+                    "RETURN_ADDRESS_LINE1": rto_address,
+                    "RETURN_ADDRESS_LINE2": "",
+                    "RETURN_PINCODE": pickup_point[17],
+                    "ACTUAL_WEIGHT": sum(order[34]),
+                    "VOLUMETRIC_WEIGHT": volumetric_weight,
+                    "LENGTH": dimensions['length'],
+                    "BREADTH": dimensions['breadth'],
+                    "HEIGHT": dimensions['height'],
+                    "DG_SHIPMENT": "false",
+                    "DECLARED_VALUE": order[27]}
 
                 if order[26].lower() == "cod":
                     json_input["COLLECTABLE_VALUE"] = order[27]
@@ -1237,7 +1245,7 @@ def ship_ecom_orders(cur, courier, courier_name, order_ids, order_id_tuple, back
                     json_input["COLLECTABLE_VALUE"] = 0
 
                 ecom_url = courier[16] + "/apiv3/manifest_awb/"
-                req = requests.post(ecom_url,  data={"username": courier[14] , "password": courier[15],
+                req = requests.post(ecom_url, data={"username": courier[14], "password": courier[15],
                                                     "json_input": json.dumps([json_input])})
                 while req.json()['shipments'][0]['reason'] == 'INCORRECT_AWB_NUMBER':
                     last_assigned_awb += 1
@@ -1246,9 +1254,9 @@ def ship_ecom_orders(cur, courier, courier_name, order_ids, order_id_tuple, back
                                                         "json_input": json.dumps(json_input)})
                 return_data_raw = req.json()
                 insert_shipments_data_query = """INSERT INTO SHIPMENTS (awb, status, order_id, pickup_id, courier_id, 
-                                                                                                dimensions, volumetric_weight, weight, remark, return_point_id, routing_code, 
-                                                                                                channel_fulfillment_id, tracking_link, zone)
-                                                                                                VALUES  %s RETURNING id;"""
+                                                                                                    dimensions, volumetric_weight, weight, remark, return_point_id, routing_code, 
+                                                                                                    channel_fulfillment_id, tracking_link, zone)
+                                                                                                    VALUES  %s RETURNING id;"""
                 if return_data_raw['shipments'][0]['success']:
                     order_status_change_ids.append(order[0])
 
@@ -1274,7 +1282,8 @@ def ship_ecom_orders(cur, courier, courier_name, order_ids, order_id_tuple, back
                         short_url_track = short_url.json()['url']['shortLink']
                         """
                         exotel_sms_data[
-                            sms_body_key] = "Received: Your order from %s. Track here: %s . Thanks!" % (client_name, tracking_link_wareiq)
+                            sms_body_key] = "Received: Your order from %s. Track here: %s . Thanks!" % (
+                        client_name, tracking_link_wareiq)
                     except Exception:
                         pass
                     exotel_idx += 1
@@ -1285,8 +1294,8 @@ def ship_ecom_orders(cur, courier, courier_name, order_ids, order_id_tuple, back
                     qs = cur.fetchone()
                     if not (qs and backup_param):
                         insert_shipments_data_query = """INSERT INTO SHIPMENTS (awb, status, order_id, pickup_id, courier_id, 
-                                                                dimensions, volumetric_weight, weight, remark, return_point_id, routing_code, zone)
-                                                                VALUES  %s"""
+                                                                    dimensions, volumetric_weight, weight, remark, return_point_id, routing_code, zone)
+                                                                    VALUES  %s"""
                         insert_shipments_data_tuple = list()
                         insert_shipments_data_tuple.append(("", "Fail", order[0], None,
                                                             None, None, None, None, "Pincode not serviceable", None,
@@ -1297,8 +1306,8 @@ def ship_ecom_orders(cur, courier, courier_name, order_ids, order_id_tuple, back
                 cur.execute(insert_shipments_data_query, data_tuple)
                 ship_temp = cur.fetchone()
                 order_status_add_query = """INSERT INTO order_status (order_id, courier_id, shipment_id, 
-                                            status_code, status, status_text, location, location_city, 
-                                            status_time) VALUES %s"""
+                                                status_code, status, status_text, location, location_city, 
+                                                status_time) VALUES %s"""
 
                 order_status_add_tuple = [(order[0], courier[9],
                                            ship_temp[0], "UD", "Received", "Consignment Manifested",
@@ -1342,7 +1351,7 @@ def ship_bluedart_orders(cur, courier, courier_name, order_ids, order_id_tuple, 
                                                                 """and aa.id in %s""" % order_id_tuple)
     else:
         orders_to_ship_query = get_orders_to_ship_query.replace("__ORDER_SELECT_FILTERS__", """and aa.status='NEW'
-                                                                                            and ll.id is null""")
+                                                                                                and ll.id is null""")
     get_orders_data_tuple = (courier[1], courier[1])
     if courier[3] == 2:
         orders_to_ship_query = orders_to_ship_query.replace('__PRODUCT_FILTER__',
@@ -1382,11 +1391,11 @@ def ship_bluedart_orders(cur, courier, courier_name, order_ids, order_id_tuple, 
         login_id = courier[15].split('|')[0]
         customer_code = courier[15].split('|')[1]
         client_profile = {
-                        "LoginID": login_id,
-                        "LicenceKey": courier[14],
-                        "Api_type": "S",
-                        "Version": "1.3"
-                    }
+            "LoginID": login_id,
+            "LicenceKey": courier[14],
+            "Api_type": "S",
+            "Version": "1.3"
+        }
         for order in all_new_orders:
 
             zone = None
@@ -1394,6 +1403,9 @@ def ship_bluedart_orders(cur, courier, courier_name, order_ids, order_id_tuple, 
                 zone = get_delivery_zone(pickup_point[8], order[18])
             except Exception as e:
                 logger.error("couldn't find zone: " + str(order[0]) + "\nError: " + str(e))
+
+            if courier[1] == "ZLADE" and zone in ('A', ):
+                continue
 
             time_2_days = datetime.utcnow() + timedelta(hours=5.5) - timedelta(days=1)
             if order[47] and not (order[50] and order[2] < time_2_days):
@@ -1422,14 +1434,15 @@ def ship_bluedart_orders(cur, courier, courier_name, order_ids, order_id_tuple, 
                 }
                 req = pincode_client.service.GetServicesforPincode(**request_data)
 
-                if not (req['ApexInbound'] == 'Yes' or req['eTailCODAirInbound'] == 'Yes' or req['eTailPrePaidAirInbound'] == 'Yes'):
+                if not (req['ApexInbound'] == 'Yes' or req['eTailCODAirInbound'] == 'Yes' or req[
+                    'eTailPrePaidAirInbound'] == 'Yes'):
                     cur.execute("select * from client_couriers where client_prefix=%s and priority=%s;",
                                 (courier[1], courier[3] + 1))
                     qs = cur.fetchone()
                     if not (qs and backup_param):
                         insert_shipments_data_query = """INSERT INTO SHIPMENTS (awb, status, order_id, pickup_id, courier_id, 
-                                                        dimensions, volumetric_weight, weight, remark, return_point_id, routing_code, zone)
-                                                        VALUES  %s"""
+                                                            dimensions, volumetric_weight, weight, remark, return_point_id, routing_code, zone)
+                                                            VALUES  %s"""
                         insert_shipments_data_tuple = list()
                         insert_shipments_data_tuple.append(("", "Fail", order[0], None,
                                                             None, None, None, None, "Pincode not serviceable", None,
@@ -1527,25 +1540,29 @@ def ship_bluedart_orders(cur, courier, courier_name, order_ids, order_id_tuple, 
 
                 services['ActualWeight'] = weight
                 services['PieceCount'] = 1
-                services['Dimensions'] = {"Dimension": {"Length": dimensions['length'], "Breadth": dimensions['breadth'],
-                                                        "Height": dimensions['height'], "Count": 1}}
-                services['itemdtl'] = {"ItemDetails": {"ItemID": str(order[1]),"ItemName": package_string, "ItemValue": order[27]}}
+                services['Dimensions'] = {
+                    "Dimension": {"Length": dimensions['length'], "Breadth": dimensions['breadth'],
+                                  "Height": dimensions['height'], "Count": 1}}
+                services['itemdtl'] = {
+                    "ItemDetails": {"ItemID": str(order[1]), "ItemName": package_string, "ItemValue": order[27]}}
 
                 request_data = {
-                    "Request": {'Shipper': shipper, 'Consignee': consignee, 'Services': services, 'Returnadds': return_address},
+                    "Request": {'Shipper': shipper, 'Consignee': consignee, 'Services': services,
+                                'Returnadds': return_address},
                     "Profile": client_profile
                 }
 
                 req = waybill_client.service.GenerateWayBill(**request_data)
                 insert_shipments_data_query = """INSERT INTO SHIPMENTS (awb, status, order_id, pickup_id, courier_id, 
-                                                                                                            dimensions, volumetric_weight, weight, remark, return_point_id, routing_code, 
-                                                                                                            channel_fulfillment_id, tracking_link, zone)
-                                                                                                            VALUES  %s RETURNING id;"""
+                                                                                                                dimensions, volumetric_weight, weight, remark, return_point_id, routing_code, 
+                                                                                                                channel_fulfillment_id, tracking_link, zone)
+                                                                                                                VALUES  %s RETURNING id;"""
                 if req['AWBNo']:
                     order_status_change_ids.append(order[0])
                     routing_code = str(req['DestinationArea']) + "-" + str(req['DestinationLocation'])
                     data_tuple = tuple([(
-                        req['AWBNo'],"",order[0], pickup_point[1], courier[9], json.dumps(dimensions), volumetric_weight, weight,
+                        req['AWBNo'], "", order[0], pickup_point[1], courier[9], json.dumps(dimensions),
+                        volumetric_weight, weight,
                         "", pickup_point[2], routing_code, fulfillment_id, tracking_link, zone)])
                     client_name = str(order[51])
                     customer_phone = order[5].replace(" ", "")
@@ -1564,7 +1581,8 @@ def ship_bluedart_orders(cur, courier, courier_name, order_ids, order_id_tuple, 
                         short_url_track = short_url.json()['url']['shortLink']
                         """
                         exotel_sms_data[
-                            sms_body_key] = "Received: Your order from %s. Track here: %s . Thanks!" % (client_name, tracking_link_wareiq)
+                            sms_body_key] = "Received: Your order from %s. Track here: %s . Thanks!" % (
+                        client_name, tracking_link_wareiq)
                     except Exception:
                         pass
 
@@ -1576,8 +1594,8 @@ def ship_bluedart_orders(cur, courier, courier_name, order_ids, order_id_tuple, 
                     qs = cur.fetchone()
                     if not (qs and backup_param):
                         insert_shipments_data_query = """INSERT INTO SHIPMENTS (awb, status, order_id, pickup_id, courier_id, 
-                                                                            dimensions, volumetric_weight, weight, remark, return_point_id, routing_code, zone)
-                                                                            VALUES  %s"""
+                                                                                dimensions, volumetric_weight, weight, remark, return_point_id, routing_code, zone)
+                                                                                VALUES  %s"""
                         insert_shipments_data_tuple = list()
                         insert_shipments_data_tuple.append(("", "Fail", order[0], None,
                                                             None, None, None, None, "Pincode not serviceable", None,
@@ -1588,8 +1606,8 @@ def ship_bluedart_orders(cur, courier, courier_name, order_ids, order_id_tuple, 
                 cur.execute(insert_shipments_data_query, data_tuple)
                 ship_temp = cur.fetchone()
                 order_status_add_query = """INSERT INTO order_status (order_id, courier_id, shipment_id, 
-                                                        status_code, status, status_text, location, location_city, 
-                                                        status_time) VALUES %s"""
+                                                            status_code, status, status_text, location, location_city, 
+                                                            status_time) VALUES %s"""
 
                 order_status_add_tuple = [(order[0], courier[9],
                                            ship_temp[0], "UD", "Received", "Consignment Manifested",
@@ -1717,9 +1735,9 @@ def ship_vinculum_orders(cur, courier, courier_name, order_ids, order_id_tuple):
                     customer_name += " " + order[14]
 
                 insert_shipments_data_query = """INSERT INTO SHIPMENTS (awb, status, order_id, pickup_id, courier_id, 
-                                                            dimensions, volumetric_weight, weight, remark, return_point_id, routing_code, 
-                                                            channel_fulfillment_id, tracking_link)
-                                                            VALUES  %s RETURNING id;"""
+                                                                dimensions, volumetric_weight, weight, remark, return_point_id, routing_code, 
+                                                                channel_fulfillment_id, tracking_link)
+                                                                VALUES  %s RETURNING id;"""
 
                 if return_data_raw.get("responselist"):
                     if order[0] > last_shipped_order_id:
@@ -1746,7 +1764,8 @@ def ship_vinculum_orders(cur, courier, courier_name, order_ids, order_id_tuple):
                         short_url_track = short_url.json()['url']['shortLink']
                         """
                         exotel_sms_data[
-                            sms_body_key] = "Received: Your order from %s. Track here: %s. Thanks!" % (client_name, tracking_link_wareiq)
+                            sms_body_key] = "Received: Your order from %s. Track here: %s. Thanks!" % (
+                        client_name, tracking_link_wareiq)
                     except Exception:
                         pass
 
@@ -1755,8 +1774,8 @@ def ship_vinculum_orders(cur, courier, courier_name, order_ids, order_id_tuple):
                     cur.execute(insert_shipments_data_query, data_tuple)
                     ship_temp = cur.fetchone()
                     order_status_add_query = """INSERT INTO order_status (order_id, courier_id, shipment_id, 
-                                                            status_code, status, status_text, location, location_city, 
-                                                            status_time) VALUES %s"""
+                                                                status_code, status, status_text, location, location_city, 
+                                                                status_time) VALUES %s"""
 
                     order_status_add_tuple = [(order[0], courier[9],
                                                ship_temp[0], "UD", "Received", "Consignment Manifested",

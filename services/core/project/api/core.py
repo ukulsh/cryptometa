@@ -238,29 +238,129 @@ def verification_passthru(type):
 
 @core_blueprint.route('/core/case_studies', methods=['GET'])
 def website_case_study():
-    data = [{"image_link": "",
-            "summary": "",
+    data = [{"image_link": "https://wareiqfiles.s3.amazonaws.com/kamaayurveda.png",
+            "summary": "WareIQ connected Kama Ayurveda’s existing supply chain infra & WareIQ fulfillment hubs to its central platform allowing them to offer premium shipping experience in sync with their brand positioning.",
             "name": "",
             "title": "",
-            "case_study_link": ""}]
+            "case_study_link": ""},
+            {"image_link": "https://wareiqfiles.s3.amazonaws.com/organicriot.png",
+             "summary": "WareIQ fulfillment network allowed Organic Riot to utilize facilities pan-India and be quick to their customers, and offer custom experiences like branded tracking page.",
+             "name": "",
+             "title": "",
+             "case_study_link": ""},
+            {"image_link": "https://wareiqfiles.s3.amazonaws.com/nasher.png",
+             "summary": "WareIQ onboarded Nashermiles to its fulfillment platform leveraging pan-India warehouses to enable Prime-like shipping on the website.",
+             "name": "",
+             "title": "",
+             "case_study_link": ""},
+            {"image_link": "https://wareiqfiles.s3.amazonaws.com/zlade.png",
+             "summary": "WareIQ enabled COD and NDR verification through automated SMS and IVR calls to preempt RTOS, and brought Zlade’s inventory closer to demand centers using our fulfillment network in metros.",
+             "name": "",
+             "title": "",
+             "case_study_link": ""},
+            {"image_link": "https://wareiqfiles.s3.amazonaws.com/timios.png",
+             "summary": "WareIQ enabled fulfillment for Timios across its online channels: own website, WhatsApp, Amazon, Firstcry, Flipkart & BigBasket at competitive cost points required for a FMCG player.",
+             "name": "",
+             "title": "",
+             "case_study_link": ""},
+            {"image_link": "https://wareiqfiles.s3.amazonaws.com/sangeetha.png",
+             "summary": "Sangeetha Mobiles has one of the most sophisticated supply chain networks in form of its retail stores that are in close proximity to urban demand centers. WareIQ offers an eCommerce omnichannel shipping solution enabling ship from store, and warehouse -- all centralized in one platform.",
+             "name": "",
+             "title": "",
+             "case_study_link": ""},
+            {"image_link": "https://wareiqfiles.s3.amazonaws.com/wingreens.png",
+             "summary": "Wingreens Farms is an ethical and innovative farm to retail food and beverage company. It has pioneered the fresh dip category in India and continues to be the market leader. WareIQ enables eCommerce fulfillment & shipping for Wingreens on their online-store and various marketplaces through our pan-India fulfillment network.",
+             "name": "",
+             "title": "",
+             "case_study_link": ""},
+            ]
     return jsonify({"success": True, "data": data}), 200
 
 
 @core_blueprint.route('/core/dev', methods=['POST'])
 def ping_dev():
     return 0
+    from .models import Orders, ReturnPoints, ClientPickups, Products, ProductQuantity
+    myfile = request.files['myfile']
+    data_xlsx = pd.read_excel(myfile)
+    import json, re
+    count = 0
+    iter_rw = data_xlsx.iterrows()
+    for row in iter_rw:
+        try:
+            sku = str(row[1].SKU)
+            quan = 100
+            prod_obj = Products(name=sku,
+                                sku=str(sku),
+                                master_sku=str(sku),
+                                dimensions=None,
+                                weight=None,
+                                price=None,
+                                client_prefix='WINGREENS',
+                                active=True,
+                                channel_id=4,
+                                inactive_reason=None,
+                                date_created=datetime.now()
+                                )
+            prod_quan_obj = ProductQuantity(product=prod_obj,
+                                            total_quantity=quan,
+                                            approved_quantity=quan,
+                                            available_quantity=quan,
+                                            inline_quantity=0,
+                                            rto_quantity=0,
+                                            current_quantity=quan,
+                                            warehouse_prefix="QSDWARKA",
+                                            status="APPROVED",
+                                            date_created=datetime.now()
+                                            )
+
+            db.session.add(prod_quan_obj)
+            prod_quan_obj = ProductQuantity(product=prod_obj,
+                                            total_quantity=quan,
+                                            approved_quantity=quan,
+                                            available_quantity=quan,
+                                            inline_quantity=0,
+                                            rto_quantity=0,
+                                            current_quantity=quan,
+                                            warehouse_prefix="QSBHIWANDI",
+                                            status="APPROVED",
+                                            date_created=datetime.now()
+                                            )
+
+            db.session.add(prod_quan_obj)
+            prod_quan_obj = ProductQuantity(product=prod_obj,
+                                            total_quantity=quan,
+                                            approved_quantity=quan,
+                                            available_quantity=quan,
+                                            inline_quantity=0,
+                                            rto_quantity=0,
+                                            current_quantity=quan,
+                                            warehouse_prefix="QSBANGALORE",
+                                            status="APPROVED",
+                                            date_created=datetime.now()
+                                            )
+
+            db.session.add(prod_quan_obj)
+            db.session.commit()
+
+        except Exception as e:
+            pass
+
+    """
+    return 0
     import requests
     create_fulfillment_url = "https://app.easyecom.io/orders/getAllOrders?api_token=8ad11f5f608737f85bc0a5d04aa954d75ad378202c0800fa195d9738efd94a44&start_date=2020-10-15&end_date=2020-10-21"
     req = requests.get(create_fulfillment_url)
     create_fulfillment_url = "https://dc948a1330721a0116d84fb76ab168c4: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@daily-veggies-india.myshopify.com/admin/api/2020-07/orders/2728800518305.json?"
     return 0
+    """
     import json, requests
-    myfile = request.files['myfile']
     data_xlsx = pd.read_excel(myfile)
 
     iter_rw = data_xlsx.iterrows()
     source_items = list()
     sku_list = list()
+    """
     cur = conn_2.cursor()
     for row in iter_rw:
         pickup_city = str(row[1].pickup_city)
@@ -286,9 +386,10 @@ def ping_dev():
                 pass
             if not ent:
                 cur.execute("INSERT INTO city_zone_mapping (zone, city, zone_value, courier_id) VALUES (%s,%s,%s,%s)", (pickup_city, del_city, str(row[1].zone), courier_id))
+                
+    """
     for row in iter_rw:
         try:
-
             sku = str(row[1].SKU)
             del_qty = int(row[1].Qty)
             # cb_qty = int(row[1].CBQT)
@@ -315,8 +416,8 @@ def ping_dev():
             sku_list.append({"sku": sku,
                              "warehouse": "QSBHIWANDI",
                              "quantity": del_qty,
-                             "type": "replace",
-                             "remark": "6 oct resync"})
+                             "type": "add",
+                             "remark": "19 oct inbound"})
 
             """
 
@@ -344,7 +445,7 @@ def ping_dev():
             """
             if row[0]%100==0:
                 headers = {
-                    'Authorization': "Bearer " + "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJleHAiOjE2MDMwMzg2NzQsImlhdCI6MTYwMDQ0NjY3NCwic3ViIjo5fQ.HLgf5CEPcvuiaiopnGOyRin5-utI6v9uNQ8iPSa4NXE",
+                    'Authorization': "Bearer " + "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJleHAiOjE2MDU3ODIyMjMsImlhdCI6MTYwMzE5MDIyMywic3ViIjo5fQ.0NDcLm1qy-8t3kbQxd6l6fiSCCSX-0RByPqzRH0EEjM",
                     'Content-Type': 'application/json'}
 
                 data = {"sku_list": sku_list}
@@ -359,7 +460,7 @@ def ping_dev():
             pass
 
     headers = {
-        'Authorization': "Bearer " + "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJleHAiOjE2MDMwMzg2NzQsImlhdCI6MTYwMDQ0NjY3NCwic3ViIjo5fQ.HLgf5CEPcvuiaiopnGOyRin5-utI6v9uNQ8iPSa4NXE",
+        'Authorization': "Bearer " + "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJleHAiOjE2MDU3ODIyMjMsImlhdCI6MTYwMzE5MDIyMywic3ViIjo5fQ.0NDcLm1qy-8t3kbQxd6l6fiSCCSX-0RByPqzRH0EEjM",
         'Content-Type': 'application/json'}
 
     data = {"sku_list": sku_list}
@@ -483,46 +584,6 @@ def ping_dev():
 
     return 0
 
-    from .models import Orders, ReturnPoints, ClientPickups, Products, ProductQuantity
-    data_xlsx = pd.read_excel(myfile)
-    import json, re
-    count = 0
-    iter_rw = data_xlsx.iterrows()
-    for row in iter_rw:
-        try:
-            sku = str(row[1].SKU)
-            quan = str(row[1].Qty)
-            mrp = float(row[1].Price)
-            prod_obj = Products(name=sku,
-                                sku=str(sku),
-                                master_sku=str(sku),
-                                dimensions=None,
-                                weight=None,
-                                price=mrp,
-                                client_prefix='WINGREENS',
-                                active=True,
-                                channel_id=4,
-                                inactive_reason=None,
-                                date_created=datetime.now()
-                                )
-            prod_quan_obj = ProductQuantity(product=prod_obj,
-                                            total_quantity=quan,
-                                            approved_quantity=quan,
-                                            available_quantity=quan,
-                                            inline_quantity=0,
-                                            rto_quantity=0,
-                                            current_quantity=quan,
-                                            warehouse_prefix="QSDWARKA",
-                                            status="APPROVED",
-                                            date_created=datetime.now()
-                                            )
-
-            db.session.add(prod_quan_obj)
-            db.session.add(prod_obj)
-            db.session.commit()
-
-        except Exception as e:
-            pass
     return 0
 
     return 0

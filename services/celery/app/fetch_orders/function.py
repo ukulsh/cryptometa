@@ -475,7 +475,8 @@ def fetch_magento_orders(cur, channel):
             '__IDX__', str(filter_idx)).replace('__STATUS__', fetch_status)
         filter_idx += 1
     headers = {'Authorization': "Bearer " + channel[3],
-               'Content-Type': 'application/json'}
+               'Content-Type': 'application/json',
+               'User-Agent': 'PostmanRuntime/7.26.5'}
     data = requests.get(magento_orders_url_1, headers=headers)
     if 'items' in data.json() and not data.json()['items']:
         data = requests.get(magento_orders_url_2, headers=headers)

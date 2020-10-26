@@ -242,7 +242,7 @@ def verification_passthru(type):
 @authenticate_restful
 def check_balance(resp):
     auth_data = resp.get('data')
-    if auth_data.get('user_group') != 'client':
+    if auth_data.get('user_group') not in ('client', 'super-admin'):
         return jsonify({"msg": "Invalid user type"}), 400
 
     qs = db.session.query(ClientMapping).filter(ClientMapping.client_prefix==auth_data.get('client_prefix')).first()
@@ -260,7 +260,7 @@ def check_balance(resp):
 def create_payment(resp):
     auth_data = resp.get('data')
     data = json.loads(request.data)
-    if auth_data.get('user_group') != 'client':
+    if auth_data.get('user_group') not in ('client', 'super-admin'):
         return jsonify({"msg": "Invalid user type"}), 400
 
     amount = data.get('amount')
@@ -268,7 +268,8 @@ def create_payment(resp):
     recharge_obj = ClientRecharges(client_prefix=auth_data.get('client_prefix'),
                                    recharge_amount=amount/100,
                                    type="credit",
-                                   status="pending"
+                                   status="pending",
+                                   recharge_time=datetime.utcnow()+timedelta(hours=5.5)
                                    )
 
     db.session.add(recharge_obj)
@@ -301,13 +302,18 @@ def create_payment(resp):
 def capture_payment(resp):
     auth_data = resp.get('data')
     data = json.loads(request.data)
-    if auth_data.get('user_group') != 'client':
+    if auth_data.get('user_group') not in ('client', 'super-admin'):
         return jsonify({"msg": "Invalid user type"}), 400
 
     razorpay_payment_id = data.get('razorpay_payment_id')
     razorpay_order_id = data.get('razorpay_order_id')
     razorpay_signature = data.get('razorpay_signature')
     success = data.get('success')
+    code = data.get('code')
+    description = data.get('description')
+    source = data.get('source')
+    step = data.get('step')
+    reason = data.get('reason')
 
     recharge_obj = db.session.query(ClientRecharges).filter(ClientRecharges.transaction_id==razorpay_order_id,
                                                             ClientRecharges.client_prefix==auth_data.get('client_prefix')).first()
@@ -332,10 +338,20 @@ def capture_payment(resp):
         db.session.commit()
         return jsonify({"msg": "Signature verification failed"}), 400
 
+    mapping_obj = db.session.query(ClientMapping).filter(ClientMapping.client_prefix==auth_data.get('client_prefix')).first()
+    if mapping_obj:
+        mapping_obj.current_balance = mapping_obj.current_balance + recharge_obj.recharge_amount
+
     capture = razorpay_client.payment.capture(razorpay_payment_id, recharge_obj.recharge_amount*100, {"currency": "INR"})
     recharge_obj.bank_transaction_id = razorpay_payment_id
     recharge_obj.status = "successful"
     recharge_obj.recharge_time = datetime.utcnow() + timedelta(hours=5.5)
+    recharge_obj.code = code
+    recharge_obj.description = description
+    recharge_obj.source = source
+    recharge_obj.step = step
+    recharge_obj.reason = reason
+    recharge_obj.signature = razorpay_signature
 
     db.session.commit()
 

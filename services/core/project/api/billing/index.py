@@ -251,8 +251,9 @@ class WalletRecharges(Resource):
                 return {"success": False, "msg": "Auth Failed"}, 404
             if auth_data.get('user_group') in ('super-admin', 'client', 'multi-vendor'):
                 client_prefix = auth_data.get('client_prefix')
-                query_to_execute = """SELECT recharge_time, recharge_amount, transaction_id, status FROM client_recharges aa
+                query_to_execute = """SELECT recharge_time, recharge_amount, bank_transaction_id, status FROM client_recharges aa
                                     WHERE (transaction_id ilike '%__SEARCH_KEY__%' or bank_transaction_id ilike '%__SEARCH_KEY__%')
+                                    AND aa.status!='pending'
                                     __CLIENT_FILTER__
                                     __MV_CLIENT_FILTER__
                                     __DATE_TIME_FILTER__

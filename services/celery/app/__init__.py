@@ -74,6 +74,7 @@ def ship_orders_api():
 
 @app.route('/scans/v1/dev', methods = ['GET'])
 def celery_dev():
+    status_update.apply_async(queue='update_status')
     return jsonify({"msg": "Task received"}), 200
 
 

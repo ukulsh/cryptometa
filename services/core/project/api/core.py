@@ -4,7 +4,7 @@ import requests, json, math, pytz, psycopg2
 import boto3, os, csv, io, smtplib
 import pandas as pd
 import numpy as np
-import re
+import re, razorpay
 from flask_cors import cross_origin
 from datetime import datetime, timedelta
 from sqlalchemy import or_, func, not_, and_
@@ -24,7 +24,8 @@ from .queries import product_count_query, available_warehouse_product_quantity, 
     select_wallet_remittance_orders_query
 from project.api.models import Products, ProductQuantity, InventoryUpdate, WarehouseMapping, NDRReasons, MultiVendor, \
     Orders, OrdersPayments, PickupPoints, MasterChannels, ClientPickups, CodVerification, NDRVerification, NDRShipments,\
-    MasterCouriers, Shipments, OPAssociation, ShippingAddress, Manifests, ClientCouriers, OrderStatus, DeliveryCheck, ClientMapping, IVRHistory
+    MasterCouriers, Shipments, OPAssociation, ShippingAddress, Manifests, ClientCouriers, OrderStatus, DeliveryCheck, \
+    ClientMapping, IVRHistory, ClientRecharges
 from project.api.utils import authenticate_restful, get_products_sort_func, fill_shiplabel_data_thermal, \
     get_orders_sort_func, create_shiplabel_blank_page, fill_shiplabel_data, create_shiplabel_blank_page_thermal, \
     create_invoice_blank_page, fill_invoice_data, generate_picklist, generate_packlist
@@ -42,6 +43,7 @@ conn_2 = psycopg2.connect(host=os.environ.get('DATABASE_HOST_PINCODE'), database
 
 #email_server = smtplib.SMTP_SSL('smtpout.secureserver.net', 465)
 #email_server.login("noreply@wareiq.com", "Berlin@123")
+razorpay_client = razorpay.Client(auth=("rzp_test_6k89T5DcoLmvCO", "wEM0vuFABblEjNMotlar9bxz"))
 
 
 ORDERS_DOWNLOAD_HEADERS = ["Order ID", "Customer Name", "Customer Email", "Customer Phone", "Order Date",
@@ -236,20 +238,124 @@ def verification_passthru(type):
         return jsonify({"success": False, "msg": str(e.args[0])}), 400
 
 
+@core_blueprint.route('/core/v1/balance', methods=['GET'])
+@authenticate_restful
+def check_balance(resp):
+    auth_data = resp.get('data')
+    if auth_data.get('user_group') != 'client':
+        return jsonify({"msg": "Invalid user type"}), 400
+
+    qs = db.session.query(ClientMapping).filter(ClientMapping.client_prefix==auth_data.get('client_prefix')).first()
+    if not qs:
+        return jsonify({"msg": "Not found"}), 400
+
+    type = str(qs.account_type).lower()
+    balance = qs.current_balance
+
+    return jsonify({"type": type, "balance": round(balance, 2) if balance else 0}), 200
+
+
+@core_blueprint.route('/core/v1/create_payment', methods=['POST'])
+@authenticate_restful
+def create_payment(resp):
+    auth_data = resp.get('data')
+    data = json.loads(request.data)
+    if auth_data.get('user_group') != 'client':
+        return jsonify({"msg": "Invalid user type"}), 400
+
+    amount = data.get('amount')
+
+    recharge_obj = ClientRecharges(client_prefix=auth_data.get('client_prefix'),
+                                   recharge_amount=amount/100,
+                                   type="credit",
+                                   status="pending"
+                                   )
+
+    db.session.add(recharge_obj)
+    db.session.commit()
+
+    receipt = "receipt#"+str(recharge_obj.id)
+
+    notes = {'client': str(auth_data.get('client_prefix'))}
+
+    res = razorpay_client.order.create(dict(amount=amount, currency="INR", receipt=receipt, notes=notes))
+
+    recharge_obj.transaction_id = res.get('id')
+
+    db.session.commit()
+
+    return jsonify({"key": "rzp_test_6k89T5DcoLmvCO",
+                    "amount": res.get('amount'),
+                    "currency":"INR",
+                    "order_id": res.get('id'),
+                    "prefill": {"name": auth_data.get("first_name"),
+                                "email": auth_data.get("email"),
+                                "contact": auth_data.get("phone_no")},
+                    "notes": notes,
+                    "wareiq_id": recharge_obj.id
+                    }), 201
+
+
+@core_blueprint.route('/core/v1/capture_payment', methods=['POST'])
+@authenticate_restful
+def capture_payment(resp):
+    auth_data = resp.get('data')
+    data = json.loads(request.data)
+    if auth_data.get('user_group') != 'client':
+        return jsonify({"msg": "Invalid user type"}), 400
+
+    razorpay_payment_id = data.get('razorpay_payment_id')
+    razorpay_order_id = data.get('razorpay_order_id')
+    razorpay_signature = data.get('razorpay_signature')
+    success = data.get('success')
+
+    recharge_obj = db.session.query(ClientRecharges).filter(ClientRecharges.transaction_id==razorpay_order_id,
+                                                            ClientRecharges.client_prefix==auth_data.get('client_prefix')).first()
+
+    if not recharge_obj:
+        return jsonify({"msg": "Transaction not found"}), 400
+
+    if not success:
+        recharge_obj.status = "failed"
+        db.session.commit()
+        return jsonify({"msg": "payment failed"}), 200
+
+    params_dict = {
+        'razorpay_order_id': razorpay_order_id,
+        'razorpay_payment_id': razorpay_payment_id,
+        'razorpay_signature': razorpay_signature
+    }
+    try:
+        razorpay_client.utility.verify_payment_signature(params_dict)
+    except Exception as e:
+        recharge_obj.status = "failed"
+        db.session.commit()
+        return jsonify({"msg": "Signature verification failed"}), 400
+
+    capture = razorpay_client.payment.capture(razorpay_payment_id, recharge_obj.recharge_amount*100, {"currency": "INR"})
+    recharge_obj.bank_transaction_id = razorpay_payment_id
+    recharge_obj.status = "successful"
+    recharge_obj.recharge_time = datetime.utcnow() + timedelta(hours=5.5)
+
+    db.session.commit()
+
+    return jsonify({"msg": "successfully captured"}), 200
+
+
 @core_blueprint.route('/core/case_studies', methods=['GET'])
 def website_case_study():
     data = [{"image_link": "https://wareiqfiles.s3.amazonaws.com/kamaayurveda.png",
-            "summary": "WareIQ connected Kama Ayurveda’s existing supply chain infra & WareIQ fulfillment hubs to its central platform allowing them to offer premium shipping experience in sync with their brand positioning.",
+            "summary": "WareIQ connects Kama Ayurveda’s existing supply chain infra & WareIQ fulfillment hubs to its central platform allowing them to offer premium shipping experience in sync with their brand positioning.",
             "name": "",
             "title": "",
             "case_study_link": ""},
             {"image_link": "https://wareiqfiles.s3.amazonaws.com/organicriot.png",
-             "summary": "WareIQ fulfillment network allowed Organic Riot to utilize facilities pan-India and be quick to their customers, and offer custom experiences like branded tracking page.",
+             "summary": "WareIQ fulfillment network allows Organic Riot to utilize pan-India WareIQ hubs and be quick to customers, and offer custom experiences like branded tracking page.",
              "name": "",
              "title": "",
              "case_study_link": ""},
             {"image_link": "https://wareiqfiles.s3.amazonaws.com/nasher.png",
-             "summary": "WareIQ onboarded Nashermiles to its fulfillment platform leveraging pan-India warehouses to enable Prime-like shipping on the website.",
+             "summary": "WareIQ enabled Prime-like shipping on Nashermiles website by onboarding its network of fulfillment centers to its platform, and orchestrate heavy-item shipping.",
              "name": "",
              "title": "",
              "case_study_link": ""},
@@ -264,12 +370,12 @@ def website_case_study():
              "title": "",
              "case_study_link": ""},
             {"image_link": "https://wareiqfiles.s3.amazonaws.com/sangeetha.png",
-             "summary": "Sangeetha Mobiles has one of the most sophisticated supply chain networks in form of its retail stores that are in close proximity to urban demand centers. WareIQ offers an eCommerce omnichannel shipping solution enabling ship from store, and warehouse -- all centralized in one platform.",
+             "summary": "WareIQ allows Sangeetha Mobiles to leverage its existing network of retail stores to drive an omnichannel experience and enable ship from store, and warehouse - all centralized in one platform.",
              "name": "",
              "title": "",
              "case_study_link": ""},
             {"image_link": "https://wareiqfiles.s3.amazonaws.com/wingreens.png",
-             "summary": "Wingreens Farms is an ethical and innovative farm to retail food and beverage company. It has pioneered the fresh dip category in India and continues to be the market leader. WareIQ enables eCommerce fulfillment & shipping for Wingreens on their online-store and various marketplaces through our pan-India fulfillment network.",
+             "summary": "Wingreens Farms is an ethical and innovative farm to retail food and beverage company. WareIQ enables eCommerce fulfillment & shipping for Wingreens on their online-store and various marketplaces through our pan-India fulfillment network.",
              "name": "",
              "title": "",
              "case_study_link": ""},
@@ -280,71 +386,93 @@ def website_case_study():
 @core_blueprint.route('/core/dev', methods=['POST'])
 def ping_dev():
     return 0
-    from .models import Orders, ReturnPoints, ClientPickups, Products, ProductQuantity
+    # from .models import Orders, ReturnPoints, ClientPickups, Products, ProductQuantity
     myfile = request.files['myfile']
-    data_xlsx = pd.read_excel(myfile)
-    import json, re
-    count = 0
-    iter_rw = data_xlsx.iterrows()
-    for row in iter_rw:
-        try:
-            sku = str(row[1].SKU)
-            quan = 100
-            prod_obj = Products(name=sku,
-                                sku=str(sku),
-                                master_sku=str(sku),
-                                dimensions=None,
-                                weight=None,
-                                price=None,
-                                client_prefix='WINGREENS',
-                                active=True,
-                                channel_id=4,
-                                inactive_reason=None,
-                                date_created=datetime.now()
-                                )
-            prod_quan_obj = ProductQuantity(product=prod_obj,
-                                            total_quantity=quan,
-                                            approved_quantity=quan,
-                                            available_quantity=quan,
-                                            inline_quantity=0,
-                                            rto_quantity=0,
-                                            current_quantity=quan,
-                                            warehouse_prefix="QSDWARKA",
-                                            status="APPROVED",
-                                            date_created=datetime.now()
-                                            )
-
-            db.session.add(prod_quan_obj)
-            prod_quan_obj = ProductQuantity(product=prod_obj,
-                                            total_quantity=quan,
-                                            approved_quantity=quan,
-                                            available_quantity=quan,
-                                            inline_quantity=0,
-                                            rto_quantity=0,
-                                            current_quantity=quan,
-                                            warehouse_prefix="QSBHIWANDI",
-                                            status="APPROVED",
-                                            date_created=datetime.now()
-                                            )
-
-            db.session.add(prod_quan_obj)
-            prod_quan_obj = ProductQuantity(product=prod_obj,
-                                            total_quantity=quan,
-                                            approved_quantity=quan,
-                                            available_quantity=quan,
-                                            inline_quantity=0,
-                                            rto_quantity=0,
-                                            current_quantity=quan,
-                                            warehouse_prefix="QSBANGALORE",
-                                            status="APPROVED",
-                                            date_created=datetime.now()
-                                            )
-
-            db.session.add(prod_quan_obj)
-            db.session.commit()
-
-        except Exception as e:
-            pass
+    # data_xlsx = pd.read_excel(myfile)
+    # import json, re
+    # count = 0
+    # iter_rw = data_xlsx.iterrows()
+    # for row in iter_rw:
+    #     try:
+    #         sku = str(row[1].SKU)
+    #         quan = int(row[1].Qty)
+    #         qs = db.session.query(Products).filter(Products.master_sku==sku, Products.client_prefix=='SPORTSQVEST').first()
+    #         if qs:
+    #             qs2 = db.session.query(ProductQuantity).filter(ProductQuantity.product == qs, ProductQuantity.warehouse_prefix=='QSBHIWANDI').first()
+    #             if qs2:
+    #                 qs2.total_quantity=quan
+    #                 qs2.approved_quantity=quan
+    #             else:
+    #                 qs2 = ProductQuantity(product=qs,
+    #                                 total_quantity=quan,
+    #                                 approved_quantity=quan,
+    #                                 available_quantity=quan,
+    #                                 inline_quantity=0,
+    #                                 rto_quantity=0,
+    #                                 current_quantity=quan,
+    #                                 warehouse_prefix="QSBHIWANDI",
+    #                                 status="APPROVED",
+    #                                 date_created=datetime.now()
+    #                                 )
+    #
+    #                 db.session.add(qs2)
+    #
+    #         if row[0] % 100 == 0:
+    #             db.session.commit()
+    #         """
+    #         prod_obj = Products(name=sku,
+    #                             sku=str(sku),
+    #                             master_sku=str(sku),
+    #                             dimensions=None,
+    #                             weight=None,
+    #                             price=None,
+    #                             client_prefix='WINGREENS',
+    #                             active=True,
+    #                             channel_id=4,
+    #                             inactive_reason=None,
+    #                             date_created=datetime.now()
+    #                             )
+    #         prod_quan_obj = ProductQuantity(product=prod_obj,
+    #                                         total_quantity=quan,
+    #                                         approved_quantity=quan,
+    #                                         available_quantity=quan,
+    #                                         inline_quantity=0,
+    #                                         rto_quantity=0,
+    #                                         current_quantity=quan,
+    #                                         warehouse_prefix="QSDWARKA",
+    #                                         status="APPROVED",
+    #                                         date_created=datetime.now()
+    #                                         )
+    #
+    #         db.session.add(prod_quan_obj)
+    #         prod_quan_obj = ProductQuantity(product=prod_obj,
+    #                                         total_quantity=quan,
+    #                                         approved_quantity=quan,
+    #                                         available_quantity=quan,
+    #                                         inline_quantity=0,
+    #                                         rto_quantity=0,
+    #                                         current_quantity=quan,
+    #                                         warehouse_prefix="QSBHIWANDI",
+    #                                         status="APPROVED",
+    #                                         date_created=datetime.now()
+    #                                         )
+    #
+    #         db.session.add(prod_quan_obj)
+    #         prod_quan_obj = ProductQuantity(product=prod_obj,
+    #                                         total_quantity=quan,
+    #                                         approved_quantity=quan,
+    #                                         available_quantity=quan,
+    #                                         inline_quantity=0,
+    #                                         rto_quantity=0,
+    #                                         current_quantity=quan,
+    #                                         warehouse_prefix="QSBANGALORE",
+    #                                         status="APPROVED",
+    #                                         date_created=datetime.now()
+    #                                         )
+    #         """
+    #
+    #     except Exception as e:
+    #         pass
 
     """
     return 0
@@ -414,10 +542,10 @@ def ping_dev():
 
             """
             sku_list.append({"sku": sku,
-                             "warehouse": "QSBHIWANDI",
+                             "warehouse": "HOLISOLBL",
                              "quantity": del_qty,
                              "type": "add",
-                             "remark": "19 oct inbound"})
+                             "remark": "8 oct inbound"})
 
             """
 

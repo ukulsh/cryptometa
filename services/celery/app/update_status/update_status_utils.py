@@ -44,8 +44,10 @@ def create_email(order, edd, email):
             courier_name = "Delhivery"
         elif order[23] in (5,13):
             courier_name = "Xpressbees"
-        elif order[23] in (4):
+        elif order[23] in (4,):
             courier_name = "Shadowfax"
+        elif order[23] in (9,):
+            courier_name = "Bluedart"
 
         edd = edd if edd else ""
         awb_number = str(order[1]) if order[1] else ""

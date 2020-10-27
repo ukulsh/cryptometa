@@ -9,6 +9,7 @@ import numpy as np
 import os
 import pandas as pd
 import requests
+import time
 from flask_cors import cross_origin
 from flask import Blueprint, request, jsonify, make_response
 from flask_restful import Api, Resource
@@ -23,7 +24,7 @@ from project.api.models import NDRReasons, MultiVendor, NDRShipments, Orders, Cl
     PickupPoints, Shipments, Products, ShippingAddress, OPAssociation, OrdersPayments, ClientMapping, WarehouseMapping, \
     Manifests, OrderStatus, IVRHistory, OrderPickups
 from project.api.queries import select_orders_list_query, available_warehouse_product_quantity, \
-    fetch_warehouse_to_pick_from, select_pickups_list_query
+    fetch_warehouse_to_pick_from, select_pickups_list_query, get_selected_product_details
 from project.api.utils import authenticate_restful, fill_shiplabel_data_thermal, \
     create_shiplabel_blank_page, fill_shiplabel_data, create_shiplabel_blank_page_thermal, \
     create_invoice_blank_page, fill_invoice_data, generate_picklist, generate_packlist
@@ -78,27 +79,6 @@ class OrderList(Resource):
                 hide_weights = cur.fetchone()[0]
             except Exception:
                 pass
-            pickup_points_select_query = """select array_agg(warehouse_prefix) from
-                                            (select distinct bb.warehouse_prefix from client_pickups aa
-                                            left join pickup_points bb on aa.pickup_id=bb.id
-                                            __CLIENT_FILTER__
-                                            order by bb.warehouse_prefix) xx"""
-            if auth_data['user_group'] == 'super-admin':
-                pickup_points_select_query = pickup_points_select_query.replace("__CLIENT_FILTER__", "")
-            elif auth_data['user_group'] == 'client':
-                pickup_points_select_query = pickup_points_select_query.replace("__CLIENT_FILTER__", "where aa.client_prefix='%s'" % str(client_prefix))
-            elif auth_data['user_group'] == 'multi-vendor':
-                pickup_points_select_query = pickup_points_select_query.replace("__CLIENT_FILTER__", "where aa.client_prefix in (select unnest(vendor_list) from multi_vendor where client_prefix='%s')"%str(client_prefix))
-            else:
-                pickup_points_select_query = None
-
-            if pickup_points_select_query:
-                try:
-                    cur.execute(pickup_points_select_query)
-                    all_pickups = cur.fetchone()[0]
-                    response['pickup_points'] = all_pickups
-                except Exception:
-                    pass
 
             query_to_run = select_orders_list_query
 
@@ -225,54 +205,63 @@ class OrderList(Resource):
                 query_to_run = re.sub(r"""__.+?__""", "", query_to_run)
                 cur.execute(query_to_run)
                 orders_qs_data = cur.fetchall()
+                order_id_data = ','.join([str(it[1]) for it in orders_qs_data])
+                update_product_details_query = get_selected_product_details.replace('__FILTERED_ORDER_ID__',
+                                                                                    order_id_data)
+                cur.execute(update_product_details_query)
+                product_detail_data = cur.fetchall()
+                product_detail_by_order_id = {}
+                for it in product_detail_data:
+                    product_detail_by_order_id[it[0]] = [it[1], it[2], it[3], it[4], it[5]]
                 si = io.StringIO()
                 cw = csv.writer(si)
                 cw.writerow(ORDERS_DOWNLOAD_HEADERS)
                 for order in orders_qs_data:
                     try:
-                        if order[28]:
-                            for idx, val in enumerate(order[28]):
+                        product_data = product_detail_by_order_id[order[1]]
+                        if product_data[0]:
+                            for idx, val in enumerate(product_data[0]):
                                 new_row = list()
                                 new_row.append(str(order[0]))
-                                new_row.append(str(order[14]))
-                                new_row.append(str(order[16]))
+                                new_row.append(str(order[13]))
                                 new_row.append(str(order[15]))
+                                new_row.append(str(order[14]))
                                 new_row.append(order[2].strftime("%Y-%m-%d") if order[2] else "N/A")
-                                new_row.append(str(order[8]))
-                                new_row.append(str(order[10]) if not hide_weights else "")
-                                new_row.append(str(order[6]))
-                                new_row.append(order[9].strftime("%Y-%m-%d") if order[9] else "N/A")
+                                new_row.append(str(order[7]))
+                                new_row.append(str(order[9]) if not hide_weights else "")
+                                new_row.append(str(order[5]))
+                                new_row.append(order[8].strftime("%Y-%m-%d") if order[9] else "N/A")
                                 new_row.append(str(order[3]))
+                                new_row.append(str(order[16]))
                                 new_row.append(str(order[17]))
                                 new_row.append(str(order[18]))
                                 new_row.append(str(order[19]))
                                 new_row.append(str(order[20]))
                                 new_row.append(str(order[21]))
-                                new_row.append(str(order[22]))
-                                new_row.append(order[27])
-                                new_row.append(str(val))
-                                new_row.append(str(order[29][idx]))
-                                new_row.append(str(order[30][idx]))
-                                new_row.append(str(order[25]))
                                 new_row.append(order[26])
+                                new_row.append(str(val))
+                                new_row.append(str(product_data[1][idx]))
+                                new_row.append(str(product_data[2][idx]))
+                                new_row.append(str(order[24]))
+                                new_row.append(order[25])
                                 new_row.append(order[38].strftime("%Y-%m-%d %H:%M:%S") if order[24] else "N/A")
-                                new_row.append(order[24].strftime("%Y-%m-%d %H:%M:%S") if order[24] else "N/A")
-                                new_row.append(order[23].strftime("%Y-%m-%d %H:%M:%S") if order[23] else "N/A")
-                                if order[31] and order[32] is not None:
-                                    new_row.append("Confirmed" if order[32] else "Cancelled")
-                                    new_row.append(str(order[33]))
+                                new_row.append(order[23].strftime("%Y-%m-%d %H:%M:%S") if order[24] else "N/A")
+                                new_row.append(order[22].strftime("%Y-%m-%d %H:%M:%S") if order[23] else "N/A")
+                                if order[27] and order[28] is not None:
+                                    new_row.append("Confirmed" if order[28] else "Cancelled")
+                                    new_row.append(str(order[29]))
                                 else:
                                     new_row.append("N/A")
                                     new_row.append("N/A")
-                                if order[34] and order[35] is not None:
-                                    new_row.append("Cancelled" if order[35] else "Re-attempt")
-                                    new_row.append(str(order[36]))
+                                if order[30] and order[31] is not None:
+                                    new_row.append("Cancelled" if order[31] else "Re-attempt")
+                                    new_row.append(str(order[32]))
                                 else:
                                     new_row.append("N/A")
                                     new_row.append("N/A")
-                                new_row.append(order[45].strftime("%Y-%m-%d %H:%M:%S") if order[45] else "N/A")
+                                new_row.append(order[39].strftime("%Y-%m-%d %H:%M:%S") if order[39] else "N/A")
                                 if auth_data.get('user_group') == 'super-admin':
-                                    new_row.append(order[42])
+                                    new_row.append(order[38])
                                 cw.writerow(new_row)
                     except Exception as e:
                         pass
@@ -285,100 +274,110 @@ class OrderList(Resource):
 
             count_query = "select count(*) from ("+query_to_run.replace('__PAGINATION__', "") +") xx"
             count_query = re.sub(r"""__.+?__""", "", count_query)
+            count_query_prefix = '''select count(*) from (select distinct on (aa.order_date, aa.id) aa.channel_order_id as order_id, aa.id as unique_id, aa.order_date'''
+            count_query_suffix = 'from orders aa'
+            prefix_ind = count_query.find(count_query_prefix)
+            suffix_ind = count_query.find(count_query_suffix)
+            if prefix_ind == 0 and suffix_ind > 0:
+                count_query = count_query[:prefix_ind+len(count_query_prefix)] + ' ' + count_query[suffix_ind:]
             cur.execute(count_query)
             total_count = cur.fetchone()[0]
             query_to_run = query_to_run.replace('__PAGINATION__', "OFFSET %s LIMIT %s" % (str((page-1)*per_page), str(per_page)))
             query_to_run = re.sub(r"""__.+?__""", "", query_to_run)
             cur.execute(query_to_run)
             orders_qs_data = cur.fetchall()
+            order_id_data = ','.join([str(it[1]) for it in orders_qs_data])
+            update_product_details_query = get_selected_product_details.replace('__FILTERED_ORDER_ID__', order_id_data)
+            cur.execute(update_product_details_query)
+            product_detail_data = cur.fetchall()
+            product_detail_by_order_id = {}
+            for it in product_detail_data:
+                product_detail_by_order_id[it[0]] = [it[1], it[2], it[3], it[4], it[5]]
             response_data = list()
+
             for order in orders_qs_data:
                 resp_obj=dict()
                 resp_obj['order_id'] = order[0]
                 resp_obj['unique_id'] = order[1]
-                resp_obj['pickup_point'] = order[27]
-                resp_obj['customer_details'] = {"name":order[14],
-                                                "email":order[16],
-                                                "phone":order[15],
-                                                "address_one":order[17],
-                                                "address_two":order[18],
-                                                "city":order[19],
-                                                "state":order[20],
-                                                "country":order[21],
-                                                "pincode":order[22],
+                resp_obj['pickup_point'] = order[26]
+                resp_obj['customer_details'] = {"name": order[13],
+                                                "email": order[15],
+                                                "phone": order[14],
+                                                "address_one": order[16],
+                                                "address_two": order[17],
+                                                "city": order[18],
+                                                "state": order[19],
+                                                "country": order[20],
+                                                "pincode": order[21],
                                                 }
                 resp_obj['order_date'] = order[2].strftime("%d %b %Y, %I:%M %p") if order[2] else None
-                resp_obj['delivered_time'] = order[23].strftime("%d %b %Y, %I:%M %p") if order[23] else None
-                resp_obj['manifest_time'] = order[38].strftime("%d %b %Y, %I:%M %p") if order[38] else None
-                resp_obj['payment'] = {"mode": order[25],
-                                           "amount": order[26]}
+                resp_obj['delivered_time'] = order[22].strftime("%d %b %Y, %I:%M %p") if order[22] else None
+                resp_obj['manifest_time'] = order[34].strftime("%d %b %Y, %I:%M %p") if order[34] else None
+                resp_obj['payment'] = {"mode": order[24], "amount": order[25]}
 
                 resp_obj['product_details'] = list()
                 not_shipped = None
-                if order[28]:
-                    for idx, prod in enumerate(order[28]):
-                        if not order[43][idx] or not order[44][idx]:
+                if order[1] in product_detail_by_order_id and product_detail_by_order_id[order[1]][0]:
+                    product_data = product_detail_by_order_id[order[1]]
+                    for idx, prod in enumerate(product_data[0]):
+                        if not product_data[3][idx] or not product_data[4][idx]:
                             not_shipped = "Weight/dimensions not entered for product(s)"
-                        resp_obj['product_details'].append(
-                            {"name": prod,
-                             "sku": order[29][idx],
-                             "quantity": order[30][idx]}
-                        )
+                        resp_obj['product_details'].append({ "name": prod, "sku": product_data[1][idx], "quantity": product_data[2][idx]})
 
-                if not not_shipped and order[13] == "Pincode not serviceable":
+                if not not_shipped and order[12] == "Pincode not serviceable":
                     not_shipped = "Pincode not serviceable"
-                elif not order[27]:
+                elif not order[26]:
                     not_shipped = "Pickup point not assigned"
 
                 if not_shipped:
                     resp_obj['not_shipped'] = not_shipped
-                if order[31]:
-                    resp_obj['cod_verification'] = {"confirmed": order[32], "via": order[33]}
-                if order[34]:
-                    resp_obj['ndr_verification'] = {"confirmed": order[35], "via": order[36]}
+                if order[27]:
+                    resp_obj['cod_verification'] = {"confirmed": order[28], "via": order[29]}
+                if order[30]:
+                    resp_obj['ndr_verification'] = {"confirmed": order[31], "via": order[32]}
 
                 if type=='ndr':
-                    resp_obj['ndr_reason'] = order[40]
+                    resp_obj['ndr_reason'] = order[36]
                     ndr_action = None
-                    if order[39] in (1,3,9,11) and order[34]:
-                        if order[35] == True and order[36] in ('call','text'):
+                    if order[35] in (1,3,9,11) and order[30]:
+                        if order[31] == True and order[32] in ('call','text'):
                             ndr_action = "Cancellation confirmed by customer"
-                        elif order[35] == True and order[36] == 'manual':
+                        elif order[31] == True and order[32] == 'manual':
                             ndr_action = "Cancellation confirmed by seller"
-                        elif order[35] == False and order[36] == 'manual':
+                        elif order[31] == False and order[32] == 'manual':
                             ndr_action = "Re-attempt requested by seller"
-                        elif order[35] == False and order[36] in ('call','text'):
+                        elif order[31] == False and order[32] in ('call','text'):
                             ndr_action = "Re-attempt requested by customer"
                         elif order[3]=='PENDING':
                             ndr_action = 'take_action'
 
                     resp_obj['ndr_action'] = ndr_action
 
-                resp_obj['shipping_details'] = {"courier": order[8],
-                                                "awb":order[6],
-                                                "tracking_link": order[7]}
-                resp_obj['dimensions'] = order[11] if not hide_weights else None
-                resp_obj['weight'] = order[10] if not hide_weights else None
-                resp_obj['volumetric'] = order[12] if not hide_weights else None
-                resp_obj['channel_logo'] = order[37]
-                if order[9]:
-                    resp_obj['edd'] = order[9].strftime('%-d %b')
+                resp_obj['shipping_details'] = {"courier": order[7],
+                                                "awb":order[5],
+                                                "tracking_link": order[6]}
+                resp_obj['dimensions'] = order[10] if not hide_weights else None
+                resp_obj['weight'] = order[9] if not hide_weights else None
+                resp_obj['volumetric'] = order[11] if not hide_weights else None
+                resp_obj['channel_logo'] = order[33]
+                if order[8]:
+                    resp_obj['edd'] = order[8].strftime('%-d %b')
                 if auth_data['user_group'] == 'super-admin':
-                    resp_obj['remark'] = order[13]
+                    resp_obj['remark'] = order[12]
                 if type == "shipped":
-                    resp_obj['status_detail'] = order[5]
+                    resp_obj['status_detail'] = order[4]
 
                 resp_obj['status'] = order[3]
-                if order[3] in ('NEW','CANCELED','PENDING PAYMENT','READY TO SHIP','PICKUP REQUESTED','NOT PICKED') or not order[6]:
+                if order[3] in ('NEW','CANCELED','PENDING PAYMENT','READY TO SHIP','PICKUP REQUESTED','NOT PICKED') or not order[5]:
                     resp_obj['status_change'] = True
                 response_data.append(resp_obj)
 
             response['data'] = response_data
             total_pages = math.ceil(total_count/per_page)
             response['meta']['pagination'] = {'total': total_count,
-                                              'per_page':per_page,
+                                              'per_page': per_page,
                                               'current_page': page,
-                                              'total_pages':total_pages}
+                                              'total_pages': total_pages}
             return response, 200
 
         except Exception as e:
@@ -2410,3 +2409,39 @@ class TrackShipments(Resource):
 
 
 api.add_resource(TrackShipments, '/orders/v1/shipments/track')
+
+
+@orders_blueprint.route('/orders/v1/getPickupPoints', methods=['GET'])
+@authenticate_restful
+def get_pickup_points(resp):
+    response = {'pickup_points': [], 'status': 'fail'}
+    try:
+        cur = conn.cursor()
+        auth_data = resp.get('data')
+        pickup_points_select_query = """select array_agg(warehouse_prefix) from
+                                                    (select distinct bb.warehouse_prefix from client_pickups aa
+                                                    left join pickup_points bb on aa.pickup_id=bb.id
+                                                    __CLIENT_FILTER__
+                                                    order by bb.warehouse_prefix) xx"""
+        if auth_data['user_group'] == 'super-admin':
+            pickup_points_select_query = pickup_points_select_query.replace("__CLIENT_FILTER__", "")
+        elif auth_data['user_group'] == 'client':
+            pickup_points_select_query = pickup_points_select_query.replace("__CLIENT_FILTER__",
+                                                                            "where aa.client_prefix='%s'" % str(
+                                                                                client_prefix))
+        elif auth_data['user_group'] == 'multi-vendor':
+            pickup_points_select_query = pickup_points_select_query.replace("__CLIENT_FILTER__",
+                                                                            "where aa.client_prefix in (select unnest(vendor_list) from multi_vendor where client_prefix='%s')" % str(
+                                                                                client_prefix))
+        else:
+            pickup_points_select_query = None
+
+        if pickup_points_select_query:
+            cur.execute(pickup_points_select_query)
+            all_pickups = cur.fetchone()[0]
+            response['pickup_points'] = all_pickups
+        response['status'] = 'success'
+        return jsonify(response), 200
+    except Exception:
+        response['message'] = 'failed while getting pickup-points'
+        return jsonify(response), 400

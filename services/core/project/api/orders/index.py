@@ -206,13 +206,14 @@ class OrderList(Resource):
                 cur.execute(query_to_run)
                 orders_qs_data = cur.fetchall()
                 order_id_data = ','.join([str(it[1]) for it in orders_qs_data])
-                update_product_details_query = get_selected_product_details.replace('__FILTERED_ORDER_ID__',
-                                                                                    order_id_data)
-                cur.execute(update_product_details_query)
-                product_detail_data = cur.fetchall()
                 product_detail_by_order_id = {}
-                for it in product_detail_data:
-                    product_detail_by_order_id[it[0]] = [it[1], it[2], it[3], it[4], it[5]]
+                if order_id_data:
+                    update_product_details_query = get_selected_product_details.replace('__FILTERED_ORDER_ID__',
+                                                                                        order_id_data)
+                    cur.execute(update_product_details_query)
+                    product_detail_data = cur.fetchall()
+                    for it in product_detail_data:
+                        product_detail_by_order_id[it[0]] = [it[1], it[2], it[3], it[4], it[5]]
                 si = io.StringIO()
                 cw = csv.writer(si)
                 cw.writerow(ORDERS_DOWNLOAD_HEADERS)
@@ -286,15 +287,16 @@ class OrderList(Resource):
             query_to_run = re.sub(r"""__.+?__""", "", query_to_run)
             cur.execute(query_to_run)
             orders_qs_data = cur.fetchall()
-            order_id_data = ','.join([str(it[1]) for it in orders_qs_data])
-            update_product_details_query = get_selected_product_details.replace('__FILTERED_ORDER_ID__', order_id_data)
-            cur.execute(update_product_details_query)
-            product_detail_data = cur.fetchall()
             product_detail_by_order_id = {}
-            for it in product_detail_data:
-                product_detail_by_order_id[it[0]] = [it[1], it[2], it[3], it[4], it[5]]
-            response_data = list()
+            order_id_data = ','.join([str(it[1]) for it in orders_qs_data])
+            if order_id_data:
+                update_product_details_query = get_selected_product_details.replace('__FILTERED_ORDER_ID__', order_id_data)
+                cur.execute(update_product_details_query)
+                product_detail_data = cur.fetchall()
+                for it in product_detail_data:
+                    product_detail_by_order_id[it[0]] = [it[1], it[2], it[3], it[4], it[5]]
 
+            response_data = list()
             for order in orders_qs_data:
                 resp_obj=dict()
                 resp_obj['order_id'] = order[0]

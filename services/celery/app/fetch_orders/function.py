@@ -465,7 +465,7 @@ def fetch_magento_orders(cur, channel):
     magento_orders_url += """&searchCriteria[filter_groups][1][filters][0][field]=status&searchCriteria[filter_groups][1][filters][0][value]=__STATUS__&searchCriteria[filter_groups][1][filters][0][condition_type]=in""".replace('__STATUS__', fetch_status)
     headers = {'Authorization': "Bearer " + channel[3],
                'Content-Type': 'application/json',
-               'User-Agent': 'PostmanRuntime/7.26.5'}
+               'User-Agent': 'WareIQ server'}
     data = requests.get(magento_orders_url, headers=headers)
     logger.info(str(len(data.json())))
     if data.status_code == 200:

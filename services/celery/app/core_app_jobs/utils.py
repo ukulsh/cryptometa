@@ -108,7 +108,8 @@ def magento_fulfillment(order, cur):
     create_fulfillment_url = "%s/V1/order/%s/ship" % (order[9], order[5])
     tracking_link = "http://webapp.wareiq.com/tracking/%s" % str(order[1])
     ful_header = {'Content-Type': 'application/json',
-                  'Authorization': 'Bearer ' + order[7]}
+                  'Authorization': 'Bearer ' + order[7],
+                  'User-Agent': 'WareIQ server'}
 
     items_list = list()
     for idx, sku in enumerate(order[16]):
@@ -162,7 +163,8 @@ def magento_fulfillment(order, cur):
 def magento_invoice(order):
     create_invoice_url = "%s/V1/order/%s/invoice" % (order[9], order[5])
     ful_header = {'Content-Type': 'application/json',
-                  'Authorization': 'Bearer ' + order[7]}
+                  'Authorization': 'Bearer ' + order[7],
+                  'User-Agent': 'WareIQ server'}
 
     items_list = list()
     for idx, sku in enumerate(order[16]):
@@ -204,7 +206,8 @@ def magento_invoice(order):
 def magento_complete_order(order):
     complete_order_url = "%s/V1/orders/%s/comments" % (order[9], order[5])
     ful_header = {'Content-Type': 'application/json',
-                  'Authorization': 'Bearer ' + order[7]}
+                  'Authorization': 'Bearer ' + order[7],
+                  'User-Agent': 'WareIQ server'}
 
     status_mark = order[31]
     if not status_mark:
@@ -228,7 +231,8 @@ def magento_complete_order(order):
 def magento_return_order(order):
     complete_order_url = "%s/V1/orders/%s/comments" % (order[9], order[5])
     ful_header = {'Content-Type': 'application/json',
-                  'Authorization': 'Bearer ' + order[7]}
+                  'Authorization': 'Bearer ' + order[7],
+                  'User-Agent': 'WareIQ server'}
 
     status_mark = order[33]
     if not status_mark:

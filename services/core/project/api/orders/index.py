@@ -219,8 +219,8 @@ class OrderList(Resource):
                 cw.writerow(ORDERS_DOWNLOAD_HEADERS)
                 for order in orders_qs_data:
                     try:
-                        product_data = product_detail_by_order_id[order[1]]
-                        if product_data[0]:
+                        product_data = product_detail_by_order_id[order[1]] if order[1] in product_detail_by_order_id else []
+                        if product_data and product_data[0]:
                             for idx, val in enumerate(product_data[0]):
                                 new_row = list()
                                 new_row.append(str(order[0]))
@@ -231,7 +231,7 @@ class OrderList(Resource):
                                 new_row.append(str(order[7]))
                                 new_row.append(str(order[9]) if not hide_weights else "")
                                 new_row.append(str(order[5]))
-                                new_row.append(order[8].strftime("%Y-%m-%d") if order[9] else "N/A")
+                                new_row.append(order[8].strftime("%Y-%m-%d") if order[8] else "N/A")
                                 new_row.append(str(order[3]))
                                 new_row.append(str(order[16]))
                                 new_row.append(str(order[17]))
@@ -245,9 +245,9 @@ class OrderList(Resource):
                                 new_row.append(str(product_data[2][idx]))
                                 new_row.append(str(order[24]))
                                 new_row.append(order[25])
-                                new_row.append(order[38].strftime("%Y-%m-%d %H:%M:%S") if order[24] else "N/A")
-                                new_row.append(order[23].strftime("%Y-%m-%d %H:%M:%S") if order[24] else "N/A")
-                                new_row.append(order[22].strftime("%Y-%m-%d %H:%M:%S") if order[23] else "N/A")
+                                new_row.append(order[34].strftime("%Y-%m-%d %H:%M:%S") if order[34] else "N/A")
+                                new_row.append(order[23].strftime("%Y-%m-%d %H:%M:%S") if order[23] else "N/A")
+                                new_row.append(order[22].strftime("%Y-%m-%d %H:%M:%S") if order[22] else "N/A")
                                 if order[27] and order[28] is not None:
                                     new_row.append("Confirmed" if order[28] else "Cancelled")
                                     new_row.append(str(order[29]))

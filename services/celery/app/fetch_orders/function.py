@@ -76,24 +76,6 @@ def fetch_shopify_orders(cur, channel):
                 pass
             if existing_order:
                 continue
-            product_exists = True
-            if channel[1] == "DAPR":  # serving only DAPR available skus, Have to create generic logic for this
-                for prod in order['line_items']:
-                    product_sku = str(prod['variant_id'])
-                    if not product_sku:
-                        product_sku = str(prod['id'])
-                    prod_tuple = (product_sku, channel[1])
-                    cur.execute(select_products_query, prod_tuple)
-                    try:
-                        product_id = cur.fetchone()[0]
-                    except Exception:
-                        if product_sku in ("19675086585915", "30690984558651"):
-                            continue
-                        product_exists = False
-                        break
-
-            if not product_exists:
-                continue
 
             cur.execute("SELECT count(*) FROM client_pickups WHERE client_prefix='%s' and active=true;" % str(channel[1]))
             pickup_count = cur.fetchone()[0]
@@ -459,8 +441,8 @@ def fetch_magento_orders(cur, channel):
         updated_after = datetime.utcnow() - timedelta(days=30)
         updated_after = updated_after.strftime("%Y-%m-%d %X")
 
-    magento_orders_url = """%s/V1/orders?searchCriteria[filter_groups][0][filters][0][field]=updated_at&searchCriteria[filter_groups][0][filters][0][value]=%s&searchCriteria[filter_groups][0][filters][0][condition_type]=gt""" % (
-        channel[5], updated_after)
+    magento_orders_url = """%s/V1/orders?searchCriteria[filter_groups][0][filters][0][field]=updated_at&searchCriteria[filter_groups][0][filters][0][value]=%s&searchCriteria[filter_groups][0][filters][0][condition_type]=gt&searchCriteria[filter_groups][0][filters][1][field]=created_at&searchCriteria[filter_groups][0][filters][1][value]=%s&searchCriteria[filter_groups][0][filters][1][condition_type]=gt""" % (
+        channel[5], updated_after, updated_after)
     fetch_status = ",".join(channel[15])
     magento_orders_url += """&searchCriteria[filter_groups][1][filters][0][field]=status&searchCriteria[filter_groups][1][filters][0][value]=__STATUS__&searchCriteria[filter_groups][1][filters][0][condition_type]=in""".replace('__STATUS__', fetch_status)
     headers = {'Authorization': "Bearer " + channel[3],

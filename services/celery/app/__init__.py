@@ -34,7 +34,7 @@ app.config['USERS_SERVICE_URL'] = os.environ.get('USERS_SERVICE_URL')
 app.config['CELERYBEAT_SCHEDULE'] = {
     'run-status-update': {
             'task': 'status_update',
-            'schedule': crontab(minute='38', hour='*/2'),
+            'schedule': crontab(minute='50', hour='*/2'),
             'options': {'queue': 'update_status'}
         },
     'run-fetch-orders': {
@@ -74,7 +74,7 @@ def ship_orders_api():
 
 @app.route('/scans/v1/dev', methods = ['GET'])
 def celery_dev():
-    status_update.apply_async(queue='update_status')
+    orders_fetch.apply_async(queue='fetch_orders')
     return jsonify({"msg": "Task received"}), 200
 
 

@@ -410,6 +410,9 @@ def ship_delhivery_orders(cur, courier, courier_name, order_ids, order_id_tuple,
                 if package['remarks']:
                     remark = package['remarks'][0]
 
+                if 'COD' in remark or 'blocked' in remark:
+                    continue
+
                 if not orders_dict[package['refnum']][13]:
                     dimensions = orders_dict[package['refnum']][1][0]
                     weight = orders_dict[package['refnum']][2][0] * orders_dict[package['refnum']][3][0]

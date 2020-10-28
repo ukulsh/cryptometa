@@ -383,12 +383,12 @@ select_product_list_query = """SELECT aa.id, aa.name as product_name, aa.product
                             __PAGINATION__
                             """
 
-select_orders_list_query = """select distinct on (aa.order_date, aa.id) aa.channel_order_id as order_id, aa.id as unique_id, aa.order_date, aa.status, bb.remark, aa.status_detail, bb.awb, 
-                             CONCAT('http://webapp.wareiq.com/tracking/', bb.awb) as tracking_link, cc.courier_name, bb.edd, bb.weight, bb.dimensions,
-                             bb.volumetric_weight,bb.remark, aa.customer_name, aa.customer_phone, aa.customer_email, dd.address_one, dd.address_two, 
-                             dd.city, dd.state, dd.country, dd.pincode, ee.delivered_time, ff.pickup_time, gg.payment_mode, gg.amount, ii.warehouse_prefix,
-                             ll.product_names, ll.skus, ll.quantity,mm.id,  mm.cod_verified, mm.verified_via, nn.id,  nn.ndr_verified, nn.verified_via, 
-                             pp.logo_url, qq.manifest_time, rr.reason_id, rr.reason, rr.date_created, aa.client_prefix, ll.weights, ll.dimensions, bb.pdd
+select_orders_list_query = """select distinct on (aa.order_date, aa.id) aa.channel_order_id as order_id, aa.id as unique_id, aa.order_date, aa.status, 
+                              aa.status_detail, bb.awb, CONCAT('http://webapp.wareiq.com/tracking/', bb.awb) as tracking_link, cc.courier_name, bb.edd, 
+                              bb.weight, bb.dimensions, bb.volumetric_weight,bb.remark, aa.customer_name, aa.customer_phone, aa.customer_email, dd.address_one, 
+                              dd.address_two, dd.city, dd.state, dd.country, dd.pincode, ee.delivered_time, ff.pickup_time, gg.payment_mode, gg.amount, ii.warehouse_prefix,
+                             mm.id,  mm.cod_verified, mm.verified_via, nn.id,  nn.ndr_verified, nn.verified_via, pp.logo_url, qq.manifest_time, rr.reason_id, 
+                             rr.reason, rr.date_created, aa.client_prefix, bb.pdd
                              from orders aa
                              left join shipments bb
                              on aa.id=bb.order_id
@@ -407,10 +407,6 @@ select_orders_list_query = """select distinct on (aa.order_date, aa.id) aa.chann
                              left join pickup_points ii on hh.pickup_id=ii.id
                              left join op_association jj on aa.id=jj.order_id
                              left join products kk on jj.product_id=kk.id
-                             left join (SELECT order_id, array_agg(name) as product_names, array_agg(master_sku) as skus, 
-                                        array_agg(quantity) as quantity, array_agg(weight) as weights, array_agg(dimensions) as dimensions from op_association jj 
-                                       left join products kk on jj.product_id=kk.id
-                                       group by order_id) ll on aa.id=ll.order_id
                              left join cod_verification mm on mm.order_id=aa.id
                              left join ndr_verification nn on nn.order_id=aa.id
                              left join (select ss.id, ss.order_id, tt.id as reason_id, tt.reason, ss.date_created from ndr_shipments ss left join ndr_reasons tt on ss.reason_id=tt.id ) rr
@@ -434,6 +430,10 @@ select_orders_list_query = """select distinct on (aa.order_date, aa.id) aa.chann
                              order by order_date DESC, aa.id DESC
                              __PAGINATION__"""
 
+get_selected_product_details = """select ll.order_id, ll.product_names, ll.skus, ll.quantity, ll.weights, ll.dimensions  from (SELECT order_id, array_agg(name) as product_names, array_agg(master_sku) as skus, 
+                                        array_agg(quantity) as quantity, array_agg(weight) as weights, array_agg(dimensions) as dimensions from op_association jj 
+                                       left join products kk on jj.product_id=kk.id
+                                       group by order_id) ll where ll.order_id in (__FILTERED_ORDER_ID__)"""
 
 select_wallet_deductions_query = """SELECT aa.status_time, aa.status, bb.courier_name, cc.awb, dd.channel_order_id, dd.id, ee.cod_charge, 
                                     ee.forward_charge, ee.rto_charge, ee.total_charge, ee.zone, ee.weight_charged, 

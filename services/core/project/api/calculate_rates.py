@@ -183,7 +183,7 @@ def lambda_handler():
                 if client_balance_data[1] and client_balance_data[1].lower() == 'prepaid':
                     current_balance = client_balance_data[0]
                     current_balance -= total_charge_gst
-                    cur.execute(update_client_balance, (order[6], current_balance,))
+                    cur.execute(update_client_balance, (current_balance, order[6], ))
                 cur.execute(insert_into_deduction_query, insert_rates_tuple)
             except Exception as e:
                 logger.error("couldn't calculate order: " + str(order[0]) + "\nError: " + str(e))

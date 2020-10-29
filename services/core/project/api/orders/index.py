@@ -2420,6 +2420,7 @@ def get_pickup_points(resp):
     try:
         cur = conn.cursor()
         auth_data = resp.get('data')
+        client_prefix = auth_data.get('client_prefix')
         pickup_points_select_query = """select array_agg(warehouse_prefix) from
                                                     (select distinct bb.warehouse_prefix from client_pickups aa
                                                     left join pickup_points bb on aa.pickup_id=bb.id

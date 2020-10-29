@@ -449,6 +449,15 @@ def fetch_magento_orders(cur, channel):
                'Content-Type': 'application/json',
                'User-Agent': 'WareIQ server'}
     data = requests.get(magento_orders_url, headers=headers)
+    if 'items' in data.json() and not data.json()['items']:
+        updated_after = datetime.utcnow() - timedelta(days=5)
+        updated_after = updated_after.strftime("%Y-%m-%d %X")
+        magento_orders_url = """%s/V1/orders?searchCriteria[filter_groups][0][filters][0][field]=updated_at&searchCriteria[filter_groups][0][filters][0][value]=%s&searchCriteria[filter_groups][0][filters][0][condition_type]=gt&searchCriteria[filter_groups][0][filters][1][field]=created_at&searchCriteria[filter_groups][0][filters][1][value]=%s&searchCriteria[filter_groups][0][filters][1][condition_type]=gt""" % (
+            channel[5], updated_after, updated_after)
+        fetch_status = ",".join(channel[15])
+        magento_orders_url += """&searchCriteria[filter_groups][1][filters][0][field]=status&searchCriteria[filter_groups][1][filters][0][value]=__STATUS__&searchCriteria[filter_groups][1][filters][0][condition_type]=in""".replace(
+            '__STATUS__', fetch_status)
+        data = requests.get(magento_orders_url, headers=headers)
     logger.info(str(len(data.json())))
     if data.status_code == 200:
         data = data.json()

@@ -175,7 +175,6 @@ def fill_shiplabel_data(c, order, offset, client_name=None):
     if order.delivery_address.last_name:
         full_name += " " + order.delivery_address.last_name
     c.drawString((offset - 0.85) * inch, 5.05 * inch, full_name)
-    c.drawString((offset + 1.75) * inch, 0.13 * inch, str(order.payments[0].amount))
 
     awb_string = order.shipments[0].awb
     awb_barcode = code128.Code128(awb_string,barHeight=0.8*inch, barWidth=0.5*mm)
@@ -213,28 +212,29 @@ def fill_shiplabel_data(c, order, offset, client_name=None):
     except Exception:
         pass
 
-    try:
-        if order.pickup_data:
-            return_point = order.pickup_data.return_point
-        else:
-            return_point = order.shipments[0].return_point
-        return_address = return_point.address
-        if return_point.address_two:
-            return_address += " "+ return_point.address_two
+    if not client_name.hide_address or str(order.shipments[0].courier.courier_name).startswith("Bluedart"):
+        try:
+            if order.pickup_data:
+                return_point = order.pickup_data.return_point
+            else:
+                return_point = order.shipments[0].return_point
+            return_address = return_point.address
+            if return_point.address_two:
+                return_address += " "+ return_point.address_two
 
-        return_address = split_string(return_address, 30)
+            return_address = split_string(return_address, 30)
 
-        return_point_name = client_name.client_name if client_name else str(return_point.name)
-        c.drawString((offset - 0.85) * inch, 3.25 * inch, return_point_name)
-        y_axis = 3.05
-        for retn in return_address:
-            c.drawString((offset - 0.85) * inch, y_axis * inch, retn)
-            y_axis -= 0.15
+            return_point_name = client_name.client_name if client_name else str(return_point.name)
+            c.drawString((offset - 0.85) * inch, 3.25 * inch, return_point_name)
+            y_axis = 3.05
+            for retn in return_address:
+                c.drawString((offset - 0.85) * inch, y_axis * inch, retn)
+                y_axis -= 0.15
 
-        c.drawString((offset - 0.85) * inch, 2.40 * inch, return_point.city + ", " + return_point.state)
-        c.drawString((offset - 0.85) * inch, 2.25 * inch, return_point.country + ", PIN: " + str(return_point.pincode))
-    except Exception:
-        pass
+            c.drawString((offset - 0.85) * inch, 2.40 * inch, return_point.city + ", " + return_point.state)
+            c.drawString((offset - 0.85) * inch, 2.25 * inch, return_point.country + ", PIN: " + str(return_point.pincode))
+        except Exception:
+            pass
 
     if not client_name.hide_products:
         c.setFont('Helvetica', 8)
@@ -254,12 +254,14 @@ def fill_shiplabel_data(c, order, offset, client_name=None):
             for prod in products_string:
                 c.drawString((offset - 0.85) * inch, y_axis * inch, prod)
                 y_axis -= 0.12
+
+            c.setFont('Helvetica', 12)
+            c.drawString((offset + 1.75) * inch, 0.13 * inch, str(order.payments[0].amount))
+            c.drawString((offset + 1.75) * inch, 1.32 * inch, str(order.payments[0].amount))
         except Exception:
             pass
 
     c.setFont('Helvetica', 12)
-
-    c.drawString((offset + 1.75) * inch, 1.32 * inch, str(order.payments[0].amount))
 
     try:
         dimension_str = str(order.shipments[0].dimensions['length']) + \
@@ -329,7 +331,6 @@ def fill_shiplabel_data_thermal(c, order, client_name=None):
 
     c.setFont('Helvetica', 9)
     c.drawString(0*inch, 4.75 * inch, order.shipments[0].courier.courier_name)
-    c.drawString(1.6 * inch, 0.5 * inch, str(order.payments[0].amount))
     full_address = order.delivery_address.address_one
     if order.delivery_address.address_two:
         full_address += " "+order.delivery_address.address_two
@@ -347,27 +348,28 @@ def fill_shiplabel_data_thermal(c, order, client_name=None):
         pass
 
     c.setFont('Helvetica', 8)
-    try:
-        if order.pickup_data:
-            return_point = order.pickup_data.return_point
-        else:
-            return_point = order.shipments[0].return_point
-        return_address = return_point.address
-        if return_point.address_two:
-            return_address += " "+ return_point.address_two
+    if not client_name.hide_address or str(order.shipments[0].courier.courier_name).startswith("Bluedart"):
+        try:
+            if order.pickup_data:
+                return_point = order.pickup_data.return_point
+            else:
+                return_point = order.shipments[0].return_point
+            return_address = return_point.address
+            if return_point.address_two:
+                return_address += " "+ return_point.address_two
 
-        return_point_name = client_name.client_name if client_name else str(return_point.name)
-        return_address = return_point_name + " |  " + return_address
+            return_point_name = client_name.client_name if client_name else str(return_point.name)
+            return_address = return_point_name + " |  " + return_address
 
-        return_address = split_string(return_address, 75)
+            return_address = split_string(return_address, 75)
 
-        y_axis = -0.65
-        for retn in return_address:
-            c.drawString(-0.75 * inch, y_axis * inch, retn)
-            y_axis -= 0.12
+            y_axis = -0.65
+            for retn in return_address:
+                c.drawString(-0.75 * inch, y_axis * inch, retn)
+                y_axis -= 0.12
 
-    except Exception:
-        pass
+        except Exception:
+            pass
 
     if not client_name.hide_products:
         c.setFont('Helvetica', 7)
@@ -387,6 +389,8 @@ def fill_shiplabel_data_thermal(c, order, client_name=None):
             for prod in products_string:
                 c.drawString(-0.75 * inch, y_axis * inch, prod)
                 y_axis -= 0.15
+
+            c.drawString(1.6 * inch, 0.5 * inch, str(order.payments[0].amount))
         except Exception:
             pass
 

@@ -1,6 +1,6 @@
 # services/core/project/api/core.py
 
-import requests, json, math, pytz, psycopg2
+import requests, json, math, pytz, psycopg2, logging
 import boto3, os, csv, io, smtplib
 import pandas as pd
 import numpy as np
@@ -25,13 +25,16 @@ from .queries import product_count_query, available_warehouse_product_quantity, 
 from project.api.models import Products, ProductQuantity, InventoryUpdate, WarehouseMapping, NDRReasons, MultiVendor, \
     Orders, OrdersPayments, PickupPoints, MasterChannels, ClientPickups, CodVerification, NDRVerification, NDRShipments,\
     MasterCouriers, Shipments, OPAssociation, ShippingAddress, Manifests, ClientCouriers, OrderStatus, DeliveryCheck, \
-    ClientMapping, IVRHistory, ClientRecharges
+    ClientMapping, IVRHistory, ClientRecharges, CODRemittance
 from project.api.utils import authenticate_restful, get_products_sort_func, fill_shiplabel_data_thermal, \
     get_orders_sort_func, create_shiplabel_blank_page, fill_shiplabel_data, create_shiplabel_blank_page_thermal, \
     create_invoice_blank_page, fill_invoice_data, generate_picklist, generate_packlist
 
 core_blueprint = Blueprint('core', __name__)
 api = Api(core_blueprint)
+
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
 
 session = boto3.Session(
     aws_access_key_id='AKIAWRT2R3KC3YZUBFXY',
@@ -63,6 +66,7 @@ RECHARGES_DOWNLOAD_HEADERS = ["Payment Time", "Amount", "Transaction ID", "statu
 
 ORDERS_UPLOAD_HEADERS = ["order_id", "customer_name", "customer_email", "customer_phone", "address_one", "address_two",
                          "city", "state", "country", "pincode", "sku", "sku_quantity", "payment_mode", "subtotal", "shipping_charges", "warehouse", "Error"]
+
 
 class CodVerificationGather(Resource):
 
@@ -356,6 +360,36 @@ def capture_payment(resp):
     db.session.commit()
 
     return jsonify({"msg": "successfully captured"}), 200
+
+
+@core_blueprint.route('/core/v1/payout/razorpayx', methods=['POST'])
+def consume_x_payout():
+    webhook_body = json.loads(request.data)
+    webhook_signature = request.headers.get('X-Razorpay-Signature')
+    webhook_secret = "OR2PXJ5KzWO2u9an7kw8"
+    logger.info("webhook signature: "+str(webhook_signature))
+    logger.info(json.dumps(webhook_body))
+    try:
+        #razorpay_client.utility.verify_webhook_signature(json.dumps(webhook_body), webhook_signature, webhook_secret)
+        payout_id = webhook_body['payload']['payout']['entity']['id']
+        mode = webhook_body['payload']['payout']['entity']['mode']
+        status = webhook_body['payload']['payout']['entity']['status']
+        transaction_id = webhook_body['payload']['payout']['entity']['utr']
+        remit_obj = db.session.query(CODRemittance).filter(CODRemittance.payout_id==payout_id).first()
+        if not remit_obj:
+            logger.error("remit obj not found: "+str(payout_id))
+            return jsonify({"success": False}), 400
+
+        remit_obj.status=status
+        remit_obj.mode=mode
+        remit_obj.transaction_id=transaction_id
+        db.session.commit()
+
+    except Exception as e:
+        logger.error("Exception occured: " + str(e.args))
+        return jsonify({"success": False}), 400
+
+    return jsonify({"success":True}), 200
 
 
 @core_blueprint.route('/core/case_studies', methods=['GET'])

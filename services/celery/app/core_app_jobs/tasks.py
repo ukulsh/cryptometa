@@ -7,6 +7,7 @@ from app.db_utils import DbConnection
 
 conn = DbConnection.get_db_connection_instance()
 conn_2 = DbConnection.get_pincode_db_connection_instance()
+conn_3 = DbConnection.get_users_db_connection_instance()
 
 
 def consume_ecom_scan_util(payload):
@@ -185,3 +186,127 @@ def sync_all_products_with_channel(client_prefix):
 
     conn.commit()
     return "Synced channel products for " + client_prefix
+
+
+def create_cod_remittance_entry():
+    cur = conn.cursor()
+
+    cur.execute("select distinct(client_prefix) FROM orders aa order by client_prefix")
+    all_clients = cur.fetchall()
+    insert_tuple = list()
+    insert_value_str = ""
+    remittance_date = datetime.utcnow() + timedelta(hours=5.5) + timedelta(days=8)
+    for client in all_clients:
+        remittance_id = client[0] + "_" + str(remittance_date.date())
+        last_remittance_id = client[0] + "_" + str((remittance_date - timedelta(days=7)).date())
+        cur.execute("SELECT * from cod_remittance WHERE remittance_id=%s", (last_remittance_id,))
+        try:
+            cur.fetchone()[0]
+        except Exception as e:
+            insert_tuple.append(
+                (client[0], remittance_id, remittance_date - timedelta(days=7), 'processing',
+                 datetime.utcnow() + timedelta(hours=5.5)))
+            insert_value_str += "%s,"
+        insert_tuple.append(
+            (client[0], remittance_id, remittance_date, 'processing', datetime.utcnow() + timedelta(hours=5.5)))
+        insert_value_str += "%s,"
+
+    insert_value_str = insert_value_str.rstrip(",")
+
+    cur.execute(
+        "INSERT INTO cod_remittance (client_prefix, remittance_id, remittance_date, status, date_created) VALUES __IVS__;".replace(
+            '__IVS__', insert_value_str), tuple(insert_tuple))
+
+    conn.commit()
+
+
+def queue_cod_remittance_razorpay():
+    cur = conn.cursor()
+    cur_2 = conn_3.cursor()
+
+    remittance_date = datetime.utcnow() + timedelta(hours=5.5)
+
+    query_to_run = select_remittance_amount_query.replace('__REMITTANCE_DATE__', str(remittance_date.date()))
+
+    cur.execute(query_to_run)
+    all_remittance = cur.fetchall()
+    for remit in all_remittance:
+        try:
+            cur.execute("SELECT account_type, current_balance from client_mapping where client_prefix=%s", (remit[1],))
+            balance_data = cur.fetchone()
+            if str(balance_data[0]).lower() == 'prepaid' and balance_data[1] < 500:
+                continue
+
+            cur_2.execute(
+                "SELECT account_name, ifsc_code, account_no, primary_email FROM clients WHERE client_prefix=%s",
+                (remit[1],))
+            account_data = cur_2.fetchone()
+
+            amount = int(remit[6] * 100)
+            razorpay_body = {
+                "account_number": "2323230053880955",
+                "amount": amount,
+                "currency": "INR",
+                "mode": "NEFT",
+                "purpose": "COD Remittance",
+                "fund_account": {
+                    "account_type": "bank_account",
+                    "bank_account": {
+                        "name": account_data[0] if account_data[0] else "Ravi Chaudhary",
+                        "ifsc": account_data[1] if account_data[1] else "ICIC0002333",
+                        "account_number": account_data[2] if account_data[2] else "233301514571"
+                    },
+                    "contact": {
+                        "name": remit[1],
+                        "email": account_data[3],
+                        "type": "customer",
+                        "reference_id": remit[1],
+                        "notes": {
+                            "notes_key_1": "COD remittance " + remit[1]
+                        }
+                    }
+                },
+                "queue_if_low_balance": True,
+                "reference_id": remit[1] + str(remit[0]),
+                "narration": "COD remittance " + remit[1],
+                "notes": {
+                    "notes_key_1": "COD remittance " + remit[1] + "\nDate: " + str(remittance_date.date()),
+                }
+            }
+
+            headers = {
+                'Content-Type': 'application/json',
+            }
+
+            response = requests.post('https://api.razorpay.com/v1/payouts', headers=headers,
+                                     data=json.dumps(razorpay_body),
+                                     auth=('rzp_test_6k89T5DcoLmvCO', 'wEM0vuFABblEjNMotlar9bxz'))
+
+            cur.execute("UPDATE cod_remittance SET payout_id=%s WHERE id=%s", (response.json()['id'], remit[0]))
+            conn.commit()
+
+        except Exception as e:
+            logger.error(
+                "Couldn't create remittance on razorpay X for: " + str(remit[1]) + "\nError: " + str(e.args[0]))
+
+
+select_remittance_amount_query = """select * from
+                                        (select xx.unique_id, xx.client_prefix, xx.remittance_id, xx.date as remittance_date, 
+                                         xx.status, xx.transaction_id, sum(yy.amount) as remittance_total from
+                                        (select id as unique_id, client_prefix, remittance_id, transaction_id, DATE(remittance_date), 
+                                        ((DATE(remittance_date)) - INTERVAL '8 DAY') AS order_start,
+                                        ((DATE(remittance_date)) - INTERVAL '1 DAY') AS order_end,
+                                        status from cod_remittance) xx 
+                                        left join 
+                                        (select client_prefix, channel_order_id, order_date, payment_mode, amount, cc.status_time as delivered_date from orders aa
+                                        left join orders_payments bb on aa.id=bb.order_id
+                                        left join (select * from order_status where status='Delivered') cc
+                                        on aa.id=cc.order_id
+                                        where aa.status = 'DELIVERED'
+                                        and bb.payment_mode ilike 'cod') yy
+                                        on xx.client_prefix=yy.client_prefix 
+                                        and yy.delivered_date BETWEEN xx.order_start AND xx.order_end
+                                        group by xx.unique_id, xx.client_prefix, xx.remittance_id, xx.date, xx.status, xx.transaction_id) zz
+                                        WHERE remittance_total is not null
+                                        and remittance_date='__REMITTANCE_DATE__'
+                                        order by remittance_date DESC, remittance_total DESC"""

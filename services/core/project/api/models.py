@@ -280,6 +280,8 @@ class CODRemittance(db.Model):
     remittance_date = db.Column(db.DateTime)
     status = db.Column(db.String)
     transaction_id = db.Column(db.String)
+    payout_id = db.Column(db.String)
+    mode = db.Column(db.String)
     date_created = db.Column(db.DateTime, default=datetime.now)
     date_updated = db.Column(db.DateTime, onupdate=datetime.now)
 

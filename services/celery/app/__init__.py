@@ -49,11 +49,33 @@ app.config['CELERYBEAT_SCHEDULE'] = {
                 'schedule': crontab(minute='*/30'),
                 'options': {'queue': 'ship_orders'}
             },
+    'run-cod-queue': {
+                    'task': 'cod_remittance_queue',
+                    'schedule': crontab(hour=12, minute=30, day_of_week='fri'),
+                    'options': {'queue': 'consume_scans'}
+                },
+    'run-cod-entry': {
+                    'task': 'cod_remittance_entry',
+                    'schedule': crontab(hour=18, minute=35, day_of_week='wed'),
+                    'options': {'queue': 'consume_scans'}
+                },
 }
 
 app.config['CELERY_TIMEZONE'] = 'UTC'
 
 celery_app = make_celery(app)
+
+
+@celery_app.task(name='cod_remittance_entry')
+def cod_remittance_entry():
+    create_cod_remittance_entry()
+    return 'successfully completed cod remittance entry'
+
+
+@celery_app.task(name='cod_remittance_queue')
+def cod_remittance_queue():
+    queue_cod_remittance_razorpay()
+    return 'successfully completed cod remittance queue'
 
 
 @celery_app.task(name='status_update')

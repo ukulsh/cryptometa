@@ -27,6 +27,10 @@ insert_orders_data_query = """INSERT INTO orders (channel_order_id, order_date, 
 insert_payments_data_query = """INSERT INTO orders_payments (payment_mode, amount, subtotal, shipping_charges, currency, order_id)
                                 VALUES (%s,%s,%s,%s,%s,%s) RETURNING id"""
 
+insert_order_extra_details_query = """INSERT INTO orders_extra_details (order_id, ip_address, user_agent, session_id, user_id, 
+                                    user_created_at, order_count, verified_email, payment_id, payment_gateway, payment_method)
+                                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s);"""
+
 select_products_query = """SELECT id from products where sku=%s and client_prefix=%s;"""
 
 insert_op_association_query = """INSERT INTO op_association (product_id, order_id, quantity, amount, channel_item_id, tax_lines)

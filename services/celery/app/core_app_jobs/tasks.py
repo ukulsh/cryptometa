@@ -310,3 +310,22 @@ select_remittance_amount_query = """select * from
                                         WHERE remittance_total is not null
                                         and remittance_date='__REMITTANCE_DATE__'
                                         order by remittance_date DESC, remittance_total DESC"""
+
+
+def upload_products_util(prod_list):
+    cur = conn.cursor()
+    for prod_item in prod_list:
+        try:
+            cur.execute("SELECT * from products WHERE master_sku=%s and client_prefix=%s", (prod_item[0], "NASHER"))
+            try:
+                cur.fetchone()[0]
+            except Exception as e:
+                cur.execute("""INSERT INTO products (name, sku, active, channel_id, client_prefix, dimensions, 
+                            price, weight, master_sku) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s);""", (prod_item[0], prod_item[0],
+                                                                                                 True, 4, "NASHER", json.dumps(prod_item[3]),
+                                                                                                 prod_item[1], prod_item[2], prod_item[0]))
+        except Exception as e:
+            logger.error("Couldn't upload prod: "+str(prod_item[0])+"\nError: "+str(e.args[0]))
+
+        conn.commit()
+

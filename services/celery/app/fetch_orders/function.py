@@ -100,9 +100,10 @@ def fetch_shopify_orders(cur, channel):
             customer_phone = ''.join(e for e in str(customer_phone) if e.isalnum())
             customer_phone = "0" + customer_phone[-10:]
 
+            shopping_address_1 = order['shipping_address']['company'] + " " + order['shipping_address']['address1'] if order['shipping_address']['company'] else order['shipping_address']['address1']
             shipping_tuple = (order['shipping_address']['first_name'],
                               order['shipping_address']['last_name'],
-                              order['shipping_address']['address1'],
+                              shopping_address_1,
                               order['shipping_address']['address2'],
                               order['shipping_address']['city'],
                               order['shipping_address']['zip'],
@@ -114,9 +115,10 @@ def fetch_shopify_orders(cur, channel):
                               order['shipping_address']['country_code']
                               )
 
+            billing_address_1 = order['billing_address']['company'] + " " + order['billing_address']['address1'] if order['billing_address']['company'] else order['billing_address']['address1']
             billing_tuple = (order['billing_address']['first_name'],
                               order['billing_address']['last_name'],
-                              order['billing_address']['address1'],
+                              billing_address_1,
                               order['billing_address']['address2'],
                               order['billing_address']['city'],
                               order['billing_address']['zip'],
@@ -162,6 +164,15 @@ def fetch_shopify_orders(cur, channel):
                 shipping_amount, order["currency"], order_id)
 
             cur.execute(insert_payments_data_query, payments_tuple)
+
+            try:
+                extra_details_tuple = (order_id, order['client_details']['browser_ip'], order['client_details']['user_agent'],
+                                       order['checkout_token'], str(order['customer']['id']), order['customer']['created_at'], order['customer']['orders_count'],
+                                       order['customer']['verified_email'], order['token'], order['gateway'], order['processing_method'])
+
+                cur.execute(insert_order_extra_details_query, extra_details_tuple)
+            except Exception as e:
+                pass
 
             for prod in order['line_items']:
                 product_sku = str(prod['variant_id']) if prod['variant_id'] else str(prod['id'])

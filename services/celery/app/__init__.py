@@ -1,6 +1,6 @@
 from flask import Flask, request, jsonify
 from celery import Celery
-import json
+import json, re
 import io
 import csv
 from datetime import timedelta
@@ -167,3 +167,36 @@ def get_file_data(file_ref):
         courier_id = row['courier_id']
         order_data[awb] = [charged_weight, courier_id]
     return order_data
+
+
+@celery_app.task(name='prod_upload_job')
+def upload_prod_job(order_data):
+    upload_products_util(order_data)
+    return "completed upload prods"
+
+
+@app.route('/scans/v1/uploadProducts', methods=['POST'])
+def upload_products():
+    try:
+        recon_file = request.files.get('prod_file')
+        order_data = get_prod_file_data(recon_file)
+        upload_prod_job.apply_async(queue='update_status', args=(order_data,))
+        return jsonify({"msg": "Task received"}), 200
+    except Exception as e:
+        return jsonify({"msg": "failed while creating the task"}), 400
+
+
+def get_prod_file_data(file_ref):
+    import pandas as pd
+    data_xlsx = pd.read_csv(file_ref)
+    iter_rw = data_xlsx.iterrows()
+    prod_list = list()
+    for row in iter_rw:
+        try:
+            dimensions = re.findall(r"[-+]?\d*\.\d+|\d+", str(row[1].Dimensions))
+            dimensions = {"length": float(dimensions[0]), "breadth": float(dimensions[1]),
+                          "height": float(dimensions[2])}
+            prod_list.append((str(row[1].SKU), float(row[1].Price), float(row[1].Weight), dimensions))
+        except Exception:
+            pass
+    return prod_list

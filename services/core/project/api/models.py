@@ -272,6 +272,23 @@ class OrdersPayments(db.Model):
     order = db.relationship("Orders", backref=db.backref("payments", uselist=True))
 
 
+class OrdersExtraDetails(db.Model):
+    __tablename__ = "orders_extra_details"
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    order_id = db.Column(db.Integer, db.ForeignKey('orders.id'), unique=True, index=True)
+    order = db.relationship("Orders", backref=db.backref("orders_extra_details", uselist=True))
+    ip_address = db.Column(db.String, nullable=True)
+    user_agent = db.Column(db.String, nullable=True)
+    session_id = db.Column(db.String, nullable=True)
+    user_id = db.Column(db.String, nullable=True)
+    user_created_at = db.Column(db.String, nullable=True)
+    order_count = db.Column(db.Integer, nullable=True)
+    verified_email = db.Column(db.BOOLEAN, nullable=True)
+    payment_id = db.Column(db.String, nullable=True)
+    payment_gateway = db.Column(db.String, nullable=True)
+    payment_method = db.Column(db.String, nullable=True)
+
+
 class CODRemittance(db.Model):
     __tablename__ = "cod_remittance"
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)

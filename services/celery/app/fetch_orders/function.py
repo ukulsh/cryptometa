@@ -315,7 +315,7 @@ def fetch_woocommerce_orders(cur, channel):
             else:
                 pickup_data_id = None  # change this as we move to dynamic pickups
 
-            if order['payment_method'].lower() == 'cod':
+            if order['payment_method'].lower() in ('cod', 'cash on delivery', 'cashondelivery'):
                 financial_status = 'cod'
             else:
                 financial_status = 'prepaid'
@@ -382,6 +382,15 @@ def fetch_woocommerce_orders(cur, channel):
                               total_shipping, order["currency"], order_id)
 
             cur.execute(insert_payments_data_query, payments_tuple)
+
+            try:
+                extra_details_tuple = (order_id, order['customer_ip_address'], order['customer_user_agent'],
+                                       order['cart_hash'], str(order['customer_id']), order['date_created'], 1,
+                                       None, order['transaction_id'], order['payment_method'], order['payment_method_title'])
+
+                cur.execute(insert_order_extra_details_query, extra_details_tuple)
+            except Exception as e:
+                pass
 
             for prod in order['line_items']:
                 sku_id = prod['variation_id']

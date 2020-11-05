@@ -40,3 +40,51 @@ insert_status_query = """INSERT INTO order_status (order_id, courier_id, shipmen
                       ON CONFLICT (order_id, courier_id, shipment_id, status) 
                       DO UPDATE SET status_time = EXCLUDED.status_time, location_city=EXCLUDED.location_city, 
                       location=EXCLUDED.location, status_text=EXCLUDED.status_text,status_code=EXCLUDED.status_code;"""
+
+
+select_orders_to_calculate_query = """select aa.id, aa.awb, aa.courier_id, aa.volumetric_weight, aa.weight, 
+                                        bb.channel_order_id, bb.client_prefix, cc.pincode as pickup_pincode,
+                                        dd.pincode as delivery_pincode, ff.status_time, bb.order_date, gg.payment_mode, 
+                                        gg.amount, bb.status, aa.dimensions, aa.zone from shipments aa
+                                        left join orders bb on aa.order_id=bb.id
+                                        left join pickup_points cc on aa.pickup_id=cc.id
+                                        left join shipping_address dd on bb.delivery_address_id=dd.id
+                                        left join client_deductions ee on ee.shipment_id=aa.id
+                                        left join (select * from order_status where status in ('Delivered', 'RTO', 'DTO')) ff
+                                        on aa.id = ff.shipment_id
+                                        left join orders_payments gg on bb.id=gg.order_id
+                                        where bb.status in ('DELIVERED', 'RTO', 'DTO')
+                                        and ee.shipment_id is null
+                                        and (ff.status_time>'__STATUS_TIME__')"""
+
+insert_into_deduction_query = """INSERT INTO client_deductions (weight_charged,zone,deduction_time,cod_charge,
+                                cod_charged_gst,forward_charge,forward_charge_gst,rto_charge,
+                                rto_charge_gst,shipment_id,total_charge,total_charged_gst,date_created,date_updated) VALUES (%s,%s,%s,%s,%s,
+                                %s,%s,%s,%s,%s,%s,%s,%s,%s);"""
+
+insert_into_courier_cost_query = """INSERT INTO courier_charges (weight_charged,zone,deduction_time,cod_charge,
+                                forward_charge,rto_charge,shipment_id,total_charge,date_created,date_updated) VALUES 
+                                (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s);"""
+
+update_client_balance = """UPDATE client_mapping SET current_balance=coalesce(current_balance, 0)-%s WHERE client_prefix=%s AND account_type ilike 'prepaid';"""
+
+select_remittance_amount_query = """select * from
+                                        (select xx.unique_id, xx.client_prefix, xx.remittance_id, xx.date as remittance_date, 
+                                         xx.status, xx.transaction_id, sum(yy.amount) as remittance_total from
+                                        (select id as unique_id, client_prefix, remittance_id, transaction_id, DATE(remittance_date), 
+                                        ((DATE(remittance_date)) - INTERVAL '8 DAY') AS order_start,
+                                        ((DATE(remittance_date)) - INTERVAL '1 DAY') AS order_end,
+                                        status from cod_remittance) xx 
+                                        left join 
+                                        (select client_prefix, channel_order_id, order_date, payment_mode, amount, cc.status_time as delivered_date from orders aa
+                                        left join orders_payments bb on aa.id=bb.order_id
+                                        left join (select * from order_status where status='Delivered') cc
+                                        on aa.id=cc.order_id
+                                        where aa.status = 'DELIVERED'
+                                        and bb.payment_mode ilike 'cod') yy
+                                        on xx.client_prefix=yy.client_prefix 
+                                        and yy.delivered_date BETWEEN xx.order_start AND xx.order_end
+                                        group by xx.unique_id, xx.client_prefix, xx.remittance_id, xx.date, xx.status, xx.transaction_id) zz
+                                        WHERE remittance_total is not null
+                                        and remittance_date='__REMITTANCE_DATE__'
+                                        order by remittance_date DESC, remittance_total DESC"""

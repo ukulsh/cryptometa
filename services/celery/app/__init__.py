@@ -59,6 +59,11 @@ app.config['CELERYBEAT_SCHEDULE'] = {
                     'schedule': crontab(hour=18, minute=35, day_of_week='wed'),
                     'options': {'queue': 'consume_scans'}
                 },
+    'run-calculate-costs': {
+                'task': 'calculate_costs',
+                'schedule': crontab(minute='*/30'),
+                'options': {'queue': 'calculate_costs'}
+            },
 }
 
 app.config['CELERY_TIMEZONE'] = 'UTC'
@@ -76,6 +81,12 @@ def cod_remittance_entry():
 def cod_remittance_queue():
     queue_cod_remittance_razorpay()
     return 'successfully completed cod remittance queue'
+
+
+@celery_app.task(name='calculate_costs')
+def calculate_costs():
+    calculate_costs_util()
+    return 'successfully completed calculate costs'
 
 
 @celery_app.task(name='status_update')
@@ -98,7 +109,7 @@ def ship_orders_api():
 
 @app.route('/scans/v1/dev', methods = ['GET'])
 def celery_dev():
-    orders_fetch.apply_async(queue='fetch_orders')
+    calculate_costs.apply_async(queue='calculate_costs')
     return jsonify({"msg": "Task received"}), 200
 
 
@@ -150,23 +161,21 @@ def process_reconciliation(order_data):
 def order_price_reconciliation():
     try:
         recon_file = request.files.get('recon_file')
-        order_data = get_file_data(recon_file)
-        process_reconciliation.apply_async(queue='consume_scans', args=(order_data,))
+        awb_dict = get_file_data(recon_file)
+        process_reconciliation.apply_async(queue='calculate_costs', args=(awb_dict,))
         return jsonify({"msg": "Task received"}), 200
     except Exception as e:
         return jsonify({"msg": "failed while creating the task"}), 400
 
 
 def get_file_data(file_ref):
-    stream = io.StringIO(file_ref.stream.read().decode("UTF8"), newline=None)
-    reader = csv.DictReader(stream)
-    order_data = {}
-    for row in reader:
-        awb = row['awb']
-        charged_weight = float(row['charged_weight'])
-        courier_id = row['courier_id']
-        order_data[awb] = [charged_weight, courier_id]
-    return order_data
+    import pandas as pd
+    data_xlsx = pd.read_excel(file_ref)
+    iter_rw = data_xlsx.iterrows()
+    awb_dict = dict()
+    for row in iter_rw:
+        awb_dict[str(row[1].AWB).split(".")[0]]=(float(row[1].Weight), None)
+    return awb_dict
 
 
 @celery_app.task(name='prod_upload_job')

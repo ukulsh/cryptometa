@@ -46,7 +46,7 @@ conn_2 = psycopg2.connect(host=os.environ.get('DATABASE_HOST_PINCODE'), database
 
 #email_server = smtplib.SMTP_SSL('smtpout.secureserver.net', 465)
 #email_server.login("noreply@wareiq.com", "Berlin@123")
-razorpay_client = razorpay.Client(auth=("rzp_test_6k89T5DcoLmvCO", "wEM0vuFABblEjNMotlar9bxz"))
+razorpay_client = razorpay.Client(auth=("rzp_live_FGAwxhtumHezAw", "IZ7C97EEef0rvyqZJLy0CYNb"))
 
 
 ORDERS_DOWNLOAD_HEADERS = ["Order ID", "Customer Name", "Customer Email", "Customer Phone", "Order Date",
@@ -289,7 +289,7 @@ def create_payment(resp):
 
     db.session.commit()
 
-    return jsonify({"key": "rzp_test_6k89T5DcoLmvCO",
+    return jsonify({"key": "rzp_live_FGAwxhtumHezAw",
                     "amount": res.get('amount'),
                     "currency":"INR",
                     "order_id": res.get('id'),
@@ -436,6 +436,105 @@ def website_case_study():
 @core_blueprint.route('/core/dev', methods=['POST'])
 def ping_dev():
     return 0
+    cur_2 = conn_2.cursor()
+    myfile = request.files['myfile']
+    data_xlsx = pd.read_excel(myfile)
+    from .models import Products, ProductQuantity
+    uri = """requests.get("https://www.nyor.in/wp-json/wc/v3/orders?oauth_consumer_key=ck_1e1ab8542c4f22b20f1b9810cd670716bf421ba8&oauth_timestamp=1583243314&oauth_nonce=kYjzVBB8Y0ZFabxSWbWovY3uYSQ2pTgmZeNu2VS4cg&oauth_signature=d07a4be56681016434803eb054cfd8b45a8a2749&oauth_signature_method=HMAC-SHA1")"""
+    for row in data_xlsx.iterrows():
+        """
+        cur_2.execute("select city from city_pin_mapping where pincode='%s'" % str(row[1].delivery_pincode))
+        des_city = cur_2.fetchone()
+        if not des_city:
+            cur_2.execute("select city from city_pin_mapping where city ilike '%s'" % str(row[1].city))
+            des_city = cur_2.fetchone()
+            if not des_city:
+                cur_2.execute("insert into city_pin_mapping (pincode,city) VALUES ('%s','%s');" % (
+                str(row[1].pincode), str(row[1].city)))
+            else:
+                cur_2.execute("insert into city_pin_mapping (pincode,city) VALUES ('%s','%s');" % (
+                    str(row[1].pincode), str(des_city[0])))
+
+        """
+        cur_2.execute("select city from city_pin_mapping where pincode='%s'" % str(row[1].delivery_pincode))
+        des_city = cur_2.fetchone()
+        cur_2.execute("select city from city_pin_mapping where pincode='%s'" % str(row[1].pickup_pincode))
+        pick_city = cur_2.fetchone()
+        if not pick_city or not des_city:
+            print(str(row[1].delivery_pincode)+ "  "+ str(row[1].pickup_pincode))
+
+        cur_2.execute("select zone_value from city_zone_mapping where zone='%s' and city='%s';" % (
+        str(pick_city[0]), str(des_city[0])))
+        mapped_pin = cur_2.fetchone()
+        if not mapped_pin:
+            cur_2.execute("insert into city_zone_mapping (zone,city,zone_value,courier_id) VALUES ('%s','%s','%s',%s);" % (
+            str(pick_city[0]), str(des_city[0]), str(row[1].zone), 1))
+        else:
+            print("Zone found for this: "+str(row[1].delivery_pincode)+ "  "+ str(row[1].pickup_pincode))
+
+        """
+
+        cur_2.execute("select zone_value from city_zone_mapping where zone='%s' and city='%s' and courier_id=%s" % (
+            str(row[1].origin_city), str(row[1].destination_city), 2))
+        mapped_pin = cur_2.fetchone()
+        if not mapped_pin:
+            cur_2.execute("insert into city_zone_mapping (zone,city,courier_id) VALUES ('%s','%s', %s);" % (
+                str(row[1].origin_city), str(row[1].destination_city), 2))
+        """
+    return 0
+    # from .models import CostToClients
+    # myfile = request.files['myfile']
+    # data_xlsx = pd.read_excel(myfile)
+    #
+    # iter_rw = data_xlsx.iterrows()
+    # for row in iter_rw:
+    #     if int(int(row[1].Courier))==16:
+    #         for courier_id in (1,13,15,9,4):
+    #             cost_obj = CostToClients(client_prefix=str(row[1].Client),
+    #                                      courier_id=courier_id,
+    #                                      zone_a=float(row[1].A),
+    #                                      zone_b=float(row[1].B),
+    #                                      zone_c=float(row[1].C),
+    #                                      zone_d=float(row[1].D),
+    #                                      zone_e=float(row[1].E),
+    #                                      a_step=float(row[1].AS),
+    #                                      b_step=float(row[1].BS),
+    #                                      c_step=float(row[1].CS),
+    #                                      d_step=float(row[1].DS),
+    #                                      e_step=float(row[1].ES),
+    #                                      cod_min=float(row[1].COD),
+    #                                      cod_ratio=float(row[1].CODRATIO),
+    #                                      rto_ratio=1,
+    #                                      rvp_ratio=1.5,
+    #                                      management_fee_static=5,
+    #                                      management_fee=None,
+    #                                      )
+    #             db.session.add(cost_obj)
+    #             db.session.commit()
+    #     else:
+    #         cost_obj = CostToClients(client_prefix=str(row[1].Client),
+    #                                  courier_id=int(row[1].Courier),
+    #                                  zone_a=float(row[1].A),
+    #                                  zone_b=float(row[1].B),
+    #                                  zone_c=float(row[1].C),
+    #                                  zone_d=float(row[1].D),
+    #                                  zone_e=float(row[1].E),
+    #                                  a_step=float(row[1].AS),
+    #                                  b_step=float(row[1].BS),
+    #                                  c_step=float(row[1].CS),
+    #                                  d_step=float(row[1].DS),
+    #                                  e_step=float(row[1].ES),
+    #                                  cod_min=float(row[1].COD),
+    #                                  cod_ratio=float(row[1].CODRATIO),
+    #                                  rto_ratio=1,
+    #                                  rvp_ratio=1.5,
+    #                                  management_fee_static=5,
+    #                                  management_fee=None,
+    #                                  )
+    #         db.session.add(cost_obj)
+    #         db.session.commit()
+    #
+    # return 0
     # from .models import Orders, ReturnPoints, ClientPickups, Products, ProductQuantity
     myfile = request.files['myfile']
     # data_xlsx = pd.read_excel(myfile)
@@ -592,10 +691,10 @@ def ping_dev():
 
             """
             sku_list.append({"sku": sku,
-                             "warehouse": "HOLISOLBL",
+                             "warehouse": "QSBHIWANDI",
                              "quantity": del_qty,
-                             "type": "add",
-                             "remark": "8 oct inbound"})
+                             "type": "replace",
+                             "remark": "4 nov resync"})
 
             """
 
@@ -1857,28 +1956,6 @@ def ping_dev():
 
     import requests, json
     prod_list = requests.get("https://640e8be5fbd672844636885fc3f02d6b:07d941b140370c8c975d8e83ee13e524@clean-canvass.myshopify.com/admin/api/2019-10/products.json?limit=250").json()
-    myfile = request.files['myfile']
-    data_xlsx = pd.read_excel(myfile)
-    from .models import Products, ProductQuantity
-    uri = """requests.get("https://www.nyor.in/wp-json/wc/v3/orders?oauth_consumer_key=ck_1e1ab8542c4f22b20f1b9810cd670716bf421ba8&oauth_timestamp=1583243314&oauth_nonce=kYjzVBB8Y0ZFabxSWbWovY3uYSQ2pTgmZeNu2VS4cg&oauth_signature=d07a4be56681016434803eb054cfd8b45a8a2749&oauth_signature_method=HMAC-SHA1")"""
-    for row in data_xlsx.iterrows():
-
-        cur_2.execute("select city from city_pin_mapping where pincode='%s'"%str(row[1].destinaton_pincode))
-        des_city = cur_2.fetchone()
-        if not des_city:
-            cur_2.execute("insert into city_pin_mapping (pincode,city) VALUES ('%s','%s');" % (str(row[1].destinaton_pincode),str(row[1].destination_city)))
-
-        cur_2.execute("select zone_value from city_zone_mapping where zone='%s' and city='%s' and courier_id=%s"%(str(row[1].origin_city),str(row[1].destination_city), 1))
-        mapped_pin = cur_2.fetchone()
-        if not mapped_pin:
-            cur_2.execute("insert into city_zone_mapping (zone,city,courier_id) VALUES ('%s','%s', %s);" % (str(row[1].origin_city),str(row[1].destination_city), 1))
-
-        cur_2.execute("select zone_value from city_zone_mapping where zone='%s' and city='%s' and courier_id=%s" % (
-        str(row[1].origin_city), str(row[1].destination_city), 2))
-        mapped_pin = cur_2.fetchone()
-        if not mapped_pin:
-            cur_2.execute("insert into city_zone_mapping (zone,city,courier_id) VALUES ('%s','%s', %s);" % (
-            str(row[1].origin_city), str(row[1].destination_city), 2))
 
     """
         row_data = row[1]

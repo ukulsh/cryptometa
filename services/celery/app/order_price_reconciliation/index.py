@@ -1,6 +1,6 @@
 from math import ceil
 from datetime import datetime, timedelta
-from app.order_price_reconciliation.query import *
+from .query import *
 from app.db_utils import DbConnection
 import logging
 
@@ -96,25 +96,26 @@ def calculate_new_charge(current_data, charged_weight, source_courier_id, total_
                     cod_charge = charge_rate_values[1]
 
                 cod_charged_gst = cod_charge * 1.18
-        deduction_time = datetime.now()
+        deduction_time = datetime.utcnow() + timedelta(hours=5.5)
         if current_data[17] == "DTO":
             forward_charge = 0
             forward_charge_gst = 0
-        cod_charge = max(cod_charge-total_charged_data['cod_charge'], 0)
-        cod_charged_gst = max(cod_charged_gst-total_charged_data['cod_charged_gst'], 0)
-        forward_charge = max(forward_charge-total_charged_data['forward_charge'], 0)
-        forward_charge_gst = max(forward_charge_gst-total_charged_data['forward_charge_gst'], 0)
-        rto_charge = max(rto_charge-total_charged_data['rto_charge'], 0)
-        rto_charge_gst = max(rto_charge_gst-total_charged_data['rto_charge_gst'], 0)
+        cod_charge = max(cod_charge-(total_charged_data['cod_charge'] or 0), 0)
+        cod_charged_gst = max(cod_charged_gst-(total_charged_data['cod_charged_gst'] or 0), 0)
+        forward_charge = max(forward_charge-(total_charged_data['forward_charge'] or 0), 0)
+        forward_charge_gst = max(forward_charge_gst-(total_charged_data['forward_charge_gst'] or 0), 0)
+        rto_charge = max(rto_charge-(total_charged_data['rto_charge'] or 0), 0)
+        rto_charge_gst = max(rto_charge_gst-(total_charged_data['rto_charge_gst'] or 0), 0)
+        forward_charge = round(forward_charge, 2)
+        rto_charge = round(rto_charge, 2)
+        cod_charge = round(cod_charge, 2)
+        forward_charge_gst = round(forward_charge_gst, 2)
+        rto_charge_gst = round(rto_charge_gst, 2)
+        cod_charged_gst = round(cod_charged_gst, 2)
         total_charge = forward_charge + cod_charge + rto_charge
         total_charge_gst = forward_charge_gst + rto_charge_gst + cod_charged_gst
         if total_charge:
-            cur.execute(get_client_balance, (current_data[16],))
-            client_data = cur.fetchone()
-            if client_data[1] and client_data[1].lower() == 'prepaid':
-                current_balance = client_data[0]
-                current_balance -= total_charge_gst
-                cur.execute(update_client_balance, (current_balance, current_data[16],))
+            cur.execute(update_client_balance, (total_charge_gst, current_data[16]))
             insert_rates_tuple = (charged_weight, delivery_zone, deduction_time, cod_charge, cod_charged_gst,
                                   forward_charge, forward_charge_gst, rto_charge, rto_charge_gst, current_data[8],
                                   total_charge, total_charge_gst, datetime.now(), datetime.now(), recon_status,)
@@ -152,6 +153,6 @@ def process_order_price_reconciliation(order_data):
                                                   }
 
     for _, iterator in group_by_awb.items():
-        if order_data[iterator[12]][0] > iterator[0]:
-            calculate_new_charge(iterator, order_data[iterator[12]][0], order_data[iterator[12]][1], previous_charge_data[iterator[12]], cur)
+        if not iterator[0] or order_data[iterator[12]][0] > iterator[0]:
+            calculate_new_charge(iterator, order_data[iterator[12]][0], iterator[21], previous_charge_data[iterator[12]], cur)
     cur.close()

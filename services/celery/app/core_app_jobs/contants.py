@@ -108,3 +108,87 @@ ecom_express_ndr_reasons = {
                               "22901": 5,
                               "2445": 9,
                             }
+
+zone_column_mapping = {
+    'A': 'zone_a',
+    'B': 'zone_b',
+    'C': 'zone_c',
+    'D': 'zone_d',
+    'E': 'zone_e',
+}
+
+zone_step_charge_column_mapping = {
+    'A': 'a_step',
+    'B': 'b_step',
+    'C': 'c_step',
+    'D': 'd_step',
+    'E': 'e_step'
+}
+
+zone_column_mapping_courier = {
+    'A': 'zone_a',
+    'B': 'zone_b',
+    'C1': 'zone_c1',
+    'C': 'zone_c1',
+    'C2': 'zone_c2',
+    'D1': 'zone_d1',
+    'D': 'zone_d1',
+    'D2': 'zone_d2',
+    'E': 'zone_e',
+}
+
+nasher_zonal_mapping = {
+    'A': [74, 9],
+    'B': [107, 13],
+    'C': [126, 15],
+    'D': [144, 17],
+    'E': [149, 17],
+}
+
+rto_heavy_1 = {
+    'A': 11,
+    'B': 12,
+    'C1': 15,
+    'C': 15,
+    'C2': 15,
+    'D1': 18,
+    'D': 18,
+    'D2': 18,
+    'E': 21,
+}
+
+rto_heavy_2 = {
+    'A': 10,
+    'B': 12,
+    'C1': 17,
+    'C': 17,
+    'C2': 17,
+    'D1': 18,
+    'D': 18,
+    'D2': 18,
+    'E': 22,
+}
+
+rto_bulk = {
+    'A': 20,
+    'B': 23,
+    'C1': 24,
+    'C': 24,
+    'C2': 26,
+    'D1': 28,
+    'D': 28,
+    'D2': 30,
+    'E': 34,
+}
+
+bulk_second_step = {
+    'A': 26,
+    'B': 28,
+    'C1': 30,
+    'C': 30,
+    'C2': 32,
+    'D1': 36,
+    'D': 36,
+    'D2': 38,
+    'E': 52,
+}

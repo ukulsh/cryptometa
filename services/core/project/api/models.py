@@ -289,6 +289,19 @@ class OrdersExtraDetails(db.Model):
     payment_method = db.Column(db.String, nullable=True)
 
 
+class ThirdwatchData(db.Model):
+    __tablename__ = "thirdwatch_data"
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    order_id = db.Column(db.Integer, db.ForeignKey('orders.id'), unique=True, index=True)
+    order = db.relationship("Orders", backref=db.backref("thirdwatch_data", uselist=True))
+    flag = db.Column(db.String, nullable=True)
+    order_timestamp = db.Column(db.String, nullable=True)
+    score = db.Column(db.FLOAT, nullable=True)
+    tags = db.Column(ARRAY(db.String(100)))
+    reasons = db.Column(JSON)
+    date_created = db.Column(db.DateTime, default=datetime.now)
+
+
 class CODRemittance(db.Model):
     __tablename__ = "cod_remittance"
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
@@ -639,6 +652,7 @@ class OrderScans(db.Model):
         db.UniqueConstraint('order_id', 'courier_id', 'shipment_id', 'status', 'status_time', name='ord_cr_shp_st_sttime_unique'),
     )
 
+
 class CodVerification(db.Model):
     __tablename__ = "cod_verification"
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
@@ -742,11 +756,12 @@ class CostToClients(db.Model):
     rto_ratio = db.Column(db.FLOAT, nullable=True)
     rvp_ratio = db.Column(db.FLOAT, nullable=True)
     management_fee = db.Column(db.FLOAT, nullable=True)
+    management_fee_static = db.Column(db.FLOAT, nullable=True)
     date_created = db.Column(db.DateTime, default=datetime.now)
     date_updated = db.Column(db.DateTime, onupdate=datetime.now)
 
     def __init__(self, client_prefix, courier_id, zone_a, zone_b, zone_c, zone_d, zone_e, a_step,
-                 b_step, c_step, d_step, e_step, cod_min, cod_ratio, rvp_ratio, rto_ratio, management_fee):
+                 b_step, c_step, d_step, e_step, cod_min, cod_ratio, rvp_ratio, rto_ratio, management_fee, management_fee_static):
         self.client_prefix = client_prefix
         self.courier_id = courier_id
         self.zone_a = zone_a
@@ -764,6 +779,7 @@ class CostToClients(db.Model):
         self.rvp_ratio = rvp_ratio
         self.rto_ratio = rto_ratio
         self.management_fee = management_fee
+        self.management_fee_static = management_fee_static
 
     def to_json(self):
         return {

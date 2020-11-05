@@ -165,6 +165,8 @@ def ship_delhivery_orders(cur, courier, courier_name, order_ids, order_id_tuple,
                    "Content-Type": "application/json"}
         for order in all_new_orders:
             try:
+                if order[26].lower() == 'cod' and not order[27]:
+                    continue
                 zone = None
                 try:
                     zone = get_delivery_zone(pickup_point[8], order[18])
@@ -523,7 +525,7 @@ def ship_shadowfax_orders(cur, courier, courier_name, order_ids, order_id_tuple,
         pickup_point = cur.fetchone()  # change this as we get to dynamic pickups
 
         for order in all_new_orders:
-            if order[17].lower() not in ("bengaluru", "bangalore", "banglore") and courier[1] == "MIRAKKI":
+            if order[26].lower() == 'cod' and not order[27]:
                 continue
             zone = None
             try:
@@ -763,7 +765,8 @@ def ship_xpressbees_orders(cur, courier, courier_name, order_ids, order_id_tuple
         pickup_point = cur.fetchone()  # change this as we get to dynamic pickups
 
         for order in all_new_orders:
-
+            if order[26].lower() == 'cod' and not order[27]:
+                continue
             if order[26].lower() == 'pickup':
                 try:
                     cur.execute("""SELECT id, courier_name, logo_url, date_created, date_updated, api_key, 
@@ -1102,6 +1105,8 @@ def ship_ecom_orders(cur, courier, courier_name, order_ids, order_id_tuple, back
         pickup_point = cur.fetchone()  # change this as we get to dynamic pickups
 
         for order in all_new_orders:
+            if order[26].lower() == 'cod' and not order[27]:
+                continue
             if order[26].lower() == 'pickup':
                 try:
                     cur.execute("""SELECT id, courier_name, logo_url, date_created, date_updated, api_key, 
@@ -1400,7 +1405,8 @@ def ship_bluedart_orders(cur, courier, courier_name, order_ids, order_id_tuple, 
             "Version": "1.3"
         }
         for order in all_new_orders:
-
+            if order[26].lower() == 'cod' and not order[27]:
+                continue
             zone = None
             try:
                 zone = get_delivery_zone(pickup_point[8], order[18])

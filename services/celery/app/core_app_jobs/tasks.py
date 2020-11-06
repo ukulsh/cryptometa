@@ -54,6 +54,9 @@ def consume_ecom_scan_util(payload):
             conn.commit()
             return "Successful: scan saved only"
 
+        if str(payload.get("status")) == "R999":
+            status = "RTO"
+
         cur.execute(insert_scan_query, (
             order[0], order[38], order[10], status_code, status, status_text, location, location_city, status_time))
 
@@ -192,7 +195,7 @@ def sync_all_products_with_channel(client_prefix):
 def create_cod_remittance_entry():
     cur = conn.cursor()
 
-    cur.execute("select distinct(client_prefix) FROM orders aa order by client_prefix")
+    cur.execute("select distinct(client_prefix) FROM orders aa WHERE client_prefix is not null order by client_prefix")
     all_clients = cur.fetchall()
     insert_tuple = list()
     insert_value_str = ""
@@ -205,7 +208,7 @@ def create_cod_remittance_entry():
             cur.fetchone()[0]
         except Exception as e:
             insert_tuple.append(
-                (client[0], remittance_id, remittance_date - timedelta(days=7), 'processing',
+                (client[0], last_remittance_id, remittance_date - timedelta(days=7), 'processing',
                  datetime.utcnow() + timedelta(hours=5.5)))
             insert_value_str += "%s,"
         insert_tuple.append(
@@ -223,7 +226,7 @@ def create_cod_remittance_entry():
 
 def queue_cod_remittance_razorpay():
     cur = conn.cursor()
-    cur_2 = conn_3.cursor()
+    cur_3 = conn_3.cursor()
 
     remittance_date = datetime.utcnow() + timedelta(hours=5.5)
 
@@ -233,19 +236,25 @@ def queue_cod_remittance_razorpay():
     all_remittance = cur.fetchall()
     for remit in all_remittance:
         try:
-            cur.execute("SELECT account_type, current_balance from client_mapping where client_prefix=%s", (remit[1],))
+            cur.execute("SELECT account_type, current_balance, lock_cod from client_mapping where client_prefix=%s", (remit[1],))
             balance_data = cur.fetchone()
             if str(balance_data[0]).lower() == 'prepaid' and balance_data[1] < 500:
                 continue
+            elif balance_data[2]:
+                continue
 
-            cur_2.execute(
+            cur_3.execute(
                 "SELECT account_name, ifsc_code, account_no, primary_email FROM clients WHERE client_prefix=%s",
                 (remit[1],))
-            account_data = cur_2.fetchone()
+            account_data = cur_3.fetchone()
+
+            if not account_data or not account_data[0] or not account_data[1] or not account_data[2]:
+                print("Account data not avaiable for: "+str(remit[1]))
+                continue
 
             amount = int(remit[6] * 100)
             razorpay_body = {
-                "account_number": "2323230053880955",
+                "account_number": "7878780047779262",
                 "amount": amount,
                 "currency": "INR",
                 "mode": "NEFT",
@@ -253,9 +262,9 @@ def queue_cod_remittance_razorpay():
                 "fund_account": {
                     "account_type": "bank_account",
                     "bank_account": {
-                        "name": account_data[0] if account_data[0] else "Ravi Chaudhary",
-                        "ifsc": account_data[1] if account_data[1] else "ICIC0002333",
-                        "account_number": account_data[2] if account_data[2] else "233301514571"
+                        "name": account_data[0],
+                        "ifsc": account_data[1],
+                        "account_number": account_data[2]
                     },
                     "contact": {
                         "name": remit[1],
@@ -281,7 +290,7 @@ def queue_cod_remittance_razorpay():
 
             response = requests.post('https://api.razorpay.com/v1/payouts', headers=headers,
                                      data=json.dumps(razorpay_body),
-                                     auth=('rzp_test_6k89T5DcoLmvCO', 'wEM0vuFABblEjNMotlar9bxz'))
+                                     auth=("rzp_live_FGAwxhtumHezAw", "IZ7C97EEef0rvyqZJLy0CYNb"))
 
             cur.execute("UPDATE cod_remittance SET payout_id=%s WHERE id=%s", (response.json()['id'], remit[0]))
             conn.commit()

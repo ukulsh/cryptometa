@@ -346,7 +346,7 @@ def capture_payment(resp):
     if mapping_obj:
         mapping_obj.current_balance = mapping_obj.current_balance + recharge_obj.recharge_amount
 
-    capture = razorpay_client.payment.capture(razorpay_payment_id, recharge_obj.recharge_amount*100, {"currency": "INR"})
+    #capture = razorpay_client.payment.capture(razorpay_payment_id, recharge_obj.recharge_amount*100, {"currency": "INR"})
     recharge_obj.bank_transaction_id = razorpay_payment_id
     recharge_obj.status = "successful"
     recharge_obj.recharge_time = datetime.utcnow() + timedelta(hours=5.5)
@@ -375,6 +375,7 @@ def consume_x_payout():
         mode = webhook_body['payload']['payout']['entity']['mode']
         status = webhook_body['payload']['payout']['entity']['status']
         transaction_id = webhook_body['payload']['payout']['entity']['utr']
+        amount = float(webhook_body['payload']['payout']['entity']['amount'])/100
         remit_obj = db.session.query(CODRemittance).filter(CODRemittance.payout_id==payout_id).first()
         if not remit_obj:
             logger.error("remit obj not found: "+str(payout_id))
@@ -383,6 +384,7 @@ def consume_x_payout():
         remit_obj.status=status
         remit_obj.mode=mode
         remit_obj.transaction_id=transaction_id
+        remit_obj.remitted_amount=amount
         db.session.commit()
 
     except Exception as e:

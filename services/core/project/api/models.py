@@ -312,6 +312,7 @@ class CODRemittance(db.Model):
     transaction_id = db.Column(db.String)
     payout_id = db.Column(db.String)
     mode = db.Column(db.String)
+    remitted_amount = db.Column(db.FLOAT, nullable=True)
     date_created = db.Column(db.DateTime, default=datetime.now)
     date_updated = db.Column(db.DateTime, onupdate=datetime.now)
 
@@ -934,6 +935,7 @@ class ClientMapping(db.Model):
     shipping_label = db.Column(db.String, nullable=True)
     current_balance = db.Column(db.FLOAT, nullable=False, default=0.0, server_default="0.0")
     account_type = db.Column(db.String, nullable=True)
+    lock_cod = db.Column(db.BOOLEAN, nullable=True, default=None)
 
     def __init__(self, client_name, client_prefix, account_type):
         self.client_name = client_name

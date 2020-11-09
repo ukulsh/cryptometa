@@ -53,6 +53,19 @@ class ClientManagement(Resource):
             response_object['message'] = 'failed while updating client info'
             return response_object, 400
 
+    def get(self):
+        response_object = {'status': 'fail'}
+        try:
+            client_prefix = request.args.get('client_prefix')
+            client_mapping_ref = ClientMapping.query.filter_by(client_prefix=client_prefix).first()
+            response_object['thirdwatch'] = client_mapping_ref.thirdwatch
+            response_object['status'] = "success"
+            return response_object, 200
+        except Exception as e:
+            logger.error('Failed while fetching clients info', e)
+            response_object['message'] = "couldn't get client data"
+            return response_object, 400
+
 
 api.add_resource(ClientManagement, '/core/v1/clientManagement')
 

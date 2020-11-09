@@ -388,7 +388,7 @@ select_orders_list_query = """select distinct on (aa.order_date, aa.id) aa.chann
                               bb.weight, bb.dimensions, bb.volumetric_weight,bb.remark, aa.customer_name, aa.customer_phone, aa.customer_email, dd.address_one, 
                               dd.address_two, dd.city, dd.state, dd.country, dd.pincode, ee.delivered_time, ff.pickup_time, gg.payment_mode, gg.amount, ii.warehouse_prefix,
                              mm.id,  mm.cod_verified, mm.verified_via, nn.id,  nn.ndr_verified, nn.verified_via, pp.logo_url, qq.manifest_time, rr.reason_id, 
-                             rr.reason, rr.date_created, aa.client_prefix, bb.pdd
+                             rr.reason, rr.date_created, aa.client_prefix, bb.pdd, uu.flag, uu.score, uu.reasons
                              from orders aa
                              left join shipments bb
                              on aa.id=bb.order_id
@@ -409,8 +409,11 @@ select_orders_list_query = """select distinct on (aa.order_date, aa.id) aa.chann
                              left join products kk on jj.product_id=kk.id
                              left join cod_verification mm on mm.order_id=aa.id
                              left join ndr_verification nn on nn.order_id=aa.id
+                             left join thirdwatch_data uu on uu.order_id=aa.id
                              left join (select ss.id, ss.order_id, tt.id as reason_id, tt.reason, ss.date_created from ndr_shipments ss left join ndr_reasons tt on ss.reason_id=tt.id ) rr
                              on aa.id=rr.order_id
+                             __THIRDWATCH_SCORE_FILTER__
+                             __THIRDWATCH_FLAG_FILTER__
                              __SEARCH_KEY_FILTER__
                              __SEARCH_KEY_FILTER_ON_CUSTOMER__
                              __ORDER_DATE_FILTER__

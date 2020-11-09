@@ -59,6 +59,7 @@ class OrderList(Resource):
     def post(self, resp, type):
         try:
             hide_weights = None
+            thirdwatch = None
             cur = conn.cursor()
             response = {'status': 'success', 'data': dict(), "meta": dict()}
             data = json.loads(request.data)
@@ -74,9 +75,11 @@ class OrderList(Resource):
                 return {"success": False, "msg": "Auth Failed"}, 404
 
             client_prefix = auth_data.get('client_prefix')
-            cur.execute("SELECT hide_weights FROM client_mapping WHERE client_prefix='%s'" % client_prefix)
+            cur.execute("SELECT hide_weights, thirdwatch FROM client_mapping WHERE client_prefix='%s'" % client_prefix)
             try:
-                hide_weights = cur.fetchone()[0]
+                mapping_data  = cur.fetchone()
+                hide_weights = mapping_data[0]
+                thirdwatch = mapping_data[1]
             except Exception:
                 pass
 
@@ -180,6 +183,18 @@ class OrderList(Resource):
                     filter_date_start = filters['order_date'][0][0:19].replace('T',' ')
                     filter_date_end = filters['order_date'][1][0:19].replace('T',' ')
                     query_to_run = query_to_run.replace("__ORDER_DATE_FILTER__", "AND order_date between '%s' and '%s'" %(filter_date_start, filter_date_end))
+
+                if 'thirdwatch_score' in filters:
+                    score_from = float(filters['order_date'][0])
+                    score_to = float(filters['order_date'][1])
+                    query_to_run = query_to_run.replace("__THIRDWATCH_SCORE_FILTER__", "AND uu.score between %s and %s" %(score_from, score_to))
+
+                if 'thirdwatch_flag' in filters:
+                    if len(filters['thirdwatch_flag']) == 1:
+                        flag_tuple = "('"+filters['thirdwatch_flag'][0]+"')"
+                    else:
+                        flag_tuple = str(tuple(filters['thirdwatch_flag']))
+                    query_to_run = query_to_run.replace("__TYPE_FILTER__", "AND lower(uu.flag) in %s" %flag_tuple)
 
                 if 'pickup_time' in filters:
                     filter_date_start = filters['pickup_time'][0][0:19].replace('T',' ')
@@ -372,6 +387,8 @@ class OrderList(Resource):
                 resp_obj['status'] = order[3]
                 if order[3] in ('NEW','CANCELED','PENDING PAYMENT','READY TO SHIP','PICKUP REQUESTED','NOT PICKED') or not order[5]:
                     resp_obj['status_change'] = True
+                if thirdwatch:
+                    resp_obj['thirdwatch'] = {"score": order[41], "flag":order[40], "reasons": order[42]}
                 response_data.append(resp_obj)
 
             response['data'] = response_data

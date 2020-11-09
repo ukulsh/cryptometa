@@ -25,7 +25,7 @@ from .queries import product_count_query, available_warehouse_product_quantity, 
 from project.api.models import Products, ProductQuantity, InventoryUpdate, WarehouseMapping, NDRReasons, MultiVendor, \
     Orders, OrdersPayments, PickupPoints, MasterChannels, ClientPickups, CodVerification, NDRVerification, NDRShipments,\
     MasterCouriers, Shipments, OPAssociation, ShippingAddress, Manifests, ClientCouriers, OrderStatus, DeliveryCheck, \
-    ClientMapping, IVRHistory, ClientRecharges, CODRemittance
+    ClientMapping, IVRHistory, ClientRecharges, CODRemittance, ThirdwatchData
 from project.api.utils import authenticate_restful, get_products_sort_func, fill_shiplabel_data_thermal, \
     get_orders_sort_func, create_shiplabel_blank_page, fill_shiplabel_data, create_shiplabel_blank_page_thermal, \
     create_invoice_blank_page, fill_invoice_data, generate_picklist, generate_packlist
@@ -394,6 +394,26 @@ def consume_x_payout():
     return jsonify({"success":True}), 200
 
 
+@core_blueprint.route('/core/v1/thirdwatch/postback', methods=['POST'])
+def thirdwatch_webhook():
+    try:
+        webhook_body = json.loads(request.data)
+        thirdwatch_obj = ThirdwatchData(order_id=int(webhook_body['order_id']),
+                                         flag=webhook_body['flag'],
+                                         order_timestamp=webhook_body['order_timestamp'],
+                                         score=webhook_body['score'],
+                                         tags=webhook_body['tags'],
+                                         reasons=webhook_body['reasons']
+                                         )
+
+        db.session.add(thirdwatch_obj)
+        db.session.commit()
+        return jsonify({"success": False}), 400
+
+    except Exception as e:
+        return jsonify({"success": False}), 400
+
+
 @core_blueprint.route('/core/case_studies', methods=['GET'])
 def website_case_study():
     data = [{"image_link": "https://wareiqfiles.s3.amazonaws.com/kamaayurveda.png",
@@ -438,52 +458,52 @@ def website_case_study():
 @core_blueprint.route('/core/dev', methods=['POST'])
 def ping_dev():
     return 0
-    cur_2 = conn_2.cursor()
-    myfile = request.files['myfile']
-    data_xlsx = pd.read_excel(myfile)
-    from .models import Products, ProductQuantity
-    uri = """requests.get("https://www.nyor.in/wp-json/wc/v3/orders?oauth_consumer_key=ck_1e1ab8542c4f22b20f1b9810cd670716bf421ba8&oauth_timestamp=1583243314&oauth_nonce=kYjzVBB8Y0ZFabxSWbWovY3uYSQ2pTgmZeNu2VS4cg&oauth_signature=d07a4be56681016434803eb054cfd8b45a8a2749&oauth_signature_method=HMAC-SHA1")"""
-    for row in data_xlsx.iterrows():
-        """
-        cur_2.execute("select city from city_pin_mapping where pincode='%s'" % str(row[1].delivery_pincode))
-        des_city = cur_2.fetchone()
-        if not des_city:
-            cur_2.execute("select city from city_pin_mapping where city ilike '%s'" % str(row[1].city))
-            des_city = cur_2.fetchone()
-            if not des_city:
-                cur_2.execute("insert into city_pin_mapping (pincode,city) VALUES ('%s','%s');" % (
-                str(row[1].pincode), str(row[1].city)))
-            else:
-                cur_2.execute("insert into city_pin_mapping (pincode,city) VALUES ('%s','%s');" % (
-                    str(row[1].pincode), str(des_city[0])))
-
-        """
-        cur_2.execute("select city from city_pin_mapping where pincode='%s'" % str(row[1].delivery_pincode))
-        des_city = cur_2.fetchone()
-        cur_2.execute("select city from city_pin_mapping where pincode='%s'" % str(row[1].pickup_pincode))
-        pick_city = cur_2.fetchone()
-        if not pick_city or not des_city:
-            print(str(row[1].delivery_pincode)+ "  "+ str(row[1].pickup_pincode))
-
-        cur_2.execute("select zone_value from city_zone_mapping where zone='%s' and city='%s';" % (
-        str(pick_city[0]), str(des_city[0])))
-        mapped_pin = cur_2.fetchone()
-        if not mapped_pin:
-            cur_2.execute("insert into city_zone_mapping (zone,city,zone_value,courier_id) VALUES ('%s','%s','%s',%s);" % (
-            str(pick_city[0]), str(des_city[0]), str(row[1].zone), 1))
-        else:
-            print("Zone found for this: "+str(row[1].delivery_pincode)+ "  "+ str(row[1].pickup_pincode))
-
-        """
-
-        cur_2.execute("select zone_value from city_zone_mapping where zone='%s' and city='%s' and courier_id=%s" % (
-            str(row[1].origin_city), str(row[1].destination_city), 2))
-        mapped_pin = cur_2.fetchone()
-        if not mapped_pin:
-            cur_2.execute("insert into city_zone_mapping (zone,city,courier_id) VALUES ('%s','%s', %s);" % (
-                str(row[1].origin_city), str(row[1].destination_city), 2))
-        """
-    return 0
+    # cur_2 = conn_2.cursor()
+    # myfile = request.files['myfile']
+    # data_xlsx = pd.read_excel(myfile)
+    # from .models import Products, ProductQuantity
+    # uri = """requests.get("https://www.nyor.in/wp-json/wc/v3/orders?oauth_consumer_key=ck_1e1ab8542c4f22b20f1b9810cd670716bf421ba8&oauth_timestamp=1583243314&oauth_nonce=kYjzVBB8Y0ZFabxSWbWovY3uYSQ2pTgmZeNu2VS4cg&oauth_signature=d07a4be56681016434803eb054cfd8b45a8a2749&oauth_signature_method=HMAC-SHA1")"""
+    # for row in data_xlsx.iterrows():
+    #     """
+    #     cur_2.execute("select city from city_pin_mapping where pincode='%s'" % str(row[1].delivery_pincode))
+    #     des_city = cur_2.fetchone()
+    #     if not des_city:
+    #         cur_2.execute("select city from city_pin_mapping where city ilike '%s'" % str(row[1].city))
+    #         des_city = cur_2.fetchone()
+    #         if not des_city:
+    #             cur_2.execute("insert into city_pin_mapping (pincode,city) VALUES ('%s','%s');" % (
+    #             str(row[1].pincode), str(row[1].city)))
+    #         else:
+    #             cur_2.execute("insert into city_pin_mapping (pincode,city) VALUES ('%s','%s');" % (
+    #                 str(row[1].pincode), str(des_city[0])))
+    #
+    #     """
+    #     cur_2.execute("select city from city_pin_mapping where pincode='%s'" % str(row[1].delivery_pincode))
+    #     des_city = cur_2.fetchone()
+    #     cur_2.execute("select city from city_pin_mapping where pincode='%s'" % str(row[1].pickup_pincode))
+    #     pick_city = cur_2.fetchone()
+    #     if not pick_city or not des_city:
+    #         print(str(row[1].delivery_pincode)+ "  "+ str(row[1].pickup_pincode))
+    #
+    #     cur_2.execute("select zone_value from city_zone_mapping where zone='%s' and city='%s';" % (
+    #     str(pick_city[0]), str(des_city[0])))
+    #     mapped_pin = cur_2.fetchone()
+    #     if not mapped_pin:
+    #         cur_2.execute("insert into city_zone_mapping (zone,city,zone_value,courier_id) VALUES ('%s','%s','%s',%s);" % (
+    #         str(pick_city[0]), str(des_city[0]), str(row[1].zone), 1))
+    #     else:
+    #         print("Zone found for this: "+str(row[1].delivery_pincode)+ "  "+ str(row[1].pickup_pincode))
+    #
+    #     """
+    #
+    #     cur_2.execute("select zone_value from city_zone_mapping where zone='%s' and city='%s' and courier_id=%s" % (
+    #         str(row[1].origin_city), str(row[1].destination_city), 2))
+    #     mapped_pin = cur_2.fetchone()
+    #     if not mapped_pin:
+    #         cur_2.execute("insert into city_zone_mapping (zone,city,courier_id) VALUES ('%s','%s', %s);" % (
+    #             str(row[1].origin_city), str(row[1].destination_city), 2))
+    #     """
+    # return 0
     # from .models import CostToClients
     # myfile = request.files['myfile']
     # data_xlsx = pd.read_excel(myfile)
@@ -695,8 +715,8 @@ def ping_dev():
             sku_list.append({"sku": sku,
                              "warehouse": "QSBHIWANDI",
                              "quantity": del_qty,
-                             "type": "replace",
-                             "remark": "4 nov resync"})
+                             "type": "add",
+                             "remark": "5 nov inbound"})
 
             """
 

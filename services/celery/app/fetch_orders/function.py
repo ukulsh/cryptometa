@@ -24,6 +24,7 @@ conn_2 = DbConnection.get_pincode_db_connection_instance()
 def fetch_orders():
     cur = conn.cursor()
     cur_2 = conn_2.cursor()
+    update_thirdwatch_data(cur)
     cur.execute(fetch_client_channels_query)
     for channel in cur.fetchall():
         if channel[11] == "Shopify":
@@ -46,6 +47,7 @@ def fetch_orders():
 
     assign_pickup_points_for_unassigned(cur, cur_2)
     update_available_quantity(cur)
+    update_thirdwatch_data(cur)
 
     cur.close()
 
@@ -892,3 +894,77 @@ def update_available_quantity(cur):
             cur.execute(update_inventory_quantity_query, update_tuple)
 
     conn.commit()
+
+
+def update_thirdwatch_data(cur):
+    cur.execute(select_thirdwatch_check_orders_query.replace('__ORDER_TIME__', str(datetime.utcnow().date())))
+    all_orders=cur.fetchall()
+    for order in all_orders:
+        try:
+            if order[32] and order[15].lower()!='cod':
+                continue
+            items = list()
+            shipping_name = order[6] + " " +order[7] if order[7] else order[6]
+            for idx, dim in enumerate(order[16]):
+                items.append({"id":order[16][idx],
+                              "title":order[17][idx],
+                              "amount":str(round(order[18][idx]*100)),
+                              "currency":"INR",
+                              "brand":order[28],
+                              "category":order[28],
+                              "quantity":order[19][idx],
+                              "is_onsale":False,
+                              "sku":order[20][idx],
+                              })
+
+            thirdwatch_data = {
+                                  "device":{
+                                    "ip":str(order[0]),
+                                    "session_id":str(order[1]),
+                                    "user-agent": str(order[2])
+                                  },
+                                  "user":{
+                                    "id":str(order[3]),
+                                    "created_at":str(round((datetime.strptime(order[4][:19], "%Y-%m-%dT%X")).timestamp() * 1000)),
+                                    "email":order[5],
+                                    "first_name":order[6],
+                                    "last_name":order[7],
+                                    "contact":order[8],
+                                    "first_purchase":True if order[9]<2 else False,
+                                    "email_verification":"verified" if order[10] else "unverified",
+                                    "contact_verification":"verified" if order[11] else "unverified"
+                                  },
+                                  "order":{
+                                    "id":str(order[12]),
+                                    "created_at":str(round(order[13].timestamp() * 1000)),
+                                    "amount":str(round(order[14]*100)),
+                                    "currency":"INR",
+                                    "prepaid":False if order[15].lower()=='cod' else True,
+                                    "items":items,
+                                    "shipping_address":{
+                                      "name":shipping_name,
+                                      "phone":order[21],
+                                      "line1":order[22],
+                                      "line2":order[23],
+                                      "city":order[24],
+                                      "state":order[25],
+                                      "country":order[27],
+                                      "postal_code":order[26],
+                                      "type":"home"
+                                    },
+                                  "payment": {
+                                      "id": order[29],
+                                      "status": "success",
+                                      "gateway": "cod" if order[15].lower()=='cod' else order[30],
+                                      "amount": str(round(order[14]*100)),
+                                      "currency": "INR",
+                                      "method": "cod" if order[15].lower()=='cod' else order[31]
+                                      }
+                                  }
+                                }
+            headers = {"X-THIRDWATCH-API-KEY": "4b1824140e",
+                       "Content-Type": "application/json"}
+
+            req = requests.post("https://api.razorpay.com/v1/thirdwatch/orders", headers=headers, data=json.dumps(thirdwatch_data)).json()
+        except Exception as e:
+            logger.error("Couldn't check thirdwatch for: "+str(order[12]))

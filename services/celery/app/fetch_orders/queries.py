@@ -114,3 +114,23 @@ fetch_warehouse_to_pick_from = """with temp_table (warehouse, pincode) as (VALUE
                                     on yy.city=xx.zone
                                     order by tat,zone_value
                                     limit 1"""
+
+select_thirdwatch_check_orders_query = """select cc.ip_address, cc.session_id, cc.user_agent, cc.user_id, cc.user_created_at, 
+                                        aa.customer_email, dd.first_name, dd.last_name, aa.customer_phone, cc.order_count, cc.verified_email,
+                                        ee.cod_verified, aa.id, aa.order_date, bb.amount, bb.payment_mode, 
+                                        hh.sku, hh.prod_name, hh.prod_amount,  hh.quantity, hh.master_sku, dd.phone, dd.address_one, 
+                                        dd.address_two, dd.city, dd.state, dd.pincode, dd.country, ii.client_name, cc.payment_id, 
+                                        cc.payment_gateway, cc.payment_method, ii.thirdwatch_cod_only from orders aa
+                                        left join orders_payments bb on aa.id=bb.order_id
+                                        left join orders_extra_details cc on aa.id=cc.order_id
+                                        left join shipping_address dd on dd.id=aa.delivery_address_id     
+                                        left join cod_verification ee on ee.order_id=aa.id
+                                        left join (select order_id, array_agg(sku) as sku, array_agg(name) as prod_name, array_agg(amount) as prod_amount, 
+                                                   array_agg(quantity) as quantity, array_agg(master_sku) as master_sku from op_association ff 
+                                                  left join products gg on ff.product_id=gg.id group by order_id) hh on hh.order_id=aa.id
+                                        left join client_mapping ii on ii.client_prefix=aa.client_prefix
+                                        left join thirdwatch_data jj on jj.order_id=aa.id
+                                        where jj.order_id is null
+                                        and ii.thirdwatch=true
+                                        and aa.order_date>'__ORDER_TIME__'
+                                        and aa.status='NEW' """

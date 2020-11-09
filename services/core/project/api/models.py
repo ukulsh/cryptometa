@@ -936,6 +936,9 @@ class ClientMapping(db.Model):
     current_balance = db.Column(db.FLOAT, nullable=False, default=0.0, server_default="0.0")
     account_type = db.Column(db.String, nullable=True)
     lock_cod = db.Column(db.BOOLEAN, nullable=True, default=None)
+    thirdwatch = db.Column(db.BOOLEAN, nullable=True, default=None)
+    thirdwatch_cod_only = db.Column(db.BOOLEAN, nullable=True, default=True)
+    thirdwatch_activate_time = db.Column(db.DateTime, default=datetime.now)
 
     def __init__(self, client_name, client_prefix, account_type):
         self.client_name = client_name

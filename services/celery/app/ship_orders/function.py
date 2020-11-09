@@ -1815,6 +1815,7 @@ def ship_vinculum_orders(cur, courier, courier_name, order_ids, order_id_tuple):
 
 
 bluedart_area_code_mapping = {"110015":"DEL",
+                                "110077":"DEL",
                                 "121002":"FAR",
                                 "122001":"GGN",
                                 "131028":"SOP",

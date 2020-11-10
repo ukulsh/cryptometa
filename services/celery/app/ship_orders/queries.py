@@ -5,7 +5,6 @@ fetch_client_couriers_query = """select aa.id,aa.client_prefix,aa.courier_id,aa.
                                 left join master_couriers bb
                                 on aa.courier_id=bb.id
                                 where aa.active=true
-                                and client_prefix='BUCKETDEALS'
                                 order by aa.client_prefix, priority;"""
 
 get_pickup_points_query = """select aa.id, aa.pickup_id, aa.return_point_id, 

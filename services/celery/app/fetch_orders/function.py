@@ -24,7 +24,6 @@ conn_2 = DbConnection.get_pincode_db_connection_instance()
 def fetch_orders():
     cur = conn.cursor()
     cur_2 = conn_2.cursor()
-    update_thirdwatch_data(cur)
     cur.execute(fetch_client_channels_query)
     for channel in cur.fetchall():
         if channel[11] == "Shopify":

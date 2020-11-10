@@ -142,11 +142,13 @@ def get_user_status(resp):
             login_as_user_id = user.login_as if user.login_as else user.id
             login_as_user = User.query.filter_by(id=login_as_user_id).first()
             data = login_as_user.to_json()
+            """
             try:
                 res = requests.get(CORE_SERVICE_URL+'/core/v1/clientManagement?client_prefix=%s'%data['client_prefix'])
                 data['thirdwatch_active'] = res.json()['thirdwatch']
             except Exception as e:
                 pass
+            """
             response_object['data'] = data
             if login_as_user.id != user.id:
                 response_object['parent_username'] = user.username

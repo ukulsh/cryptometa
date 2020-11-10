@@ -1498,6 +1498,7 @@ def ship_bluedart_orders(cur, courier, courier_name, order_ids, order_id_tuple, 
                 shipper['CustomerAddress1'] = pickup_address
                 shipper['CustomerPincode'] = str(pickup_point[8])
                 shipper['CustomerMobile'] = str(pickup_point[3])
+                shipper['VendorCode'] = (6-len(str(pickup_id)))*"0" + str(pickup_id)
 
                 return_address['ReturnAddress1'] = rto_address
                 return_address['ReturnPincode'] = str(pickup_point[17])
@@ -1514,7 +1515,7 @@ def ship_bluedart_orders(cur, courier, courier_name, order_ids, order_id_tuple, 
                 services['ProductType'] = 'Dutiables'
                 services['DeclaredValue'] = order[27]
                 services['ItemCount'] = 1
-                services['CreditReferenceNo'] = order[9] + str(order[10]) + str(order[1])
+                services['CreditReferenceNo'] = str(order[0])
 
                 if order[26].lower() == "cod":
                     services["SubProductCode"] = "C"
@@ -1553,7 +1554,7 @@ def ship_bluedart_orders(cur, courier, courier_name, order_ids, order_id_tuple, 
                     "Dimension": {"Length": dimensions['length'], "Breadth": dimensions['breadth'],
                                   "Height": dimensions['height'], "Count": 1}}
                 services['itemdtl'] = {
-                    "ItemDetails": {"ItemID": str(order[1]), "ItemName": package_string, "ItemValue": order[27]}}
+                    "ItemDetails": {"ItemID": str(order[0]), "ItemName": package_string, "ItemValue": order[27]}}
 
                 request_data = {
                     "Request": {'Shipper': shipper, 'Consignee': consignee, 'Services': services,

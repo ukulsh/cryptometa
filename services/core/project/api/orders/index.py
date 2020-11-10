@@ -22,7 +22,7 @@ from sqlalchemy.dialects.postgresql import insert
 from project import db
 from project.api.models import NDRReasons, MultiVendor, NDRShipments, Orders, ClientPickups, MasterCouriers, \
     PickupPoints, Shipments, Products, ShippingAddress, OPAssociation, OrdersPayments, ClientMapping, WarehouseMapping, \
-    Manifests, OrderStatus, IVRHistory, OrderPickups
+    Manifests, OrderStatus, IVRHistory, OrderPickups, BillingAddress
 from project.api.queries import select_orders_list_query, available_warehouse_product_quantity, \
     fetch_warehouse_to_pick_from, select_pickups_list_query, get_selected_product_details
 from project.api.utils import authenticate_restful, fill_shiplabel_data_thermal, \
@@ -567,6 +567,20 @@ class AddOrder(Resource):
                                                phone=str(data.get('customer_phone'))
                                                )
 
+            bill_obj = None
+            if data.get('billing_address'):
+                bill_obj = BillingAddress(first_name=data['billing_address'].get('first_name'),
+                                last_name=data['billing_address'].get('last_name'),
+                                address_one=data['billing_address'].get('address1'),
+                                address_two=data['billing_address'].get('address2'),
+                                city=data['billing_address'].get('city'),
+                                pincode=str(data.get('pincode')),
+                                state=data.get('state'),
+                                country=data.get('country'),
+                                phone=str(data.get('customer_phone'))
+                                )
+                db.session.add(bill_obj)
+
             pickup_filter = data.get('warehouse')
             pickup_data = None
             if pickup_filter:
@@ -584,6 +598,7 @@ class AddOrder(Resource):
                            customer_email=data.get('customer_email'),
                            customer_phone=data.get('customer_phone'),
                            delivery_address=delivery_address,
+                           billing_address=bill_obj,
                            status="NEW",
                            client_prefix=auth_data.get('client_prefix'),
                            pickup_data=pickup_data,
@@ -596,7 +611,11 @@ class AddOrder(Resource):
                     if 'sku' in prod:
                         prod_obj = db.session.query(Products).filter(or_(Products.sku == prod['sku'], Products.master_sku==prod['sku']), Products.client_prefix==auth_data.get('client_prefix')).first()
                         if not prod_obj:
-                            return {"status": "Failed", "msg": "One or more SKU(s) not found"}, 400
+                            prod_obj = Products(sku=str(prod['sku']),
+                                                master_sku=str(prod['sku']),
+                                                name=str(prod.get('name') if prod.get('name') else prod.get('sku')),
+                                                )
+                            db.session.add(prod_obj)
 
                     else:
                         prod_obj = db.session.query(Products).filter(Products.id == int(prod['id'])).first()

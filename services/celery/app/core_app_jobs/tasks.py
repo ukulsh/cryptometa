@@ -473,7 +473,7 @@ def calculate_costs_util():
                                       forward_charge, forward_charge_gst, rto_charge, rto_charge_gst, order[0],
                                       total_charge, total_charge_gst, datetime.now(), datetime.now())
 
-                cur.execute(update_client_balance, (total_charge_gst, order[6]))
+                cur.execute(update_client_balance, (total_charge_gst+5.9, order[6]))
                 cur.execute(insert_into_deduction_query, insert_rates_tuple)
             except Exception as e:
                 logger.error("couldn't calculate order: " + str(order[0]) + "\nError: " + str(e))

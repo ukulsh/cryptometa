@@ -102,6 +102,8 @@ class WalletDeductions(Resource):
                     for deduction in deductions_qs_data:
                         try:
                             new_row = list()
+                            total_charge = deduction[9]
+                            total_charge += deduction[12] if deduction[12] else 5
                             new_row.append(deduction[0].strftime("%Y-%m-%d %H:%M:%S") if deduction[0] else "N/A")
                             new_row.append(str(deduction[1]))
                             new_row.append(str(deduction[2]))
@@ -110,9 +112,9 @@ class WalletDeductions(Resource):
                             new_row.append(str(deduction[6]))
                             new_row.append(str(deduction[7]))
                             new_row.append(str(deduction[8]))
-                            new_row.append(str(deduction[12]))
-                            new_row.append(str(deduction[9] + deduction[12]))
-                            new_row.append(str((deduction[9] + deduction[12])*1.18))
+                            new_row.append(str(deduction[12]) if deduction[12] else '5')
+                            new_row.append(str(total_charge))
+                            new_row.append(str(total_charge*1.18))
                             new_row.append(str(deduction[10]))
                             new_row.append(str(deduction[11]))
                             cw.writerow(new_row)
@@ -148,8 +150,9 @@ class WalletDeductions(Resource):
                     ret_obj['order_id'] = entry[4]
                     ret_obj['unique_id'] = entry[5]
                     total_charge = None
-                    if entry[9] and entry[12] is not None:
-                        total_charge = float(entry[9]) + float(entry[12])
+                    if entry[9]:
+                        total_charge = float(entry[9])
+                        total_charge += float(entry[12]) if entry[12] else 5
                         total_charge = total_charge*1.18
                     ret_obj['amount'] = round(total_charge, 1) if total_charge else None
                     ret_obj['zone'] = entry[10]

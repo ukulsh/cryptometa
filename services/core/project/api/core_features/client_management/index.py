@@ -2,6 +2,7 @@ from project.api.models import ClientMapping, ClientDefaultCost, CostToClients
 from flask_restful import Api, Resource
 from flask import Blueprint, request, jsonify
 from project import db
+from datetime import datetime, timedelta
 from project.api.utils import authenticate_restful
 from project.api.utilities.s3_utils import process_upload_logo_file
 from project.api.core_features.client_management.utils import get_cost_to_clients
@@ -44,6 +45,12 @@ class ClientManagement(Resource):
             client_name = posted_data.get('client_name')
             client_mapping_ref = ClientMapping.query.filter_by(client_prefix=client_prefix).first()
             client_mapping_ref.client_name = client_name
+            if posted_data.get('thirdwatch_active')!=None:
+                if client_mapping_ref.thirdwatch==None and posted_data.get('thirdwatch_active'):
+                    client_mapping_ref.thirdwatch_activate_time = datetime.utcnow()+timedelta(hours=5.5)
+                client_mapping_ref.thirdwatch = posted_data.get('thirdwatch_active')
+                client_mapping_ref.thirdwatch_cod_only = posted_data.get('thirdwatch_cod_only')
+
             db.session.commit()
             response_object['status'] = 'success'
             return response_object, 200

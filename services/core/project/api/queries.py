@@ -440,7 +440,7 @@ get_selected_product_details = """select ll.order_id, ll.product_names, ll.skus,
 
 select_wallet_deductions_query = """SELECT aa.status_time, aa.status, bb.courier_name, cc.awb, dd.channel_order_id, dd.id, ee.cod_charge, 
                                     ee.forward_charge, ee.rto_charge, ee.total_charge, ee.zone, ee.weight_charged, 
-                                    COALESCE((ff.management_fee/100)*ee.total_charge, 0) as tot_amount from order_status aa
+                                    COALESCE((ff.management_fee/100)*ee.forward_charge, 0) as tot_amount from order_status aa
                                     LEFT JOIN master_couriers bb on aa.courier_id=bb.id
                                     LEFT JOIN shipments cc on aa.shipment_id=cc.id
                                     LEFT JOIN orders dd on aa.order_id=dd.id

@@ -129,6 +129,7 @@ class Client(db.Model):
     kyc_verified = db.Column(db.Boolean, default=False, server_default="false", nullable=False)
     active = db.Column(db.Boolean(), default=True, server_default="true", nullable=False)
     thirdwatch = db.Column(db.Boolean(), default=False, nullable=True)
+    calling = db.Column(db.Boolean(), default=False, nullable=True)
     created_date = db.Column(db.DateTime, default=func.now(), server_default=func.now(), nullable=False)
 
     def __init__(self, client_name, primary_email, client_prefix, tabs):

@@ -58,10 +58,13 @@ class Clients(Resource):
             client.client_name = client_name
             client.primary_email = primary_email
             client.tabs = tabs
+            if post_data.get('thirdwatch_active')!=None:
+                client.thirdwatch = post_data.get('thirdwatch_active')
+            if post_data.get('calling_active')!=None:
+                client.calling = post_data.get('calling_active')
             db.session.commit()
-            body = {'client_name': client_name, 'client_prefix': client_prefix}
             if client.client_name != client_name:
-                res = requests.patch(CORE_SERVICE_URL+'/core/v1/clientManagement', json=body)
+                res = requests.patch(CORE_SERVICE_URL+'/core/v1/clientManagement', json=post_data)
                 if res.status_code != 200:
                     raise Exception('Failed to update the record in clientMapping')
             response_object['status'] = 'success'

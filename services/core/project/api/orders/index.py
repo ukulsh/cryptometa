@@ -185,8 +185,8 @@ class OrderList(Resource):
                     query_to_run = query_to_run.replace("__ORDER_DATE_FILTER__", "AND order_date between '%s' and '%s'" %(filter_date_start, filter_date_end))
 
                 if 'thirdwatch_score' in filters:
-                    score_from = float(filters['order_date'][0])
-                    score_to = float(filters['order_date'][1])
+                    score_from = float(filters['thirdwatch_score'][0])
+                    score_to = float(filters['thirdwatch_score'][1])
                     query_to_run = query_to_run.replace("__THIRDWATCH_SCORE_FILTER__", "AND uu.score between %s and %s" %(score_from, score_to))
 
                 if 'thirdwatch_flag' in filters:

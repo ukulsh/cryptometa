@@ -49,11 +49,11 @@ app.config['CELERYBEAT_SCHEDULE'] = {
                 'schedule': crontab(minute='*/30'),
                 'options': {'queue': 'ship_orders'}
             },
-    'run-cod-queue': {
-                    'task': 'cod_remittance_queue',
-                    'schedule': crontab(hour=12, minute=30, day_of_week='fri'),
-                    'options': {'queue': 'consume_scans'}
-                },
+    # 'run-cod-queue': {
+    #                 'task': 'cod_remittance_queue',
+    #                 'schedule': crontab(hour=12, minute=30, day_of_week='fri'),
+    #                 'options': {'queue': 'consume_scans'}
+    #             },
     'run-cod-entry': {
                     'task': 'cod_remittance_entry',
                     'schedule': crontab(hour=18, minute=35, day_of_week='wed'),

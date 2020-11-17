@@ -49,25 +49,41 @@ class Clients(Resource):
     def patch(self, resp):
         response_object = {'status': 'fail'}
         try:
+            user = User.query.filter_by(id=resp).first()
+            auth_data = user.to_json()
             post_data = request.get_json()
-            client_name = post_data.get('client_name')
-            client_prefix = post_data.get('client_prefix')
-            primary_email = post_data.get('primary_email')
-            tabs = post_data.get('tabs')
-            client = Client.query.filter_by(client_prefix=client_prefix).first()
-            client.client_name = client_name
-            client.primary_email = primary_email
-            client.tabs = tabs
-            if post_data.get('thirdwatch_active')!=None:
-                client.thirdwatch = post_data.get('thirdwatch_active')
-            if post_data.get('calling_active')!=None:
-                client.calling = post_data.get('calling_active')
-            db.session.commit()
-            if client.client_name != client_name:
-                res = requests.patch(CORE_SERVICE_URL+'/core/v1/clientManagement', json=post_data)
-                if res.status_code != 200:
-                    raise Exception('Failed to update the record in clientMapping')
+            if auth_data.get('user_group')=='super-admin':
+                client_name = post_data.get('client_name')
+                client_prefix = post_data.get('client_prefix')
+                client = Client.query.filter_by(client_prefix=client_prefix).first()
+                primary_email = post_data.get('primary_email')
+                tabs = post_data.get('tabs')
+                client.client_name = client_name
+                client.primary_email = primary_email
+                client.tabs = tabs
+                if post_data.get('thirdwatch_active')!=None:
+                    client.thirdwatch = post_data.get('thirdwatch_active')
+                if post_data.get('calling_active')!=None:
+                    client.calling = post_data.get('calling_active')
+                db.session.commit()
+                if client.client_name != client_name:
+                    res = requests.patch(CORE_SERVICE_URL+'/core/v1/clientManagement', json=post_data)
+                    if res.status_code != 200:
+                        raise Exception('Failed to update the record in clientMapping')
+            elif auth_data.get('user_group')=='client':
+                client = Client.query.filter_by(client_prefix=auth_data.get('client_prefix')).first()
+                post_data['client_prefix'] = auth_data.get('client_prefix')
+                if post_data.get('thirdwatch_active')!=None:
+                    client.thirdwatch = post_data.get('thirdwatch_active')
+                    res = requests.patch(CORE_SERVICE_URL + '/core/v1/clientManagement', json=post_data)
+                    if res.status_code != 200:
+                        raise Exception('Failed to update the record in clientMapping')
+
+                if post_data.get('calling_active')!=None:
+                    client.calling = post_data.get('calling_active')
+
             response_object['status'] = 'success'
+            db.session.commit()
             logger.info('client created successfully')
             return response_object, 200
         except Exception as e:

@@ -62,7 +62,7 @@ class User(db.Model):
             'warehouse_prefix': self.warehouse.warehouse_prefix if self.warehouse else None,
             'tabs': self.tabs,
             'phone_no': self.phone_no,
-            'calling_active': self.calling_active,
+            'calling_active': self.client.calling if self.client and self.client.calling!=None else self.calling_active,
             'thirdwatch_active': self.client.thirdwatch if self.client else None,
         }
 

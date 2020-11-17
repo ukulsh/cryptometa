@@ -44,7 +44,8 @@ class ClientManagement(Resource):
             client_prefix = posted_data.get('client_prefix')
             client_name = posted_data.get('client_name')
             client_mapping_ref = ClientMapping.query.filter_by(client_prefix=client_prefix).first()
-            client_mapping_ref.client_name = client_name
+            if client_name:
+                client_mapping_ref.client_name = client_name
             if posted_data.get('thirdwatch_active')!=None:
                 if client_mapping_ref.thirdwatch==None and posted_data.get('thirdwatch_active'):
                     client_mapping_ref.thirdwatch_activate_time = datetime.utcnow()+timedelta(hours=5.5)

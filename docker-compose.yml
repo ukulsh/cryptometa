@@ -68,7 +68,7 @@ services:
     image: rabbitmq
     build:
       context: ./services/rabbitmq
-      dockerfile: Dockerfile-qa
+      dockerfile: Dockerfile-prod
     ports:
       - 5672:5672
       - 15672:15672

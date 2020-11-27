@@ -614,6 +614,7 @@ class AddOrder(Resource):
                             prod_obj = Products(sku=str(prod['sku']),
                                                 master_sku=str(prod['sku']),
                                                 name=str(prod.get('name') if prod.get('name') else prod.get('sku')),
+                                                client_prefix=auth_data.get('client_prefix'),
                                                 )
                             db.session.add(prod_obj)
 

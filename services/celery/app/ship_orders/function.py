@@ -882,7 +882,7 @@ def ship_xpressbees_orders(cur, courier, courier_name, order_ids, order_id_tuple
                 for idx, dim in enumerate(order[33]):
                     if idx == 0:
                         continue
-                    dim['length'] += dim['length'] * (order[35][idx])
+                    dim['length'] = dim['length'] * (order[35][idx])
                     volumetric_weight += (dim['length'] * dim['breadth'] * dim['height']) / 5000
                     weight += order[34][idx] * (order[35][idx])
                 if dimensions['length'] and dimensions['breadth']:
@@ -1414,6 +1414,9 @@ def ship_bluedart_orders(cur, courier, courier_name, order_ids, order_id_tuple, 
                 logger.error("couldn't find zone: " + str(order[0]) + "\nError: " + str(e))
 
             if courier[1] == "ZLADE" and zone in ('A', ):
+                continue
+
+            if order[26].lower() == "prepaid" and courier[1] == "ACTIFIBER":
                 continue
 
             time_2_days = datetime.utcnow() + timedelta(hours=5.5) - timedelta(days=1)

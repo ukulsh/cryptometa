@@ -1190,7 +1190,7 @@ def track_bluedart_orders(courier, cur):
             status_detail = None
             status_code = scan_code
 
-            edd = ret_order['ExpectedDeliveryDate']
+            edd = ret_order['ExpectedDeliveryDate'] if 'ExpectedDeliveryDate' in ret_order else None
             if edd:
                 edd = datetime.strptime(edd, '%d %B %Y')
                 if datetime.utcnow().hour < 4:

@@ -1,10 +1,10 @@
 # services/core/project/api/core.py
 
 import requests, json, math, pytz, psycopg2, logging
-import boto3, os, csv, io, smtplib
+import boto3, os, csv, io, smtplib, time, hmac
 import pandas as pd
 import numpy as np
-import re, razorpay
+import re, razorpay, jwt, uuid
 from flask_cors import cross_origin
 from datetime import datetime, timedelta
 from sqlalchemy import or_, func, not_, and_
@@ -455,6 +455,65 @@ def website_case_study():
     return jsonify({"success": True, "data": data}), 200
 
 
+@core_blueprint.route('/core/v1/freshdesk_sso', methods=['GET'])
+@authenticate_restful
+def freshdesk_sso(resp):
+    auth_data = resp.get('data')
+    freshdesk_url = get_freshdesk_url(auth_data)
+    return jsonify({"url": freshdesk_url}), 200
+
+
+def get_freshdesk_url(auth_data):
+    portal = "https://wareiq.freshdesk.com"
+
+    if not auth_data.get('first_name'):
+        name = auth_data.get('email')
+    else:
+        name = auth_data.get('first_name')
+        if auth_data.get('last_name'):
+            name += " "+auth_data.get('last_name')
+    email = auth_data.get('email')
+    company = auth_data.get('client_prefix') if auth_data.get('client_prefix') else auth_data.get('warehouse_prefix')
+    timestamp = math.floor(time.time())
+    hash_str = name + "6c8bed3ac91458e883ac1bd6f17b5614" + email + str(timestamp)
+    fd_hash = hmac.new(
+        key=bytes("6c8bed3ac91458e883ac1bd6f17b5614", 'utf-8'),
+        msg=bytes(hash_str, 'utf-8'),
+    ).hexdigest()
+    req_url = (
+        "%s/login/sso?name=%s&email=%s&timestamp=%s&company=%s&hash=%s&redirect_to=%s"
+        % (portal, name, email, timestamp, company, fd_hash, "https://wareiq.freshdesk.com/support/home")
+    )
+    return req_url
+
+
+def freshdesk_url_new(auth_data):
+    payload = {
+        "iat": int(time.time()),
+        "jti": str(uuid.uuid1()),
+        # populate these values from your data source
+        "name": 'Ravi Chaudhary',
+        "email": "ravi@wareiq.com"
+    }
+
+    jwt_string = jwt.encode(payload, """MIICXgIBAAKBgQDLPqlfK8X7nnTOUzeoqpB/ITv0BBWtGJfPBEHMs4hqj6f4QQWJ
+                                        rDe4qyzN1FFUMZAyR2bCi05cDQPO9ZxKtzeoZKEVZLqyYooq4VmvPkY/aqfBNvw/
+                                        mhwnwKv7wqiAD+L5jFWTztzQoI9WG5tcoW/GGWFVvJB/VPr17USLOiKGkQIDAQAB
+                                        AoGBAJzg3ydAyG7x3kMr5Lhh/2rBol81j+2uH++A37E7mr516DctKTMdJV17cvfl
+                                        PGl6YE0O4/iiQne27AuhdWQOi/wkYpLJdEPyu+3DLn2g++mOjLZmz97Pfu2qq7LP
+                                        xrXNecE7ZWgfQkZ/9yTsgZ+4JiBWivWfPFykyikhIZuHdlxhAkEA7IIUY1/9vjCK
+                                        JLbHSuNiZRVUEm6dmiksDMlwIsViMKIvl/opBPa/ESJEph5vYff2xcs7XC/9r4JD
+                                        p2vxwlNWFQJBANv+yBpO7WhhrpZgUtMz2MnntEnRnCHyvALIx2yf9A9Kl8mClEXX
+                                        1DvOFlQ/InUH91fSFNv9TBvL4mdQUmkX6Y0CQQCNHhCMOvpsQQosXeMMDCDpr5A6
+                                        b0YadfaSqp7+IEg2PI+pXtqa25+l2YyckgxjqFDWNC13FCuKTW+QthfKm28BAkEA
+                                        tUA9xwceLHDGcdichKvjwb2n2WXcGFAvvK+FNqa2Yt7XHcv6s2x1zGwoE3MMxZUx
+                                        oOZSD0mqqgAZ4XrY2wM7hQJAexfCxK1RjEvKV2F4Wmwwkmn5wX7I89jzhwfTuBuk
+                                        S7Kgp6BVj42oPe2vBPozV9UjH8iEKYzxuH/Ly/dnRfIGZA==""")
+    sso_url = "https://wareiq-team.freshworks.com/sp/OIDC/250936934228312763/implicit?id_token=" + jwt_string
+
+    return sso_url
+
+
 @core_blueprint.route('/core/dev', methods=['POST'])
 def ping_dev():
     return 0
@@ -713,10 +772,10 @@ def ping_dev():
 
             """
             sku_list.append({"sku": sku,
-                             "warehouse": "QSBHIWANDI",
+                             "warehouse": "HOLISOLBL",
                              "quantity": del_qty,
                              "type": "add",
-                             "remark": "5 nov inbound"})
+                             "remark": "21 nov inbound"})
 
             """
 
@@ -744,7 +803,7 @@ def ping_dev():
             """
             if row[0]%100==0:
                 headers = {
-                    'Authorization': "Bearer " + "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJleHAiOjE2MDU3ODIyMjMsImlhdCI6MTYwMzE5MDIyMywic3ViIjo5fQ.0NDcLm1qy-8t3kbQxd6l6fiSCCSX-0RByPqzRH0EEjM",
+                    'Authorization': "Bearer " + "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJleHAiOjE2MDgyODQxNjYsImlhdCI6MTYwNTY5MjE2Niwic3ViIjo5fQ.slfol4VhzjHTgW1YWJRxJ1EkUOjd3tYSf6xu7XsDB70",
                     'Content-Type': 'application/json'}
 
                 data = {"sku_list": sku_list}
@@ -759,7 +818,7 @@ def ping_dev():
             pass
 
     headers = {
-        'Authorization': "Bearer " + "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJleHAiOjE2MDU3ODIyMjMsImlhdCI6MTYwMzE5MDIyMywic3ViIjo5fQ.0NDcLm1qy-8t3kbQxd6l6fiSCCSX-0RByPqzRH0EEjM",
+        'Authorization': "Bearer " + "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJleHAiOjE2MDgyODQxNjYsImlhdCI6MTYwNTY5MjE2Niwic3ViIjo5fQ.slfol4VhzjHTgW1YWJRxJ1EkUOjd3tYSf6xu7XsDB70",
         'Content-Type': 'application/json'}
 
     data = {"sku_list": sku_list}

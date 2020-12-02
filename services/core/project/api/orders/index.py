@@ -1379,6 +1379,53 @@ def download_manifest_util(orders_qs, auth_data):
     return manifest_url
 
 
+@orders_blueprint.route('/orders/v1/bulkcancel', methods=['POST'])
+@authenticate_restful
+def bulk_cancel_orders(resp):
+    cur = conn.cursor()
+    auth_data = resp.get('data')
+    if not auth_data:
+        return jsonify({"success": False, "msg": "Auth Failed"}), 404
+    if auth_data['user_group'] not in ('client', 'super-admin', 'multi-vendor'):
+        return jsonify({"success":False, "msg": "invalid user"}), 400
+    data = json.loads(request.data)
+    order_ids=data.get('order_ids')
+    if not order_ids:
+        return jsonify({"success": False, "msg": "please select orders"}), 400
+    if len(order_ids)==1:
+        order_tuple_str = "("+str(order_ids[0])+")"
+    else:
+        order_tuple_str = str(tuple(order_ids))
+
+    query_to_run = """SELECT array_agg(id) FROM orders WHERE id in __ORDER_IDS__ __CLIENT_FILTER__;""".replace("__ORDER_IDS__", order_tuple_str)
+
+    if auth_data['user_group'] == 'client':
+        query_to_run = query_to_run.replace('__CLIENT_FILTER__', "AND client_prefix='%s'"%auth_data['client_prefix'])
+    elif auth_data['user_group'] == 'multi-vendor':
+        cur.execute("SELECT vendor_list FROM multi_vendor WHERE client_prefix='%s';" % auth_data['client_prefix'])
+        vendor_list = cur.fetchone()[0]
+        query_to_run = query_to_run.replace("__CLIENT_FILTER__",
+                                            "AND client_prefix in %s" % str(tuple(vendor_list)))
+    else:
+        query_to_run = query_to_run.replace("__CLIENT_FILTER__","")
+
+    cur.execute(query_to_run)
+    order_ids = cur.fetchone()[0]
+    if not order_ids:
+        return jsonify({"success": False, "msg": "invalid order ids"}), 400
+
+    if len(order_ids)==1:
+        order_tuple_str = "("+str(order_ids[0])+")"
+    else:
+        order_tuple_str = str(tuple(order_ids))
+
+    cur.execute("UPDATE orders SET status='CANCELED' WHERE id in %s"%order_tuple_str)
+
+    conn.commit()
+
+    return jsonify({"success": True, "msg": "Cancelled orders successfully"}), 200
+
+
 @orders_blueprint.route('/orders/v1/manifests', methods=['POST'])
 @authenticate_restful
 def get_manifests(resp):

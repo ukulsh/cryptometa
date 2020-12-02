@@ -603,7 +603,6 @@ def ship_bulk_orders(order_list, auth_data, courier):
     if auth_data['user_group'] not in ('client', 'super-admin', 'multi-vendor'):
         return {"success":False, "msg": "invalid user"}, 400
 
-    order_tuple_str = ""
     if len(order_list)==1:
         order_tuple_str = "("+str(order_list[0])+")"
     else:

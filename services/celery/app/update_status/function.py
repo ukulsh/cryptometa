@@ -1354,7 +1354,7 @@ def track_bluedart_orders(courier, cur):
             conn.commit()
 
         except Exception as e:
-            logger.error("status update failed for " + str(orders_dict[current_awb][0]) + "    err:" + str(
+            logger.error("status update failed for " + str(current_awb) + "    err:" + str(
                 e.args[0]))
 
     if exotel_idx:

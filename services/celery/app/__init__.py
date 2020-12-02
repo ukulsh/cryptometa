@@ -9,7 +9,7 @@ from .update_status.function import update_status
 from .fetch_orders.function import fetch_orders
 from .ship_orders.function import ship_orders
 from .core_app_jobs.tasks import *
-from .core_app_jobs.utils import authenticate_username_password
+from .core_app_jobs.utils import authenticate_username_password, authenticate_restful
 from app.order_price_reconciliation.index import process_order_price_reconciliation
 
 
@@ -105,6 +105,21 @@ def orders_ship():
 def ship_orders_api():
     orders_ship.apply_async(queue='ship_orders')
     return jsonify({"msg": "ship order task received"}), 200
+
+
+@app.route('/scans/v1/orders/bulkship', methods = ['POST'])
+@authenticate_restful
+def bulkship_orders(resp):
+    auth_data = resp.get('data')
+    if not auth_data:
+        return jsonify({"success": False, "msg": "Auth Failed"}), 404
+    data = json.loads(request.data)
+    order_ids = data['order_ids']
+    courier = data['courier']
+    if not order_ids:
+        return jsonify({"success": False, "msg": "order ids not found"}), 400
+    return_data, code = ship_bulk_orders(order_ids, auth_data, courier)
+    return jsonify(return_data), code
 
 
 @app.route('/scans/v1/dev', methods = ['GET'])

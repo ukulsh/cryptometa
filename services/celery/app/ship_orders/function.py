@@ -15,7 +15,7 @@ conn_2 = DbConnection.get_pincode_db_connection_instance()
 cur_2 = conn_2.cursor()
 
 
-def ship_orders(courier_name=None, order_ids=None):
+def ship_orders(courier_name=None, order_ids=None, force_ship=None):
     cur = conn.cursor()
     order_id_tuple = "()"
     if courier_name and order_ids:  # creating courier details list for manual shipping
@@ -49,22 +49,19 @@ def ship_orders(courier_name=None, order_ids=None):
 
     for courier in all_couriers:
         if courier[10].startswith('Delhivery'):
-            ship_delhivery_orders(cur, courier, courier_name, order_ids, order_id_tuple)
-
-        elif courier[10] == "Delhivery" and courier[1] in ('BEYONDUW'):
-            ship_vinculum_orders(cur, courier, courier_name, order_ids, order_id_tuple)
+            ship_delhivery_orders(cur, courier, courier_name, order_ids, order_id_tuple, force_ship=force_ship)
 
         elif courier[10] == "Shadowfax":
-            ship_shadowfax_orders(cur, courier, courier_name, order_ids, order_id_tuple)
+            ship_shadowfax_orders(cur, courier, courier_name, order_ids, order_id_tuple, force_ship=force_ship)
 
         elif courier[10].startswith('Xpressbees'):
-            ship_xpressbees_orders(cur, courier, courier_name, order_ids, order_id_tuple)
+            ship_xpressbees_orders(cur, courier, courier_name, order_ids, order_id_tuple, force_ship=force_ship)
 
         elif courier[10].startswith('Bluedart'):
-            ship_bluedart_orders(cur, courier, courier_name, order_ids, order_id_tuple)
+            ship_bluedart_orders(cur, courier, courier_name, order_ids, order_id_tuple, force_ship=force_ship)
 
         elif courier[10].startswith('Ecom'):
-            ship_ecom_orders(cur, courier, courier_name, order_ids, order_id_tuple)
+            ship_ecom_orders(cur, courier, courier_name, order_ids, order_id_tuple, force_ship=force_ship)
 
     cur.close()
 
@@ -123,7 +120,7 @@ def get_delivery_zone(pick_pincode, del_pincode):
     return delivery_zone
 
 
-def ship_delhivery_orders(cur, courier, courier_name, order_ids, order_id_tuple, backup_param=True):
+def ship_delhivery_orders(cur, courier, courier_name, order_ids, order_id_tuple, backup_param=True, force_ship=None):
     exotel_idx = 0
     exotel_sms_data = {
         'From': 'LM-WAREIQ'
@@ -165,7 +162,7 @@ def ship_delhivery_orders(cur, courier, courier_name, order_ids, order_id_tuple,
                    "Content-Type": "application/json"}
         for order in all_new_orders:
             try:
-                if order[26].lower() == 'cod' and not order[27]:
+                if order[26].lower() == 'cod' and not order[27] and not force_ship:
                     continue
                 zone = None
                 try:
@@ -179,11 +176,11 @@ def ship_delhivery_orders(cur, courier, courier_name, order_ids, order_id_tuple,
                                               order[51], order[52], zone)
 
                 if order[17].lower() in ("bengaluru", "bangalore", "banglore") and courier[1] in ("SOHOMATTRESS",) and \
-                        order[26].lower() != 'pickup':
+                        order[26].lower() != 'pickup' and not force_ship:
                     continue
 
                 if courier[1] == "ZLADE" and courier[10] == "Delhivery Surface Standard" and zone and zone not in (
-                'A', 'B') and order[26].lower() != 'pickup':
+                'A', 'B') and order[26].lower() != 'pickup' and not force_ship:
                     continue
 
                 if not order[52]:
@@ -199,7 +196,7 @@ def ship_delhivery_orders(cur, courier, courier_name, order_ids, order_id_tuple,
                     weight = float(order[52])
                     volumetric_weight = float(order[52])
 
-                if courier[10] == "Delhivery Surface Standard":
+                if courier[10] == "Delhivery Surface Standard" and not force_ship:
                     weight_counted = weight if weight > volumetric_weight else volumetric_weight
                     new_courier_name = None
                     if weight_counted > 14:
@@ -235,7 +232,7 @@ def ship_delhivery_orders(cur, courier, courier_name, order_ids, order_id_tuple,
                         continue
 
                 time_2_days = datetime.utcnow() + timedelta(hours=5.5) - timedelta(days=1)
-                if order[47] and not (order[50] and order[2] < time_2_days):
+                if order[47] and not (order[50] and order[2] < time_2_days) and not force_ship:
                     if order[26].lower() == 'cod' and not order[42] and order[43]:
                         continue  # change this to continue later
                     if order[26].lower() == 'cod' and not order[43]:
@@ -260,7 +257,7 @@ def ship_delhivery_orders(cur, courier, courier_name, order_ids, order_id_tuple,
                     cur.execute("select * from client_couriers where client_prefix=%s and priority=%s;",
                                 (courier[1], courier[3] + 1))
                     qs = cur.fetchone()
-                    if not (qs and backup_param):
+                    if not (qs and backup_param) or force_ship:
                         insert_shipments_data_query = """INSERT INTO SHIPMENTS (awb, status, order_id, pickup_id, courier_id, 
                                                                     dimensions, volumetric_weight, weight, remark, return_point_id, routing_code, zone)
                                                                     VALUES  %s"""
@@ -491,7 +488,7 @@ def ship_delhivery_orders(cur, courier, courier_name, order_ids, order_id_tuple,
             logger.error("messages not sent." + "   Error: " + str(e.args[0]))
 
 
-def ship_shadowfax_orders(cur, courier, courier_name, order_ids, order_id_tuple, backup_param=True):
+def ship_shadowfax_orders(cur, courier, courier_name, order_ids, order_id_tuple, backup_param=True, force_ship=None):
     exotel_idx = 0
     exotel_sms_data = {
         'From': 'LM-WAREIQ'
@@ -525,7 +522,9 @@ def ship_shadowfax_orders(cur, courier, courier_name, order_ids, order_id_tuple,
         pickup_point = cur.fetchone()  # change this as we get to dynamic pickups
 
         for order in all_new_orders:
-            if order[26].lower() == 'cod' and not order[27]:
+            if order[26].lower() == 'cod' and not order[27] and not force_ship:
+                continue
+            if force_ship and order[26].lower() == 'pickup':
                 continue
             zone = None
             try:
@@ -533,7 +532,7 @@ def ship_shadowfax_orders(cur, courier, courier_name, order_ids, order_id_tuple,
             except Exception as e:
                 logger.error("couldn't find zone: " + str(order[0]) + "\nError: " + str(e))
             time_2_days = datetime.utcnow() + timedelta(hours=5.5) - timedelta(days=1)
-            if order[47] and not (order[50] and order[2] < time_2_days):
+            if order[47] and not (order[50] and order[2] < time_2_days) and not force_ship:
                 if order[26].lower() == 'cod' and not order[42] and order[43]:
                     continue
                 if order[26].lower() == 'cod' and not order[43]:
@@ -563,7 +562,7 @@ def ship_shadowfax_orders(cur, courier, courier_name, order_ids, order_id_tuple,
                     cur.execute("select * from client_couriers where client_prefix=%s and priority=%s;",
                                 (courier[1], courier[3] + 1))
                     qs = cur.fetchone()
-                    if not (qs and backup_param):
+                    if not (qs and backup_param) or force_ship:
                         insert_shipments_data_query = """INSERT INTO SHIPMENTS (awb, status, order_id, pickup_id, courier_id, 
                                                                                 dimensions, volumetric_weight, weight, remark, return_point_id, routing_code, zone)
                                                                                 VALUES  %s"""
@@ -728,7 +727,7 @@ def ship_shadowfax_orders(cur, courier, courier_name, order_ids, order_id_tuple,
             logger.error("messages not sent." + "   Error: " + str(e.args[0]))
 
 
-def ship_xpressbees_orders(cur, courier, courier_name, order_ids, order_id_tuple, backup_param=True):
+def ship_xpressbees_orders(cur, courier, courier_name, order_ids, order_id_tuple, backup_param=True, force_ship=None):
     exotel_idx = 0
     exotel_sms_data = {
         'From': 'LM-WAREIQ'
@@ -765,7 +764,9 @@ def ship_xpressbees_orders(cur, courier, courier_name, order_ids, order_id_tuple
         pickup_point = cur.fetchone()  # change this as we get to dynamic pickups
 
         for order in all_new_orders:
-            if order[26].lower() == 'cod' and not order[27]:
+            if order[26].lower() == 'cod' and not order[27] and not force_ship:
+                continue
+            if force_ship and order[26].lower() == 'pickup':
                 continue
             if order[26].lower() == 'pickup':
                 try:
@@ -808,7 +809,7 @@ def ship_xpressbees_orders(cur, courier, courier_name, order_ids, order_id_tuple
                 except Exception:
                     pass
 
-            if courier[10] == "Xpressbees Surface" and weight and volumetric_weight:
+            if courier[10] == "Xpressbees Surface" and weight and volumetric_weight and not force_ship:
                 weight_counted = weight if weight > volumetric_weight else volumetric_weight
                 new_courier_name = None
                 if weight_counted > 3:
@@ -845,7 +846,7 @@ def ship_xpressbees_orders(cur, courier, courier_name, order_ids, order_id_tuple
                 logger.error("couldn't find zone: " + str(order[0]) + "\nError: " + str(e))
 
             time_2_days = datetime.utcnow() + timedelta(hours=5.5) - timedelta(days=1)
-            if order[47] and not (order[50] and order[2] < time_2_days):
+            if order[47] and not (order[50] and order[2] < time_2_days) and not force_ship:
                 if order[26].lower() == 'cod' and not order[42] and order[43]:
                     continue
                 if order[26].lower() == 'cod' and not order[43]:
@@ -1005,7 +1006,7 @@ def ship_xpressbees_orders(cur, courier, courier_name, order_ids, order_id_tuple
                     cur.execute("select * from client_couriers where client_prefix=%s and priority=%s;",
                                 (courier[1], courier[3] + 1))
                     qs = cur.fetchone()
-                    if not (qs and backup_param):
+                    if not (qs and backup_param) or force_ship:
                         insert_shipments_data_query = """INSERT INTO SHIPMENTS (awb, status, order_id, pickup_id, courier_id, 
                                                                     dimensions, volumetric_weight, weight, remark, return_point_id, routing_code, zone)
                                                                     VALUES  %s"""
@@ -1054,7 +1055,7 @@ def ship_xpressbees_orders(cur, courier, courier_name, order_ids, order_id_tuple
             logger.error("messages not sent." + "   Error: " + str(e.args[0]))
 
 
-def ship_ecom_orders(cur, courier, courier_name, order_ids, order_id_tuple, backup_param=True):
+def ship_ecom_orders(cur, courier, courier_name, order_ids, order_id_tuple, backup_param=True, force_ship=None):
     exotel_idx = 0
     exotel_sms_data = {
         'From': 'LM-WAREIQ'
@@ -1105,7 +1106,9 @@ def ship_ecom_orders(cur, courier, courier_name, order_ids, order_id_tuple, back
         pickup_point = cur.fetchone()  # change this as we get to dynamic pickups
 
         for order in all_new_orders:
-            if order[26].lower() == 'cod' and not order[27]:
+            if order[26].lower() == 'cod' and not order[27] and not force_ship:
+                continue
+            if force_ship and order[26].lower() == 'pickup':
                 continue
             if order[26].lower() == 'pickup':
                 try:
@@ -1139,7 +1142,7 @@ def ship_ecom_orders(cur, courier, courier_name, order_ids, order_id_tuple, back
                 logger.error("couldn't find zone: " + str(order[0]) + "\nError: " + str(e))
 
             time_2_days = datetime.utcnow() + timedelta(hours=5.5) - timedelta(days=1)
-            if order[47] and not (order[50] and order[2] < time_2_days):
+            if order[47] and not (order[50] and order[2] < time_2_days) and not force_ship:
                 if order[26].lower() == 'cod' and not order[42] and order[43]:
                     continue
                 if order[26].lower() == 'cod' and not order[43]:
@@ -1300,7 +1303,7 @@ def ship_ecom_orders(cur, courier, courier_name, order_ids, order_id_tuple, back
                     cur.execute("select * from client_couriers where client_prefix=%s and priority=%s;",
                                 (courier[1], courier[3] + 1))
                     qs = cur.fetchone()
-                    if not (qs and backup_param):
+                    if not (qs and backup_param) or force_ship:
                         insert_shipments_data_query = """INSERT INTO SHIPMENTS (awb, status, order_id, pickup_id, courier_id, 
                                                                     dimensions, volumetric_weight, weight, remark, return_point_id, routing_code, zone)
                                                                     VALUES  %s"""
@@ -1349,7 +1352,7 @@ def ship_ecom_orders(cur, courier, courier_name, order_ids, order_id_tuple, back
             logger.error("messages not sent." + "   Error: " + str(e.args[0]))
 
 
-def ship_bluedart_orders(cur, courier, courier_name, order_ids, order_id_tuple, backup_param=True):
+def ship_bluedart_orders(cur, courier, courier_name, order_ids, order_id_tuple, backup_param=True, force_ship=None):
     exotel_idx = 0
     exotel_sms_data = {
         'From': 'LM-WAREIQ'
@@ -1405,7 +1408,9 @@ def ship_bluedart_orders(cur, courier, courier_name, order_ids, order_id_tuple, 
             "Version": "1.3"
         }
         for order in all_new_orders:
-            if order[26].lower() == 'cod' and not order[27]:
+            if order[26].lower() == 'cod' and not order[27] and not force_ship:
+                continue
+            if force_ship and order[26].lower() == 'pickup':
                 continue
             zone = None
             try:
@@ -1413,14 +1418,14 @@ def ship_bluedart_orders(cur, courier, courier_name, order_ids, order_id_tuple, 
             except Exception as e:
                 logger.error("couldn't find zone: " + str(order[0]) + "\nError: " + str(e))
 
-            if courier[1] == "ZLADE" and zone in ('A', ):
+            if courier[1] == "ZLADE" and zone in ('A', ) and not force_ship:
                 continue
 
-            if order[26].lower() == "prepaid" and courier[1] == "ACTIFIBER":
+            if order[26].lower() == "prepaid" and courier[1] in ("ACTIFIBER", "BEHIR", "SHAHIKITCHEN", "SUKHILIFE") and not force_ship:
                 continue
 
             time_2_days = datetime.utcnow() + timedelta(hours=5.5) - timedelta(days=1)
-            if order[47] and not (order[50] and order[2] < time_2_days):
+            if order[47] and not (order[50] and order[2] < time_2_days) and not force_ship:
                 if order[26].lower() == 'cod' and not order[42] and order[43]:
                     continue  # change this to continue later
                 if order[26].lower() == 'cod' and not order[43]:
@@ -1451,7 +1456,7 @@ def ship_bluedart_orders(cur, courier, courier_name, order_ids, order_id_tuple, 
                     cur.execute("select * from client_couriers where client_prefix=%s and priority=%s;",
                                 (courier[1], courier[3] + 1))
                     qs = cur.fetchone()
-                    if not (qs and backup_param):
+                    if not (qs and backup_param) or force_ship:
                         insert_shipments_data_query = """INSERT INTO SHIPMENTS (awb, status, order_id, pickup_id, courier_id, 
                                                             dimensions, volumetric_weight, weight, remark, return_point_id, routing_code, zone)
                                                             VALUES  %s"""
@@ -1820,6 +1825,7 @@ def ship_vinculum_orders(cur, courier, courier_name, order_ids, order_id_tuple):
 
 bluedart_area_code_mapping = {"110015":"DEL",
                                 "110077":"DEL",
+                                "110059":"DEL",
                                 "121002":"FAR",
                                 "122001":"GGN",
                                 "131028":"SOP",

@@ -5,6 +5,7 @@ from datetime import datetime
 from woocommerce import API
 from math import ceil
 from app.db_utils import DbConnection
+from app.ship_orders.function import ship_orders
 
 conn = DbConnection.get_db_connection_instance()
 conn_2 = DbConnection.get_pincode_db_connection_instance()
@@ -595,3 +596,35 @@ def upload_products_util(prod_list):
             logger.error("Couldn't upload prod: "+str(prod_item[0])+"\nError: "+str(e.args[0]))
 
         conn.commit()
+
+
+def ship_bulk_orders(order_list, auth_data, courier):
+    cur = conn.cursor()
+    if auth_data['user_group'] not in ('client', 'super-admin', 'multi-vendor'):
+        return {"success":False, "msg": "invalid user"}, 400
+
+    order_tuple_str = ""
+    if len(order_list)==1:
+        order_tuple_str = "("+str(order_list[0])+")"
+    else:
+        order_tuple_str = str(tuple(order_list))
+
+    query_to_run = """SELECT array_agg(id) FROM orders WHERE id in __ORDER_IDS__ __CLIENT_FILTER__;""".replace("__ORDER_IDS__", order_tuple_str)
+
+    if auth_data['user_group'] == 'client':
+        query_to_run = query_to_run.replace('__CLIENT_FILTER__', "AND client_prefix='%s'"%auth_data['client_prefix'])
+    elif auth_data['user_group'] == 'multi-vendor':
+        cur.execute("SELECT vendor_list FROM multi_vendor WHERE client_prefix='%s';" % auth_data['client_prefix'])
+        vendor_list = cur.fetchone()[0]
+        query_to_run = query_to_run.replace("__CLIENT_FILTER__",
+                                            "AND client_prefix in %s" % str(tuple(vendor_list)))
+    else:
+        query_to_run = query_to_run.replace("__CLIENT_FILTER__","")
+
+    cur.execute(query_to_run)
+    order_ids = cur.fetchone()[0]
+    if not order_ids:
+        return {"success": False, "msg": "invalid order ids"}, 400
+    ship_orders(courier_name=courier, order_ids=order_ids, force_ship=True)
+
+    return {"success": True, "msg": "shipped successfully"}, 200

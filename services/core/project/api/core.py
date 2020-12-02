@@ -414,6 +414,28 @@ def thirdwatch_webhook():
         return jsonify({"success": False}), 400
 
 
+@core_blueprint.route('/core/v1/getshipcouriers', methods=['GET'])
+@authenticate_restful
+def getshiporders(resp):
+    try:
+        auth_data = resp.get('data')
+        if auth_data.get('user_group') not in ('client', 'super-admin'):
+            return jsonify({"msg": "Invalid user type"}), 400
+        cur = conn.cursor()
+        courier_list = list()
+        cur.execute("""select aa.courier_name from master_couriers aa
+                        left join (select * from client_couriers where client_prefix='__CLIENT_PREFIX__') bb on aa.id=bb.courier_id
+                        where aa.integrated=true
+                        order by bb.priority nulls last""".replace('__CLIENT_PREFIX__', auth_data.get('client_prefix')))
+        all_cour = cur.fetchall()
+        for cour in all_cour:
+            courier_list.append(cour[0])
+
+        return jsonify({"courier_list": courier_list}), 200
+    except Exception:
+        return jsonify({"success": False}), 400
+
+
 @core_blueprint.route('/core/case_studies', methods=['GET'])
 def website_case_study():
     data = [{"image_link": "https://wareiqfiles.s3.amazonaws.com/kamaayurveda.png",
@@ -772,10 +794,10 @@ def ping_dev():
 
             """
             sku_list.append({"sku": sku,
-                             "warehouse": "HOLISOLBL",
+                             "warehouse": "QSDWARKA",
                              "quantity": del_qty,
                              "type": "add",
-                             "remark": "21 nov inbound"})
+                             "remark": "29 nov inbound"})
 
             """
 

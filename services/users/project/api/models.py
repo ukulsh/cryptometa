@@ -32,6 +32,7 @@ class User(db.Model):
     calling_active = db.Column(db.Boolean(), default=False, nullable=True)
     admin = db.Column(db.Boolean, default=False, nullable=False)
     login_as = db.Column(db.Integer, db.ForeignKey('users.id'))
+    token = db.Column(db.String, nullable=True)
 
     def __init__(self, username, email, password, first_name=None, last_name=None,
                  tabs=None, calling_active=False, client_id=None, group_id=None, phone_number=None):

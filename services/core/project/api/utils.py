@@ -56,23 +56,34 @@ def authenticate_restful(f):
         if not auth_header:
             response_object['message'] = 'Provide a valid auth token.'
             code = 403
-            return response_object, code
+            return jsonify(response_object), code
         auth_token = auth_header.split(" ")[1]
-        if auth_header.split(" ")[0]=='Token':
+
+        if auth_header.split(" ")[0] == 'Token':
             client = ClientMapping.query.filter_by(api_token=auth_token).first()
-            if not client:
-                response_object['message'] = 'Provide a valid auth token.'
-                code = 403
-                return response_object, code
-            response = {
-                "data": {"user_group": "client", "client_prefix": client.client_prefix}}
-            return f(response, *args, **kwargs)
-        response = ensure_authenticated(auth_token)
+            if client:
+                response = {"data": {"user_group": "client", "client_prefix": client.client_prefix}}
+            else:
+                response = ensure_token_authenticated(auth_header)
+        else:
+            response = ensure_authenticated(auth_token)
         if not response:
             response_object['message'] = 'Invalid token.'
-            return response_object, code
+            return jsonify(response_object), code
         return f(response, *args, **kwargs)
     return decorated_function
+
+
+def ensure_token_authenticated(token):
+    user_service_url = current_app.config['USERS_SERVICE_URL']
+    url = '{0}/auth/tokenStatus'.format(user_service_url)
+    headers = {'Authorization': token}
+    response = requests.get(url, headers=headers)
+    data = json.loads(response.text)
+    if response.status_code == 200 and data['status'] == 'success' and data['data']['active']:
+        return data
+    else:
+        return None
 
 
 def ensure_authenticated(token):

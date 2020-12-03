@@ -1,5 +1,6 @@
 from flask import Flask, request, jsonify
 from celery import Celery
+from flask_cors import cross_origin
 import json, re
 import io
 import csv
@@ -64,6 +65,11 @@ app.config['CELERYBEAT_SCHEDULE'] = {
                 'schedule': crontab(minute='*/30'),
                 'options': {'queue': 'calculate_costs'}
             },
+    'run-sync-all-inventory': {
+                    'task': 'sync_all_inventory',
+                    'schedule': crontab(minute='*/60'),
+                    'options': {'queue': 'sync_all_inventory'}
+                },
 }
 
 app.config['CELERY_TIMEZONE'] = 'UTC'
@@ -89,6 +95,13 @@ def calculate_costs():
     return 'successfully completed calculate costs'
 
 
+@celery_app.task(name='sync_all_inventory')
+def sync_all_inventory():
+    update_available_quantity()
+    update_available_quantity_on_channel()
+    return 'successfully completed sync_all_inventory'
+
+
 @celery_app.task(name='status_update')
 def status_update():
     update_status()
@@ -109,6 +122,7 @@ def ship_orders_api():
 
 @app.route('/scans/v1/orders/bulkship', methods = ['POST'])
 @authenticate_restful
+@cross_origin()
 def bulkship_orders(resp):
     auth_data = resp.get('data')
     if not auth_data:

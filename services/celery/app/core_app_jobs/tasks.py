@@ -627,3 +627,107 @@ def ship_bulk_orders(order_list, auth_data, courier):
     ship_orders(courier_name=courier, order_ids=order_ids, force_ship=True)
 
     return {"success": True, "msg": "shipped successfully"}, 200
+
+
+def update_available_quantity():
+    cur = conn.cursor()
+    cur.execute(fetch_inventory_quantity_query)
+    all_prods_status = cur.fetchall()
+    quantity_dict = dict()
+    combo_dict = dict()
+
+    for prod_status in all_prods_status:
+        if not prod_status[2]:
+            continue
+        if prod_status[0] not in quantity_dict:
+            quantity_dict[prod_status[0]] = {prod_status[2]: {"available_quantity": 0,
+                                                              "current_quantity": 0,
+                                                              "inline_quantity": 0,
+                                                              "rto_quantity": 0}}
+        elif prod_status[2] not in quantity_dict[prod_status[0]]:
+            quantity_dict[prod_status[0]][prod_status[2]] = {"available_quantity": 0,
+                                                              "current_quantity": 0,
+                                                              "inline_quantity": 0,
+                                                              "rto_quantity": 0}
+
+        if prod_status[1] in ('DELIVERED','DISPATCHED','IN TRANSIT','ON HOLD','PENDING'):
+            quantity_dict[prod_status[0]][prod_status[2]]['current_quantity'] -= prod_status[3]
+            quantity_dict[prod_status[0]][prod_status[2]]['available_quantity'] -= prod_status[3]
+        elif prod_status[1] in ('NEW','PICKUP REQUESTED','READY TO SHIP', 'PENDING PAYMENT'):
+            quantity_dict[prod_status[0]][prod_status[2]]['inline_quantity'] += prod_status[3]
+            quantity_dict[prod_status[0]][prod_status[2]]['available_quantity'] -= prod_status[3]
+        elif prod_status[1] in ('RTO', 'DTO'):
+            quantity_dict[prod_status[0]][prod_status[2]]['rto_quantity'] += prod_status[3]
+            if prod_status[1]=="DTO":
+                quantity_dict[prod_status[0]][prod_status[2]]['current_quantity'] += prod_status[3]
+                quantity_dict[prod_status[0]][prod_status[2]]['available_quantity'] += prod_status[3]
+
+        if prod_status[4] and prod_status[0] not in combo_dict:
+            combo_dict[prod_status[0]] = {'prod_ids': prod_status[4], 'prod_quan': prod_status[5]}
+
+    for prod_id, item_list in combo_dict.items():
+        for warehouse, quan_values in quantity_dict[prod_id].items():
+            quantity_dict[prod_id][warehouse] = {'available_quantity': 0,
+                                                 'current_quantity': 0,
+                                                 'inline_quantity': 0,
+                                                 'rto_quantity': 0}
+
+            for idx, new_prod_id in enumerate(item_list['prod_ids']):
+                mul_fac = item_list['prod_quan'][idx]
+                if new_prod_id not in quantity_dict:
+                    quantity_dict[new_prod_id] = {warehouse: {'available_quantity': quan_values['available_quantity']*mul_fac,
+                                                              'current_quantity': quan_values['current_quantity']*mul_fac,
+                                                              'inline_quantity': quan_values['inline_quantity']*mul_fac,
+                                                              'rto_quantity': quan_values['rto_quantity']*mul_fac}}
+                elif warehouse not in quantity_dict[new_prod_id]:
+                    quantity_dict[new_prod_id][warehouse] = {'available_quantity': quan_values['available_quantity']*mul_fac,
+                                                              'current_quantity': quan_values['current_quantity']*mul_fac,
+                                                              'inline_quantity': quan_values['inline_quantity']*mul_fac,
+                                                              'rto_quantity': quan_values['rto_quantity']*mul_fac}
+
+                else:
+                    quantity_dict[new_prod_id][warehouse]['available_quantity'] += quan_values['available_quantity']*mul_fac
+                    quantity_dict[new_prod_id][warehouse]['current_quantity'] += quan_values['current_quantity']*mul_fac
+                    quantity_dict[new_prod_id][warehouse]['inline_quantity'] += quan_values['inline_quantity']*mul_fac
+                    quantity_dict[new_prod_id][warehouse]['rto_quantity'] += quan_values['rto_quantity']*mul_fac
+
+    for prod_id, wh_dict in quantity_dict.items():
+        for warehouse, quan_values in wh_dict.items():
+            update_tuple = (quan_values['available_quantity'], quan_values['current_quantity'], quan_values['inline_quantity'],
+                            quan_values['rto_quantity'], prod_id, warehouse)
+            cur.execute(update_inventory_quantity_query, update_tuple)
+
+    conn.commit()
+
+
+def update_available_quantity_on_channel():
+    cur = conn.cursor()
+    cur.execute("""SELECT client_prefix, channel_id, api_key, api_password, shop_url FROM client_channel WHERE sync_inventory=true;""")
+    all_channels = cur.fetchall()
+
+    for channel in all_channels:
+        if channel[1]==6: #mangento sync
+            cur.execute("""select master_sku, GREATEST(available_quantity, 0) as available_quantity from
+                                (select master_sku, sum(available_quantity) as available_quantity from products_quantity aa
+                                left join products bb on aa.product_id=bb.id
+                                where bb.client_prefix='__CLIENT_PREFIX__'
+                                group by master_sku
+                                order by available_quantity) xx""".replace('__CLIENT_PREFIX__', channel[0]))
+
+            all_quan = cur.fetchall()
+            source_items = list()
+            for quan in all_quan:
+                source_items.append({
+                    "sku": quan[0],
+                    "source_code": "default",
+                    "quantity": quan[1],
+                    "status": 1
+                })
+
+            magento_url = channel[4]+ "/V1/inventory/source-items"
+            body = {
+                "sourceItems": source_items}
+            headers = {'Authorization': "Bearer "+channel[2],
+                       'Content-Type': 'application/json'}
+            r = requests.post(magento_url, headers=headers, data=json.dumps(body))
+

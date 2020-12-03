@@ -9,6 +9,7 @@ from project.api.models import User, Client
 from sqlalchemy import exc, or_
 from project.api.utils import authenticate_restful, pagination_validator
 from project.api.users_util import user_register
+import uuid
 
 users_blueprint = Blueprint('users', __name__)
 api = Api(users_blueprint)
@@ -154,6 +155,24 @@ def check_username(resp):
         return jsonify(response_object), 200
     except Exception as e:
         response_object['message'] = 'failed while checking username'
+        return jsonify(response_object), 400
+
+
+@users_blueprint.route('/users/generateToken', methods=['GET'])
+@authenticate_restful
+def generate_token(resp):
+    response_object = {'status': 'fail'}
+    try:
+        regenerate = request.args.get('regenerate')
+        user = User.query.filter_by(id=resp).first()
+        if regenerate:
+            user.token = uuid.uuid4().hex
+            db.session.commit()
+        response_object['token'] = user.token
+        response_object['status'] = 'success'
+        return jsonify(response_object), 200
+    except Exception as e:
+        response_object['message'] = 'failed while getting  user token'
         return jsonify(response_object), 400
 
 

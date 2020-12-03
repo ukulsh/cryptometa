@@ -6,7 +6,7 @@ from sqlalchemy import exc, or_
 
 from project.api.models import User
 from project import db, bcrypt
-from project.api.utils import authenticate
+from project.api.utils import authenticate, authenticate_token_restful
 import os, requests
 
 CORE_SERVICE_URL = os.environ.get('CORE_SERVICE_URL') or 'http://localhost:5010'
@@ -156,6 +156,22 @@ def get_user_status(resp):
         return jsonify(response_object), 200
     except Exception as e:
         response_object['message'] = 'failed while getting login status'
+        return jsonify(response_object), 400
+
+
+@auth_blueprint.route('/auth/tokenStatus', methods=['GET'])
+@authenticate_token_restful
+def get_token_status(resp):
+    response_object = {'status': 'fail'}
+    try:
+        user = User.query.filter_by(id=resp).first()
+        response_object = {
+            'status': 'success',
+            'data': user.to_json(),
+        }
+        return jsonify(response_object), 200
+    except Exception as e:
+        response_object['message'] = 'failed while getting token status'
         return jsonify(response_object), 400
 
 

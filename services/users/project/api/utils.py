@@ -30,6 +30,24 @@ def authenticate(f):
     return decorated_function
 
 
+def authenticate_token_restful(f):
+
+    @wraps(f)
+    def decorated_token_function(*args, **kwargs):
+        response_object = {
+            'status': 'fail',
+            'message': 'Provide a valid auth token.'
+        }
+        auth_header = request.headers.get('Authorization')
+        if auth_header and auth_header.split(" ")[0] == 'Token':
+            auth_token = auth_header.split(" ")[1]
+            user = User.query.filter_by(token=auth_token).first()
+            if user:
+                return f(user.id, *args, **kwargs)
+        return jsonify(response_object), 403
+    return decorated_token_function
+
+
 def authenticate_restful(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):

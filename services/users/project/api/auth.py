@@ -1,7 +1,7 @@
 # services/users/project/api/auth.py
 
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify, request, current_app
 from sqlalchemy import exc, or_
 
 from project.api.models import User
@@ -153,6 +153,40 @@ def get_user_status(resp):
             if login_as_user.id != user.id:
                 response_object['parent_username'] = user.username
             response_object['status'] = 'success'
+        return jsonify(response_object), 200
+    except Exception as e:
+        response_object['message'] = 'failed while getting login status'
+        return jsonify(response_object), 400
+
+
+@auth_blueprint.route('/auth/v1/updateUser', methods=['POST'])
+@authenticate
+def update_user(resp):
+    response_object = {'status': 'fail'}
+    try:
+        post_data = request.get_json()
+        if not post_data:
+            return jsonify(response_object), 400
+        user = User.query.filter_by(id=resp).first()
+        if not user:
+            return jsonify(response_object), 400
+        first_name = post_data.get('first_name')
+        last_name = post_data.get('last_name')
+        phone = post_data.get('phone')
+        password = post_data.get('password')
+        if first_name!=None:
+            user.first_name=first_name
+        if last_name!=None:
+            user.last_name=last_name
+        if password!=None:
+            user.password=bcrypt.generate_password_hash(
+                password, current_app.config.get('BCRYPT_LOG_ROUNDS')
+            ).decode()
+        if phone != None:
+            user.phone_no=phone
+
+        db.session.commit()
+        response_object['status'] = 'success'
         return jsonify(response_object), 200
     except Exception as e:
         response_object['message'] = 'failed while getting login status'

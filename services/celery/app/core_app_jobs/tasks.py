@@ -716,18 +716,24 @@ def update_available_quantity_on_channel():
 
             all_quan = cur.fetchall()
             source_items = list()
+            headers = {'Authorization': "Bearer " + channel[2],
+                       'Content-Type': 'application/json',
+                       'User-Agent': 'WareIQ server'}
             for quan in all_quan:
+                salable_quan = quan[1]
+                try:
+                    salable_quan = requests.get("%s/V1/inventory/get-product-salable-quantity/%s/1"%(channel[4], quan[0]), headers=headers).json()
+                except Exception as e:
+                    pass
                 source_items.append({
                     "sku": quan[0],
                     "source_code": "default",
-                    "quantity": quan[1],
+                    "quantity": quan[1] + (quan[1]-salable_quan) if type(salable_quan)==int else quan[1],
                     "status": 1
                 })
 
             magento_url = channel[4]+ "/V1/inventory/source-items"
             body = {
                 "sourceItems": source_items}
-            headers = {'Authorization': "Bearer "+channel[2],
-                       'Content-Type': 'application/json'}
             r = requests.post(magento_url, headers=headers, data=json.dumps(body))
 

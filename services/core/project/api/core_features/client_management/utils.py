@@ -23,8 +23,9 @@ def get_cost_to_clients(posted_data):
         rvp_ratio = it.get('rvp_ratio')
         rto_ratio = it.get('rto_ratio')
         management_fee = it.get('management_fee')
+        management_fee_static = it.get('management_fee_static')
         cost_to_client_ref = CostToClients(client_prefix, courier_ref.id, zone_a, zone_b, zone_c, zone_d, zone_e, a_step,
                                            b_step, c_step, d_step, e_step, cod_min, cod_ratio, rvp_ratio, rto_ratio,
-                                           management_fee)
+                                           management_fee, management_fee_static)
         cost_to_client_ref_data.append(cost_to_client_ref)
     return cost_to_client_ref_data

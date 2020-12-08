@@ -35,7 +35,6 @@ def create_app(script_info=None):
     migrate.init_app(app, db)
 
     # register blueprints
-    from project.api.base import base_blueprint
     from project.api.core import core_blueprint
     from project.api.dashboard.index import dashboard_blueprint
     from project.api.products.index import products_blueprint
@@ -46,7 +45,6 @@ def create_app(script_info=None):
     from project.api.core_features.couriers.index import couriers_blueprint
     from project.api.core_features.warehouse_management.index import warehouse_blueprint
     from project.api.core_features.client_management.index import client_management_blueprint
-    app.register_blueprint(base_blueprint)
     app.register_blueprint(core_blueprint)
     app.register_blueprint(dashboard_blueprint)
     app.register_blueprint(products_blueprint)

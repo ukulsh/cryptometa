@@ -122,7 +122,7 @@ class ClientGeneralInfo(Resource):
             response_object['data'] = client_mapping_ref.to_json()
             response_object['status'] = 'success'
             return response_object, 200
-        except Exceptiona as e:
+        except Exception as e:
             logger.error('Failed while getting client general info',  e)
             response_object['message'] = 'Failed while getting the client general info'
             return response_object, 400

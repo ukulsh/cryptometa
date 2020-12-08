@@ -33,10 +33,10 @@ class Clients(Resource):
             db.session.add(client)
             user = based_user_register(post_data)
             db.session.add(user)
-            db.session.commit()
             res = requests.post(CORE_SERVICE_URL+'/core/v1/clientManagement', json=post_data)
             if res.status_code != 201:
                 raise Exception('Failed to create the record in clientMapping')
+            db.session.commit()
             response_object['status'] = 'success'
             logger.info('client created successfully')
             return response_object, 201

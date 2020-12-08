@@ -762,7 +762,7 @@ class CostToClients(db.Model):
     date_updated = db.Column(db.DateTime, onupdate=datetime.now)
 
     def __init__(self, client_prefix, courier_id, zone_a, zone_b, zone_c, zone_d, zone_e, a_step,
-                 b_step, c_step, d_step, e_step, cod_min, cod_ratio, rvp_ratio, rto_ratio, management_fee, management_fee_static):
+                 b_step, c_step, d_step, e_step, cod_min, cod_ratio, rvp_ratio, rto_ratio, management_fee=None, management_fee_static=None):
         self.client_prefix = client_prefix
         self.courier_id = courier_id
         self.zone_a = zone_a

@@ -1011,16 +1011,7 @@ def ping_dev():
         #                                 )
         #
         # db.session.add(prod_quan_obj)
-    return 0
-    from .fetch_orders import lambda_handler
-    lambda_handler()
-    return 0
-    from .fetch_orders import lambda_handler
-    lambda_handler()
 
-    from .tasks import add
-    add.delay(1,2)
-    return 0
 
     return 0
     since_id = "1"
@@ -1135,7 +1126,6 @@ def ping_dev():
 
     return 0
 
-    from .create_shipments import lambda_handler
     lambda_handler()
     return 0
     from requests_oauthlib.oauth1_session import OAuth1Session
@@ -1300,7 +1290,6 @@ def ping_dev():
     lambda_handler()
     return 0
 
-    from .update_status import lambda_handler
     lambda_handler()
     myfile = request.files['myfile']
 
@@ -1592,7 +1581,6 @@ def ping_dev():
     req = requests.post(xpress_url, headers=headers, data=json.dumps(body))
 
     return 0
-    from .update_status_utils import send_bulk_emails
     from project import create_app
     app = create_app()
     query_to_run = """select aa.id, bb.awb, aa.status, aa.client_prefix, aa.customer_phone, 
@@ -1703,12 +1691,8 @@ def ping_dev():
     data = requests.get(shopify_url).json()
 
     return 0
-    from .fetch_orders import lambda_handler
-    lambda_handler()
     import requests
 
-    from .update_status import lambda_handler
-    lambda_handler()
 
     from .request_pickups import lambda_handler
     lambda_handler()
@@ -2121,8 +2105,6 @@ def ping_dev():
 
 
     return 0
-    from .update_status import lambda_handler
-    lambda_handler()
     import requests, json
 
     all_orders = db.session.query(Orders).filter(Orders.status.in_(["IN TRANSIT","PENDING","DISPATCHED"]))\
@@ -2348,8 +2330,6 @@ def ping_dev():
                 }
     req = requests.post(url, data=json.dumps(post_body), headers=ful_header)
 
-    from .update_status import lambda_handler
-    lambda_handler()
     form_data = {"RequestBody": {
         "order_no": "9251",
         "statuses": [""],
@@ -2535,7 +2515,6 @@ def ping_dev():
         'message': 'pong!'
     })
 
-    from .create_shipments import lambda_handler
     lambda_handler()
     from reportlab.pdfgen import canvas
     from reportlab.lib.pagesizes import letter, A4

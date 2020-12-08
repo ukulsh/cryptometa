@@ -3,7 +3,7 @@ import re
 import io
 import csv
 import math
-from flask import Blueprint, request, make_response
+from flask import Blueprint, request, make_response, jsonify
 from flask_restful import Api, Resource
 from project import db
 from project.api.models import MultiVendor
@@ -519,6 +519,169 @@ class WalletRemittance(Resource):
             return {"success": False, "msg": ""}, 404
 
 
+@billing_blueprint.route('/wallet/v1/getcouriercharges', methods=['POST'])
+@authenticate_restful
+def get_courier_charges(resp):
+    response_object = {'status': 'fail'}
+    try:
+        auth_data = resp.get('data')
+        if not auth_data:
+            return {"success": False, "msg": "Auth Failed"}, 404
+        if auth_data['user_group'] not in ('multi-vendor', 'client', 'super-admin'):
+            return {"success": False, "msg": "Invalid user"}, 400
+
+        post_data = request.get_json()
+        source_pincode=post_data.get("source_pincode")
+        destination_pincode=post_data.get("destination_pincode")
+        charged_weight=post_data.get("weight")
+        payment=post_data.get("payment")
+        order_value=post_data.get("order_value")
+        cur = conn.cursor()
+        cur_2=conn_2.cursor()
+        if source_pincode:
+            source_pincode = str(source_pincode)
+        else:
+            return jsonify(response_object), 400
+        if destination_pincode:
+            destination_pincode = str(destination_pincode)
+        else:
+            return jsonify(response_object), 400
+        if charged_weight:
+            charged_weight = float(charged_weight)
+        else:
+            return jsonify(response_object), 400
+        if payment:
+            payment = str(payment)
+        else:
+            return jsonify(response_object), 400
+        if order_value:
+            order_value = float(order_value)
+        else:
+            return jsonify(response_object), 400
+
+        delivery_zone = get_delivery_zone(cur_2, source_pincode, destination_pincode)
+        if not delivery_zone:
+            return {"success": False, "msg": "Not serviceable"}, 400
+
+        client_prefix=auth_data.get('client_prefix')
+        mapped_couriers = list()
+        cost_list = list()
+        cost_select_tuple = (client_prefix, )
+        cur.execute(
+            "SELECT __ZONE__, cod_min, cod_ratio, __ZONE_STEP__, bb.courier_name, bb.id from cost_to_clients aa "
+            "LEFT JOIN master_couriers bb on aa.courier_id=bb.id "
+            "WHERE client_prefix=%s;".replace(
+                '__ZONE__', zone_column_mapping[delivery_zone]).replace('__ZONE_STEP__',
+                                                                        zone_step_charge_column_mapping[
+                                                                            delivery_zone]), cost_select_tuple)
+        charge_rate_values = cur.fetchall()
+        for crv in charge_rate_values:
+            cost_list.append(crv)
+            mapped_couriers.append(crv[4])
+
+        courier_name_filter = ""
+        if len(mapped_couriers)==1:
+            courier_name_filter = "WHERE bb.courier_name != '%s'"
+        elif len(mapped_couriers)>1:
+            courier_name_filter = "WHERE bb.courier_name not in %s"%str(tuple(mapped_couriers))
+        cur.execute(
+            "SELECT __ZONE__, cod_min, cod_ratio, __ZONE_STEP__, bb.courier_name, bb.id from client_default_cost aa "
+            "LEFT JOIN master_couriers bb on aa.courier_id=bb.id "
+            "__COURIER_FILTER__;".replace(
+                '__ZONE__', zone_column_mapping[delivery_zone]).replace('__ZONE_STEP__', zone_step_charge_column_mapping[
+                                                        delivery_zone]).replace('__COURIER_FILTER__', courier_name_filter))
+        charge_rate_values = cur.fetchall()
+        for crv in charge_rate_values:
+            cost_list.append(crv)
+
+        response_data = list()
+        for cost_obj in cost_list:
+            cur.execute("select weight_offset, additional_weight_offset from master_couriers where id=%s;",
+                        (cost_obj[5],))
+            courier_data = cur.fetchone()
+            charge_rate = cost_obj[0]
+            forward_charge = charge_rate
+            per_step_charge = cost_obj[3]
+            per_step_charge = 0.0 if per_step_charge is None else per_step_charge
+            if courier_data[0] != 0 and courier_data[1] != 0:
+                if not per_step_charge:
+                    per_step_charge = charge_rate
+                if charged_weight > courier_data[0]:
+                    forward_charge = charge_rate + math.ceil(
+                        (charged_weight - courier_data[0] * 1.0) / courier_data[1]) * per_step_charge
+            else:
+                multiple = math.ceil(charged_weight / 0.5)
+                forward_charge = charge_rate * multiple
+
+            cod_charge = 0
+            if payment.lower()=='cod':
+                cod_charge = order_value * (cost_obj[2] / 100)
+                if cost_obj[1] > cod_charge:
+                    cod_charge = cost_obj[1]
+                else:
+                    cod_charge = charge_rate_values[1]
+
+            response_data.append({"courier": cost_obj[4],
+                                  "cod_charge": cod_charge,
+                                  "forward_charge": forward_charge,
+                                  "total_charge":cod_charge+forward_charge})
+
+        response_object['data'] = response_data
+        response_object['zone'] = delivery_zone
+        response_object['status'] = "success"
+
+        return jsonify(response_object), 200
+    except Exception as e:
+        response_object['message'] = 'failed'
+        return jsonify(response_object), 400
+
+
 api.add_resource(WalletDeductions, '/wallet/v1/deductions')
 api.add_resource(WalletRecharges, '/wallet/v1/payments')
 api.add_resource(WalletRemittance, '/wallet/v1/remittance')
+
+
+def get_delivery_zone(cur_2, pick_pincode, del_pincode):
+    cur_2.execute("SELECT city from city_pin_mapping where pincode='%s';" % str(pick_pincode).rstrip())
+    pickup_city = cur_2.fetchone()
+    if not pickup_city:
+        return None
+    pickup_city = pickup_city[0]
+    cur_2.execute("SELECT city from city_pin_mapping where pincode='%s';" % str(del_pincode).rstrip())
+    deliver_city = cur_2.fetchone()
+    if not deliver_city:
+        return None
+    deliver_city = deliver_city[0]
+    zone_select_tuple = (pickup_city, deliver_city)
+    cur_2.execute("SELECT zone_value from city_zone_mapping where zone=%s and city=%s;",
+                  zone_select_tuple)
+    delivery_zone = cur_2.fetchone()
+    if not delivery_zone:
+        return None
+    delivery_zone = delivery_zone[0]
+    if not delivery_zone:
+        return None
+
+    if delivery_zone in ('D1', 'D2'):
+        delivery_zone = 'D'
+    if delivery_zone in ('C1', 'C2'):
+        delivery_zone = 'C'
+
+    return delivery_zone
+
+
+zone_column_mapping = {
+    'A': 'zone_a',
+    'B': 'zone_b',
+    'C': 'zone_c',
+    'D': 'zone_d',
+    'E': 'zone_e',
+}
+
+zone_step_charge_column_mapping = {
+    'A': 'a_step',
+    'B': 'b_step',
+    'C': 'c_step',
+    'D': 'd_step',
+    'E': 'e_step'
+}

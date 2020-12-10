@@ -20,8 +20,8 @@ insert_billing_address_query = """INSERT INTO billing_address (first_name, last_
 
 insert_orders_data_query = """INSERT INTO orders (channel_order_id, order_date, customer_name, customer_email, 
                                 customer_phone, delivery_address_id, billing_address_id, date_created, status, client_prefix, client_channel_id, 
-                                order_id_channel_unique, pickup_data_id)
-                                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id;
+                                order_id_channel_unique, pickup_data_id, master_channel_id)
+                                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id;
                             """
 
 insert_payments_data_query = """INSERT INTO orders_payments (payment_mode, amount, subtotal, shipping_charges, currency, order_id)

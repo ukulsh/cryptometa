@@ -44,6 +44,12 @@ def fetch_orders():
             except Exception as e:
                 logger.error("Couldn't fetch orders: " + str(channel[1]) + "\nError: " + str(e.args))
 
+        elif channel[11] == "EasyEcom":
+            try:
+                fetch_easyecom_orders(cur, channel)
+            except Exception as e:
+                logger.error("Couldn't fetch orders: " + str(channel[1]) + "\nError: " + str(e.args))
+
     assign_pickup_points_for_unassigned(cur, cur_2)
     update_available_quantity(cur)
     update_thirdwatch_data(cur)
@@ -144,7 +150,7 @@ def fetch_shopify_orders(cur, channel):
             orders_tuple = (
                 channel_order_id, order['created_at'], customer_name, order['customer']['email'],
                 customer_phone if customer_phone else "", shipping_address_id, billing_address_id,
-                datetime.now(), "NEW", channel[1], channel[0], str(order['id']), pickup_data_id)
+                datetime.now(), "NEW", channel[1], channel[0], str(order['id']), pickup_data_id, 1)
 
             cur.execute(insert_orders_data_query, orders_tuple)
             order_id = cur.fetchone()[0]
@@ -370,7 +376,7 @@ def fetch_woocommerce_orders(cur, channel):
             orders_tuple = (
                 channel_order_id, order['date_created'], customer_name, order['billing']['email'],
                 customer_phone if customer_phone else "", shipping_address_id, billing_address_id,
-                datetime.now(), insert_status, channel[1], channel[0], str(order['id']), pickup_data_id)
+                datetime.now(), insert_status, channel[1], channel[0], str(order['id']), pickup_data_id, 5)
 
             cur.execute(insert_orders_data_query, orders_tuple)
             order_id = cur.fetchone()[0]
@@ -571,7 +577,7 @@ def fetch_magento_orders(cur, channel):
             orders_tuple = (
                 channel_order_id, order_time, customer_name, order['customer_email'],
                 customer_phone if customer_phone else "", shipping_address_id, billing_address_id,
-                datetime.now(), insert_status, channel[1], channel[0], str(order['entity_id']), pickup_data_id)
+                datetime.now(), insert_status, channel[1], channel[0], str(order['entity_id']), pickup_data_id, 6)
 
             cur.execute(insert_orders_data_query, orders_tuple)
             order_id = cur.fetchone()[0]
@@ -643,6 +649,174 @@ def fetch_magento_orders(cur, channel):
 
     if data['items']:
         last_sync_tuple = (str(data['items'][-1]['entity_id']), last_synced_time, channel[0])
+        cur.execute(update_last_fetched_data_query, last_sync_tuple)
+
+    conn.commit()
+
+
+def fetch_easyecom_orders(cur, channel):
+
+    time_now = datetime.utcnow()
+    if channel[7] and not (time_now.hour == 21 and 0<time_now.minute<30):
+        created_after = channel[7].strftime("%Y-%m-%d %X")
+    else:
+        created_after = datetime.utcnow() - timedelta(days=30)
+        created_after = created_after.strftime("%Y-%m-%d %X")
+
+    easyecom_orders_url = "%s/orders/getAllOrders?api_token=%s&created_after=%s" % (channel[5], channel[3], created_after)
+    data = requests.get(easyecom_orders_url).json()
+    last_synced_time = datetime.utcnow() + timedelta(hours=5.5)
+    if 'data' not in data:
+        return None
+    for order in data['data']:
+        try:
+            cur.execute("SELECT id from orders where order_id_channel_unique='%s' and client_prefix='%s'" % (
+            str(order['order_id']), channel[1]))
+            try:
+                existing_order = cur.fetchone()[0]
+            except Exception as e:
+                existing_order = False
+                pass
+            if existing_order:
+                continue
+
+            pickup_data_id = None
+            try:
+                cur.execute(
+                    "SELECT aa.id FROM client_pickups aa "
+                    "WHERE aa.client_prefix='%s' and aa.active=true "
+                    "and aa.easyecom_loc_code='%s';" % (str(channel[1]), order['company_name']))
+                pickup_data_id = cur.fetchone()[0]
+            except Exception:
+                pass
+
+            customer_name = order['customer_name']
+
+            customer_phone = order['contactNum']
+            customer_phone = ''.join(e for e in str(customer_phone) if e.isalnum())
+            customer_phone = "0" + customer_phone[-10:]
+
+            shipping_tuple = (customer_name,
+                              "",
+                              order['address_line_1'],
+                              order['address_line_2'],
+                              order['city'],
+                              order['pin_code'],
+                              order['state'],
+                              "India" if len(order['pin_code'])==6 else "",
+                              customer_phone,
+                              None,
+                              None,
+                              "IN" if len(order['pin_code'])==6 else ""
+                              )
+
+            billing_tuple = (customer_name,
+                              "",
+                              order['address_line_1'],
+                              order['address_line_2'],
+                              order['city'],
+                              order['pin_code'],
+                              order['state'],
+                              "India" if len(order['pin_code'])==6 else "",
+                              customer_phone,
+                              None,
+                              None,
+                              "IN" if len(order['pin_code'])==6 else ""
+                              )
+
+            cur.execute(insert_shipping_address_query, shipping_tuple)
+            shipping_address_id = cur.fetchone()[0]
+
+            cur.execute(insert_billing_address_query, billing_tuple)
+            billing_address_id = cur.fetchone()[0]
+
+            channel_order_id = str(order['reference_code'])
+            if channel[16]:
+                channel_order_id = str(channel[16]) + channel_order_id
+
+            order_status = "NOT SHIPPED" if order['awb_number'] else "NEW"
+            master_channel_id = None
+            if order['marketplace'] in easyecom_wareiq_channel_map:
+                master_channel_id = easyecom_wareiq_channel_map[order['marketplace']]
+            orders_tuple = (
+                channel_order_id, order['order_date'], customer_name, order['email'],
+                customer_phone if customer_phone else "", shipping_address_id, billing_address_id,
+                datetime.now(), order_status, channel[1], channel[0], str(order['order_id']), pickup_data_id, master_channel_id)
+
+            cur.execute(insert_orders_data_query, orders_tuple)
+            order_id = cur.fetchone()[0]
+
+            total_amount = float(order['total_amount'])
+            shipping_amount = 0
+            subtotal_amount = total_amount- shipping_amount
+
+            if order['payment_mode'] in ('cod', 'cashondelivery', 'cash on delivery'):
+                financial_status = 'COD'
+            else:
+                financial_status = 'Prepaid'
+
+            payments_tuple = (
+                financial_status, total_amount, subtotal_amount,
+                shipping_amount, "INR", order_id)
+
+            cur.execute(insert_payments_data_query, payments_tuple)
+
+            for prod in order['suborders']:
+                product_sku = str(prod['company_product_id'])
+                prod_tuple = (product_sku, channel[1])
+                cur.execute(select_products_query, prod_tuple)
+                try:
+                    product_id = cur.fetchone()[0]
+                except Exception:
+                    try:
+                        dimensions = json.dumps({"length":float(prod['length']),
+                                                 "breadth":float(prod['width']),
+                                                 "height":float(prod['height'])})
+                    except Exception:
+                        dimensions=None
+                    try:
+                        weight = float(prod['weight'])/1000
+                    except Exception:
+                        weight=None
+                    subcategory_id = None
+                    master_sku = prod['sku']
+                    if not master_sku:
+                        master_sku = product_sku
+                    try:
+                        cur.execute("SELECT keywords, warehouse_prefix, dimensions, weight, subcategory_id FROM keyword_weights WHERE client_prefix='%s'"%channel[1])
+                        all_weights = cur.fetchall()
+                        for obj in all_weights:
+                            if all(x.lower() in master_sku.lower() for x in obj[0]) or all(x.lower() in prod['name'].lower() for x in obj[0]):
+                                dimensions = json.dumps(obj[2])
+                                weight = obj[3]
+                                subcategory_id = obj[4]
+                                break
+                    except Exception as e:
+                        logger.error("product weight assignment failed for: " + str(order['order_id']) + "\nError:" + str(e))
+                    product_insert_tuple = (prod['productName'], product_sku, True, channel[2],
+                                            channel[1], datetime.now(), dimensions,
+                                            float(prod['mrp']), weight, master_sku, subcategory_id)
+                    cur.execute(insert_product_query, product_insert_tuple)
+                    product_id = cur.fetchone()[0]
+
+                tax_lines = list()
+                try:
+                    tax_lines.append({'title': "GST",
+                                      'rate': prod['Item_Amount_IGST']/(prod['Item_Amount_IGST']+prod['Item_Amount_Excluding_Tax'])})
+                except Exception as e:
+                    logger.error("Couldn't fetch tax for: " + str(order_id))
+
+                op_tuple = (product_id, order_id, prod['quantity'], float(prod['quantity'] * float(prod['mrp'])), None, json.dumps(tax_lines))
+                cur.execute(insert_op_association_query, op_tuple)
+
+        except Exception as e:
+            logger.error("order fetch failed for" + str(order['order_id']) + "\nError:" + str(e))
+            conn.rollback()
+
+        conn.commit()
+
+    if data['data']:
+        last_sync_tuple = (str(data['data']['order_id']), last_synced_time, channel[0])
         cur.execute(update_last_fetched_data_query, last_sync_tuple)
 
     conn.commit()
@@ -967,3 +1141,7 @@ def update_thirdwatch_data(cur):
             req = requests.post("https://api.razorpay.com/v1/thirdwatch/orders", headers=headers, data=json.dumps(thirdwatch_data)).json()
         except Exception as e:
             logger.error("Couldn't check thirdwatch for: "+str(order[12]))
+
+
+easyecom_wareiq_channel_map = {"Amazon.in": 2,
+                           "Shopify": 1}

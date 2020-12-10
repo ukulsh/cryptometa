@@ -556,8 +556,6 @@ def get_courier_charges(resp):
             return jsonify(response_object), 400
         if order_value:
             order_value = float(order_value)
-        else:
-            return jsonify(response_object), 400
 
         delivery_zone = get_delivery_zone(cur_2, source_pincode, destination_pincode)
         if not delivery_zone:
@@ -618,8 +616,6 @@ def get_courier_charges(resp):
                 cod_charge = order_value * (cost_obj[2] / 100)
                 if cost_obj[1] > cod_charge:
                     cod_charge = cost_obj[1]
-                else:
-                    cod_charge = charge_rate_values[1]
 
             response_data.append({"courier": cost_obj[4],
                                   "cod_charge": cod_charge,

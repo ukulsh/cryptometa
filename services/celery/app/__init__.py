@@ -1,6 +1,6 @@
 from flask import Flask, request, jsonify
 from celery import Celery
-from flask_cors import cross_origin
+from flask_cors import cross_origin, CORS
 import json, re
 import io
 import csv
@@ -12,6 +12,8 @@ from .ship_orders.function import ship_orders
 from .core_app_jobs.tasks import *
 from .core_app_jobs.utils import authenticate_username_password, authenticate_restful
 from app.order_price_reconciliation.index import process_order_price_reconciliation
+
+cors = CORS()
 
 
 def make_celery(app):
@@ -32,7 +34,7 @@ app = Flask(__name__)
 app.config['CELERY_BACKEND'] = "amqp://ravi:Kad97711@rabbitmq:5672"
 app.config['CELERY_BROKER_URL'] = "amqp://ravi:Kad97711@rabbitmq:5672"
 app.config['USERS_SERVICE_URL'] = os.environ.get('USERS_SERVICE_URL')
-
+cors.init_app(app)
 
 app.config['CELERYBEAT_SCHEDULE'] = {
     'run-status-update': {
@@ -65,11 +67,11 @@ app.config['CELERYBEAT_SCHEDULE'] = {
                 'schedule': crontab(minute='*/30'),
                 'options': {'queue': 'calculate_costs'}
             },
-    'run-sync-all-inventory': {
-                    'task': 'sync_all_inventory',
-                    'schedule': crontab(minute='*/60'),
-                    'options': {'queue': 'sync_all_inventory'}
-                },
+    # 'run-sync-all-inventory': {
+    #                 'task': 'sync_all_inventory',
+    #                 'schedule': crontab(minute='*/60'),
+    #                 'options': {'queue': 'sync_all_inventory'}
+    #             },
 }
 
 app.config['CELERY_TIMEZONE'] = 'UTC'
@@ -122,7 +124,6 @@ def ship_orders_api():
 
 @app.route('/scans/v1/orders/bulkship', methods = ['POST'])
 @authenticate_restful
-@cross_origin()
 def bulkship_orders(resp):
     auth_data = resp.get('data')
     if not auth_data:

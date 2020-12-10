@@ -611,10 +611,16 @@ class AddOrder(Resource):
                     if 'sku' in prod:
                         prod_obj = db.session.query(Products).filter(or_(Products.sku == prod['sku'], Products.master_sku==prod['sku']), Products.client_prefix==auth_data.get('client_prefix')).first()
                         if not prod_obj:
-                            prod_obj = Products(sku=str(prod['sku']),
+                            dimensions = {"length": float(prod.get('length')) if prod.get('length') else None,
+                                          "breadth": float(prod.get('breadth')) if prod.get('breadth') else None,
+                                          "height": float(prod.get('height')) if prod.get('height') else None}
+                            prod_obj = Products(sku=str(prod['product_id']) if prod['product_id'] else str(prod['sku']),
                                                 master_sku=str(prod['sku']),
                                                 name=str(prod.get('name') if prod.get('name') else prod.get('sku')),
                                                 client_prefix=auth_data.get('client_prefix'),
+                                                dimensions=dimensions,
+                                                weight=float(prod.get('weight')) if prod.get('weight') else None,
+                                                price=float(prod.get('price')) if prod.get('price') else None,
                                                 )
                             db.session.add(prod_obj)
 
@@ -1424,6 +1430,69 @@ def bulk_cancel_orders(resp):
     conn.commit()
 
     return jsonify({"success": True, "msg": "Cancelled orders successfully"}), 200
+
+
+@orders_blueprint.route('/orders/v1/bulkAssignPickup', methods=['POST'])
+@authenticate_restful
+def bulk_assign_pickups(resp):
+    cur = conn.cursor()
+    auth_data = resp.get('data')
+    if not auth_data:
+        return jsonify({"success": False, "msg": "Auth Failed"}), 404
+    if auth_data['user_group'] not in ('client', 'super-admin', 'multi-vendor'):
+        return jsonify({"success":False, "msg": "invalid user"}), 400
+    data = json.loads(request.data)
+    order_ids=data.get('order_ids')
+    warehouse_prefix=data.get('pickup_point')
+    if not order_ids:
+        return jsonify({"success": False, "msg": "please select orders"}), 400
+    if len(order_ids)==1:
+        order_tuple_str = "("+str(order_ids[0])+")"
+    else:
+        order_tuple_str = str(tuple(order_ids))
+
+    query_to_run = """SELECT aa.id, bb.id FROM orders aa 
+    LEFT JOIN client_pickups bb on aa.client_prefix=bb.client_prefix
+    LEFT JOIN pickup_points cc on bb.pickup_id=cc.id 
+    WHERE aa.id in __ORDER_IDS__ __CLIENT_FILTER__
+    AND cc.warehouse_prefix='__WH_PREFIX__';""".replace("__ORDER_IDS__", order_tuple_str).replace('__WH_PREFIX__', warehouse_prefix)
+
+    if auth_data['user_group'] == 'client':
+        query_to_run = query_to_run.replace('__CLIENT_FILTER__', "AND aa.client_prefix='%s'"%auth_data['client_prefix'])
+    elif auth_data['user_group'] == 'multi-vendor':
+        cur.execute("SELECT vendor_list FROM multi_vendor WHERE client_prefix='%s';" % auth_data['client_prefix'])
+        vendor_list = cur.fetchone()[0]
+        query_to_run = query_to_run.replace("__CLIENT_FILTER__",
+                                            "AND aa.client_prefix in %s" % str(tuple(vendor_list)))
+    else:
+        query_to_run = query_to_run.replace("__CLIENT_FILTER__","")
+
+    cur.execute(query_to_run)
+    orders_data = cur.fetchall()
+
+    if not orders_data:
+        return jsonify({"success":False, "msg": "invalid orders selected"}), 400
+
+    values_str = ""
+
+    for idx, order_data in enumerate(orders_data):
+        if idx<len(orders_data)-1:
+            values_str += "("+str(order_data[0])+","+str(order_data[1])+"),"
+        else:
+            values_str += "("+str(order_data[0])+","+str(order_data[1])+")"
+
+    update_query= """UPDATE orders as aa SET
+                    pickup_data_id = cc.pickup_data_id
+                FROM (VALUES
+                    __VALUES_STR__  
+                ) as cc(order_id, pickup_data_id) 
+                WHERE cc.order_id = aa.id;""".replace('__VALUES_STR__', values_str)
+
+    cur.execute(update_query)
+
+    conn.commit()
+
+    return jsonify({"success": True, "msg": "assigned pickups successfully"}), 200
 
 
 @orders_blueprint.route('/orders/v1/manifests', methods=['POST'])

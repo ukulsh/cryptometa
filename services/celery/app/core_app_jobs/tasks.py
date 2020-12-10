@@ -725,12 +725,15 @@ def update_available_quantity_on_channel():
                     salable_quan = requests.get("%s/V1/inventory/get-product-salable-quantity/%s/1"%(channel[4], quan[0]), headers=headers).json()
                 except Exception as e:
                     pass
-                source_items.append({
-                    "sku": quan[0],
-                    "source_code": "default",
-                    "quantity": quan[1] + (quan[1]-salable_quan) if type(salable_quan)==int else quan[1],
-                    "status": 1
-                })
+                if type(salable_quan) != int:
+                    continue
+                if salable_quan<0:
+                    source_items.append({
+                        "sku": quan[0],
+                        "source_code": "default",
+                        "quantity": quan[1] + (quan[1]-salable_quan) if type(salable_quan)==int else quan[1],
+                        "status": 1
+                    })
 
             magento_url = channel[4]+ "/V1/inventory/source-items"
             body = {

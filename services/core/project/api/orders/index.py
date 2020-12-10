@@ -2202,14 +2202,14 @@ class PincodeServiceabilty(Resource):
             auth_data = resp.get('data')
             data = json.loads(request.data)
             if not auth_data:
-                return {"success": False, "msg": "Auth Failed"}, 404
+                return {"success": False, "msg": "Auth Failed"}, 400
 
             del_pincode = data.get("pincode")
             cod_available = False
 
             sku_list = data.get("sku_list")
             if not del_pincode:
-                return {"success": False, "msg": "Pincode not provided"}, 404
+                return {"success": False, "msg": "Pincode not provided"}, 400
 
             covid_zone = None
             city = None
@@ -2219,7 +2219,7 @@ class PincodeServiceabilty(Resource):
                     "https://track.delhivery.com/c/api/pin-codes/json/?filter_codes=%s&token=d6ce40e10b52b5ca74805a6e2fb45083f0194185" % str(
                         del_pincode)).json()
                 if not cod_req.get('delivery_codes'):
-                    return {"success": False, "msg": "Pincode not serviceable"}, 404
+                    return {"success": False, "msg": "Pincode not serviceable"}, 400
 
                 if cod_req['delivery_codes'][0]['postal_code']['cod'].lower() == 'y':
                     cod_available = True
@@ -2237,14 +2237,26 @@ class PincodeServiceabilty(Resource):
                 sku_string += value['sku'] + "','"
             sku_string = sku_string.rstrip("'").rstrip(",")
             sku_string += ")"
-            cur.execute("SELECT sku, master_sku FROM products WHERE (sku in __SKU_STR__ or master_sku in __SKU_STR__) and client_prefix='__CLIENT__'".replace('__SKU_STR__', sku_string).replace('__CLIENT__', auth_data[
-                                                                                                        'client_prefix']))
-            sku_tuple = cur.fetchall()
-
             sku_dict = dict()
-            for sku in sku_list:
-                [accept_sku] = [a[0] for a in sku_tuple if sku['sku'] in a]
-                sku_dict[str(accept_sku)] = sku['quantity']
+
+            cur.execute("""select cc.sku, cc.master_sku from products_combos aa
+                            left join products bb on aa.combo_id=bb.id
+                            left join products cc on aa.combo_prod_id=cc.id
+                            WHERE (bb.sku in __SKU_STR__ or bb.master_sku in __SKU_STR__) 
+                            and bb.client_prefix='__CLIENT__'""".replace('__SKU_STR__', sku_string).replace('__CLIENT__', auth_data[
+                                                                                                            'client_prefix']))
+            sku_tuple = cur.fetchall()
+            if not sku_tuple:
+                cur.execute("SELECT sku, master_sku FROM products WHERE (sku in __SKU_STR__ or master_sku in __SKU_STR__) and client_prefix='__CLIENT__'".replace('__SKU_STR__', sku_string).replace('__CLIENT__', auth_data[
+                                                                                                            'client_prefix']))
+                sku_tuple = cur.fetchall()
+
+                for sku in sku_list:
+                    [accept_sku] = [a[0] for a in sku_tuple if sku['sku'] in a]
+                    sku_dict[str(accept_sku)] = sku['quantity']
+            else:
+                for sku in sku_tuple:
+                    sku_dict[str(sku[0])] = 1 #defaulting qty to one for combos
 
             sku_string = "('"
 
@@ -2264,7 +2276,7 @@ class PincodeServiceabilty(Resource):
                 conn.rollback()
                 return {"success": False, "msg": "",
                         "cod_available": cod_available,
-                        "label_url":"https://logourls.s3.amazonaws.com/wareiq_standard.jpeg"}, 404
+                        "label_url":"https://logourls.s3.amazonaws.com/wareiq_standard.jpeg"}, 400
 
             prod_wh_tuple = cur.fetchall()
             wh_dict = dict()
@@ -2308,7 +2320,7 @@ class PincodeServiceabilty(Resource):
                 conn_2.rollback()
                 return {"success": False, "msg": "",
                         "cod_available": cod_available,
-                        "label_url": "https://logourls.s3.amazonaws.com/wareiq_standard.jpeg"}, 404
+                        "label_url": "https://logourls.s3.amazonaws.com/wareiq_standard.jpeg"}, 400
 
             final_wh = cur_2.fetchone()
 
@@ -2391,14 +2403,14 @@ class PincodeServiceabilty(Resource):
             return {"success": True, "data": return_data}, 200
 
         except Exception as e:
-            return {"success": False, "msg": ""}, 404
+            return {"success": False, "msg": ""}, 400
 
     def get(self, resp):
         try:
             auth_data = resp.get('data')
             pincode = request.args.get('pincode')
             if not auth_data:
-                return {"success": False, "msg": "Auth Failed"}, 404
+                return {"success": False, "msg": "Auth Failed"}, 400
             if not pincode:
                 return {"success": False, "msg": "Pincode not provided"}, 401
 
@@ -2406,7 +2418,7 @@ class PincodeServiceabilty(Resource):
                 "https://track.delhivery.com/c/api/pin-codes/json/?filter_codes=%s&token=d6ce40e10b52b5ca74805a6e2fb45083f0194185" % str(
                     pincode)).json()
             if not cod_req.get('delivery_codes'):
-                return {"success": False, "msg": "Pincode not serviceable"}, 404
+                return {"success": False, "msg": "Pincode not serviceable"}, 400
 
             cod_available = False
             reverse_pickup = False
@@ -2418,7 +2430,7 @@ class PincodeServiceabilty(Resource):
             return {"success": True, "data": {"serviceable": True, "cod_available": cod_available, "reverse_pickup": reverse_pickup}}, 200
 
         except Exception as e:
-            return {"success": False, "msg": ""}, 404
+            return {"success": False, "msg": ""}, 400
 
 
 api.add_resource(PincodeServiceabilty, '/orders/v1/serviceability')

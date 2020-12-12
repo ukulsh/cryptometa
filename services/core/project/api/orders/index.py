@@ -2283,9 +2283,6 @@ class PincodeServiceabilty(Resource):
             courier_id = 1
             courier_id_weight = 0.0
             for prod_wh in prod_wh_tuple:
-                if auth_data['client_prefix']=='NASHER' and prod_wh[5] > courier_id_weight:
-                    courier_id = prod_wh[4]
-                    courier_id_weight = prod_wh[5]
                 if sku_dict[prod_wh[2]] <= prod_wh[3]:
                     if prod_wh[0] not in wh_dict:
                         wh_dict[prod_wh[0]] = {"pincode": prod_wh[6], "count": 1}

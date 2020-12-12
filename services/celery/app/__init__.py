@@ -67,11 +67,11 @@ app.config['CELERYBEAT_SCHEDULE'] = {
                 'schedule': crontab(minute='*/30'),
                 'options': {'queue': 'calculate_costs'}
             },
-    # 'run-sync-all-inventory': {
-    #                 'task': 'sync_all_inventory',
-    #                 'schedule': crontab(minute='*/60'),
-    #                 'options': {'queue': 'sync_all_inventory'}
-    #             },
+    'run-sync-all-inventory': {
+                    'task': 'sync_all_inventory',
+                    'schedule': crontab(minute='*/60'),
+                    'options': {'queue': 'sync_all_inventory'}
+                },
 }
 
 app.config['CELERY_TIMEZONE'] = 'UTC'

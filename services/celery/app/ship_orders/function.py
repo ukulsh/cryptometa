@@ -1078,20 +1078,24 @@ def ship_ecom_orders(cur, courier, courier_name, order_ids, order_id_tuple, back
             else:
                 pickup_point_order_dict[order[41]].append(order)
 
-    cur.execute("""select max(awb) from shipments aa
+    cur.execute("""select awb from shipments aa
                         left join orders bb on aa.order_id=bb.id
                         left join orders_payments cc on cc.order_id=bb.id
                         where courier_id=%s
-                        and payment_mode ilike 'cod';""" % str(courier[9]))
+                        and payment_mode ilike 'cod'
+                        order by aa.id DESC
+                        LIMIT 1;""" % str(courier[9]))
 
     last_assigned_awb_cod = cur.fetchone()[0]
     last_assigned_awb_cod = int(last_assigned_awb_cod)
 
-    cur.execute("""select max(awb) from shipments aa
+    cur.execute("""select awb from shipments aa
                         left join orders bb on aa.order_id=bb.id
                         left join orders_payments cc on cc.order_id=bb.id
                         where courier_id=%s
-                        and (payment_mode ilike 'prepaid' or payment_mode ilike 'paid');""" % str(courier[9]))
+                        and (payment_mode ilike 'prepaid' or payment_mode ilike 'paid')
+                        order by aa.id DESC
+                        LIMIT 1;""" % str(courier[9]))
 
     last_assigned_awb_ppd = cur.fetchone()[0]
     last_assigned_awb_ppd = int(last_assigned_awb_ppd)
@@ -1258,9 +1262,11 @@ def ship_ecom_orders(cur, courier, courier_name, order_ids, order_id_tuple, back
                 ecom_url = courier[16] + "/apiv3/manifest_awb/"
                 req = requests.post(ecom_url, data={"username": courier[14], "password": courier[15],
                                                     "json_input": json.dumps([json_input])})
-                while req.json()['shipments'][0]['reason'] == 'INCORRECT_AWB_NUMBER':
-                    last_assigned_awb += 1
-                    json_input['AWB_NUMBER'] = str(last_assigned_awb)
+                if req.json()['shipments'][0]['reason'] == 'INCORRECT_AWB_NUMBER':
+                    fetch_awb_url = courier[16] + "/apiv2/fetch_awb/"
+                    fetch_awb_req = requests.post(fetch_awb_url, data={"username": courier[14], "password": courier[15],
+                                                    "count": 100, "type":json_input['PRODUCT']})
+                    json_input['AWB_NUMBER'] = str(fetch_awb_req.json()['awb'][0])
                     req = requests.post(ecom_url, data={"username": courier[14], "password": courier[15],
                                                         "json_input": json.dumps(json_input)})
                 return_data_raw = req.json()
@@ -1410,7 +1416,7 @@ def ship_bluedart_orders(cur, courier, courier_name, order_ids, order_id_tuple, 
         for order in all_new_orders:
             if order[26].lower() == 'cod' and not order[27] and not force_ship:
                 continue
-            if force_ship and order[26].lower() == 'pickup':
+            if order[26].lower() == 'pickup':
                 continue
             zone = None
             try:
@@ -1421,7 +1427,7 @@ def ship_bluedart_orders(cur, courier, courier_name, order_ids, order_id_tuple, 
             if courier[1] == "ZLADE" and zone in ('A', ) and not force_ship:
                 continue
 
-            if order[26].lower() == "prepaid" and courier[1] in ("ACTIFIBER", "BEHIR", "SHAHIKITCHEN", "SUKHILIFE") and not force_ship:
+            if order[26].lower() == "prepaid" and courier[1] in ("ACTIFIBER", "BEHIR", "SHAHIKITCHEN", "SUKHILIFE", "ORGANICRIOT") and not force_ship:
                 continue
 
             time_2_days = datetime.utcnow() + timedelta(hours=5.5) - timedelta(days=1)
@@ -1877,6 +1883,7 @@ bluedart_area_code_mapping = {"110015":"DEL",
                                 "403001":"PNJ",
                                 "410206":"NBM",
                                 "411001":"PNQ",
+                                "411005":"PNQ",
                                 "413501":"OBD",
                                 "421302":"BCT",
                                 "422002":"NSK",
@@ -1991,6 +1998,7 @@ bluedart_area_code_mapping = {"110015":"DEL",
                                 "535128":"GRV",
                                 "535501":"PRF",
                                 "560001":"BLR",
+                                "560078":"BLR",
                                 "560074":"XBD",
                                 "561202":"PGA",
                                 "561203":"DDP",

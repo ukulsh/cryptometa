@@ -720,20 +720,19 @@ def update_available_quantity_on_channel():
                        'Content-Type': 'application/json',
                        'User-Agent': 'WareIQ server'}
             for quan in all_quan:
-                salable_quan = quan[1]
+                update_quan = quan[1]
                 try:
+                    current_quan = requests.get("%s/V1/inventory/source-items?searchCriteria[filter_groups][0][filters][0][field]=sku&searchCriteria[filter_groups][0][filters][0][value]=%s&searchCriteria[filter_groups][0][filters][0][condition_type]=eq"%(channel[4], quan[0]), headers=headers).json()
                     salable_quan = requests.get("%s/V1/inventory/get-product-salable-quantity/%s/1"%(channel[4], quan[0]), headers=headers).json()
-                except Exception as e:
-                    pass
-                if type(salable_quan) != int:
-                    continue
-                if salable_quan<0:
+                    update_quan = update_quan + (current_quan['items'][0]['quantity']-salable_quan)
                     source_items.append({
                         "sku": quan[0],
                         "source_code": "default",
-                        "quantity": quan[1] + (quan[1]-salable_quan) if type(salable_quan)==int else quan[1],
+                        "quantity": update_quan,
                         "status": 1
                     })
+                except Exception as e:
+                    pass
 
             magento_url = channel[4]+ "/V1/inventory/source-items"
             body = {

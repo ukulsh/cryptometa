@@ -257,8 +257,7 @@ class Orders(db.Model):
     chargeable_weight = db.Column(db.FLOAT, nullable=True)
     date_created = db.Column(db.DateTime, default=datetime.now)
     date_updated = db.Column(db.DateTime, onupdate=datetime.now)
-    __table_args__ = (UniqueConstraint('channel_order_id', 'client_prefix', name='id_client_unique'),
-                      Index('orders_id_date_idx_2', 'order_date', 'id'),
+    __table_args__ = (Index('orders_id_date_idx_2', 'order_date', 'id'),
                       )
 
 

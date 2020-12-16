@@ -291,6 +291,8 @@ def track_delhivery_orders(courier, cur):
                 time_now = datetime.utcnow() + timedelta(hours=5.5)
                 cur.execute("UPDATE order_pickups SET picked=%s, pickup_time=%s WHERE order_id=%s",
                             (True, time_now, orders_dict[current_awb][0]))
+                if orders_dict[current_awb][3]=="NASHER" and orders_dict[current_awb][5]:
+                    hepta_fulfilment(orders_dict[current_awb])
                 if orders_dict[current_awb][26] != False:
                     if orders_dict[current_awb][14] == 5:
                         try:
@@ -935,6 +937,8 @@ def track_xpressbees_orders(courier, cur):
                 exotel_sms_data[sms_to_key] = customer_phone
                 tracking_link_wareiq = "http://webapp.wareiq.com/tracking/" + str(
                     orders_dict[current_awb][1])
+                if orders_dict[current_awb][3]=="NASHER" and orders_dict[current_awb][5]:
+                    hepta_fulfilment(orders_dict[current_awb])
                 if edd:
                     cur.execute("UPDATE shipments SET pdd=%s WHERE awb=%s", (edd, current_awb))
                     edd = edd.strftime('%-d %b')
@@ -1800,11 +1804,34 @@ def shopify_fulfillment(order, cur):
     }
     req_ful = requests.post(create_fulfillment_url, data=json.dumps(fulfil_data),
                             headers=ful_header)
-    fulfillment_id = str(req_ful.json()['fulfillment']['id'])
+    try:
+        fulfillment_id = str(req_ful.json()['fulfillment']['id'])
+    except KeyError:
+        if req_ful.json().get('errors') and req_ful.json().get('errors')=='Not Found':
+            get_locations_url = "https://%s:%s@%s/admin/api/2019-10/locations.json" % (order[7], order[8], order[9])
+            req = requests.get(get_locations_url).json()
+            location_id = str(req['locations'][0]['id'])
+            cur.execute("UPDATE client_channel set unique_parameter=%s where id=%s" % (location_id, order[34]))
+            fulfil_data['fulfillment']['location_id'] = int(location_id)
+            req_ful = requests.post(create_fulfillment_url, data=json.dumps(fulfil_data),
+                                    headers=ful_header)
+            fulfillment_id = str(req_ful.json()['fulfillment']['id'])
     if fulfillment_id and tracking_link:
         cur.execute("UPDATE shipments SET channel_fulfillment_id=%s, tracking_link=%s WHERE id=%s",
                     (fulfillment_id, tracking_link, order[10]))
     return fulfillment_id, tracking_link
+
+
+def hepta_fulfilment(order):
+    headers = {"Content-Type": "application/x-www-form-urlencoded",
+               "Authorization": "Basic c2VydmljZS5hcGl1c2VyOllQSGpBQXlXY3RWYzV5MWg="}
+    hepta_url = "https://www.nashermiles.com/alexandria/api/v1/shipment/create"
+    hepta_body = {
+        "order_id": str(order[5]),
+        "awb_number": str(order[1]),
+        "tracking_link": "http://webapp.wareiq.com/tracking/%s" % str(order[1])
+    }
+    req_ful = requests.post(hepta_url, headers=headers, data=json.dumps(hepta_body))
 
 
 def shopify_markpaid(order):

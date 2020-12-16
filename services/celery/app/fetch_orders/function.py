@@ -816,7 +816,7 @@ def fetch_easyecom_orders(cur, channel):
         conn.commit()
 
     if data['data']:
-        last_sync_tuple = (str(data['data']['order_id']), last_synced_time, channel[0])
+        last_sync_tuple = (str(data['data'][-1]['order_id']), last_synced_time, channel[0])
         cur.execute(update_last_fetched_data_query, last_sync_tuple)
 
     conn.commit()

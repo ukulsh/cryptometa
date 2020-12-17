@@ -133,11 +133,16 @@ class Client(db.Model):
     calling = db.Column(db.Boolean(), default=False, nullable=True)
     created_date = db.Column(db.DateTime, default=func.now(), server_default=func.now(), nullable=False)
 
-    def __init__(self, client_name, primary_email, client_prefix, tabs):
+    def __init__(self, client_name, primary_email, client_prefix, tabs, signed_agreement_link=None, pan_link=None,
+                 gst_cert_url=None, kyc_verified=False):
         self.client_name = client_name
         self.primary_email = primary_email
         self.client_prefix = client_prefix
         self.tabs = tabs
+        self.signed_agreement_link = signed_agreement_link
+        self.pan_link = pan_link
+        self.gst_cert_url = gst_cert_url
+        self.kyc_verified = kyc_verified
 
     def to_json(self):
         return {

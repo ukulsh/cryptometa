@@ -4,9 +4,9 @@
 from flask import Blueprint, jsonify, request, current_app
 from sqlalchemy import exc, or_
 
-from project.api.models import User
+from project.api.models import User, Client
 from project import db, bcrypt
-from project.api.utils import authenticate, authenticate_token_restful
+from project.api.utils import authenticate, authenticate_token_restful, create_bikayi_user, verify_hamc
 import os, requests
 
 CORE_SERVICE_URL = os.environ.get('CORE_SERVICE_URL') or 'http://localhost:5010'
@@ -83,6 +83,41 @@ def login_user():
     except Exception:
         response_object['message'] = 'Try again.'
         return jsonify(response_object), 500
+
+
+@auth_blueprint.route('/auth/login/bikayi', methods=['GET'])
+def login_user_bikayi():
+    response_object = {
+        'status': 'fail',
+        'message': 'signature verification failed.'
+    }
+    merchant_id = request.args.get('merchant_id')
+    signature = request.args.get('signature')
+    secret_key = "NhqPtmdSJYdKjVHjA7PZj4Mge3R5"
+    verify_sign = verify_hamc(signature, merchant_id, secret_key)
+    if not verify_sign:
+        return jsonify(response_object), 403
+
+    # auth_token = auth_header.split(" ")[1]
+    # resp = User.decode_auth_token(auth_token)
+    # if isinstance(resp, str):
+    #     response_object['message'] = resp
+    #     return response_object, 401
+    user = db.session.query(User).join(Client).filter(Client.client_prefix=="bky_" + merchant_id).first()
+    if not user:
+        create_bikayi_user(merchant_id)
+
+    user = db.session.query(User).join(Client).filter(Client.client_prefix=="bky_" + merchant_id).first()
+    if user:
+        auth_token = user.encode_auth_token(user.id)
+        if auth_token:
+            response_object['status'] = 'success'
+            response_object['message'] = 'Successfully logged in.'
+            response_object['auth_token'] = auth_token.decode()
+            return jsonify(response_object), 200
+    else:
+        response_object['message'] = "Couldn't login."
+        return jsonify(response_object), 404
 
 
 @auth_blueprint.route('/auth/loginAPI', methods=['POST'])

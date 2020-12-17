@@ -942,10 +942,12 @@ class ClientMapping(db.Model):
     thirdwatch_cod_only = db.Column(db.BOOLEAN, nullable=True, default=True)
     thirdwatch_activate_time = db.Column(db.DateTime, default=datetime.now)
 
-    def __init__(self, client_name, client_prefix, account_type):
+    def __init__(self, client_name, client_prefix, account_type, client_logo=None, theme_color=None):
         self.client_name = client_name
         self.client_prefix = client_prefix
         self.account_type = account_type
+        self.client_logo = client_logo
+        self.theme_color = theme_color
 
     def to_json(self):
         return {

@@ -1,12 +1,11 @@
 # services/users/project/api/auth.py
 
-
-from flask import Blueprint, jsonify, request, current_app
+from flask import Blueprint, jsonify, request, current_app, redirect
 from sqlalchemy import exc, or_
 
 from project.api.models import User, Client
 from project import db, bcrypt
-from project.api.utils import authenticate, authenticate_token_restful, create_bikayi_user, verify_hamc
+from project.api.utils import authenticate, authenticate_token_restful, create_bikayi_user, verify_hamc, jwt_token, authenticate_restful
 import os, requests
 
 CORE_SERVICE_URL = os.environ.get('CORE_SERVICE_URL') or 'http://localhost:5010'
@@ -262,3 +261,33 @@ def login_as(resp):
     except Exception as e:
         response_object['message'] = 'failed while logging as user'
         return jsonify(response_object), 400
+
+
+@auth_blueprint.route('/auth/jwt/freshdesk', methods=['GET'])
+@authenticate_restful
+def login_freshdesk_sso(resp):
+    source_user = User.query.filter_by(id=resp).first()
+    if not source_user:
+        raise Exception("user doesnt have access to login.")
+    if source_user.group_id != 1:
+        user_data = {'id': str(source_user.id),
+                     'email': source_user.email,
+                     'last_name': source_user.last_name,
+                     'first_name': source_user.first_name,
+                     'client_prefix': source_user.client.client_prefix if source_user.client else None,
+                     }
+    else:
+        user_data = {'id': "9",
+                     'email': "ravi@wareiq.com",
+                     'last_name': "Chaudhary",
+                     'first_name': "Ravi",
+                     'client_prefix': "WAREIQ",
+                     }
+    client_id = request.args.get('client_id')
+    state = request.args.get('state')
+    redirect_uri = request.args.get('redirect_uri')
+    nonce = request.args.get('nonce')
+    # return '''{}'''.format(state)
+    token = jwt_token(nonce, user_data)
+    constructed_url = redirect_uri + '?state=' + state + '&id_token=' + token
+    return jsonify({"url": constructed_url}), 200

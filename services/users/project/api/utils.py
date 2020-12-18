@@ -1,13 +1,17 @@
 # services/users/project/api/utils.py
 
-import hmac, hashlib, json, requests, os, base64
+import hmac, hashlib, json, requests, os, base64, jwt
 from functools import wraps
+from datetime import datetime
 
 from flask import request, jsonify
 
 from project.api.models import User, Client
 from project import db
 from project.api.users_util import based_user_register
+
+from jwt.contrib.algorithms.pycrypto import RSAAlgorithm
+jwt.register_algorithm('RS256', RSAAlgorithm(RSAAlgorithm.SHA256))
 
 CORE_SERVICE_URL = os.environ.get('CORE_SERVICE_URL') or 'http://localhost:5010'
 
@@ -151,6 +155,28 @@ def pagination_validator(page_size, page_number):
     else:
         page_number = int(page_number)
     return page_size, page_number
+
+
+def jwt_token(nonce, user_data):
+    private_key = """-----BEGIN RSA PRIVATE KEY-----
+MIICXAIBAAKBgQCXALD6gGB0tB7r9O1ESZMIRYUHd2+peOBsJfQ6XsWadQIg98kX
+sbLK1smQYzfYCSVDaacxb6z3sU1xH/RMBkOwC5J+Ix8heEOuy9JoU7OaMha0vAaw
+kK+6Zn8Hj4DyyK++I5xDeZoCQvyhvP0hVHE7jAo0HbhNAg3P6ja73/mTWwIDAQAB
+AoGAWtOzoDmvywK8xrjgLn8CzarjRYZ1x75JX0PFD4cJ3Mocqa/haTsdjBx9yTek
+03FM1KusQXQm2iXvqufJjiEGfOHTfYPxzfczSmWaXpYsA9QhAtR9rTmcVUDHeyTS
+0k/P1NAR+RnACaNiiCmGSwI6WfcPpaeI9s9h5QrGz9/VO4ECQQDoud2W2TWrptK7
+RIyXtk6YOs202eS1F4XTRP3uHQaJRP0HNAqHXx+z1jPVUydoyw86qoLvcKbRuGeL
+S2oewmRRAkEAphqWDpo6mx55CSv6H553rrZ6Eni3B3WCB8DUvW6uy7qg5ooWogG2
+3sR5aYgFc2TxyIStoJYOt3Wq/x5EsoFt6wJARhvQDGSNDZPpAe9Jp16NWMDGPYgy
+pPdcImQzVys5T9sPmr7ruRJH+6Y44Tf2tFQP122MmlNGfgFeeBEU/AU1sQJBAJR0
+wpT+h07Ip4jpAz5rVbCTavtDZOKHxdXEJN/CIvv3K4Og+6WEPrtPguwtJCIEoIyE
++OHD/BdAVbp6hQ+92k0CQCUuWuBMpLANYiKbyuM/+0RcOGzuMpHZAMUtbwvZJjVp
++r3Ech5Q76Wz1s6UHttyhp4wgAmpcSCXc1LwtSITXI4=
+-----END RSA PRIVATE KEY-----"""
+    payload = {'sub': user_data['id'],'email':user_data['email'],'iat': datetime.utcnow(),'nonce': nonce,'family_name': user_data['last_name'],'given_name':user_data['first_name'], 'company':user_data['client_prefix']}
+    headers = { "alg": "RS256", "typ": "JWT"}
+    token = jwt.encode(payload,private_key,algorithm='RS256',headers=headers).decode('utf=-8')
+    return token
 
 
 bky_default_data = {

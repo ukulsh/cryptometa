@@ -9,6 +9,8 @@ RUN apt-get update && \
 # set working directory
 WORKDIR /usr/src/app
 
+RUN apt-get -y install gcc
+
 # add and install requirements
 COPY ./requirements.txt /usr/src/app/requirements.txt
 RUN pip install -r requirements.txt

@@ -663,7 +663,10 @@ def fetch_easyecom_orders(cur, channel):
         created_after = datetime.utcnow() - timedelta(days=30)
         created_after = created_after.strftime("%Y-%m-%d %X")
 
-    easyecom_orders_url = "%s/orders/getAllOrders?api_token=%s&created_after=%s" % (channel[5], channel[3], created_after)
+    fetch_status="1,2"
+    if channel[15]:
+        fetch_status = ','.join(str(x) for x in channel[15])
+    easyecom_orders_url = "%s/orders/getAllOrders?api_token=%s&created_after=%s&status_id=%s" % (channel[5], channel[3], created_after, fetch_status)
     data = requests.get(easyecom_orders_url).json()
     last_synced_time = datetime.utcnow() + timedelta(hours=5.5)
     if 'data' not in data:
@@ -671,7 +674,7 @@ def fetch_easyecom_orders(cur, channel):
     for order in data['data']:
         try:
             cur.execute("SELECT id from orders where order_id_channel_unique='%s' and client_prefix='%s'" % (
-            str(order['order_id']), channel[1]))
+            str(order['invoice_id']), channel[1]))
             try:
                 existing_order = cur.fetchone()[0]
             except Exception as e:
@@ -734,14 +737,19 @@ def fetch_easyecom_orders(cur, channel):
             if channel[16]:
                 channel_order_id = str(channel[16]) + channel_order_id
 
-            order_status = "NOT SHIPPED" if order['awb_number'] else "NEW"
-            master_channel_id = None
+            order_status="NEW"
+            if order['courier']:
+                order_status = "NOT SHIPPED"
+
             if order['marketplace'] in easyecom_wareiq_channel_map:
                 master_channel_id = easyecom_wareiq_channel_map[order['marketplace']]
+            else:
+                continue
+
             orders_tuple = (
                 channel_order_id, order['order_date'], customer_name, order['email'],
                 customer_phone if customer_phone else "", shipping_address_id, billing_address_id,
-                datetime.now(), order_status, channel[1], channel[0], str(order['order_id']), pickup_data_id, master_channel_id)
+                datetime.now(), order_status, channel[1], channel[0], str(order['invoice_id']), pickup_data_id, master_channel_id)
 
             cur.execute(insert_orders_data_query, orders_tuple)
             order_id = cur.fetchone()[0]
@@ -750,8 +758,10 @@ def fetch_easyecom_orders(cur, channel):
             shipping_amount = 0
             subtotal_amount = total_amount- shipping_amount
 
-            if order['payment_mode'] in ('cod', 'cashondelivery', 'cash on delivery'):
+            if str(order['payment_mode']).lower() in ('cod', 'cashondelivery', 'cash on delivery'):
                 financial_status = 'COD'
+            elif order['payment_mode'] is None:
+                financial_status = "Unknown"
             else:
                 financial_status = 'Prepaid'
 
@@ -760,6 +770,10 @@ def fetch_easyecom_orders(cur, channel):
                 shipping_amount, "INR", order_id)
 
             cur.execute(insert_payments_data_query, payments_tuple)
+
+            if order['courier'] and order['courier'] in easyecom_wareiq_courier_map:
+                cur.execute("INSERT INTO shipments (awb, status, order_id, courier_id) VALUES ('%s', 'Success', %s, %s)"%(str(order['awb_number']),
+                                                                                                                          order_id, easyecom_wareiq_courier_map[order['courier']]))
 
             for prod in order['suborders']:
                 product_sku = str(prod['company_product_id'])
@@ -1144,4 +1158,8 @@ def update_thirdwatch_data(cur):
 
 
 easyecom_wareiq_channel_map = {"Amazon.in": 2,
-                           "Shopify": 1}
+                           "Shopify": 1,
+                               "Flipkart":3}
+
+easyecom_wareiq_courier_map = {"eKart": 7,
+                               "Self Ship": 19}

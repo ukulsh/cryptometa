@@ -753,6 +753,11 @@ def fill_invoice_data(c, order, client_name):
         s_no += 1
         y_axis -= 0.30
 
+        if y_axis<-0.1:
+            c.showPage()
+            y_axis=10.1
+            c.translate(inch, inch)
+
     if order.payments[0].shipping_charges:
         c.drawString(4.82 * inch, y_axis * inch, "Shipping Charges:")
         c.drawString(6.22 * inch, y_axis * inch, str(round(order.payments[0].shipping_charges, 2)))

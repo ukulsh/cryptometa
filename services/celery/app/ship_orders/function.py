@@ -276,13 +276,16 @@ def ship_delhivery_orders(cur, courier, courier_name, order_ids, order_id_tuple,
                 else:
                     package_string += "WareIQ package"
 
+                shipping_phone = order[21] if order[21] else order[5]
+                shipping_phone = ''.join(e for e in str(shipping_phone) if e.isalnum())
+                shipping_phone = "0" + shipping_phone[-10:]
                 shipment_data = dict()
                 shipment_data['city'] = order[17]
                 shipment_data['weight'] = weight
                 shipment_data['add'] = order[15]
                 if order[16]:
                     shipment_data['add'] += '\n' + order[16]
-                shipment_data['phone'] = order[21]
+                shipment_data['phone'] = shipping_phone
                 shipment_data['payment_mode'] = order[26]
                 shipment_data['name'] = order[13]
                 if order[14]:
@@ -593,8 +596,9 @@ def ship_shadowfax_orders(cur, courier, courier_name, order_ids, order_id_tuple,
                     dimensions['height'] = round(
                         (volumetric_weight * 5000) / (dimensions['length'] * dimensions['breadth']))
 
-                customer_phone = order[21].replace(" ", "")
-                customer_phone = "0" + customer_phone[-10:]
+                shipping_phone = order[21] if order[21] else order[5]
+                shipping_phone = ''.join(e for e in str(shipping_phone) if e.isalnum())
+                shipping_phone = "0" + shipping_phone[-10:]
 
                 customer_name = order[13]
                 if order[14]:
@@ -611,7 +615,7 @@ def ship_shadowfax_orders(cur, courier, courier_name, order_ids, order_id_tuple,
                     },
                     "customer_details": {
                         "name": customer_name,
-                        "contact": customer_phone,
+                        "contact": shipping_phone,
                         "address_line_1": order[15],
                         "address_line_2": order[16],
                         "city": order[17],
@@ -890,8 +894,9 @@ def ship_xpressbees_orders(cur, courier, courier_name, order_ids, order_id_tuple
                     dimensions['height'] = round(
                         (volumetric_weight * 5000) / (dimensions['length'] * dimensions['breadth']))
 
-                customer_phone = order[21].replace(" ", "")
-                customer_phone = "0" + customer_phone[-10:]
+                shipping_phone = order[21] if order[21] else order[5]
+                shipping_phone = ''.join(e for e in str(shipping_phone) if e.isalnum())
+                shipping_phone = "0" + shipping_phone[-10:]
 
                 customer_name = order[13]
                 if order[14]:
@@ -932,7 +937,7 @@ def ship_xpressbees_orders(cur, courier, courier_name, order_ids, order_id_tuple
                         }],
                         "CustomerMobileNumberDetails": [{
                             "Type": "Primary",
-                            "MobileNo": customer_phone
+                            "MobileNo": shipping_phone
                         }],
                         "RTOName": pickup_point[20],
                         "RTOMobileNo": pickup_point[12],
@@ -1190,8 +1195,9 @@ def ship_ecom_orders(cur, courier, courier_name, order_ids, order_id_tuple, back
                     dimensions['height'] = round(
                         (volumetric_weight * 5000) / (dimensions['length'] * dimensions['breadth']))
 
-                customer_phone = order[21].replace(" ", "")
-                customer_phone = "0" + customer_phone[-10:]
+                shipping_phone = order[21] if order[21] else order[5]
+                shipping_phone = ''.join(e for e in str(shipping_phone) if e.isalnum())
+                shipping_phone = shipping_phone[-10:]
 
                 customer_name = order[13]
                 if order[14]:
@@ -1235,8 +1241,8 @@ def ship_ecom_orders(cur, courier, courier_name, order_ids, order_id_tuple, back
                     "CONSIGNEE_ADDRESS3": "",
                     "DESTINATION_CITY": order[17],
                     "STATE": order[19],
-                    "MOBILE": customer_phone[-10:],
-                    "TELEPHONE": customer_phone[-10:],
+                    "MOBILE": shipping_phone,
+                    "TELEPHONE": shipping_phone,
                     "PINCODE": order[18],
                     "ITEM_DESCRIPTION": package_string,
                     "PIECES": package_quantity,
@@ -1481,8 +1487,9 @@ def ship_bluedart_orders(cur, courier, courier_name, order_ids, order_id_tuple, 
                 services = dict()
                 return_address = dict()
 
-                customer_phone = order[21].replace(" ", "")
-                customer_phone = "0" + customer_phone[-10:]
+                shipping_phone = order[21] if order[21] else order[5]
+                shipping_phone = ''.join(e for e in str(shipping_phone) if e.isalnum())
+                shipping_phone = "0" + shipping_phone[-10:]
 
                 customer_name = order[13]
                 if order[14]:
@@ -1495,7 +1502,7 @@ def ship_bluedart_orders(cur, courier, courier_name, order_ids, order_id_tuple, 
                 consignee['ConsigneeName'] = customer_name
                 consignee['ConsigneeAddress1'] = customer_address
                 consignee['ConsigneePincode'] = str(order[18])
-                consignee['ConsigneeMobile'] = customer_phone
+                consignee['ConsigneeMobile'] = shipping_phone
 
                 shipper['CustomerCode'] = customer_code
                 shipper['OriginArea'] = area_code

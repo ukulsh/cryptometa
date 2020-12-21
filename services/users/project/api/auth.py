@@ -194,7 +194,7 @@ def get_user_status(resp):
 
 
 @auth_blueprint.route('/auth/v1/updateUser', methods=['POST'])
-@authenticate
+@authenticate_restful
 def update_user(resp):
     response_object = {'status': 'fail'}
     try:

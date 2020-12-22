@@ -230,7 +230,7 @@ order_shipped = """<!-- THIS EMAIL WAS BUILT AND TESTED WITH LITMUS http://litmu
         <!-- HERO : BEGIN -->
         <tr>
           <td style="padding: 40px 0 20px;"><img
-              src="__CLIENT_LOGO__" alt="__CLIENT_NAME__" width="200" height="50"/></td>
+              src="__CLIENT_LOGO__" alt="__CLIENT_NAME__" width="200" height="50" style="height: auto;"/></td>
         </tr>
         <tr>
           <!-- Bulletproof Background Images c/o https://backgrounds.cm -->

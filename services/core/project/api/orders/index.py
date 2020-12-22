@@ -27,7 +27,8 @@ from project.api.queries import select_orders_list_query, available_warehouse_pr
     fetch_warehouse_to_pick_from, select_pickups_list_query, get_selected_product_details
 from project.api.utils import authenticate_restful, fill_shiplabel_data_thermal, \
     create_shiplabel_blank_page, fill_shiplabel_data, create_shiplabel_blank_page_thermal, \
-    create_invoice_blank_page, fill_invoice_data, generate_picklist, generate_packlist
+    create_invoice_blank_page, fill_invoice_data, generate_picklist, generate_packlist, \
+    tracking_get_xpressbees_details, tracking_get_delhivery_details, tracking_get_bluedart_details, tracking_get_ecomxp_details
 from project.api.generate_manifest import fill_manifest_data
 from project.api.utilities.db_utils import DbConnection
 
@@ -1913,69 +1914,33 @@ def track_order(awb):
 
         details = request.args.get('details')
         if details:
-            if shipment and shipment.courier_id in (5,13): #Xpressbees details of status
-                xpressbees_url = "http://xbclientapi.xbees.in/TrackingService.svc/GetShipmentSummaryDetails"
+            if shipment and shipment.courier.courier_name.startswith('Xpressbees'): #Xpressbees details of status
                 try:
-                    body = {"AWBNo": awb, "XBkey": shipment.courier.api_key}
-                    return_details = dict()
-                    req = requests.post(xpressbees_url, json=body).json()
-                    for each_scan in req[0]['ShipmentSummary']:
-                        return_details_obj = dict()
-                        return_details_obj['status'] = each_scan['Status']
-                        if each_scan['Comment']:
-                            return_details_obj['status'] += " - " + each_scan['Comment']
-                        return_details_obj['city'] = each_scan['Location']
-                        if each_scan['Location']:
-                            return_details_obj['city'] = each_scan['Location'].split(", ")[1]
-                        status_time = each_scan['StatusDate'] + " " + each_scan['StatusTime']
-                        if status_time:
-                            status_time = datetime.strptime(status_time, '%d-%m-%Y %H%M')
-
-                        time_str = status_time.strftime("%d %b %Y, %H:%M:%S")
-                        return_details_obj['time'] = time_str
-                        if time_str[:11] not in return_details:
-                            return_details[time_str[:11]] = [return_details_obj]
-                        else:
-                            return_details[time_str[:11]].append(return_details_obj)
-
-                        for key in return_details:
-                            return_details[key] = sorted(return_details[key], key=lambda k: k['time'], reverse=True)
+                    return_details = tracking_get_xpressbees_details(shipment, awb)
                     return jsonify({"success": True, "data": return_details}), 200
                 except Exception as e:
                     return jsonify({"success": False, "msg": "Details not available"}), 400
 
-            if shipment and shipment.courier_id in (1,2,8,11,12): #Delhivery details of status
-                delhivery_url = "https://track.delhivery.com/api/status/packages/json/?waybill=%s&token=%s" \
-                                % (str(awb), shipment.courier.api_key)
-            else:
-                delhivery_url = "https://track.delhivery.com/api/status/packages/json/?waybill=%s&token=%s" \
-                                % (str(awb), "d6ce40e10b52b5ca74805a6e2fb45083f0194185")
-            try:
-                return_details = dict()
-                req = requests.get(delhivery_url).json()
-                for each_scan in req['ShipmentData'][0]['Shipment']["Scans"]:
-                    return_details_obj = dict()
-                    return_details_obj['status'] = each_scan['ScanDetail']['Scan'] + \
-                                                   ' - ' + each_scan['ScanDetail']['Instructions']
-                    return_details_obj['city'] = each_scan['ScanDetail']['CityLocation']
-                    status_time = each_scan['ScanDetail']['StatusDateTime']
-                    if status_time:
-                        if len(status_time) == 19:
-                            status_time = datetime.strptime(status_time, '%Y-%m-%dT%H:%M:%S')
-                        else:
-                            status_time = datetime.strptime(status_time, '%Y-%m-%dT%H:%M:%S.%f')
-                    time_str = status_time.strftime("%d %b %Y, %H:%M:%S")
-                    return_details_obj['time'] = time_str
-                    if time_str[:11] not in return_details:
-                        return_details[time_str[:11]] = [return_details_obj]
-                    else:
-                        return_details[time_str[:11]].append(return_details_obj)
+            if shipment and shipment.courier.courier_name.startswith('Delhivery'): #Delhivery details of status
+                try:
+                    return_details = tracking_get_delhivery_details(shipment, awb)
+                    return jsonify({"success": True, "data": return_details}), 200
+                except Exception as e:
+                    return jsonify({"success": False, "msg": "Details not available"}), 400
 
-                    for key in return_details:
-                        return_details[key] = sorted(return_details[key], key=lambda k: k['time'], reverse=True)
-                return jsonify({"success": True, "data": return_details}), 200
-            except Exception as e:
-                return jsonify({"success": False, "msg": "Details not available"}), 400
+            if shipment and shipment.courier.courier_name.startswith('Bluedart'): #Bluedart details of status
+                try:
+                    return_details = tracking_get_bluedart_details(shipment, awb)
+                    return jsonify({"success": True, "data": return_details}), 200
+                except Exception as e:
+                    return jsonify({"success": False, "msg": "Details not available"}), 400
+
+            if shipment and shipment.courier.courier_name.startswith('Ecom'): #Ecom details of status
+                try:
+                    return_details = tracking_get_ecomxp_details(shipment, awb)
+                    return jsonify({"success": True, "data": return_details}), 200
+                except Exception as e:
+                    return jsonify({"success": False, "msg": "Details not available"}), 400
 
         if req_obj and 'ShipmentData' in req_obj and req_obj['ShipmentData']:
             response = dict()

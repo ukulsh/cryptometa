@@ -1,7 +1,7 @@
 # project/api/utils.py
 
 
-import json
+import json, xmltodict
 from functools import wraps
 from datetime import datetime, timedelta
 
@@ -818,3 +818,129 @@ def pagination_validator(page_size, page_number):
     else:
         page_number = int(page_number)
     return page_size, page_number
+
+
+def tracking_get_xpressbees_details(shipment, awb):
+    xpressbees_url = "http://xbclientapi.xbees.in/TrackingService.svc/GetShipmentSummaryDetails"
+    body = {"AWBNo": awb, "XBkey": shipment.courier.api_key}
+    return_details = dict()
+    req = requests.post(xpressbees_url, json=body).json()
+    for each_scan in req[0]['ShipmentSummary']:
+        return_details_obj = dict()
+        return_details_obj['status'] = each_scan['Status']
+        if each_scan['Comment']:
+            return_details_obj['status'] += " - " + each_scan['Comment']
+        return_details_obj['city'] = each_scan['Location']
+        if each_scan['Location']:
+            return_details_obj['city'] = each_scan['Location'].split(", ")[1]
+        status_time = each_scan['StatusDate'] + " " + each_scan['StatusTime']
+        if status_time:
+            status_time = datetime.strptime(status_time, '%d-%m-%Y %H%M')
+
+        time_str = status_time.strftime("%d %b %Y, %H:%M:%S")
+        return_details_obj['time'] = time_str
+        if time_str[:11] not in return_details:
+            return_details[time_str[:11]] = [return_details_obj]
+        else:
+            return_details[time_str[:11]].append(return_details_obj)
+
+        for key in return_details:
+            return_details[key] = sorted(return_details[key], key=lambda k: k['time'], reverse=True)
+
+    return return_details
+
+
+def tracking_get_delhivery_details(shipment, awb):
+    delhivery_url = "https://track.delhivery.com/api/status/packages/json/?waybill=%s&token=%s" \
+                    % (str(awb), shipment.courier.api_key)
+    return_details = dict()
+    req = requests.get(delhivery_url).json()
+    for each_scan in req['ShipmentData'][0]['Shipment']["Scans"]:
+        return_details_obj = dict()
+        return_details_obj['status'] = each_scan['ScanDetail']['Scan'] + \
+                                       ' - ' + each_scan['ScanDetail']['Instructions']
+        return_details_obj['city'] = each_scan['ScanDetail']['CityLocation']
+        status_time = each_scan['ScanDetail']['StatusDateTime']
+        if status_time:
+            if len(status_time) == 19:
+                status_time = datetime.strptime(status_time, '%Y-%m-%dT%H:%M:%S')
+            else:
+                status_time = datetime.strptime(status_time, '%Y-%m-%dT%H:%M:%S.%f')
+        time_str = status_time.strftime("%d %b %Y, %H:%M:%S")
+        return_details_obj['time'] = time_str
+        if time_str[:11] not in return_details:
+            return_details[time_str[:11]] = [return_details_obj]
+        else:
+            return_details[time_str[:11]].append(return_details_obj)
+
+        for key in return_details:
+            return_details[key] = sorted(return_details[key], key=lambda k: k['time'], reverse=True)
+
+    return return_details
+
+
+def tracking_get_bluedart_details(shipment, awb):
+    bluedart_url = "https://api.bluedart.com/servlet/RoutingServlet?handler=tnt&action=custawbquery&loginid=HYD50082&awb=awb&numbers=%s&format=xml&lickey=eguvjeknglfgmlsi5ko5hn3vvnhoddfs&verno=1.3&scan=1" % awb
+    return_details = dict()
+    req = requests.get(bluedart_url)
+    req = xmltodict.parse(req.content)
+    try:
+        if type(req['ShipmentData']['Shipment']['Scans']['ScanDetail'])==list:
+            scan_list = req['ShipmentData']['Shipment']['Scans']['ScanDetail']
+        else:
+            scan_list = [req['ShipmentData']['Shipment']['Scans']['ScanDetail']]
+    except Exception:
+        scan_list = req['ShipmentData']['Shipment'][0]['Scans']['ScanDetail']
+
+    for each_scan in scan_list:
+        return_details_obj = dict()
+        return_details_obj['status'] = each_scan['Scan']
+        return_details_obj['city'] = each_scan['ScannedLocation']
+        status_time = each_scan['ScanDate'] + " " +each_scan['ScanTime']
+        if status_time:
+            status_time = datetime.strptime(status_time, '%d-%b-%Y %H:%M')
+
+        time_str = status_time.strftime("%d %b %Y, %H:%M:%S")
+        return_details_obj['time'] = time_str
+        if time_str[:11] not in return_details:
+            return_details[time_str[:11]] = [return_details_obj]
+        else:
+            return_details[time_str[:11]].append(return_details_obj)
+
+        for key in return_details:
+            return_details[key] = sorted(return_details[key], key=lambda k: k['time'], reverse=True)
+
+    return return_details
+
+
+def tracking_get_ecomxp_details(shipment, awb):
+    ecomxp_url = "https://plapi.ecomexpress.in/track_me/api/mawbd/?awb=%s&username=%s&password=%s" % (awb, shipment.courier.api_key, shipment.courier.api_password)
+    return_details = dict()
+    req = requests.get(ecomxp_url)
+    req = xmltodict.parse(req.content)
+
+    scan_list = list()
+    for obj in req['ecomexpress-objects']['object']['field']:
+        if obj['@name'] == 'scans':
+            scan_list = obj['object']
+
+    for each_scan in scan_list:
+        each_scan = {item.get('@name'):item.get('#text') for item in each_scan['field']}
+        return_details_obj = dict()
+        return_details_obj['status'] = each_scan['status']
+        return_details_obj['city'] = each_scan['location_city']
+        status_time = each_scan['updated_on']
+        if status_time:
+            status_time = datetime.strptime(status_time, '%d %b, %Y, %H:%M')
+
+        time_str = status_time.strftime("%d %b %Y, %H:%M:%S")
+        return_details_obj['time'] = time_str
+        if time_str[:11] not in return_details:
+            return_details[time_str[:11]] = [return_details_obj]
+        else:
+            return_details[time_str[:11]].append(return_details_obj)
+
+        for key in return_details:
+            return_details[key] = sorted(return_details[key], key=lambda k: k['time'], reverse=True)
+
+    return return_details

@@ -63,6 +63,9 @@ def ship_orders(courier_name=None, order_ids=None, force_ship=None):
         elif courier[10].startswith('Ecom'):
             ship_ecom_orders(cur, courier, courier_name, order_ids, order_id_tuple, force_ship=force_ship)
 
+        elif courier[10].startswith('SDD'):
+            ship_sdd_orders(cur, courier, courier_name, order_ids, order_id_tuple, force_ship=force_ship)
+
     cur.close()
 
 
@@ -1649,6 +1652,117 @@ def ship_bluedart_orders(cur, courier, courier_name, order_ids, order_id_tuple, 
 
             except Exception as e:
                 print("couldn't assign order: " + str(order[1]) + "\nError: " + str(e))
+
+        if last_shipped_order_id:
+            last_shipped_data_tuple = (
+                last_shipped_order_id, datetime.now(tz=pytz.timezone('Asia/Calcutta')), courier[1])
+            cur.execute(update_last_shipped_order_query, last_shipped_data_tuple)
+
+        if order_status_change_ids:
+            if len(order_status_change_ids) == 1:
+                cur.execute(update_orders_status_query % (("(%s)") % str(order_status_change_ids[0])))
+            else:
+                cur.execute(update_orders_status_query, (tuple(order_status_change_ids),))
+
+        conn.commit()
+
+    if exotel_idx:
+        logger.info("Sending messages...count:" + str(exotel_idx))
+        try:
+            lad = requests.post(
+                'https://ff2064142bc89ac5e6c52a6398063872f95f759249509009:783fa09c0ba1110309f606c7411889192335bab2e908a079@api.exotel.com/v1/Accounts/wareiq1/Sms/bulksend',
+                data=exotel_sms_data)
+        except Exception as e:
+            logger.error("messages not sent." + "   Error: " + str(e.args[0]))
+
+
+def ship_sdd_orders(cur, courier, courier_name, order_ids, order_id_tuple, backup_param=True, force_ship=None):
+    exotel_idx = 0
+    exotel_sms_data = {
+        'From': 'LM-WAREIQ'
+    }
+    if courier_name and order_ids:
+        orders_to_ship_query = get_orders_to_ship_query.replace("__ORDER_SELECT_FILTERS__",
+                                                                """and aa.id in %s""" % order_id_tuple)
+    else:
+        orders_to_ship_query = get_orders_to_ship_query.replace("__ORDER_SELECT_FILTERS__", """and aa.status='NEW'
+                                                                                                and ll.id is null""")
+    get_orders_data_tuple = (courier[1], courier[1])
+
+    cur.execute(orders_to_ship_query, get_orders_data_tuple)
+    all_orders = cur.fetchall()
+
+    pickup_point_order_dict = dict()
+    for order in all_orders:
+        if order[41]:
+            if order[41] not in pickup_point_order_dict:
+                pickup_point_order_dict[order[41]] = [order]
+            else:
+                pickup_point_order_dict[order[41]].append(order)
+
+    for pickup_id, all_new_orders in pickup_point_order_dict.items():
+
+        last_shipped_order_id = 0
+        pickup_points_tuple = (pickup_id,)
+        cur.execute(get_pickup_points_query, pickup_points_tuple)
+        order_status_change_ids = list()
+
+        pickup_point = cur.fetchone()  # change this as we get to dynamic pickups
+
+        if not pickup_point[21]:
+            continue
+
+        for order in all_new_orders:
+            zone = None
+            try:
+                zone = get_delivery_zone(pickup_point[8], order[18])
+            except Exception as e:
+                logger.error("couldn't find zone: " + str(order[0]) + "\nError: " + str(e))
+
+            time_2_days = datetime.utcnow() + timedelta(hours=5.5) - timedelta(days=1)
+            if order[47] and not (order[50] and order[2] < time_2_days) and not force_ship:
+                if order[26].lower() == 'cod' and not order[42] and order[43]:
+                    continue  # change this to continue later
+                if order[26].lower() == 'cod' and not order[43]:
+                    try:  ## Cod confirmation  text
+                        sms_to_key, sms_body_key, customer_phone, sms_body_key_data = cod_verification_text(
+                            order, exotel_idx, cur)
+                        if not order[53]:
+                            exotel_sms_data[sms_to_key] = customer_phone
+                            exotel_sms_data[sms_body_key] = sms_body_key_data
+                            exotel_idx += 1
+                    except Exception as e:
+                        logger.error(
+                            "Cod confirmation not sent. Order id: " + str(order[0]))
+                    continue
+
+            if zone != 'A':
+                continue
+            insert_shipments_data_query = """INSERT INTO SHIPMENTS (awb, status, order_id, pickup_id, courier_id, 
+                                                                            dimensions, volumetric_weight, weight, remark, return_point_id, routing_code, 
+                                                                            channel_fulfillment_id, tracking_link)
+                                                                            VALUES  %s RETURNING id;"""
+
+            if order[0] > last_shipped_order_id:
+                last_shipped_order_id = order[0]
+            order_status_change_ids.append(order[0])
+            data_tuple = tuple([(
+                str(order[0]), "Success", order[0], pickup_point[1],
+                courier[9], None, None, None, "", pickup_point[2],
+                "", None, None)])
+
+            cur.execute(insert_shipments_data_query, data_tuple)
+            ship_temp = cur.fetchone()
+            order_status_add_query = """INSERT INTO order_status (order_id, courier_id, shipment_id, 
+                                                                        status_code, status, status_text, location, location_city, 
+                                                                        status_time) VALUES %s"""
+
+            order_status_add_tuple = [(order[0], courier[9],
+                                       ship_temp[0], "UD", "Received", "Consignment Manifested",
+                                       pickup_point[6], pickup_point[6],
+                                       datetime.utcnow() + timedelta(hours=5.5))]
+
+            cur.execute(order_status_add_query, tuple(order_status_add_tuple))
 
         if last_shipped_order_id:
             last_shipped_data_tuple = (

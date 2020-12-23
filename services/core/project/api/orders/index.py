@@ -277,6 +277,15 @@ class OrderList(Resource):
                                     new_row.append("N/A")
                                     new_row.append("N/A")
                                 new_row.append(order[39].strftime("%Y-%m-%d %H:%M:%S") if order[39] else "N/A")
+                                not_shipped = None
+                                if not product_data[4][idx]:
+                                    not_shipped = "Weight/dimensions not entered for product(s)"
+                                elif order[12] == "Pincode not serviceable":
+                                    not_shipped = "Pincode not serviceable"
+                                elif not order[26]:
+                                    not_shipped = "Pickup point not assigned"
+                                if not_shipped:
+                                    new_row.append(not_shipped)
                                 if auth_data.get('user_group') == 'super-admin':
                                     new_row.append(order[38])
                                 cw.writerow(new_row)

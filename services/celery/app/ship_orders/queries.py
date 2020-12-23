@@ -14,7 +14,7 @@ get_pickup_points_query = """select aa.id, aa.pickup_id, aa.return_point_id,
                                 bb.phone, bb.address, bb.address_two, bb.city,
                                 bb.country, bb.pincode, bb.warehouse_prefix, bb.state, bb.name,
                                 cc.phone, cc.address, cc.address_two, cc.city,
-                                cc.country, cc.pincode, cc.warehouse_prefix, cc.state, cc.name
+                                cc.country, cc.pincode, cc.warehouse_prefix, cc.state, cc.name, aa.enable_sdd
                                 from client_pickups aa
                                 left join pickup_points bb
                                 on aa.pickup_id=bb.id

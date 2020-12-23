@@ -909,18 +909,7 @@ def assign_pickup_points_for_unassigned(cur, cur_2):
                     prod_list.sort(key=len, reverse=True)
                     split_order(cur, order[0], prod_list)
                 elif order[6]:
-                    cur.execute("""select aa.id from client_pickups aa
-                                                left join pickup_points bb on aa.pickup_id=bb.id
-                                                where bb.warehouse_prefix=%s and aa.client_prefix=%s
-                                                and aa.active=true;""",
-                                (order[6], order[1]))
-
-                    pickup_id = cur.fetchone()
-                    if not pickup_id:
-                        logger.info(str(order[0]) + "Pickup id not found")
-                        continue
-
-                    cur.execute("""UPDATE orders SET pickup_data_id = %s WHERE id=%s""", (pickup_id[0], order[0]))
+                    assign_default_wh(cur, order)
                 continue
 
             if courier_id in (8, 11, 12):
@@ -937,8 +926,11 @@ def assign_pickup_points_for_unassigned(cur, cur_2):
 
             final_wh = cur_2.fetchone()
 
-            if not final_wh or final_wh[1] is None:
-                logger.info(str(order[0]) + "Not serviceable")
+            if not final_wh:
+                if order[6]:
+                    assign_default_wh(cur, order)
+                else:
+                    logger.info(str(order[0]) + "Not serviceable")
                 continue
 
             cur.execute("""select aa.id from client_pickups aa
@@ -956,6 +948,18 @@ def assign_pickup_points_for_unassigned(cur, cur_2):
             logger.error("couldn't assign pickup for order " + str(order[0]) + "\nError: " + str(e))
 
     conn.commit()
+
+
+def assign_default_wh(cur, order):
+    cur.execute("""select aa.id from client_pickups aa
+                                                    left join pickup_points bb on aa.pickup_id=bb.id
+                                                    where bb.warehouse_prefix=%s and aa.client_prefix=%s
+                                                    and aa.active=true;""",
+                (order[6], order[1]))
+
+    pickup_id = cur.fetchone()
+    if pickup_id:
+        cur.execute("""UPDATE orders SET pickup_data_id = %s WHERE id=%s""", (pickup_id[0], order[0]))
 
 
 def split_order(cur, order_id, prod_list):

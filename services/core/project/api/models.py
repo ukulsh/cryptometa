@@ -52,6 +52,7 @@ class ProductQuantity(db.Model):
     current_quantity = db.Column(db.Integer, nullable=True)
     warehouse_prefix = db.Column(db.String, nullable=False)
     status = db.Column(db.String, nullable=False)
+    sync_easyecom = db.Column(db.BOOLEAN, default=False, nullable=True)
     date_created = db.Column(db.DateTime, default=datetime.now)
     date_updated = db.Column(db.DateTime, onupdate=datetime.now)
 
@@ -527,6 +528,7 @@ class ClientPickups(db.Model):
     easyecom_loc_code = db.Column(db.String, nullable=True)
     active = db.Column(db.BOOLEAN, nullable=True, default=True)
     wareiq_location = db.Column(db.BOOLEAN, nullable=False, server_default='false', default=False)
+    enable_sdd = db.Column(db.BOOLEAN, nullable=True, default=False)
     date_created = db.Column(db.DateTime, default=datetime.now)
     date_updated = db.Column(db.DateTime, onupdate=datetime.now)
 

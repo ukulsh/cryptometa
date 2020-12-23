@@ -945,6 +945,8 @@ def assign_pickup_points_for_unassigned(cur, cur_2):
             cur.execute("""UPDATE orders SET pickup_data_id = %s WHERE id=%s""", (pickup_id[0], order[0]))
 
         except Exception as e:
+            if order[6]:
+                assign_default_wh(cur, order)
             logger.error("couldn't assign pickup for order " + str(order[0]) + "\nError: " + str(e))
 
     conn.commit()

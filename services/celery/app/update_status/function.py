@@ -2089,10 +2089,6 @@ ecom_express_status_mapping = {"303": ("IN TRANSIT", "UD", "In Transit", "Shipme
                              "12247": ("PENDING", "UD", "In Transit", "Delivery Attempt to be made - Escalations"),
                              "12245": ("PENDING", "UD", "In Transit", "Delivery attempt to be made - FE Instructions"),
                              "20701": ("PENDING", "UD", "In Transit", "Misroute due to wrong pincode given by customer"),
-                             "1220": (None, None, None, "Pickup Assigned"),
-                             "1230": (None, None, None, "Out for Pickup"),
-                             "1350": (None, None, None, "Pickup Failed, Shipment Not Ready"),
-                             "1410": (None, None, None, "Pickup Rescheduled For Next Day"),
                              }
 
 ecom_express_ndr_reasons = {

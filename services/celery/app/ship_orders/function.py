@@ -1713,6 +1713,8 @@ def ship_sdd_orders(cur, courier, courier_name, order_ids, order_id_tuple, backu
             continue
 
         for order in all_new_orders:
+            if order[26].lower() == 'pickup':
+                continue
             zone = None
             try:
                 zone = get_delivery_zone(pickup_point[8], order[18])

@@ -797,7 +797,7 @@ def ping_dev():
                              "warehouse": "QSDWARKA",
                              "quantity": del_qty,
                              "type": "add",
-                             "remark": "29 nov inbound"})
+                             "remark": "19 dec inbound"})
 
             """
 
@@ -825,7 +825,7 @@ def ping_dev():
             """
             if row[0]%100==0:
                 headers = {
-                    'Authorization': "Bearer " + "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJleHAiOjE2MDgyODQxNjYsImlhdCI6MTYwNTY5MjE2Niwic3ViIjo5fQ.slfol4VhzjHTgW1YWJRxJ1EkUOjd3tYSf6xu7XsDB70",
+                    'Authorization': "Bearer " + "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJleHAiOjE2MTEyMzg2NzgsImlhdCI6MTYwODY0NjY3OCwic3ViIjo5fQ._CjAh0kJG3r2aSraJDfHYID1mCUF88NeKdVZxREETsA",
                     'Content-Type': 'application/json'}
 
                 data = {"sku_list": sku_list}
@@ -840,7 +840,7 @@ def ping_dev():
             pass
 
     headers = {
-        'Authorization': "Bearer " + "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJleHAiOjE2MDgyODQxNjYsImlhdCI6MTYwNTY5MjE2Niwic3ViIjo5fQ.slfol4VhzjHTgW1YWJRxJ1EkUOjd3tYSf6xu7XsDB70",
+        'Authorization': "Bearer " + "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJleHAiOjE2MTEyMzg2NzgsImlhdCI6MTYwODY0NjY3OCwic3ViIjo5fQ._CjAh0kJG3r2aSraJDfHYID1mCUF88NeKdVZxREETsA",
         'Content-Type': 'application/json'}
 
     data = {"sku_list": sku_list}

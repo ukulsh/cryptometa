@@ -1080,7 +1080,7 @@ def track_bluedart_orders(courier, cur):
         req = requests.get(check_status_url)
         try:
             req = xmltodict.parse(req.content)
-            if len(some_orders)!=1:
+            if type(req['ShipmentData']['Shipment'])==list:
                 req_ship_data += req['ShipmentData']['Shipment']
             else:
                 req_ship_data += [req['ShipmentData']['Shipment']]
@@ -1115,6 +1115,13 @@ def track_bluedart_orders(courier, cur):
 
             new_status = bluedart_status_mapping[scan_group][scan_code][0]
             current_awb = ret_order['@WaybillNo']
+            is_return = False
+            if str(ret_order['@RefNo']).startswith("074"):
+                current_awb = str(str(ret_order['@RefNo']).split("-")[1]).strip()
+                is_return = True
+
+            if is_return and new_status!='DELIVERED':
+                continue
 
             try:
                 order_status_tuple = (orders_dict[current_awb][0], orders_dict[current_awb][10], courier[0])
@@ -1130,19 +1137,17 @@ def track_bluedart_orders(courier, cur):
                         status_time = datetime.strptime(status_time, '%d-%b-%YT%H:%M')
 
                     to_record_status = ""
-                    if each_scan['ScanCode']=="015":
+                    if each_scan['ScanCode']=="015" and not is_return:
                         to_record_status = "Picked"
-                    elif each_scan['ScanCode']=="015":
-                        to_record_status = "Picked"
-                    elif new_status=="IN TRANSIT":
+                    elif new_status=="IN TRANSIT" and each_scan['ScanType'] == "UD" and not is_return:
                         to_record_status = "In Transit"
-                    elif each_scan['ScanCode'] in ("002", "092"):
+                    elif each_scan['ScanCode'] in ("002", "092") and not is_return:
                         to_record_status = "Out for delivery"
-                    elif each_scan['ScanCode'] in ("000", "090", "099"):
+                    elif each_scan['ScanCode'] in ("000", "090", "099") and not is_return:
                         to_record_status = "Delivered"
-                    elif each_scan['ScanType'] == "RT":
+                    elif each_scan['ScanType'] == "RT" and not is_return:
                         to_record_status = "Returned"
-                    elif each_scan['ScanCode'] in ("074", "118", "188"):
+                    elif each_scan['ScanCode'] == '000' and is_return:
                         to_record_status = "RTO"
 
                     if not to_record_status:
@@ -1158,7 +1163,7 @@ def track_bluedart_orders(courier, cur):
                                                              each_scan['ScannedLocation'],
                                                              status_time)
                     elif to_record_status == 'In Transit' and new_status_dict[to_record_status][
-                        8] < status_time:
+                        8] < status_time and not is_return:
                         new_status_dict[to_record_status] = (orders_dict[current_awb][0], courier[0],
                                                              orders_dict[current_awb][10],
                                                              each_scan['ScanType'],
@@ -1185,8 +1190,8 @@ def track_bluedart_orders(courier, cur):
                     "Open status failed for id: " + str(orders_dict[current_awb][0]) + "\nErr: " + str(
                         e.args[0]))
 
-            if new_status == "Manifested":
-                continue
+            if is_return and new_status=='DELIVERED':
+                new_status='RTO'
 
             status_type = ret_order['StatusType']
             if new_status == 'NOT PICKED':
@@ -1741,7 +1746,7 @@ bluedart_status_mapping = {'S': {'002':('DISPATCHED','UD','SHIPMENT OUTSCAN',),
 '308':('PENDING','UD','NO ENTRY',7),
 '777':('PENDING','UD','CONSIGNEE REFUSED SHIPMENT DUE TO GST',2),
 '026':('POSTED','DL','SHIPMENT POSTED',),
-'074':('RTO','RT','RTO (SHIPPER REQUEST)',),
+'074':('IN TRANSIT','RT','RETURNED (SHIPPER REQUEST)',),
 '118':('RTO','RT','DELIVERED BACK TO SHIPPER',),
 '188':('RTO','RT','DELIVERED BACK TO SHIPPER',)}
                            }

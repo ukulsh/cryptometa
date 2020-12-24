@@ -1960,7 +1960,11 @@ def track_order(awb):
             response['theme_color'] = None
             response['remark'] = req_obj['ShipmentData'][0]['Shipment']['Status']['Instructions']
             response['order_id'] = req_obj['ShipmentData'][0]['Shipment']['ReferenceNo']
-            status_time = datetime.strptime(req_obj['ShipmentData'][0]['Shipment']['PickUpDate'], '%Y-%m-%dT%H:%M:%S.%f')
+            if len(req_obj['ShipmentData'][0]['Shipment']['PickUpDate'])!=19:
+                status_time = datetime.strptime(req_obj['ShipmentData'][0]['Shipment']['PickUpDate'], '%Y-%m-%dT%H:%M:%S.%f')
+            else:
+                status_time = datetime.strptime(req_obj['ShipmentData'][0]['Shipment']['PickUpDate'], '%Y-%m-%dT%H:%M:%S')
+
             response['placed_on'] = status_time.strftime("%d %b %Y, %H:%M:%S")
             response['get_details'] = True
             if 'expectedDate' in req_obj['ShipmentData'][0]['Shipment']:
@@ -1976,29 +1980,45 @@ def track_order(awb):
                 if 'Picked Up' in order_status['ScanDetail']['Instructions']:
                     status_dict['status'] = 'Picked'
                     status_dict['city'] = order_status['ScanDetail']['ScannedLocation']
-                    status_time = datetime.strptime(order_status['ScanDetail']['StatusDateTime'],
-                                                             '%Y-%m-%dT%H:%M:%S.%f')
+                    if len(order_status['ScanDetail']['StatusDateTime'])!=19:
+                        status_time = datetime.strptime(order_status['ScanDetail']['StatusDateTime'],
+                                                                 '%Y-%m-%dT%H:%M:%S.%f')
+                    else:
+                        status_time = datetime.strptime(order_status['ScanDetail']['StatusDateTime'],
+                                                        '%Y-%m-%dT%H:%M:%S')
                     status_dict['time'] = status_time.strftime("%d %b %Y, %H:%M:%S")
                     picked_obj = status_dict
                 elif order_status['ScanDetail']['Scan'] == 'In Transit':
                     status_dict['status'] = 'In Transit'
                     status_dict['city'] = order_status['ScanDetail']['ScannedLocation']
-                    status_time = datetime.strptime(order_status['ScanDetail']['StatusDateTime'],
-                                                             '%Y-%m-%dT%H:%M:%S.%f')
+                    if len(order_status['ScanDetail']['StatusDateTime']) != 19:
+                        status_time = datetime.strptime(order_status['ScanDetail']['StatusDateTime'],
+                                                        '%Y-%m-%dT%H:%M:%S.%f')
+                    else:
+                        status_time = datetime.strptime(order_status['ScanDetail']['StatusDateTime'],
+                                                        '%Y-%m-%dT%H:%M:%S')
                     status_dict['time'] = status_time.strftime("%d %b %Y, %H:%M:%S")
                     in_transit_obj = status_dict
                 elif order_status['ScanDetail']['Scan'] == 'Dispatched':
                     status_dict['status'] = 'Out for delivery'
                     status_dict['city'] = order_status['ScanDetail']['ScannedLocation']
-                    status_time = datetime.strptime(order_status['ScanDetail']['StatusDateTime'],
-                                                             '%Y-%m-%dT%H:%M:%S.%f')
+                    if len(order_status['ScanDetail']['StatusDateTime']) != 19:
+                        status_time = datetime.strptime(order_status['ScanDetail']['StatusDateTime'],
+                                                        '%Y-%m-%dT%H:%M:%S.%f')
+                    else:
+                        status_time = datetime.strptime(order_status['ScanDetail']['StatusDateTime'],
+                                                        '%Y-%m-%dT%H:%M:%S')
                     status_dict['time'] = status_time.strftime("%d %b %Y, %H:%M:%S")
                     ofd_obj = status_dict
                 elif 'Delivered' in order_status['ScanDetail']['Instructions']:
                     status_dict['status'] = 'Delivered'
                     status_dict['city'] = order_status['ScanDetail']['ScannedLocation']
-                    status_time = datetime.strptime(order_status['ScanDetail']['StatusDateTime'],
-                                                             '%Y-%m-%dT%H:%M:%S.%f')
+                    if len(order_status['ScanDetail']['StatusDateTime']) != 19:
+                        status_time = datetime.strptime(order_status['ScanDetail']['StatusDateTime'],
+                                                        '%Y-%m-%dT%H:%M:%S.%f')
+                    else:
+                        status_time = datetime.strptime(order_status['ScanDetail']['StatusDateTime'],
+                                                        '%Y-%m-%dT%H:%M:%S')
                     status_dict['time'] = status_time.strftime("%d %b %Y, %H:%M:%S")
                     del_obj = status_dict
 

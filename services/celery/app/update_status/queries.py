@@ -1,4 +1,4 @@
-get_courier_id_and_key_query = """SELECT id, courier_name, api_key FROM master_couriers;"""
+get_courier_id_and_key_query = """SELECT id, courier_name, api_key, api_password FROM master_couriers;"""
 
 get_status_update_orders_query = """select aa.id, bb.awb, aa.status, aa.client_prefix, aa.customer_phone, 
                                     aa.order_id_channel_unique, bb.channel_fulfillment_id, cc.api_key, 

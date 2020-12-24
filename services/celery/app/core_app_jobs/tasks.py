@@ -39,6 +39,9 @@ def consume_ecom_scan_util(payload):
         if not order:
             return "Failed: order not found"
 
+        is_return = False
+        if payload.get("ref_awb") and str(payload.get("reason_code_number"))!='777':
+            is_return = True
         status_code = str(payload.get("reason_code_number"))
         status = str(payload.get("reason_code"))
         status_text = str(payload.get("status"))
@@ -64,7 +67,10 @@ def consume_ecom_scan_util(payload):
         if not status:
             return "Successful: scan saved only"
 
-        tracking_status = ecom_express_status_mapping[reason_code_number][2]
+        if status!='RTO' and is_return:
+            return "Successful: scan saved only"
+
+        tracking_status = ecom_express_status_mapping[reason_code_number][2] if status!='RTO' else 'RTO'
         if tracking_status:
             cur.execute(insert_status_query, (
                 order[0], order[38], order[10], status_type, tracking_status, status_text, location, location_city, status_time))

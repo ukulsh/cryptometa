@@ -19,7 +19,7 @@ ecom_express_status_mapping = {"303": ("IN TRANSIT", "UD", "In Transit", "Shipme
                              "314": ("DAMAGED", "UD", "", "DMG Lock - Damage"),
                              "999": ("DELIVERED", "DL", "Delivered", "Shipment delivered"),
                              "204": ("DELIVERED", "DL", "Delivered", "Shipment delivered"),
-                             "777": ("RTO", "DL", "Returned", "Returned"),
+                             "777": ("IN TRANSIT", "RT", "Returned", "Returned"),
                              "333": ("LOST", "UD", "", "Shipment Lost"),
                              "33306": ("LOST", "UD", "", "Shipment Lost"),
                              "33307": ("LOST", "UD", "", "Shipment Lost"),

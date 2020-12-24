@@ -36,6 +36,9 @@ def update_status():
             elif courier[1].startswith('Bluedart'):
                 track_bluedart_orders(courier, cur)
 
+            elif courier[1].startswith('Ecom'):
+                track_ecomxp_orders(courier, cur)
+
         except Exception as e:
             logger.error("Status update failed: " + str(e.args[0]))
 
@@ -1392,6 +1395,277 @@ def track_bluedart_orders(courier, cur):
         send_bulk_emails(emails_list)
 
 
+def track_ecomxp_orders(courier, cur):
+    cur.execute(get_status_update_orders_query % str(courier[0]))
+    all_orders = cur.fetchall()
+    pickup_count = 0
+    exotel_idx = 0
+    exotel_sms_data = {
+        'From': 'LM-WAREIQ'
+    }
+    orders_dict = dict()
+    pickup_dict = dict()
+    emails_list = list()
+    req_ship_data = list()
+    chunks = [all_orders[x:x + 100] for x in range(0, len(all_orders), 100)]
+    for some_orders in chunks:
+        awb_string = ""
+        for order in some_orders:
+            orders_dict[order[1]] = order
+            awb_string += order[1] + ","
+
+        awb_string = awb_string.rstrip(',')
+
+        check_status_url = "https://plapi.ecomexpress.in/track_me/api/mawbd/?awb=%s&username=%s&password=%s" % (awb_string, courier[2], courier[3])
+        req = requests.get(check_status_url)
+        try:
+            req = xmltodict.parse(req.content)
+            if type(req['ecomexpress-objects']['object'])==list:
+                req_data = list()
+                for elem in req['ecomexpress-objects']['object']:
+                    req_obj = ecom_express_convert_xml_dict(elem)
+                    req_data.append(req_obj)
+            else:
+                req_data = [ecom_express_convert_xml_dict(req['ecomexpress-objects']['object'])]
+
+            req_ship_data += req_data
+
+        except Exception as e:
+            logger.error("Status Tracking Failed for: " + awb_string + "\nError: " + str(e.args[0]))
+            if e.args[0] == 'ShipmentData':
+                sms_to_key = "Messages[%s][To]" % str(exotel_idx)
+                sms_body_key = "Messages[%s][Body]" % str(exotel_idx)
+                sms_body_key_data = "Status Update Fail Alert"
+                customer_phone = "08750108744"
+                exotel_sms_data[sms_to_key] = customer_phone
+                exotel_sms_data[sms_body_key] = sms_body_key_data
+                exotel_idx += 1
+            continue
+    logger.info("Count of Ecom Express packages: " + str(len(req_ship_data)))
+    for ret_order in req_ship_data:
+        try:
+
+            scan_code = ret_order['reason_code_number']
+            scan_list = ret_order['scans']
+
+            if scan_code not in ecom_express_status_mapping:
+                continue
+
+            new_status = ecom_express_status_mapping[scan_code][0]
+            current_awb = ret_order['awb_number']
+
+            try:
+                order_status_tuple = (orders_dict[current_awb][0], orders_dict[current_awb][10], courier[0])
+                cur.execute(select_statuses_query, order_status_tuple)
+                all_scans = cur.fetchall()
+                all_scans_dict = dict()
+                for temp_scan in all_scans:
+                    all_scans_dict[temp_scan[2]] = temp_scan
+                new_status_dict = dict()
+                for each_scan in scan_list:
+                    status_time = each_scan['updated_on']
+                    if status_time:
+                        status_time = datetime.strptime(status_time, '%d %b, %Y, %H:%M')
+
+                    to_record_status = ""
+                    if each_scan['reason_code_number']=="0011":
+                        to_record_status = "Picked"
+                    elif each_scan['reason_code_number']=="003":
+                        to_record_status = "In Transit"
+                    elif each_scan['reason_code_number']=="006":
+                        to_record_status = "Out for delivery"
+                    elif each_scan['reason_code_number']=="999":
+                        to_record_status = "Delivered"
+                    elif each_scan['reason_code_number']=="777":
+                        to_record_status = "Returned"
+
+                    if not to_record_status:
+                        continue
+
+                    if to_record_status not in new_status_dict:
+                        new_status_dict[to_record_status] = (orders_dict[current_awb][0], courier[0],
+                                                             orders_dict[current_awb][10],
+                                                             each_scan['reason_code_number'],
+                                                             to_record_status,
+                                                             each_scan['status'],
+                                                             each_scan['location_city'],
+                                                             each_scan['city_name'],
+                                                             status_time)
+                    elif to_record_status == 'In Transit' and new_status_dict[to_record_status][
+                        8] < status_time:
+                        new_status_dict[to_record_status] = (orders_dict[current_awb][0], courier[0],
+                                                             orders_dict[current_awb][10],
+                                                             each_scan['reason_code_number'],
+                                                             to_record_status,
+                                                             each_scan['status'],
+                                                             each_scan['location_city'],
+                                                             each_scan['city_name'],
+                                                             status_time)
+
+                for status_key, status_value in new_status_dict.items():
+                    if status_key not in all_scans_dict:
+                        cur.execute("INSERT INTO order_status (order_id, courier_id, shipment_id, "
+                                    "status_code, status, status_text, location, location_city, "
+                                    "status_time) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s);",
+                                    status_value)
+
+                    elif status_key == 'In Transit' and status_value[8] > all_scans_dict[status_key][5]:
+                        cur.execute("UPDATE order_status SET location=%s, location_city=%s, status_time=%s"
+                                    " WHERE id=%s;", (status_value[6], status_value[7], status_value[8],
+                                                      all_scans_dict[status_key][0]))
+
+            except Exception as e:
+                logger.error(
+                    "Open status failed for id: " + str(orders_dict[current_awb][0]) + "\nErr: " + str(
+                        e.args[0]))
+
+            status_type = ecom_express_status_mapping[scan_code][1]
+            status_detail = None
+            status_code = scan_code
+
+            edd = ret_order['expected_date'] if 'expected_date' in ret_order else None
+            if edd:
+                edd = datetime.strptime(edd, '%d-%b-%Y')
+                if datetime.utcnow().hour < 4:
+                    cur.execute("UPDATE shipments SET edd=%s WHERE awb=%s", (edd, current_awb))
+
+            client_name = orders_dict[current_awb][20]
+            customer_phone = orders_dict[current_awb][4].replace(" ", "")
+            customer_phone = "0" + customer_phone[-10:]
+
+            if new_status == 'DELIVERED':
+                if orders_dict[current_awb][30] != False:
+                    if orders_dict[current_awb][14] == 6:  # Magento complete
+                        try:
+                            magento_complete_order(orders_dict[current_awb])
+                        except Exception as e:
+                            logger.error(
+                                "Couldn't complete Magento for: " + str(orders_dict[current_awb][0])
+                                + "\nError: " + str(e.args))
+
+                if orders_dict[current_awb][28] != False and str(
+                        orders_dict[current_awb][13]).lower() == 'cod' and orders_dict[current_awb][
+                    14] == 1:  # mark paid on shopify
+                    try:
+                        shopify_markpaid(orders_dict[current_awb])
+                    except Exception as e:
+                        logger.error(
+                            "Couldn't mark paid Shopify for: " + str(orders_dict[current_awb][0])
+                            + "\nError: " + str(e.args))
+
+                sms_to_key = "Messages[%s][To]" % str(exotel_idx)
+                sms_body_key = "Messages[%s][Body]" % str(exotel_idx)
+
+                exotel_sms_data[sms_to_key] = customer_phone
+
+                exotel_sms_data[
+                    sms_body_key] = "Delivered: Your order from %s with order id %s was delivered today." % (
+                    client_name, str(orders_dict[current_awb][12]))
+
+                exotel_idx += 1
+
+            if orders_dict[current_awb][2] in (
+                    'READY TO SHIP', 'PICKUP REQUESTED', 'NOT PICKED') and new_status == 'IN TRANSIT':
+                pickup_count += 1
+                if orders_dict[current_awb][11] not in pickup_dict:
+                    pickup_dict[orders_dict[current_awb][11]] = 1
+                else:
+                    pickup_dict[orders_dict[current_awb][11]] += 1
+                time_now = datetime.utcnow() + timedelta(hours=5.5)
+                cur.execute("UPDATE order_pickups SET picked=%s, pickup_time=%s WHERE order_id=%s",
+                            (True, time_now, orders_dict[current_awb][0]))
+                if orders_dict[current_awb][26] != False:
+                    if orders_dict[current_awb][14] == 5:
+                        try:
+                            woocommerce_fulfillment(orders_dict[current_awb])
+                        except Exception as e:
+                            logger.error(
+                                "Couldn't update woocommerce for: " + str(orders_dict[current_awb][0])
+                                + "\nError: " + str(e.args))
+                    elif orders_dict[current_awb][14] == 1:
+                        try:
+                            shopify_fulfillment(orders_dict[current_awb], cur)
+                        except Exception as e:
+                            logger.error("Couldn't update shopify for: " + str(orders_dict[current_awb][0])
+                                         + "\nError: " + str(e.args))
+                    elif orders_dict[current_awb][14] == 6:  # Magento fulfilment
+                        try:
+                            if orders_dict[current_awb][28] != False:
+                                magento_invoice(orders_dict[current_awb])
+                            magento_fulfillment(orders_dict[current_awb], cur)
+                        except Exception as e:
+                            logger.error("Couldn't update Magento for: " + str(orders_dict[current_awb][0])
+                                         + "\nError: " + str(e.args))
+
+                if orders_dict[current_awb][19]:
+                    email = create_email(orders_dict[current_awb], edd.strftime('%-d %b') if edd else "",
+                                         orders_dict[current_awb][19])
+                    if email:
+                        emails_list.append((email, [orders_dict[current_awb][19]]))
+
+                cur.execute("UPDATE shipments SET pdd=%s WHERE awb=%s", (edd, current_awb))
+                sms_to_key = "Messages[%s][To]" % str(exotel_idx)
+                sms_body_key = "Messages[%s][Body]" % str(exotel_idx)
+
+                exotel_sms_data[sms_to_key] = customer_phone
+
+                tracking_link_wareiq = "http://webapp.wareiq.com/tracking/" + str(orders_dict[current_awb][1])
+
+                exotel_sms_data[sms_body_key] = "Shipped: Your %s order via Ecom Express. Track here: %s . Thanks!" % (
+                    client_name, tracking_link_wareiq)
+
+                exotel_idx += 1
+
+            if orders_dict[current_awb][2] != new_status:
+                status_update_tuple = (new_status, status_type, status_detail, orders_dict[current_awb][0])
+                cur.execute(order_status_update_query, status_update_tuple)
+
+                if new_status == 'PENDING' and status_code in ecom_express_ndr_reasons:
+                    try:  # NDR check text
+                        ndr_reason = ecom_express_ndr_reasons[status_code]
+                        sms_to_key, sms_body_key, customer_phone, sms_body_key_data = verification_text(
+                            orders_dict[current_awb], exotel_idx, cur, ndr=True,
+                            ndr_reason=ndr_reason)
+                        if sms_body_key_data:
+                            exotel_sms_data[sms_to_key] = customer_phone
+                            exotel_sms_data[sms_body_key] = sms_body_key_data
+                            exotel_idx += 1
+                    except Exception as e:
+                        logger.error(
+                            "NDR confirmation not sent. Order id: " + str(orders_dict[current_awb][0]))
+
+            conn.commit()
+
+        except Exception as e:
+            logger.error("status update failed for " + str(current_awb) + "    err:" + str(
+                e.args[0]))
+
+    if exotel_idx:
+        logger.info("Sending messages...count:" + str(exotel_idx))
+        try:
+            lad = requests.post(
+                'https://ff2064142bc89ac5e6c52a6398063872f95f759249509009:783fa09c0ba1110309f606c7411889192335bab2e908a079@api.exotel.com/v1/Accounts/wareiq1/Sms/bulksend',
+                data=exotel_sms_data)
+        except Exception as e:
+            logger.error("messages not sent." + "   Error: " + str(e.args[0]))
+
+    if pickup_count:
+        logger.info("Total Picked: " + str(pickup_count) + "  Time: " + str(datetime.utcnow()))
+        try:
+            for key, value in pickup_dict.items():
+                logger.info("picked for pickup_id " + str(key) + ": " + str(value))
+                date_today = datetime.now().strftime('%Y-%m-%d')
+                pickup_count_tuple = (value, courier[0], key, date_today)
+                cur.execute(update_pickup_count_query, pickup_count_tuple)
+        except Exception as e:
+            logger.error("Couldn't update pickup count for : " + str(e.args[0]))
+
+    conn.commit()
+
+    if emails_list:
+        send_bulk_emails(emails_list)
+
+
 def verification_text(current_order, exotel_idx, cur, ndr=None, ndr_reason=None):
     if not ndr:
         del_confirmation_link = "http://track.wareiq.com/core/v1/passthru/delivery?CustomField=%s" % str(
@@ -1751,6 +2025,117 @@ bluedart_status_mapping = {'S': {'002':('DISPATCHED','UD','SHIPMENT OUTSCAN',),
 '188':('RTO','RT','DELIVERED BACK TO SHIPPER',)}
                            }
 
+ecom_express_status_mapping = {"303": ("IN TRANSIT", "UD", "In Transit", "Shipment In Transit"),
+                             "400": ("IN TRANSIT", "UD", "Picked", "Shipment picked up"),
+                             "003": ("IN TRANSIT", "UD", "In Transit", "Bag scanned at DC"),
+                             "002": ("IN TRANSIT", "UD", "In Transit", "Shipment in-scan"),
+                             "004": ("IN TRANSIT", "UD", "In Transit", "Shipment in-scan"),
+                             "005": ("IN TRANSIT", "UD", "In Transit", "Shipment in-scan at DC"),
+                             "0011": ("IN TRANSIT", "UD", "Picked", "Shipment picked up"),
+                             "21601": ("IN TRANSIT", "UD", "In Transit", "Late arrival-Misconnection/After cut off"),
+                             "006": ("DISPATCHED", "UD", "Out for delivery", "Shipment out for delivery"),
+                             "888": ("DAMAGED", "UD", "", "Transit Damage"),
+                             "302": ("DAMAGED", "UD", "", "Transit Damage"),
+                             "555": ("DESTROYED", "UD", "", "Destroyed Red Bus Shipment"),
+                             "88802": ("DESTROYED", "UD", "", "Shipment destroyed - contains liquid item"),
+                             "88803": ("DESTROYED", "UD", "", "Shipment destroyed - contains fragile item"),
+                             "88804": ("DESTROYED", "UD", "", "Shipment destroyed - empty packet"),
+                             "31701": ("DESTROYED", "UD", "", "Shipment destroyed - food item"),
+                             "311": ("SHORTAGE", "UD", "", "Shortage"),
+                             "313": ("SHORTAGE", "UD", "", "Shortage"),
+                             "314": ("DAMAGED", "UD", "", "DMG Lock - Damage"),
+                             "999": ("DELIVERED", "DL", "Delivered", "Shipment delivered"),
+                             "204": ("DELIVERED", "DL", "Delivered", "Shipment delivered"),
+                             "777": ("IN TRANSIT", "RT", "Returned", "Returned"),
+                             "333": ("LOST", "UD", "", "Shipment Lost"),
+                             "33306": ("LOST", "UD", "", "Shipment Lost"),
+                             "33307": ("LOST", "UD", "", "Shipment Lost"),
+                             "228": ("PENDING", "UD", "In Transit", "Out of Delivery Area"),
+                             "227": ("PENDING", "UD", "In Transit", "Residence/Office Closed"),
+                             "226": ("PENDING", "UD", "In Transit", "Holiday/Weekly off - Delivery on Next Working Day"),
+                             "224": ("PENDING", "UD", "In Transit", "Address Unlocatable"),
+                             "223": ("PENDING", "UD", "In Transit", "Address Incomplete"),
+                             "222": ("PENDING", "UD", "In Transit", "Address Incorrect"),
+                             "220": ("PENDING", "UD", "In Transit", "No Such Consignee At Given Address"),
+                             "418": ("PENDING", "UD", "In Transit", "Consignee Shifted, phone num wrong"),
+                             "417": ("PENDING", "UD", "In Transit", "PHONE NUMBER NOT ANSWERING/ADDRESS NOT LOCATABLE"),
+                             "219": ("PENDING", "UD", "In Transit", "Consignee Not Available"),
+                             "218": ("PENDING", "UD", "In Transit", "Consignee Shifted from the Given Address"),
+                             "231": ("PENDING", "UD", "In Transit", "Shipment attempted - Customer not available"),
+                             "212": ("PENDING", "UD", "In Transit", "Consignee Out Of Station"),
+                             "217": ("PENDING", "UD", "In Transit", "Delivery Area Not Accessible"),
+                             "213": ("PENDING", "UD", "In Transit", "Scheduled for Next Day Delivery"),
+                             "331": ("PENDING", "UD", "In Transit", "Consignee requested for future delivery "),
+                             "210": ("PENDING", "UD", "Cancelled", "Shipment attempted - Customer refused to accept"),
+                             "209": ("PENDING", "UD", "In Transit", "Consignee Refusing to Pay COD Amount"),
+                             "419": ("PENDING", "UD", "In Transit", "Three attempts made, follow up closed"),
+                             "401": ("PENDING", "UD", "In Transit", "CUSTOMER RES/OFF CLOSED"),
+                             "421": ("PENDING", "UD", "In Transit", "Customer Number not reachable/Switched off"),
+                             "23101": ("PENDING", "UD", "In Transit", "Customer out of station"),
+                             "23102": ("PENDING", "UD", "In Transit", "Customer not in office"),
+                             "23103": ("PENDING", "UD", "In Transit", "Customer not in residence"),
+                             "22701": ("PENDING", "UD", "In Transit", "Case with Legal team"),
+                             "20002": ("PENDING", "UD", "In Transit", "Forcefully opened by customer and returned"),
+                             "21002": ("PENDING", "UD", "Cancelled", "Order already cancelled"),
+                             "22301": ("PENDING", "UD", "In Transit", "Customer out of station"),
+                             "22303": ("PENDING", "UD", "In Transit", "No Such Consignee At Given Address"),
+                             "23401": ("PENDING", "UD", "In Transit", "Address pincode mismatch - Serviceable area"),
+                             "23402": ("PENDING", "UD", "In Transit", "Address pincode mismatch - Non Serviceable area"),
+                             "22702": ("PENDING", "UD", "In Transit", "Shipment attempted - Office closed"),
+                             "22801": ("PENDING", "UD", "In Transit", "Customer Address out of delivery area"),
+                             "22901": ("PENDING", "UD", "In Transit", "Customer requested for self collection"),
+                             "2447": ("PENDING", "UD", "In Transit", "No such addressee in the given address"),
+                             "2445": ("PENDING", "UD", "In Transit", "Cash amount Mismatch"),
+                             "12247": ("PENDING", "UD", "In Transit", "Delivery Attempt to be made - Escalations"),
+                             "12245": ("PENDING", "UD", "In Transit", "Delivery attempt to be made - FE Instructions"),
+                             "20701": ("PENDING", "UD", "In Transit", "Misroute due to wrong pincode given by customer"),
+                             "1220": (None, None, None, "Pickup Assigned"),
+                             "1230": (None, None, None, "Out for Pickup"),
+                             "1350": (None, None, None, "Pickup Failed, Shipment Not Ready"),
+                             "1410": (None, None, None, "Pickup Rescheduled For Next Day"),
+                             }
+
+ecom_express_ndr_reasons = {
+                              "228": 8,
+                              "227": 6,
+                              "226": 4,
+                              "224": 2,
+                              "223": 2,
+                              "222": 2,
+                              "220": 2,
+                              "418": 2,
+                              "417": 2,
+                              "219": 1,
+                              "218": 1,
+                              "231": 1,
+                              "212": 1,
+                              "217": 7,
+                              "213": 4,
+                              "331": 4,
+                              "210": 3,
+                              "209": 9,
+                              "419": 13,
+                              "401": 6,
+                              "421": 1,
+                              "23101": 1,
+                              "23102": 1,
+                              "23103": 1,
+                              "232": 2,
+                              "234": 2,
+                              "22701": 6,
+                              "20002": 11,
+                              "21002": 3,
+                              "22301": 2,
+                              "22303": 2,
+                              "23401": 2,
+                              "23402": 2,
+                              "2447": 2,
+                              "22702": 6,
+                              "22801": 8,
+                              "22901": 5,
+                              "2445": 9,
+                            }
+
 
 def woocommerce_fulfillment(order):
     wcapi = API(
@@ -2014,3 +2399,26 @@ def magento_return_order(order):
     }
     req_ful = requests.post(complete_order_url, data=json.dumps(complete_data),
                             headers=ful_header)
+
+
+def ecom_express_convert_xml_dict(elem):
+    req_obj = dict()
+    for elem2 in elem['field']:
+        req_obj[elem2['@name']] = None
+        if '#text' in elem2:
+            req_obj[elem2['@name']] = elem2['#text']
+        elif 'object' in elem2:
+            if type(elem2['object']) == list:
+                scan_list = list()
+                for obj in elem2['object']:
+                    scan_obj = dict()
+                    for newobj in obj['field']:
+                        scan_obj[newobj['@name']] = None
+                        if '#text' in newobj:
+                            scan_obj[newobj['@name']] = newobj['#text']
+                    scan_list.append(scan_obj)
+                req_obj[elem2['@name']] = scan_list
+            else:
+                req_obj[elem2['@name']] = elem2['object']
+
+    return req_obj

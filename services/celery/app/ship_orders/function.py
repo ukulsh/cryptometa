@@ -382,6 +382,11 @@ def ship_delhivery_orders(cur, courier, courier_name, order_ids, order_id_tuple,
                     sms_to_key = "Messages[%s][To]" % str(exotel_idx)
                     sms_body_key = "Messages[%s][Body]" % str(exotel_idx)
 
+                    if orders_dict[package['refnum']][11]==7:
+                        push_awb_easyecom(orders_dict[package['refnum']][7],
+                                          orders_dict[package['refnum']][4],
+                                          package['waybill'], courier, cur, orders_dict[package['refnum']][9])
+
                     exotel_sms_data[sms_to_key] = customer_phone
                     try:
                         tracking_link_wareiq = "http://webapp.wareiq.com/tracking/" + str(package['waybill'])
@@ -985,6 +990,10 @@ def ship_xpressbees_orders(cur, courier, courier_name, order_ids, order_id_tuple
                         return_data_raw['AddManifestDetails'][0]['ReturnMessage'],
                         order[0], pickup_point[1], courier[9], json.dumps(dimensions), volumetric_weight, weight,
                         "", pickup_point[2], "", fulfillment_id, tracking_link, zone)])
+
+                    if order[46] == 7:
+                        push_awb_easyecom(order[39],order[36], return_data_raw['AddManifestDetails'][0]['AWBNo'], courier, cur, order[9])
+
                     client_name = str(order[51])
                     customer_phone = order[5].replace(" ", "")
                     customer_phone = "0" + customer_phone[-10:]
@@ -1291,6 +1300,10 @@ def ship_ecom_orders(cur, courier, courier_name, order_ids, order_id_tuple, back
                         return_data_raw['shipments'][0]['reason'],
                         order[0], pickup_point[1], courier[9], json.dumps(dimensions), volumetric_weight, weight,
                         "", pickup_point[2], "", fulfillment_id, tracking_link, zone)])
+
+                    if order[46] == 7:
+                        push_awb_easyecom(order[39],order[36], return_data_raw['shipments'][0]['awb'], courier, cur, order[9])
+
                     client_name = str(order[51])
                     customer_phone = order[5].replace(" ", "")
                     customer_phone = "0" + customer_phone[-10:]
@@ -1598,6 +1611,10 @@ def ship_bluedart_orders(cur, courier, courier_name, order_ids, order_id_tuple, 
                         req['AWBNo'], "", order[0], pickup_point[1], courier[9], json.dumps(dimensions),
                         volumetric_weight, weight,
                         "", pickup_point[2], routing_code, fulfillment_id, tracking_link, zone)])
+
+                    if order[46] == 7:
+                        push_awb_easyecom(order[39],order[36], req['AWBNo'], courier, cur, order[9])
+
                     client_name = str(order[51])
                     customer_phone = order[5].replace(" ", "")
                     customer_phone = "0" + customer_phone[-10:]
@@ -1952,6 +1969,43 @@ def ship_vinculum_orders(cur, courier, courier_name, order_ids, order_id_tuple):
             logger.error("messages not sent." + "   Error: " + str(e.args[0]))
 
 
+def push_awb_easyecom(invoice_id, api_token, awb, courier, cur, client_prefix):
+    try:
+        companyCarrierId = courier[8]
+        if not companyCarrierId or not companyCarrierId.isdigit() or not courier[0]:
+            cur.execute("""SELECT aa.id, aa.unique_parameter FROM client_couriers aa
+                        LEFT JOIN master_couriers bb on aa.courier_id=bb.id 
+                        WHERE bb.courier_name='%s' 
+                        AND aa.client_prefix='%s'"""%(courier[10], client_prefix))
+
+            cour = cur.fetchone()
+            if not cour[1] or not cour[1].isdigit():
+                add_url = "https://api.easyecom.io/Credentials/addCarrierCredentials?api_token=%s"%api_token
+                post_body = {
+                              "carrier_id":easyecom_carrier_id[courier[10]],
+                              "username":"wareiq",
+                              "password":"wareiq",
+                              "token":courier[14]
+                            }
+
+                req = requests.post(add_url, data=post_body).json()
+                cur.execute("UPDATE client_couriers SET unique_parameter='%s' WHERE id=%s"%(req['data']['companyCarrierId'], cour[0]))
+                companyCarrierId = req['data']['companyCarrierId']
+            else:
+                companyCarrierId = cour[1]
+
+        post_url = "https://api.easyecom.io/Carrier/assignAWB?api_token=%s"%api_token
+        post_body = {
+                      "invoiceId": invoice_id,
+                      "courier": courier[10],
+                      "awbNum": awb,
+                      "companyCarrierId": int(companyCarrierId)
+                    }
+        req = requests.post(post_url, data=post_body)
+    except Exception as e:
+        logger.error("Easyecom not updated.")
+
+
 bluedart_area_code_mapping = {"110015":"DEL",
                                 "110077":"DEL",
                                 "110059":"DEL",
@@ -2277,3 +2331,15 @@ bluedart_area_code_mapping = {"110015":"DEL",
                                 "812004":"BGL",
                                 "831002":"JMD",
                                 "834002":"RAN",}
+
+easyecom_carrier_id = {"Delhivery Surface Standard": 2,
+                       "Delhivery": 2,
+                       "Delhivery 2 KG": 2,
+                       "Delhivery 20 KG": 2,
+                       "Delhivery 10 KG": 2,
+                       "Ecom Express": 3,
+                       "Xpressbees": 13,
+                       "Xpressbees Surface": 13,
+                       "Xpressbees 5 KG": 13,
+                       "Bluedart": 1,
+                       }

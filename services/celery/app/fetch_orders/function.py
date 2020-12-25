@@ -738,7 +738,7 @@ def fetch_easyecom_orders(cur, channel):
                 channel_order_id = str(channel[16]) + channel_order_id
 
             order_status="NEW"
-            if order['courier']:
+            if order['courier'] and order['courier'] in easyecom_wareiq_courier_map:
                 order_status = "NOT SHIPPED"
 
             if order['marketplace'] in easyecom_wareiq_channel_map:
@@ -1167,5 +1167,4 @@ easyecom_wareiq_channel_map = {"Amazon.in": 2,
                            "Shopify": 1,
                                "Flipkart":3}
 
-easyecom_wareiq_courier_map = {"eKart": 7,
-                               "Self Ship": 19}
+easyecom_wareiq_courier_map = {"eKart": 7}

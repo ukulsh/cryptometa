@@ -1070,7 +1070,7 @@ def track_bluedart_orders(courier, cur):
     pickup_dict = dict()
     emails_list = list()
     req_ship_data = list()
-    chunks = [all_orders[x:x + 500] for x in range(0, len(all_orders), 500)]
+    chunks = [all_orders[x:x + 200] for x in range(0, len(all_orders), 200)]
     for some_orders in chunks:
         awb_string = ""
         for order in some_orders:

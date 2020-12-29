@@ -477,8 +477,8 @@ select_wallet_remittance_query = """select * from
                                     (select xx.unique_id, xx.client_prefix, xx.remittance_id, xx.date as remittance_date, 
                                      xx.status, xx.transaction_id, sum(yy.amount) as remittance_total from
                                     (select id as unique_id, client_prefix, remittance_id, transaction_id, DATE(remittance_date), 
-                                    ((DATE(remittance_date)) - INTERVAL '8 DAY') AS order_start,
-                                    ((DATE(remittance_date)) - INTERVAL '1 DAY') AS order_end,
+                                    DATE(del_from) AS order_start,
+                                    DATE(del_to) AS order_end,
                                     status from cod_remittance) xx 
                                     left join 
                                     (select client_prefix, channel_order_id, order_date, payment_mode, amount, cc.status_time as delivered_date from orders aa
@@ -500,8 +500,8 @@ select_wallet_remittance_query = """select * from
 
 select_wallet_remittance_orders_query = """select yy.* from
                                         (select id as unique_id, client_prefix, remittance_id, transaction_id, DATE(remittance_date), 
-                                        ((DATE(remittance_date)) - INTERVAL '8 DAY') AS order_start,
-                                        ((DATE(remittance_date)) - INTERVAL '1 DAY') AS order_end,
+                                        DATE(del_from) AS order_start,
+                                        DATE(del_to) AS order_end,
                                         status from cod_remittance) xx 
                                         left join 
                                         (select client_prefix, channel_order_id, order_date, ee.courier_name, dd.awb, payment_mode, amount, cc.status_time as delivered_date from orders aa

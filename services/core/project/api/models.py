@@ -314,6 +314,8 @@ class CODRemittance(db.Model):
     transaction_id = db.Column(db.String)
     payout_id = db.Column(db.String)
     mode = db.Column(db.String)
+    del_from = db.Column(db.DateTime)
+    del_to = db.Column(db.DateTime)
     remitted_amount = db.Column(db.FLOAT, nullable=True)
     date_created = db.Column(db.DateTime, default=datetime.now)
     date_updated = db.Column(db.DateTime, onupdate=datetime.now)

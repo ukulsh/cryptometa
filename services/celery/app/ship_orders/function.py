@@ -63,8 +63,8 @@ def ship_orders(courier_name=None, order_ids=None, force_ship=None):
         elif courier[10].startswith('Ecom'):
             ship_ecom_orders(cur, courier, courier_name, order_ids, order_id_tuple, force_ship=force_ship)
 
-        elif courier[10].startswith('SDD'):
-            ship_sdd_orders(cur, courier, courier_name, order_ids, order_id_tuple, force_ship=force_ship)
+        elif courier[10].startswith('Self Ship'):
+            ship_selfshp_orders(cur, courier, courier_name, order_ids, order_id_tuple, force_ship=force_ship)
 
     cur.close()
 
@@ -1693,7 +1693,7 @@ def ship_bluedart_orders(cur, courier, courier_name, order_ids, order_id_tuple, 
             logger.error("messages not sent." + "   Error: " + str(e.args[0]))
 
 
-def ship_sdd_orders(cur, courier, courier_name, order_ids, order_id_tuple, backup_param=True, force_ship=None):
+def ship_selfshp_orders(cur, courier, courier_name, order_ids, order_id_tuple, backup_param=True, force_ship=None):
     exotel_idx = 0
     exotel_sms_data = {
         'From': 'LM-WAREIQ'
@@ -1755,7 +1755,7 @@ def ship_sdd_orders(cur, courier, courier_name, order_ids, order_id_tuple, backu
                             "Cod confirmation not sent. Order id: " + str(order[0]))
                     continue
 
-            if zone != 'A':
+            if zone != 'A' and not force_ship:
                 continue
             insert_shipments_data_query = """INSERT INTO SHIPMENTS (awb, status, order_id, pickup_id, courier_id, 
                                                                             dimensions, volumetric_weight, weight, remark, return_point_id, routing_code, 

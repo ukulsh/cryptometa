@@ -456,6 +456,24 @@ select_wallet_deductions_query = """SELECT aa.status_time, aa.status, bb.courier
                                     __PAGINATION__"""
 
 
+select_wallet_reconciliation_query = """SELECT ee.channel_order_id, ee.id, aa.raised_date, cc.courier_name, bb.awb, dd.weight_charged,
+                                    aa.charged_weight, aa.expected_amount, aa.charged_amount, ff.status, aa.remarks, aa.dispute_date, ee.client_prefix
+                                    from weight_discrepency aa
+                                    LEFT JOIN shipments bb on aa.shipment_id=bb.id
+                                    LEFT JOIN master_couriers cc on bb.courier_id=cc.id
+                                    LEFT JOIN (select * from client_deductions where type!='reconciliation') dd on dd.shipment_id=aa.shipment_id
+                                    LEFT JOIN orders ee on ee.id=bb.order_id
+                                	LEFT JOIN discrepency_status ff on ff.id=aa.status_id
+                                  	WHERE (bb.awb ilike '%__SEARCH_KEY__%' or ee.channel_order_id ilike '%__SEARCH_KEY__%')
+                                    __CLIENT_FILTER__
+                                    __MV_CLIENT_FILTER__
+                                    __COURIER_FILTER__
+                                    __DATE_TIME_FILTER__
+                                    __STATUS_FILTER__
+                                    ORDER BY aa.raised_date DESC
+                                    __PAGINATION__"""
+
+
 select_pickups_list_query = """select aa.id, aa.manifest_id, bb.courier_name, ee.total_picked, ee.total_scheduled, aa.pickup_date, 
                                 dd.warehouse_prefix, aa.total_picked, aa.total_scheduled, aa.manifest_url from manifests aa
                                 left join master_couriers bb on aa.courier_id=bb.id

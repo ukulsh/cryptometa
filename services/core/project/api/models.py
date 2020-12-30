@@ -28,8 +28,6 @@ class Products(db.Model):
     hsn_code = db.Column(db.String, nullable=True)
     date_created = db.Column(db.DateTime, default=datetime.now)
     date_updated = db.Column(db.DateTime, onupdate=datetime.now)
-    __table_args__ = (UniqueConstraint('sku', 'client_prefix', 'channel_id', name='sku_unique'),
-                      )
 
     def to_json(self):
         return {
@@ -660,6 +658,29 @@ class OrderScans(db.Model):
     )
 
 
+class DiscrepencyStatus(db.Model):
+    __tablename__ = "discrepency_status"
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    status = db.Column(db.String, nullable=False)
+
+
+class WeightDiscrepency(db.Model):
+    __tablename__ = "weight_discrepency"
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    status_id = db.Column(db.Integer, db.ForeignKey('discrepency_status.id'))
+    status = db.relationship("DiscrepencyStatus", backref=db.backref("weight_discrepency", uselist=True))
+    shipment_id = db.Column(db.Integer, db.ForeignKey('shipments.id'))
+    shipment = db.relationship("Shipments", backref=db.backref("weight_discrepency", uselist=True))
+    raised_date = db.Column(db.DateTime, default=datetime.now)
+    dispute_date = db.Column(db.DateTime, default=datetime.now)
+    charged_weight = db.Column(db.FLOAT, nullable=True)
+    expected_amount = db.Column(db.FLOAT, nullable=True)
+    charged_amount = db.Column(db.FLOAT, nullable=True)
+    remarks = db.Column(db.String, nullable=True)
+    date_created = db.Column(db.DateTime, default=datetime.now)
+    date_updated = db.Column(db.DateTime, onupdate=datetime.now)
+
+
 class CodVerification(db.Model):
     __tablename__ = "cod_verification"
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
@@ -945,6 +966,7 @@ class ClientMapping(db.Model):
     thirdwatch = db.Column(db.BOOLEAN, nullable=True, default=None)
     thirdwatch_cod_only = db.Column(db.BOOLEAN, nullable=True, default=True)
     thirdwatch_activate_time = db.Column(db.DateTime, default=datetime.now)
+    remittance_cycle = db.Column(db.Integer, nullable=True)
 
     def __init__(self, client_name, client_prefix, account_type, client_logo=None, theme_color=None):
         self.client_name = client_name

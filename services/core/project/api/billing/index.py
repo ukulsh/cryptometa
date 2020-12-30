@@ -5,12 +5,13 @@ import csv
 import math
 from flask import Blueprint, request, make_response, jsonify
 from flask_restful import Api, Resource
+from datetime import datetime, timedelta
 from project import db
 from project.api.models import MultiVendor
 from project.api.utils import authenticate_restful
 from project.api.utilities.db_utils import DbConnection
 from project.api.queries import select_wallet_deductions_query, select_wallet_remittance_query, \
-    select_wallet_remittance_orders_query
+    select_wallet_remittance_orders_query, select_wallet_reconciliation_query
 
 billing_blueprint = Blueprint('billing', __name__)
 api = Api(billing_blueprint)
@@ -25,6 +26,9 @@ RECHARGES_DOWNLOAD_HEADERS = ["Payment Time", "Amount", "Transaction ID", "statu
 
 REMITTANCE_DOWNLOAD_HEADERS = ["Order ID", "Order Date", "Courier", "AWB", "Payment Mode", "Amount", "Delivered Date"]
 
+RECONCILIATION_DOWNLOAD_HEADERS = ["Order ID", "Raised Date", "AWB", "Courier", "Entered Weight",
+                                                       "Charged Weight", "Expected Amount", "Charged Amount", "Status",
+                                                       "Dispute Raised Date", "Remark"]
 
 class WalletDeductions(Resource):
 
@@ -519,6 +523,227 @@ class WalletRemittance(Resource):
             return {"success": False, "msg": ""}, 404
 
 
+class WalletReconciliation(Resource):
+
+    method_decorators = [authenticate_restful]
+
+    def post(self, resp):
+        try:
+            cur = conn.cursor()
+            response = {'status':'success', 'data': dict(), "meta": dict()}
+            data = json.loads(request.data)
+            page = data.get('page', 1)
+            per_page = data.get('per_page', 10)
+            if int(per_page) > 250:
+                return {"success": False, "error": "upto 250 results allowed per page"}, 401
+            search_key = data.get('search_key', '')
+            filters = data.get('filters', {})
+            download_flag = request.args.get("download", None)
+            auth_data = resp.get('data')
+            if not auth_data:
+                return {"success": False, "msg": "Auth Failed"}, 404
+            if auth_data.get('user_group') in ('super-admin', 'client', 'multi-vendor'):
+                client_prefix = auth_data.get('client_prefix')
+                query_to_execute = select_wallet_reconciliation_query
+                if filters:
+                    if 'courier' in filters:
+                        if len(filters['courier'])==1:
+                            wh_filter = "AND cc.courier_name in ('%s')"%filters['courier'][0]
+                        else:
+                            wh_filter = "AND cc.courier_name in %s"%str(tuple(filters['courier']))
+
+                        query_to_execute = query_to_execute.replace('__COURIER_FILTER__', wh_filter)
+                    if 'client' in filters:
+                        if len(filters['client'])==1:
+                            cl_filter = "AND ee.client_prefix in ('%s')"%filters['client'][0]
+                        else:
+                            cl_filter = "AND ee.client_prefix in %s"%str(tuple(filters['client']))
+
+                        query_to_execute = query_to_execute.replace('__CLIENT_FILTER__', cl_filter)
+                    if 'time' in filters:
+                        filter_date_start = filters['time'][0][0:19].replace('T',' ')
+                        filter_date_end = filters['time'][1][0:19].replace('T',' ')
+                        query_to_execute = query_to_execute.replace("__DATE_TIME_FILTER__", "AND aa.raised_date between '%s' and '%s'" %(filter_date_start, filter_date_end))
+
+                    if 'status' in filters:
+                        if len(filters['status'])==1:
+                            cl_filter = "AND ff.status in ('%s')"%filters['status'][0]
+                        else:
+                            cl_filter = "AND ff.status in %s"%str(tuple(filters['status']))
+                        query_to_execute = query_to_execute.replace('__STATUS_FILTER__', cl_filter)
+
+                if auth_data['user_group'] == 'client':
+                    query_to_execute = query_to_execute.replace('__CLIENT_FILTER__', "AND dd.client_prefix = '%s'"%client_prefix)
+                if auth_data['user_group'] == 'multi-vendor':
+                    cur.execute("SELECT vendor_list FROM multi_vendor WHERE client_prefix='%s';" % client_prefix)
+                    vendor_list = cur.fetchone()[0]
+                    query_to_execute = query_to_execute.replace("__MV_CLIENT_FILTER__",
+                                                        "AND dd.client_prefix in %s" % str(tuple(vendor_list)))
+
+                else:
+                    query_to_execute = query_to_execute.replace("__MV_CLIENT_FILTER__", "")
+
+                query_to_execute = query_to_execute.replace('__CLIENT_FILTER__',"").replace('__COURIER_FILTER__', "").replace('__DATE_TIME_FILTER__', '').replace('__STATUS_FILTER__', '')
+                query_to_execute = query_to_execute.replace('__SEARCH_KEY__',search_key)
+
+                if download_flag:
+                    query_to_run = query_to_execute.replace('__PAGINATION__', "")
+                    query_to_run = re.sub(r"""__.+?__""", "", query_to_run)
+                    cur.execute(query_to_run)
+                    reconciliation_qs_data = cur.fetchall()
+                    si = io.StringIO()
+                    cw = csv.writer(si)
+                    cw.writerow(RECONCILIATION_DOWNLOAD_HEADERS)
+                    for deduction in reconciliation_qs_data:
+                        try:
+                            new_row = list()
+                            new_row.append(str(deduction[0]))
+                            new_row.append(deduction[2].strftime("%Y-%m-%d %H:%M:%S") if deduction[2] else "N/A")
+                            new_row.append(str(deduction[4]))
+                            new_row.append(str(deduction[3]))
+                            new_row.append(str(deduction[5]))
+                            new_row.append(str(deduction[6]))
+                            new_row.append(str(deduction[7]))
+                            new_row.append(str(deduction[8]))
+                            new_row.append(str(deduction[9]))
+                            new_row.append(deduction[11].strftime("%Y-%m-%d %H:%M:%S") if deduction[11] else "N/A")
+                            new_row.append(str(deduction[10]))
+                            if auth_data.get('user_group') == 'super-admin':
+                                new_row.append(str(deduction[12]))
+                            cw.writerow(new_row)
+                        except Exception as e:
+                            pass
+
+                    output = make_response(si.getvalue())
+                    filename = str(client_prefix)+"_EXPORT.csv"
+                    output.headers["Content-Disposition"] = "attachment; filename="+filename
+                    output.headers["Content-type"] = "text/csv"
+                    return output
+
+                cur.execute("SELECT count(*) FROM ("+query_to_execute.replace('__PAGINATION__', "")+") xx")
+                ret_amount = cur.fetchone()
+                total_count = ret_amount[0]
+
+                query_to_execute = query_to_execute.replace('__PAGINATION__', "OFFSET %s LIMIT %s"%(str((page-1)*per_page), str(per_page)))
+
+                cur.execute(query_to_execute)
+                ret_data = list()
+                fetch_data = cur.fetchall()
+                for entry in fetch_data:
+                    ret_obj = dict()
+                    day_left = entry[2] + timedelta(hours=5.5) + timedelta(days=7)
+                    day_left = (day_left - datetime.utcnow() +timedelta(hours=5.5)).days
+                    ret_obj['discrepency_time'] = entry[2].strftime("%d %b %Y, %I:%M %p")
+                    ret_obj['dispute_time'] = entry[11].strftime("%d %b %Y, %I:%M %p") if entry[11] else None
+                    ret_obj['status'] = entry[9]
+                    ret_obj['awb'] = entry[4]
+                    ret_obj['courier'] = entry[3]
+                    ret_obj['order_id'] = entry[0]
+                    ret_obj['unique_id'] = entry[1]
+                    ret_obj['entered_weight'] = entry[5]
+                    ret_obj['charged_weight'] = entry[6]
+                    ret_obj['expected_amount'] = entry[7]
+                    ret_obj['charged_amount'] = entry[8]
+                    ret_obj['days_left'] = day_left if day_left>=0 else None
+                    ret_data.append(ret_obj)
+                response['data'] = ret_data
+
+                total_pages = math.ceil(total_count/per_page)
+                response['meta']['pagination'] = {'total': total_count,
+                                                  'per_page':per_page,
+                                                  'current_page': page,
+                                                  'total_pages':total_pages}
+
+                return response, 200
+        except Exception as e:
+            return {"success": False, "error":str(e.args[0])}, 404
+
+    def get(self, resp):
+        try:
+            cur = conn.cursor()
+            auth_data = resp.get('data')
+            if not auth_data:
+                return {"success": False, "msg": "Auth Failed"}, 404
+            all_vendors = None
+            if auth_data['user_group'] == 'multi-vendor':
+                all_vendors = db.session.query(MultiVendor).filter(MultiVendor.client_prefix == auth_data['client_prefix']).first()
+                all_vendors = all_vendors.vendor_list
+            filters = dict()
+            query_to_run_courier = """SELECT cc.courier_name, count(*) FROM weight_discrepency aa
+                                        LEFT JOIN shipments bb on aa.shipment_id=bb.id
+                                        LEFT JOIN master_couriers cc on bb.courier_id=cc.id
+                                        LEFT JOIN orders dd on bb.order_id=dd.id
+                                        WHERE aa.raised_date>'2020-04-01'
+                                        __CLIENT_FILTER__
+                                        GROUP BY courier_name
+                                        ORDER BY courier_name"""
+
+            query_to_run_status = """SELECT ee.status, count(*) FROM weight_discrepency aa
+                                                    LEFT JOIN shipments bb on aa.shipment_id=bb.id
+                                                    LEFT JOIN orders dd on bb.order_id=dd.id
+                                                    LEFT JOIN discrepency_status ee on ee.id=aa.status_id
+                                                    WHERE aa.raised_date>'2020-04-01'
+                                                    __CLIENT_FILTER__
+                                                    GROUP BY ee.status
+                                                    ORDER BY ee.status"""
+
+            if auth_data['user_group'] == 'client':
+                query_to_run_courier = query_to_run_courier.replace("__CLIENT_FILTER__",
+                                                    "AND dd.client_prefix='%s'" % auth_data['client_prefix'])
+                query_to_run_status = query_to_run_status.replace("__CLIENT_FILTER__",
+                                                                    "AND dd.client_prefix='%s'" % auth_data[
+                                                                        'client_prefix'])
+            elif auth_data['user_group'] in ('super-admin', 'multi-vendor'):
+                query_to_run_client = """SELECT cc.client_prefix, count(*) FROM weight_discrepency aa
+                                        LEFT JOIN shipments bb on aa.shipment_id=bb.id
+                                        LEFT JOIN orders cc on bb.order_id=cc.id
+                                        WHERE aa.raised_date>'2020-04-01'
+                                        __CLIENT_FILTER__
+                                        GROUP BY client_prefix
+                                        ORDER BY client_prefix"""
+                if all_vendors:
+                    query_to_run_client = query_to_run_client.replace("__CLIENT_FILTER__", "AND cc.client_prefix in %s"%str(tuple(all_vendors)))
+                    query_to_run_courier = query_to_run_courier.replace("__CLIENT_FILTER__",
+                                                                        "AND dd.client_prefix in %s" % str(
+                                                                            tuple(all_vendors)))
+                    query_to_run_status = query_to_run_status.replace("__CLIENT_FILTER__", "AND dd.client_prefix in %s"%str(tuple(all_vendors)))
+
+
+                else:
+                    query_to_run_client = query_to_run_client.replace("__CLIENT_FILTER__", "")
+                    query_to_run_courier = query_to_run_courier.replace("__CLIENT_FILTER__", "")
+                    query_to_run_status = query_to_run_status.replace("__CLIENT_FILTER__", "")
+
+                cur.execute(query_to_run_client)
+                client_data = cur.fetchall()
+                filters['client'] = list()
+                for client in client_data:
+                    if client[0]:
+                        filters['client'].append({client[0]: client[1]})
+            else:
+                query_to_run_courier = query_to_run_courier.replace("__CLIENT_FILTER__","")
+                query_to_run_status = query_to_run_status.replace("__CLIENT_FILTER__","")
+
+            cur.execute(query_to_run_courier)
+            courier_data = cur.fetchall()
+            filters['courier'] = list()
+            for courier in courier_data:
+                if courier[0]:
+                    filters['courier'].append({courier[0]: courier[1]})
+
+            cur.execute(query_to_run_status)
+            status_data = cur.fetchall()
+            filters['status'] = list()
+            for status in status_data:
+                if status[0]:
+                    filters['status'].append({status[0]: status[1]})
+
+            return {"success": True, "filters": filters}, 200
+
+        except Exception as e:
+            return {"success": False, "msg": ""}, 404
+
+
 @billing_blueprint.route('/wallet/v1/getcouriercharges', methods=['POST'])
 @authenticate_restful
 def get_courier_charges(resp):
@@ -635,6 +860,7 @@ def get_courier_charges(resp):
 api.add_resource(WalletDeductions, '/wallet/v1/deductions')
 api.add_resource(WalletRecharges, '/wallet/v1/payments')
 api.add_resource(WalletRemittance, '/wallet/v1/remittance')
+api.add_resource(WalletReconciliation, '/wallet/v1/reconciliation')
 
 
 def get_delivery_zone(cur_2, pick_pincode, del_pincode):

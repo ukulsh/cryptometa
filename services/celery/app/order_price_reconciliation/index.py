@@ -121,6 +121,14 @@ def calculate_new_charge(current_data, charged_weight, source_courier_id, total_
                                   total_charge, total_charge_gst, datetime.now(), datetime.now(), recon_status,)
             cur.execute(insert_into_deduction_query, insert_rates_tuple)
             conn.commit()
+            try:
+                insert_descrepency_tuple = (1, current_data[8], datetime.utcnow()+timedelta(hours=5.5), charged_weight, current_data[10],
+                                            current_data[10]+total_charge_gst, datetime.now(), datetime.now())
+                cur.execute(insert_into_discrepency_query, insert_descrepency_tuple)
+                conn.commit()
+            except Exception as e:
+                logger.error("couldn't insert descrepency for order: " + str(current_data[8]) + "\nError: " + str(e))
+
     except Exception as e:
         logger.error("couldn't calculate courier cost order: " + str(current_data[8]) + "\nError: " + str(e))
 

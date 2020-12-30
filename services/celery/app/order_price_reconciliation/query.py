@@ -12,4 +12,7 @@ insert_into_deduction_query = """INSERT INTO client_deductions (weight_charged,z
                                 rto_charge_gst,shipment_id,total_charge,total_charged_gst,date_created,date_updated,type) VALUES (%s,%s,%s,%s,%s,
                                 %s,%s,%s,%s,%s,%s,%s,%s,%s,%s);"""
 
+insert_into_discrepency_query = """INSERT INTO weight_discrepency (status_id, shipment_id, raised_date,
+                                charged_weight, expected_amount, charged_amount, date_created, date_updated) VALUES (%s,%s,%s,%s,%s,%s,%s,%s);"""
+
 update_client_balance = """UPDATE client_mapping SET current_balance=coalesce(current_balance, 0)-%s WHERE client_prefix=%s AND account_type ilike 'prepaid';"""

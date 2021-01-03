@@ -214,9 +214,11 @@ def create_cod_remittance_entry():
         try:
             cur.fetchone()[0]
         except Exception as e:
+            del_from = datetime.utcnow() + timedelta(hours=5.5) - timedelta(days=7)
+            del_to = datetime.utcnow() + timedelta(hours=5.5)
             insert_tuple.append(
                 (client[0], last_remittance_id, remittance_date - timedelta(days=7), 'processing',
-                 datetime.utcnow() + timedelta(hours=5.5)))
+                 datetime.utcnow() + timedelta(hours=5.5), del_from, del_to))
             insert_value_str += "%s,"
         del_from = datetime.utcnow()+timedelta(hours=5.5)
         del_to = datetime.utcnow()+timedelta(hours=5.5)+timedelta(days=7)

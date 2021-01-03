@@ -584,11 +584,11 @@ class AddOrder(Resource):
                                 address_one=data['billing_address'].get('address1'),
                                 address_two=data['billing_address'].get('address2'),
                                 city=data['billing_address'].get('city'),
-                                pincode=str(data.get('pincode')),
-                                state=data.get('state'),
-                                country=data.get('country'),
-                                phone=str(data.get('customer_phone'))
-                                )
+                                pincode=str(data['billing_address'].get('pincode')),
+                                state=data['billing_address'].get('state'),
+                                country=data['billing_address'].get('country'),
+                                phone=str(data['billing_address'].get('phone') if data['billing_address'].get('phone') else str(data.get('customer_phone'))
+                                ),)
                 db.session.add(bill_obj)
 
             pickup_filter = data.get('warehouse')

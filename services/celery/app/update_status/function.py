@@ -1453,6 +1453,9 @@ def track_ecomxp_orders(courier, cur):
 
             new_status = ecom_express_status_mapping[scan_code][0]
             current_awb = ret_order['awb_number']
+            status_type = ecom_express_status_mapping[scan_code][1]
+            status_detail = None
+            status_code = scan_code
 
             try:
                 order_status_tuple = (orders_dict[current_awb][0], orders_dict[current_awb][10], courier[0])
@@ -1478,6 +1481,15 @@ def track_ecomxp_orders(courier, cur):
                         to_record_status = "Delivered"
                     elif each_scan['reason_code_number']=="777":
                         to_record_status = "Returned"
+                    elif ret_order.get('rts_reason_code_number') and ret_order.get('rts_last_update') and ret_order.get('rts_reason_code_number')=='999':
+                        to_record_status = "RTO"
+                        if ret_order['rts_last_update']:
+                            status_time = ret_order['rts_last_update']
+                            status_time = datetime.strptime(status_time, '%d %b, %Y, %H:%M')
+                        else:
+                            status_time = datetime.utcnow()+timedelta(hours=5.5)
+                        new_status='RTO'
+                        status_type='DL'
 
                     if not to_record_status:
                         continue
@@ -1518,10 +1530,6 @@ def track_ecomxp_orders(courier, cur):
                 logger.error(
                     "Open status failed for id: " + str(orders_dict[current_awb][0]) + "\nErr: " + str(
                         e.args[0]))
-
-            status_type = ecom_express_status_mapping[scan_code][1]
-            status_detail = None
-            status_code = scan_code
 
             edd = ret_order['expected_date'] if 'expected_date' in ret_order else None
             if edd:

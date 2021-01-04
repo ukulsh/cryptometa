@@ -677,6 +677,7 @@ class WeightDiscrepency(db.Model):
     expected_amount = db.Column(db.FLOAT, nullable=True)
     charged_amount = db.Column(db.FLOAT, nullable=True)
     remarks = db.Column(db.String, nullable=True)
+    files = db.Column(ARRAY(db.String()))
     date_created = db.Column(db.DateTime, default=datetime.now)
     date_updated = db.Column(db.DateTime, onupdate=datetime.now)
 

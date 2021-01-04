@@ -8,10 +8,12 @@ from flask_restful import Api, Resource
 from datetime import datetime, timedelta
 from project import db
 from project.api.models import MultiVendor
-from project.api.utils import authenticate_restful
+from project.api.utils import authenticate_restful, check_client_order_ids
 from project.api.utilities.db_utils import DbConnection
 from project.api.queries import select_wallet_deductions_query, select_wallet_remittance_query, \
     select_wallet_remittance_orders_query, select_wallet_reconciliation_query
+from project.api.utilities.s3_utils import process_upload_logo_file
+
 
 billing_blueprint = Blueprint('billing', __name__)
 api = Api(billing_blueprint)
@@ -850,6 +852,100 @@ def get_courier_charges(resp):
         response_object['data'] = response_data
         response_object['zone'] = delivery_zone
         response_object['status'] = "success"
+
+        return jsonify(response_object), 200
+    except Exception as e:
+        response_object['message'] = 'failed'
+        return jsonify(response_object), 400
+
+
+@billing_blueprint.route('/wallet/v1/acceptDiscrepency', methods=['POST'])
+@authenticate_restful
+def accept_discrepency(resp):
+    response_object = {'status': 'fail'}
+    try:
+        cur = conn.cursor()
+        auth_data = resp.get('data')
+        if not auth_data:
+            return {"success": False, "msg": "Auth Failed"}, 404
+        if auth_data['user_group'] not in ('multi-vendor', 'client', 'super-admin'):
+            return {"success": False, "msg": "Invalid user"}, 400
+
+        data = json.loads(request.data)
+        order_ids = data.get('order_ids')
+        if not order_ids:
+            return jsonify({"success": False, "msg": "please select orders"}), 400
+
+        order_tuple_str = check_client_order_ids(order_ids, auth_data, cur)
+
+        if not order_tuple_str:
+            return jsonify({"success": False, "msg": "Invalid order ids"}), 400
+
+        cur.execute("""UPDATE weight_discrepency SET status_id=2 WHERE shipment_id in
+                        (SELECT id FROM shipments WHERE order_id in %s)""" % order_tuple_str)
+
+        conn.commit()
+
+        response_object['status']="Success"
+        response_object['msg'] = "Discrepency Accepted"
+
+        return jsonify(response_object), 200
+    except Exception as e:
+        response_object['message'] = 'failed'
+        return jsonify(response_object), 400
+
+
+@billing_blueprint.route('/wallet/v1/raiseDispute', methods=['POST'])
+@authenticate_restful
+def raise_dispute(resp):
+    response_object = {'status': 'fail'}
+    try:
+        cur = conn.cursor()
+        auth_data = resp.get('data')
+        if not auth_data:
+            return {"success": False, "msg": "Auth Failed"}, 404
+        if auth_data['user_group'] not in ('multi-vendor', 'client', 'super-admin'):
+            return {"success": False, "msg": "Invalid user"}, 400
+
+        client_prefix = auth_data['client_prefix']
+
+        data = request.values
+        order_id = data.get('unique_id')
+        remarks = data.get('remarks')
+        if not order_id:
+            return jsonify({"success": False, "msg": "please select order"}), 400
+
+        file_list = list()
+        for i in range(1,6):
+            file = request.files.get('file'+str(i))
+            if file:
+                file_url = process_upload_logo_file(client_prefix, file, bucket="wareiqreconciliation", file_name=str(order_id)+"_file"+str(i), master_bucket="wareiqreconciliation")
+                file_list.append(file_url)
+
+        query_to_execute = """UPDATE weight_discrepency SET status_id=3, remarks=%s, files=%s WHERE shipment_id in 
+                        (SELECT bb.id FROM orders aa
+                        LEFT JOIN shipments bb on aa.id=bb.order_id
+                        WHERE aa.id = %s
+                        __CLIENT_FILTER__)"""
+
+        if auth_data['user_group'] == 'client':
+            query_to_execute = query_to_execute.replace('__CLIENT_FILTER__',
+                                                        "AND aa.client_prefix = '%s'" % client_prefix)
+        if auth_data['user_group'] == 'multi-vendor':
+            cur.execute("SELECT vendor_list FROM multi_vendor WHERE client_prefix='%s';" % client_prefix)
+            vendor_list = cur.fetchone()[0]
+            query_to_execute = query_to_execute.replace("__CLIENT_FILTER__",
+                                                        "AND aa.client_prefix in %s" % str(tuple(vendor_list)))
+
+        else:
+            query_to_execute = query_to_execute.replace("__CLIENT_FILTER__", "")
+
+        cur.execute(query_to_execute, (remarks, file_list, int(order_id)))
+
+        conn.commit()
+
+        response_object['status']="Success"
+        response_object['msg'] = "Dispute Raised"
 
         return jsonify(response_object), 200
     except Exception as e:

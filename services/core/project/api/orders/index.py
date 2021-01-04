@@ -28,7 +28,8 @@ from project.api.queries import select_orders_list_query, available_warehouse_pr
 from project.api.utils import authenticate_restful, fill_shiplabel_data_thermal, \
     create_shiplabel_blank_page, fill_shiplabel_data, create_shiplabel_blank_page_thermal, \
     create_invoice_blank_page, fill_invoice_data, generate_picklist, generate_packlist, \
-    tracking_get_xpressbees_details, tracking_get_delhivery_details, tracking_get_bluedart_details, tracking_get_ecomxp_details
+    tracking_get_xpressbees_details, tracking_get_delhivery_details, tracking_get_bluedart_details, \
+    tracking_get_ecomxp_details, check_client_order_ids
 from project.api.generate_manifest import fill_manifest_data
 from project.api.utilities.db_utils import DbConnection
 
@@ -1408,32 +1409,11 @@ def bulk_cancel_orders(resp):
     order_ids=data.get('order_ids')
     if not order_ids:
         return jsonify({"success": False, "msg": "please select orders"}), 400
-    if len(order_ids)==1:
-        order_tuple_str = "("+str(order_ids[0])+")"
-    else:
-        order_tuple_str = str(tuple(order_ids))
 
-    query_to_run = """SELECT array_agg(id) FROM orders WHERE id in __ORDER_IDS__ __CLIENT_FILTER__;""".replace("__ORDER_IDS__", order_tuple_str)
+    order_tuple_str = check_client_order_ids(order_ids, auth_data, cur)
 
-    if auth_data['user_group'] == 'client':
-        query_to_run = query_to_run.replace('__CLIENT_FILTER__', "AND client_prefix='%s'"%auth_data['client_prefix'])
-    elif auth_data['user_group'] == 'multi-vendor':
-        cur.execute("SELECT vendor_list FROM multi_vendor WHERE client_prefix='%s';" % auth_data['client_prefix'])
-        vendor_list = cur.fetchone()[0]
-        query_to_run = query_to_run.replace("__CLIENT_FILTER__",
-                                            "AND client_prefix in %s" % str(tuple(vendor_list)))
-    else:
-        query_to_run = query_to_run.replace("__CLIENT_FILTER__","")
-
-    cur.execute(query_to_run)
-    order_ids = cur.fetchone()[0]
-    if not order_ids:
-        return jsonify({"success": False, "msg": "invalid order ids"}), 400
-
-    if len(order_ids)==1:
-        order_tuple_str = "("+str(order_ids[0])+")"
-    else:
-        order_tuple_str = str(tuple(order_ids))
+    if not order_tuple_str:
+        return jsonify({"success": False, "msg": "Invalid order ids"}), 400
 
     cur.execute("UPDATE orders SET status='CANCELED' WHERE id in %s"%order_tuple_str)
 

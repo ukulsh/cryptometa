@@ -944,3 +944,34 @@ def tracking_get_ecomxp_details(shipment, awb):
             return_details[key] = sorted(return_details[key], key=lambda k: k['time'], reverse=True)
 
     return return_details
+
+
+def check_client_order_ids(order_ids, auth_data, cur):
+    if len(order_ids)==1:
+        order_tuple_str = "("+str(order_ids[0])+")"
+    else:
+        order_tuple_str = str(tuple(order_ids))
+
+    query_to_run = """SELECT array_agg(id) FROM orders WHERE id in __ORDER_IDS__ __CLIENT_FILTER__;""".replace("__ORDER_IDS__", order_tuple_str)
+
+    if auth_data['user_group'] == 'client':
+        query_to_run = query_to_run.replace('__CLIENT_FILTER__', "AND client_prefix='%s'"%auth_data['client_prefix'])
+    elif auth_data['user_group'] == 'multi-vendor':
+        cur.execute("SELECT vendor_list FROM multi_vendor WHERE client_prefix='%s';" % auth_data['client_prefix'])
+        vendor_list = cur.fetchone()[0]
+        query_to_run = query_to_run.replace("__CLIENT_FILTER__",
+                                            "AND client_prefix in %s" % str(tuple(vendor_list)))
+    else:
+        query_to_run = query_to_run.replace("__CLIENT_FILTER__","")
+
+    cur.execute(query_to_run)
+    order_ids = cur.fetchone()[0]
+    if not order_ids:
+        return ""
+
+    if len(order_ids)==1:
+        order_tuple_str = "("+str(order_ids[0])+")"
+    else:
+        order_tuple_str = str(tuple(order_ids))
+
+    return order_tuple_str

@@ -12,13 +12,16 @@ env = os.environ.get('FLASK_ENV')
 env = 'prod' if env == 'production' else 'qa'
 
 
-def process_upload_logo_file(client_prefix, file_ref):
+def process_upload_logo_file(client_prefix, file_ref, bucket="client_logos", file_name=None, master_bucket=None):
     file_ext = (file_ref.filename).split('.')[-1]
-    file_key = '/%s/%s.%s' % ('client_logos', client_prefix+'_'+env + '_logo_file', file_ext)
+    if file_name:
+        file_key = '/%s/%s.%s' % (bucket, client_prefix+'_'+env + file_name, file_ext)
+    else:
+        file_key = '/%s/%s.%s' % (bucket, client_prefix+'_'+env + '_logo_file', file_ext)
     status = upload_to_s3(file_ref, aws_client_data_bucket, file_key, aws_region)
     if not status:
         raise Exception('Failed to upload the file...')
-    file_url = 'https://%s/%s%s' % (aws_region, aws_client_data_bucket, urllib.parse.quote(file_key))
+    file_url = 'https://%s/%s%s' % (aws_region, master_bucket if master_bucket else aws_client_data_bucket, urllib.parse.quote(file_key))
     return file_url
 
 

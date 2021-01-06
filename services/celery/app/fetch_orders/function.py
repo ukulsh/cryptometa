@@ -1,4 +1,4 @@
-import psycopg2, requests, os, json
+import psycopg2, requests, os, json, hmac, hashlib, base64
 from datetime import datetime, timedelta
 from requests_oauthlib.oauth1_session import OAuth1Session
 from woocommerce import API
@@ -47,6 +47,12 @@ def fetch_orders():
         elif channel[11] == "EasyEcom":
             try:
                 fetch_easyecom_orders(cur, channel)
+            except Exception as e:
+                logger.error("Couldn't fetch orders: " + str(channel[1]) + "\nError: " + str(e.args))
+
+        elif channel[11] == "Bikayi":
+            try:
+                fetch_bikayi_orders(cur, channel)
             except Exception as e:
                 logger.error("Couldn't fetch orders: " + str(channel[1]) + "\nError: " + str(e.args))
 
@@ -831,6 +837,146 @@ def fetch_easyecom_orders(cur, channel):
 
     if data['data']:
         last_sync_tuple = (str(data['data'][-1]['order_id']), last_synced_time, channel[0])
+        cur.execute(update_last_fetched_data_query, last_sync_tuple)
+
+    conn.commit()
+
+
+def fetch_bikayi_orders(cur, channel):
+
+    time_now = datetime.utcnow()
+    if channel[7] and not (time_now.hour == 21 and 0<time_now.minute<30):
+        updated_after = channel[7].strftime("%s")
+    else:
+        updated_after = datetime.utcnow() - timedelta(days=30)
+        updated_after = updated_after.strftime("%s")
+
+    bikayi_orders_url = """%s/platformPartnerFunctions-fetchOrders""" % (channel[5],)
+    key = "3f638d4ff80defb82109951b9638fae3fe0ff8a2d6dc20ed8c493783"
+    secret = "6e130520777eb175c300aefdfc1270a4f9a57f2309451311ad3fdcfb"
+    req_body = {"appId": "WAREIQ",
+                "merchantId": channel[3],
+                "timestamp": updated_after}
+    signature = hmac.new(bytes(secret.encode()),
+                         (key.encode() + "|".encode() + base64.b64encode(
+                             json.dumps(req_body).replace(" ", "").encode())),
+                         hashlib.sha256).hexdigest()
+    headers = {"Content-Type": "application/json",
+               "authorization": signature}
+    data = requests.post(bikayi_orders_url, headers=headers, data=json.dumps(req_body)).json()
+    last_synced_time = datetime.utcnow()+timedelta(hours=5.5)
+    if 'orders' not in data or not data['orders']:
+        return None
+    for order in data['orders']:
+        try:
+            cur.execute("SELECT id from orders where order_id_channel_unique='%s' and client_prefix='%s'"%(str(order['orderId']), channel[1]))
+            try:
+                existing_order = cur.fetchone()[0]
+            except Exception as e:
+                existing_order = False
+                pass
+            if existing_order:
+                continue
+            cur.execute("SELECT count(*) FROM client_pickups WHERE client_prefix='%s' and active=true;" % str(channel[1]))
+            pickup_count = cur.fetchone()[0]
+            if pickup_count == 1 and not channel[17]:
+                cur.execute(
+                    "SELECT id, client_prefix FROM client_pickups WHERE client_prefix='%s' and active=true;" % str(channel[1]))
+                pickup_data_id = cur.fetchone()[0]
+            else:
+                pickup_data_id = None  # change this as we move to dynamic pickups
+
+            customer_name = order['customerName']
+
+            customer_phone = order['customerPhone']
+            customer_phone = ''.join(e for e in str(customer_phone) if e.isalnum())
+            customer_phone = "0" + customer_phone[-10:]
+
+            address_1 = order["customerAddress"]["address"]
+
+            billing_tuple = (customer_name,
+                             "",
+                             address_1,
+                             "",
+                             order["customerAddress"]["city"],
+                             order['customerAddress']['pinCode'],
+                             order['customerAddress']['city'],
+                             "India",
+                             customer_phone,
+                             None,
+                             None,
+                             "IN"
+                             )
+
+            shipping_tuple = billing_tuple
+
+            cur.execute(insert_shipping_address_query, shipping_tuple)
+            shipping_address_id = cur.fetchone()[0]
+            cur.execute(insert_billing_address_query, billing_tuple)
+            billing_address_id = cur.fetchone()[0]
+
+            if order['paymentMethod'].lower() in ('cashondelivery','cod','cash','cash on delivery'):
+                financial_status = 'cod'
+            else:
+                financial_status = 'prepaid'
+
+            insert_status = "NEW"
+
+            order_time = datetime.fromtimestamp(order['date']/1000)
+            channel_order_id = str(order['orderId'])
+            if channel[16]:
+                channel_order_id = str(channel[16]) + channel_order_id
+            orders_tuple = (
+                channel_order_id, order_time, customer_name, "",
+                customer_phone if customer_phone else "", shipping_address_id, billing_address_id,
+                datetime.now(), insert_status, channel[1], channel[0], str(order['orderId']), pickup_data_id, 8)
+
+            cur.execute(insert_orders_data_query, orders_tuple)
+            order_id = cur.fetchone()[0]
+
+            total_amount = float(order['total'])
+
+            payments_tuple = (
+                financial_status, total_amount, total_amount, 0, "INR", order_id)
+
+            cur.execute(insert_payments_data_query, payments_tuple)
+
+            for prod in order['items']:
+                product_sku = prod
+                master_sku = prod
+                prod_tuple = (master_sku, channel[1])
+                select_products_query_temp = """SELECT id from products where master_sku=%s and client_prefix=%s;"""
+                cur.execute(select_products_query_temp, prod_tuple)
+                try:
+                    product_id = cur.fetchone()[0]
+                except Exception:
+                    dimensions = None
+                    weight = None
+                    subcategory_id = None
+                    warehouse_prefix = channel[1]
+                    master_sku = prod
+                    if not master_sku:
+                        master_sku = product_sku
+                    product_insert_tuple = (prod, product_sku, True, channel[2],
+                                            channel[1], datetime.now(), dimensions, None,
+                                            weight, master_sku, subcategory_id)
+                    cur.execute(insert_product_query, product_insert_tuple)
+                    product_id = cur.fetchone()[0]
+
+                    product_quantity_insert_tuple = (
+                        product_id, 100, 100, 100, warehouse_prefix, "APPROVED", datetime.now())
+                    cur.execute(insert_product_quantity_query, product_quantity_insert_tuple)
+
+                tax_lines = list()
+
+                op_tuple = (product_id, order_id, 1, None, None, json.dumps(tax_lines))
+                cur.execute(insert_op_association_query, op_tuple)
+
+        except Exception as e:
+            logger.error("order fetch failed for" + str(order['orderId']) + "\nError:" + str(e))
+
+    if data['orders']:
+        last_sync_tuple = (str(data['orders'][-1]['orderId']), last_synced_time, channel[0])
         cur.execute(update_last_fetched_data_query, last_sync_tuple)
 
     conn.commit()

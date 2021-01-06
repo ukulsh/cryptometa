@@ -408,7 +408,7 @@ def thirdwatch_webhook():
 
         db.session.add(thirdwatch_obj)
         db.session.commit()
-        return jsonify({"success": False}), 200
+        return jsonify({"success": True}), 200
 
     except Exception as e:
         return jsonify({"success": False}), 400

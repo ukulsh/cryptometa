@@ -1,4 +1,4 @@
-from project.api.models import ClientMapping, ClientDefaultCost, CostToClients
+from project.api.models import ClientMapping, ClientDefaultCost, CostToClients, ClientChannel
 from flask_restful import Api, Resource
 from flask import Blueprint, request, jsonify
 from project import db
@@ -31,6 +31,20 @@ class ClientManagement(Resource):
             db.session.add(client_mapping_ref)
             cost_to_client_ref = get_cost_to_clients(posted_data)
             db.session.add_all(cost_to_client_ref)
+            if client_prefix.startswith("bky_"): #bky custom channel integration
+                channel_int = ClientChannel(client_prefix=client_prefix, store_name=client_name, channel_id=8,
+                                            api_key=client_prefix.split("ky_")[1],
+                                            api_password=None, shop_url="https://asia-south1-bikai-d5ee5.cloudfunctions.net",
+                                            shared_secret=None,
+                                            mark_shipped=True, shipped_status="SHIPPED",
+                                            mark_invoiced=False,
+                                            invoiced_status=None, mark_canceled=True,
+                                            canceled_status="CANCELLED",
+                                            mark_delivered=True, delivered_status="DELIVERED",
+                                            mark_returned=True,
+                                            returned_status="RETURNED", sync_inventory=False,
+                                            fetch_status=None)
+                db.session.add(channel_int)
             db.session.commit()
             response_object['status'] = 'success'
             return response_object, 201

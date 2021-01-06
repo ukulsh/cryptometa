@@ -1757,6 +1757,11 @@ def ship_selfshp_orders(cur, courier, courier_name, order_ids, order_id_tuple, b
 
             if zone != 'A' and not force_ship:
                 continue
+
+            # kama ayurveda assign mumbai orders to store
+            if pickup_point[0] == 170:
+                cur.execute("UPDATE orders SET pickup_data_id=1164 WHERE id=%s", (order[0], ))
+
             insert_shipments_data_query = """INSERT INTO SHIPMENTS (awb, status, order_id, pickup_id, courier_id, 
                                                                             dimensions, volumetric_weight, weight, remark, return_point_id, routing_code, 
                                                                             channel_fulfillment_id, tracking_link)

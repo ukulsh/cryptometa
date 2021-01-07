@@ -6,7 +6,7 @@ from sqlalchemy import exc, or_
 from project.api.models import User, Client
 from project import db, bcrypt
 from project.api.utils import authenticate, authenticate_token_restful, create_bikayi_user, verify_hamc, jwt_token, authenticate_restful
-import os, requests
+import os, requests, hmac, hashlib, base64, json
 
 CORE_SERVICE_URL = os.environ.get('CORE_SERVICE_URL') or 'http://localhost:5010'
 
@@ -90,11 +90,25 @@ def login_user_bikayi():
         'status': 'fail',
         'message': 'signature verification failed.'
     }
-    merchant_id = request.args.get('merchant_id')
-    signature = request.args.get('signature')
-    secret_key = "NhqPtmdSJYdKjVHjA7PZj4Mge3R5"
-    verify_sign = verify_hamc(signature, merchant_id, secret_key)
-    if not verify_sign:
+    merchant_id = request.args.get('merchantId')
+    access_token = request.args.get('accessToken')
+    key = "3f638d4ff80defb82109951b9638fae3fe0ff8a2d6dc20ed8c493783"
+    secret = "6e130520777eb175c300aefdfc1270a4f9a57f2309451311ad3fdcfb"
+    req_body = {"appId": "WAREIQ",
+                "merchantId": merchant_id}
+    signature = hmac.new(bytes(secret.encode()),
+                         (key.encode() + "|".encode() + base64.b64encode(
+                             json.dumps(req_body).replace(" ", "").encode())),
+                         hashlib.sha256).hexdigest()
+    headers = {"Content-Type": "application/json",
+               "authorization": signature,
+               "accesstoken": access_token}
+    req = requests.post('https://asia-south1-bikai-d5ee5.cloudfunctions.net/platformPartnerFunctions-validateAccessToken',
+                        headers=headers, data=json.dumps(req_body))
+    try:
+        if req.json()['isValid']!=True:
+            return jsonify(response_object), 403
+    except Exception as e:
         return jsonify(response_object), 403
 
     # auth_token = auth_header.split(" ")[1]

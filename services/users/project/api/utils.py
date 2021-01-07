@@ -132,6 +132,7 @@ def create_bikayi_user(merchant_id):
     post_data['tabs']=tabs
     post_data['theme_color']=str(req_data['merchant'].get('color'))
     post_data['client_logo']=str(req_data['merchant'].get('logourl'))
+    post_data['account_type']="prepaid"
     user = based_user_register(post_data)
     db.session.add(user)
     res = requests.post(CORE_SERVICE_URL + '/core/v1/clientManagement', json=post_data)

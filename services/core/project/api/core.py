@@ -538,6 +538,28 @@ def freshdesk_url_new(auth_data):
 
 @core_blueprint.route('/core/dev', methods=['POST'])
 def ping_dev():
+#     import requests
+#     cur = conn.cursor()
+#     cur.execute("""select aa.order_id_channel_unique, ee.courier_name, bb.awb, cc.unique_parameter from orders aa
+# left join shipments bb on aa.id=bb.order_id
+# left join client_couriers cc on aa.client_prefix=cc.client_prefix and bb.courier_id=cc.courier_id
+# left join (select * from order_status where status='Received') dd on dd.order_id=aa.id
+# left join master_couriers ee on ee.id=bb.courier_id
+# where aa.client_prefix='ACTIFIBER'
+# and dd.status_time>'2021-01-06'
+# and aa.status in ('PICKUP REQUESTED', 'READY TO SHIP')""")
+#     all_orders = cur.fetchall()
+#     for order in all_orders:
+#         api_token="66520512ca5f160015a23617b8ecaa546cc20a6af846b958b2b9b9c31fb6b12f"
+#         post_url = "https://api.easyecom.io/orders/updateQC?api_token=%s" % api_token
+#         post_body = {
+#             "invoiceId": order[0],
+#             "api_token": api_token,
+#             "courier": order[1],
+#             "awbNum": order[2],
+#             "companyCarrierId": int(order[3])
+#         }
+#         req = requests.post(post_url, data=post_body)
     return 0
     # cur_2 = conn_2.cursor()
     # myfile = request.files['myfile']

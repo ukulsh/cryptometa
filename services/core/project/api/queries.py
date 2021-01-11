@@ -461,7 +461,7 @@ select_wallet_reconciliation_query = """SELECT ee.channel_order_id, ee.id, aa.ra
                                     from weight_discrepency aa
                                     LEFT JOIN shipments bb on aa.shipment_id=bb.id
                                     LEFT JOIN master_couriers cc on bb.courier_id=cc.id
-                                    LEFT JOIN (select * from client_deductions where type!='reconciliation') dd on dd.shipment_id=aa.shipment_id
+                                    LEFT JOIN (select * from client_deductions where type is null) dd on dd.shipment_id=aa.shipment_id
                                     LEFT JOIN orders ee on ee.id=bb.order_id
                                 	LEFT JOIN discrepency_status ff on ff.id=aa.status_id
                                   	WHERE (bb.awb ilike '%__SEARCH_KEY__%' or ee.channel_order_id ilike '%__SEARCH_KEY__%')

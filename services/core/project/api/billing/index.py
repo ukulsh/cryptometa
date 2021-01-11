@@ -922,7 +922,7 @@ def raise_dispute(resp):
                 file_url = process_upload_logo_file(client_prefix, file, bucket="wareiqreconciliation", file_name=str(order_id)+"_file"+str(i), master_bucket="wareiqreconciliation")
                 file_list.append(file_url)
 
-        query_to_execute = """UPDATE weight_discrepency SET status_id=3, remarks=%s, files=%s WHERE shipment_id in 
+        query_to_execute = """UPDATE weight_discrepency SET status_id=3, remarks=%s, files=%s, dispute_date=%s WHERE shipment_id in 
                         (SELECT bb.id FROM orders aa
                         LEFT JOIN shipments bb on aa.id=bb.order_id
                         WHERE aa.id = %s
@@ -940,7 +940,7 @@ def raise_dispute(resp):
         else:
             query_to_execute = query_to_execute.replace("__CLIENT_FILTER__", "")
 
-        cur.execute(query_to_execute, (remarks, file_list, int(order_id)))
+        cur.execute(query_to_execute, (remarks, file_list, datetime.utcnow()+timedelta(hours=5.5), int(order_id)))
 
         conn.commit()
 

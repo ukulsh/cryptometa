@@ -1999,7 +1999,7 @@ def push_awb_easyecom(invoice_id, api_token, awb, courier, cur, client_prefix):
             else:
                 companyCarrierId = cour[1]
 
-        post_url = "https://api.easyecom.io/orders/updateQC?api_token=%s"%api_token
+        post_url = "https://api.easyecom.io/Carrier/assignAWB?api_token=%s"%api_token
         post_body = {
                       "invoiceId": invoice_id,
                       "api_token": api_token,

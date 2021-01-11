@@ -575,12 +575,12 @@ class WalletReconciliation(Resource):
                         query_to_execute = query_to_execute.replace('__STATUS_FILTER__', cl_filter)
 
                 if auth_data['user_group'] == 'client':
-                    query_to_execute = query_to_execute.replace('__CLIENT_FILTER__', "AND dd.client_prefix = '%s'"%client_prefix)
+                    query_to_execute = query_to_execute.replace('__CLIENT_FILTER__', "AND ee.client_prefix = '%s'"%client_prefix)
                 if auth_data['user_group'] == 'multi-vendor':
                     cur.execute("SELECT vendor_list FROM multi_vendor WHERE client_prefix='%s';" % client_prefix)
                     vendor_list = cur.fetchone()[0]
                     query_to_execute = query_to_execute.replace("__MV_CLIENT_FILTER__",
-                                                        "AND dd.client_prefix in %s" % str(tuple(vendor_list)))
+                                                        "AND ee.client_prefix in %s" % str(tuple(vendor_list)))
 
                 else:
                     query_to_execute = query_to_execute.replace("__MV_CLIENT_FILTER__", "")

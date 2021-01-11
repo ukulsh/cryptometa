@@ -613,6 +613,16 @@ def ship_bulk_orders(order_list, auth_data, courier):
     if auth_data['user_group'] not in ('client', 'super-admin', 'multi-vendor'):
         return {"success":False, "msg": "invalid user"}, 400
 
+    if auth_data['user_group'] != 'super-admin':
+        cur.execute("SELECT account_type, current_balance FROM client_mapping WHERE client_prefix='%s'"%auth_data['client_prefix'])
+        try:
+            bal_data = cur.fetchone()
+            if bal_data[0].lower()=='prepaid' and bal_data[1]<500:
+                return {"success": False, "msg": "balance low, please recharge"}, 400
+
+        except Exception:
+            return {"success":False, "msg": "Something went wrong"}, 400
+
     if len(order_list)==1:
         order_tuple_str = "("+str(order_list[0])+")"
     else:

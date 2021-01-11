@@ -538,6 +538,41 @@ def freshdesk_url_new(auth_data):
 
 @core_blueprint.route('/core/dev', methods=['POST'])
 def ping_dev():
+    return 0
+    myfile = request.files['myfile']
+    data_xlsx = pd.read_excel(myfile)
+    from .models import Products, OrdersPayments
+    import json, re
+    count = 0
+    iter_rw = data_xlsx.iterrows()
+    for row in iter_rw:
+        sku = row[1].SKU
+        try:
+            prod_obj = db.session.query(Products).filter(Products.client_prefix == 'NASHER',
+                                                         Products.master_sku == sku).first()
+            if not prod_obj:
+                dimensions = re.findall(r"[-+]?\d*\.\d+|\d+", str(row[1].Dimensions))
+
+                dimensions = {"length": float(dimensions[0]), "breadth": float(dimensions[1]),
+                              "height": float(dimensions[2])}
+                prod_obj_x = Products(name=str(row[1].Name),
+                                      sku=str(sku),
+                                      master_sku=str(sku),
+                                      dimensions=dimensions,
+                                      weight=float(row[1].Weight),
+                                      price=float(float(row[1].Price)),
+                                      client_prefix='NASHER',
+                                      active=True,
+                                      channel_id=4,
+                                      date_created=datetime.now()
+                                      )
+                db.session.add(prod_obj_x)
+                if row[0]%50==0:
+                    db.session.commit()
+        except Exception as e:
+            print(str(sku) + "\n" + str(e.args[0]))
+            db.session.rollback()
+    db.session.commit()
 #     import requests
 #     cur = conn.cursor()
 #     cur.execute("""select aa.order_id_channel_unique, ee.courier_name, bb.awb, cc.unique_parameter from orders aa
@@ -661,7 +696,7 @@ def ping_dev():
     #
     # return 0
     # from .models import Orders, ReturnPoints, ClientPickups, Products, ProductQuantity
-    myfile = request.files['myfile']
+    # myfile = request.files['myfile']
     # data_xlsx = pd.read_excel(myfile)
     # import json, re
     # count = 0
@@ -669,87 +704,37 @@ def ping_dev():
     # for row in iter_rw:
     #     try:
     #         sku = str(row[1].SKU)
-    #         quan = int(row[1].Qty)
-    #         qs = db.session.query(Products).filter(Products.master_sku==sku, Products.client_prefix=='SPORTSQVEST').first()
-    #         if qs:
-    #             qs2 = db.session.query(ProductQuantity).filter(ProductQuantity.product == qs, ProductQuantity.warehouse_prefix=='QSBHIWANDI').first()
-    #             if qs2:
-    #                 qs2.total_quantity=quan
-    #                 qs2.approved_quantity=quan
-    #             else:
-    #                 qs2 = ProductQuantity(product=qs,
-    #                                 total_quantity=quan,
-    #                                 approved_quantity=quan,
-    #                                 available_quantity=quan,
-    #                                 inline_quantity=0,
-    #                                 rto_quantity=0,
-    #                                 current_quantity=quan,
-    #                                 warehouse_prefix="QSBHIWANDI",
-    #                                 status="APPROVED",
+    #         qs = db.session.query(Products).filter(Products.master_sku==sku, Products.client_prefix=='VENUS').first()
+    #         if not qs:
+    #             dimensions = {"length": 5, "breadth": 5,
+    #                           "height": 5}
+    #             weight = 0.01
+    #             prod_obj = Products(name=str(row[1].Name),
+    #                                 sku=str(sku),
+    #                                 master_sku=str(sku),
+    #                                 dimensions=dimensions,
+    #                                 weight=weight,
+    #                                 price=None,
+    #                                 client_prefix='VENUS',
+    #                                 active=True,
+    #                                 channel_id=4,
+    #                                 inactive_reason=None,
     #                                 date_created=datetime.now()
     #                                 )
+    #             db.session.add(prod_obj)
+    #         else:
+    #             qs.name = str(row[1].Name)
     #
-    #                 db.session.add(qs2)
     #
-    #         if row[0] % 100 == 0:
-    #             db.session.commit()
-    #         """
-    #         prod_obj = Products(name=sku,
-    #                             sku=str(sku),
-    #                             master_sku=str(sku),
-    #                             dimensions=None,
-    #                             weight=None,
-    #                             price=None,
-    #                             client_prefix='WINGREENS',
-    #                             active=True,
-    #                             channel_id=4,
-    #                             inactive_reason=None,
-    #                             date_created=datetime.now()
-    #                             )
-    #         prod_quan_obj = ProductQuantity(product=prod_obj,
-    #                                         total_quantity=quan,
-    #                                         approved_quantity=quan,
-    #                                         available_quantity=quan,
-    #                                         inline_quantity=0,
-    #                                         rto_quantity=0,
-    #                                         current_quantity=quan,
-    #                                         warehouse_prefix="QSDWARKA",
-    #                                         status="APPROVED",
-    #                                         date_created=datetime.now()
-    #                                         )
+    #         db.session.commit()
     #
-    #         db.session.add(prod_quan_obj)
-    #         prod_quan_obj = ProductQuantity(product=prod_obj,
-    #                                         total_quantity=quan,
-    #                                         approved_quantity=quan,
-    #                                         available_quantity=quan,
-    #                                         inline_quantity=0,
-    #                                         rto_quantity=0,
-    #                                         current_quantity=quan,
-    #                                         warehouse_prefix="QSBHIWANDI",
-    #                                         status="APPROVED",
-    #                                         date_created=datetime.now()
-    #                                         )
-    #
-    #         db.session.add(prod_quan_obj)
-    #         prod_quan_obj = ProductQuantity(product=prod_obj,
-    #                                         total_quantity=quan,
-    #                                         approved_quantity=quan,
-    #                                         available_quantity=quan,
-    #                                         inline_quantity=0,
-    #                                         rto_quantity=0,
-    #                                         current_quantity=quan,
-    #                                         warehouse_prefix="QSBANGALORE",
-    #                                         status="APPROVED",
-    #                                         date_created=datetime.now()
-    #                                         )
-    #         """
     #
     #     except Exception as e:
     #         pass
-
+    #
+    #
+    # return 0
     """
-    return 0
     import requests
     create_fulfillment_url = "https://app.easyecom.io/orders/getAllOrders?api_token=8ad11f5f608737f85bc0a5d04aa954d75ad378202c0800fa195d9738efd94a44&start_date=2020-10-15&end_date=2020-10-21"
     req = requests.get(create_fulfillment_url)
@@ -1313,49 +1298,7 @@ def ping_dev():
     return 0
 
     lambda_handler()
-    myfile = request.files['myfile']
 
-    data_xlsx = pd.read_excel(myfile)
-    from .models import Products, OrdersPayments
-    import json, re
-    count = 0
-    iter_rw = data_xlsx.iterrows()
-    for row in iter_rw:
-        sku = row[1].MasterSKU
-        try:
-            prod_obj = db.session.query(Products).filter(Products.client_prefix == 'NASHER',
-                                                         Products.master_sku == 'sku').first()
-            if not prod_obj:
-                dimensions = re.findall(r"[-+]?\d*\.\d+|\d+", str(row[1].Dimensions))
-                inactive_reason = "Delhivery Surface Standard"
-                if float(dimensions[0]) > 41:
-                    inactive_reason = "Delhivery 20 KG"
-                elif float(dimensions[0]) > 40:
-                    inactive_reason = "Delhivery 10 KG"
-                elif float(dimensions[0]) > 19:
-                    inactive_reason = "Delhivery 2 KG"
-
-                dimensions = {"length": float(dimensions[0]), "breadth": float(dimensions[1]),
-                              "height": float(dimensions[2])}
-                prod_obj_x = Products(name=str(sku),
-                                      sku=str(sku),
-                                      master_sku=str(sku),
-                                      dimensions=dimensions,
-                                      weight=float(row[1].Weight),
-                                      price=float(float(row[1].Price)),
-                                      client_prefix='NASHER',
-                                      active=True,
-                                      channel_id=4,
-                                      inactive_reason=inactive_reason,
-                                      date_created=datetime.now()
-                                      )
-                db.session.add(prod_obj_x)
-                if row[0]%50==0:
-                    db.session.commit()
-        except Exception as e:
-            print(str(sku) + "\n" + str(e.args[0]))
-            db.session.rollback()
-    db.session.commit()
     import requests
     create_fulfillment_url = "https://39690624bee51fde0640bfa0e3832744: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@successcraft.myshopify.com/admin/api/2020-07/orders.json?limit=250"
     qs = requests.get(create_fulfillment_url)

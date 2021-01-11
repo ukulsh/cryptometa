@@ -672,7 +672,7 @@ def fetch_easyecom_orders(cur, channel):
     fetch_status="1,2"
     if channel[15]:
         fetch_status = ','.join(str(x) for x in channel[15])
-    easyecom_orders_url = "%s/orders/getAllOrders?api_token=%s&created_after=%s&status_id=%s" % (channel[5], channel[3], created_after, fetch_status)
+    easyecom_orders_url = "%s/orders/getAllOrders?api_token=%s&created_after=%s" % (channel[5], channel[3], created_after)
     data = requests.get(easyecom_orders_url).json()
     last_synced_time = datetime.utcnow() + timedelta(hours=5.5)
     if 'data' not in data:

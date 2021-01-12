@@ -539,40 +539,54 @@ def freshdesk_url_new(auth_data):
 @core_blueprint.route('/core/dev', methods=['POST'])
 def ping_dev():
     return 0
-    myfile = request.files['myfile']
-    data_xlsx = pd.read_excel(myfile)
-    from .models import Products, OrdersPayments
-    import json, re
-    count = 0
-    iter_rw = data_xlsx.iterrows()
-    for row in iter_rw:
-        sku = row[1].SKU
-        try:
-            prod_obj = db.session.query(Products).filter(Products.client_prefix == 'NASHER',
-                                                         Products.master_sku == sku).first()
-            if not prod_obj:
-                dimensions = re.findall(r"[-+]?\d*\.\d+|\d+", str(row[1].Dimensions))
-
-                dimensions = {"length": float(dimensions[0]), "breadth": float(dimensions[1]),
-                              "height": float(dimensions[2])}
-                prod_obj_x = Products(name=str(row[1].Name),
-                                      sku=str(sku),
-                                      master_sku=str(sku),
-                                      dimensions=dimensions,
-                                      weight=float(row[1].Weight),
-                                      price=float(float(row[1].Price)),
-                                      client_prefix='NASHER',
-                                      active=True,
-                                      channel_id=4,
-                                      date_created=datetime.now()
-                                      )
-                db.session.add(prod_obj_x)
-                if row[0]%50==0:
-                    db.session.commit()
-        except Exception as e:
-            print(str(sku) + "\n" + str(e.args[0]))
-            db.session.rollback()
-    db.session.commit()
+    # url = "https://stage.lotus-organics.com/api/v1/order/wareiq/update"
+    # headers = {"Content-Type": "application/json",
+    #            "x-api-key": "901192e41675e1b908d26a7e95c77ddc"}
+    # data  = {
+    #     "id": 3724,
+    #     "ware_iq_id": 349098,
+    #     "awb_number": "3992413193326",
+    #     "status_information": "IN TRANSIT"
+    # }
+    #
+    # import requests
+    # requests.put(url, headers, data=data)
+    #
+    # return 0
+    # myfile = request.files['myfile']
+    # data_xlsx = pd.read_excel(myfile)
+    # from .models import Products, OrdersPayments
+    # import json, re
+    # count = 0
+    # iter_rw = data_xlsx.iterrows()
+    # for row in iter_rw:
+    #     sku = row[1].SKU
+    #     try:
+    #         prod_obj = db.session.query(Products).filter(Products.client_prefix == 'NASHER',
+    #                                                      Products.master_sku == sku).first()
+    #         if not prod_obj:
+    #             dimensions = re.findall(r"[-+]?\d*\.\d+|\d+", str(row[1].Dimensions))
+    #
+    #             dimensions = {"length": float(dimensions[0]), "breadth": float(dimensions[1]),
+    #                           "height": float(dimensions[2])}
+    #             prod_obj_x = Products(name=str(row[1].Name),
+    #                                   sku=str(sku),
+    #                                   master_sku=str(sku),
+    #                                   dimensions=dimensions,
+    #                                   weight=float(row[1].Weight),
+    #                                   price=float(float(row[1].Price)),
+    #                                   client_prefix='NASHER',
+    #                                   active=True,
+    #                                   channel_id=4,
+    #                                   date_created=datetime.now()
+    #                                   )
+    #             db.session.add(prod_obj_x)
+    #             if row[0]%50==0:
+    #                 db.session.commit()
+    #     except Exception as e:
+    #         print(str(sku) + "\n" + str(e.args[0]))
+    #         db.session.rollback()
+    # db.session.commit()
 #     import requests
 #     cur = conn.cursor()
 #     cur.execute("""select aa.order_id_channel_unique, ee.courier_name, bb.awb, cc.unique_parameter from orders aa
@@ -595,7 +609,7 @@ def ping_dev():
 #             "companyCarrierId": int(order[3])
 #         }
 #         req = requests.post(post_url, data=post_body)
-    return 0
+#     return 0
     # cur_2 = conn_2.cursor()
     # myfile = request.files['myfile']
     # data_xlsx = pd.read_excel(myfile)
@@ -741,6 +755,7 @@ def ping_dev():
     create_fulfillment_url = "https://dc948a1330721a0116d84fb76ab168c4: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@daily-veggies-india.myshopify.com/admin/api/2020-07/orders/2728800518305.json?"
     return 0
     """
+    myfile = request.files['myfile']
     import json, requests
     data_xlsx = pd.read_excel(myfile)
 
@@ -801,10 +816,10 @@ def ping_dev():
 
             """
             sku_list.append({"sku": sku,
-                             "warehouse": "QSDWARKA",
+                             "warehouse": "SDDELHI",
                              "quantity": del_qty,
                              "type": "add",
-                             "remark": "19 dec inbound"})
+                             "remark": "1 jan inbound"})
 
             """
 

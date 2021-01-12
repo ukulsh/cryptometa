@@ -54,11 +54,7 @@ class WalletDeductions(Resource):
             if auth_data.get('user_group') in ('super-admin', 'client', 'multi-vendor'):
                 client_prefix = auth_data.get('client_prefix')
                 query_to_execute = select_wallet_deductions_query
-                query_total_recharge = """select COALESCE(sum(recharge_amount), 0) from client_recharges
-                                        WHERE recharge_time>'2020-04-01'
-                                        AND lower(status)='successful'
-                                        __CLIENT_FILTER__
-                                        __MV_CLIENT_FILTER__"""
+
                 if filters:
                     if 'courier' in filters:
                         if len(filters['courier'])==1:
@@ -74,27 +70,22 @@ class WalletDeductions(Resource):
                             cl_filter = "AND dd.client_prefix in %s"%str(tuple(filters['client']))
 
                         query_to_execute = query_to_execute.replace('__CLIENT_FILTER__', cl_filter)
-                        query_total_recharge = query_total_recharge.replace('__CLIENT_FILTER__', cl_filter.replace('dd.', ''))
                     if 'time' in filters:
                         filter_date_start = filters['time'][0][0:19].replace('T',' ')
                         filter_date_end = filters['time'][1][0:19].replace('T',' ')
                         query_to_execute = query_to_execute.replace("__DATE_TIME_FILTER__", "AND aa.status_time between '%s' and '%s'" %(filter_date_start, filter_date_end))
                 if auth_data['user_group'] == 'client':
                     query_to_execute = query_to_execute.replace('__CLIENT_FILTER__', "AND dd.client_prefix = '%s'"%client_prefix)
-                    query_total_recharge = query_total_recharge.replace('__CLIENT_FILTER__', "AND client_prefix = '%s'"%client_prefix)
                 if auth_data['user_group'] == 'multi-vendor':
                     cur.execute("SELECT vendor_list FROM multi_vendor WHERE client_prefix='%s';" % client_prefix)
                     vendor_list = cur.fetchone()[0]
                     query_to_execute = query_to_execute.replace("__MV_CLIENT_FILTER__",
                                                         "AND dd.client_prefix in %s" % str(tuple(vendor_list)))
-                    query_total_recharge = query_total_recharge.replace('__MV_CLIENT_FILTER__', "AND client_prefix in %s"%str(tuple(vendor_list)))
 
                 else:
                     query_to_execute = query_to_execute.replace("__MV_CLIENT_FILTER__", "")
-                    query_total_recharge = query_total_recharge.replace('__MV_CLIENT_FILTER__', "")
 
                 query_to_execute = query_to_execute.replace('__CLIENT_FILTER__',"").replace('__COURIER_FILTER__', "").replace('__DATE_TIME_FILTER__', '')
-                query_total_recharge = query_total_recharge.replace('__CLIENT_FILTER__', '')
                 query_to_execute = query_to_execute.replace('__SEARCH_KEY__',search_key)
 
                 if download_flag:
@@ -138,11 +129,9 @@ class WalletDeductions(Resource):
                 total_count = ret_amount[1]
                 total_deductions = ret_amount[0]
 
-                cur.execute(query_total_recharge)
-                total_recharge = cur.fetchone()[0]
                 query_to_execute = query_to_execute.replace('__PAGINATION__', "OFFSET %s LIMIT %s"%(str((page-1)*per_page), str(per_page)))
 
-                balance = round(total_recharge-total_deductions*1.18, 1)
+                balance = round(total_deductions*1.18, 1)
                 cur.execute(query_to_execute)
                 ret_data = list()
                 fetch_data = cur.fetchall()
@@ -165,7 +154,7 @@ class WalletDeductions(Resource):
                     ret_obj['weight_charged'] = round(entry[11], 2) if entry[11] else None
                     ret_data.append(ret_obj)
                 response['data'] = ret_data
-                response['balance'] = balance
+                response['expense'] = balance
 
                 total_pages = math.ceil(total_count/per_page)
                 response['meta']['pagination'] = {'total': total_count,

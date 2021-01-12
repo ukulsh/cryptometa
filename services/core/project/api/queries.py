@@ -429,6 +429,7 @@ select_orders_list_query = """select distinct on (aa.order_date, aa.id) aa.chann
                              __CLIENT_FILTER__
                              __MV_CLIENT_FILTER__
                              __SINCE_ID_FILTER__
+                             __EDD_FILTER__
                              order by order_date DESC, aa.id DESC
                              __PAGINATION__"""
 
@@ -439,7 +440,9 @@ get_selected_product_details = """select ll.order_id, ll.product_names, ll.skus,
 
 select_wallet_deductions_query = """SELECT aa.status_time, aa.status, bb.courier_name, cc.awb, dd.channel_order_id, dd.id, ee.cod_charge, 
                                     ee.forward_charge, ee.rto_charge, ee.total_charge, ee.zone, ee.weight_charged, 
-                                    COALESCE((ff.management_fee/100)*ee.forward_charge, 0) as tot_amount from order_status aa
+                                    (CASE WHEN (ff.management_fee_static is not null) THEN ff.management_fee_static 
+                                     WHEN (ff.management_fee is not null) THEN COALESCE((ff.management_fee/100)*ee.forward_charge, 0) ELSE 
+                                     5 END) tot_amount from order_status aa
                                     LEFT JOIN master_couriers bb on aa.courier_id=bb.id
                                     LEFT JOIN shipments cc on aa.shipment_id=cc.id
                                     LEFT JOIN orders dd on aa.order_id=dd.id

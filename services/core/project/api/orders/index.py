@@ -213,6 +213,11 @@ class OrderList(Resource):
                     filter_date_end = filters['delivered_time'][1][0:19].replace('T',' ')
                     query_to_run = query_to_run.replace("__PICKUP_TIME_FILTER__", "AND delivered_time between '%s' and '%s'" %(filter_date_start, filter_date_end))
 
+                if 'edd' in filters:
+                    filter_date_start = filters['edd'][0][0:19].replace('T',' ')
+                    filter_date_end = filters['edd'][1][0:19].replace('T',' ')
+                    query_to_run = query_to_run.replace("__EDD_FILTER__", "AND bb.edd between '%s' and '%s'" %(filter_date_start, filter_date_end))
+
             if download_flag:
                 if not [i for i in ['order_date', 'pickup_time', 'manifest_time', 'delivered_time'] if i in filters]:
                     date_month_ago = datetime.utcnow() + timedelta(hours=5.5) - timedelta(days=31)

@@ -369,7 +369,7 @@ def ship_delhivery_orders(cur, courier, courier_name, order_ids, order_id_tuple,
         order_status_change_ids = list()
         insert_shipments_data_tuple = list()
         insert_order_status_dict = dict()
-        last_invoice_no = pickup_point[22]
+        last_invoice_no = pickup_point[22] if pickup_point[22] else 0
         for package in return_data:
             try:
                 fulfillment_id = None
@@ -537,7 +537,7 @@ def ship_shadowfax_orders(cur, courier, courier_name, order_ids, order_id_tuple,
         order_status_change_ids = list()
 
         pickup_point = cur.fetchone()  # change this as we get to dynamic pickups
-        last_invoice_no = pickup_point[22]
+        last_invoice_no = pickup_point[22] if pickup_point[22] else 0
         for order in all_new_orders:
             if order[26].lower() == 'cod' and not order[27] and not force_ship:
                 continue
@@ -785,7 +785,7 @@ def ship_xpressbees_orders(cur, courier, courier_name, order_ids, order_id_tuple
 
         pickup_point = cur.fetchone()  # change this as we get to dynamic pickups
 
-        last_invoice_no = pickup_point[22]
+        last_invoice_no = pickup_point[22] if pickup_point[22] else 0
         for order in all_new_orders:
             if order[26].lower() == 'cod' and not order[27] and not force_ship:
                 continue
@@ -1142,7 +1142,7 @@ def ship_ecom_orders(cur, courier, courier_name, order_ids, order_id_tuple, back
 
         pickup_point = cur.fetchone()  # change this as we get to dynamic pickups
 
-        last_invoice_no = pickup_point[22]
+        last_invoice_no = pickup_point[22] if pickup_point[22] else 0
 
         for order in all_new_orders:
             if order[26].lower() == 'cod' and not order[27] and not force_ship:
@@ -1444,7 +1444,7 @@ def ship_bluedart_orders(cur, courier, courier_name, order_ids, order_id_tuple, 
 
         pickup_point = cur.fetchone()  # change this as we get to dynamic pickups
 
-        last_invoice_no = pickup_point[22]
+        last_invoice_no = pickup_point[22] if pickup_point[22] else 0
 
         pickup_pincode = str(pickup_point[8]).rstrip() if pickup_point[8] else None
         if pickup_pincode and pickup_pincode in bluedart_area_code_mapping:
@@ -1754,7 +1754,7 @@ def ship_selfshp_orders(cur, courier, courier_name, order_ids, order_id_tuple, b
 
         pickup_point = cur.fetchone()  # change this as we get to dynamic pickups
 
-        last_invoice_no = pickup_point[22]
+        last_invoice_no = pickup_point[22] if pickup_point[22] else 0
 
         if not pickup_point[21]:
             continue
@@ -2060,7 +2060,7 @@ def invoice_order(cur, last_inv_no, inv_prefix, order_id, pickup_data_id):
         cur.execute("""INSERT INTO orders_invoice (order_id, pickup_data_id, invoice_no_text, invoice_no, date_created) 
                         VALUES (%s, %s, %s, %s, %s);""", (order_id, pickup_data_id, inv_text, inv_no, datetime.utcnow()+timedelta(hours=5.5)))
         return inv_no
-    except Exception:
+    except Exception as e:
         return last_inv_no
 
 

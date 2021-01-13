@@ -263,7 +263,7 @@ class Orders(db.Model):
 class OrdersInvoice(db.Model):
     __tablename__ = "orders_invoice"
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    order_id = db.Column(db.Integer, db.ForeignKey('orders.id'), unique=True, index=True)
+    order_id = db.Column(db.Integer, db.ForeignKey('orders.id'))
     order = db.relationship("Orders", backref=db.backref("orders_invoice", uselist=True))
     pickup_data_id = db.Column(db.Integer, db.ForeignKey('client_pickups.id'))
     pickup_data = db.relationship("ClientPickups", backref=db.backref("orders_invoice", uselist=True))

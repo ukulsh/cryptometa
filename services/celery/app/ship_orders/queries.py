@@ -60,7 +60,7 @@ get_orders_to_ship_query = """select aa.id,aa.channel_order_id,aa.order_date,aa.
                                 on aa.id=xx.order_id
                                 left join client_mapping yy
                                 on aa.client_prefix=yy.client_prefix
-                                left join (select * from orders_invoice where cancelled!=true) zz
+                                left join (select * from orders_invoice where cancelled is not true) zz
                                 on zz.order_id=aa.id
                                 where aa.client_prefix=%s
                                 __ORDER_SELECT_FILTERS__

@@ -1335,6 +1335,9 @@ def cancel_order_channel(resp, order_id):
                            "Content-Type": "application/json"}
                 req_can = requests.post("http://xbclientapi.xbees.in/POSTShipmentService.svc/RTONotifyShipment",
                                         headers=headers, data=cancel_body)
+        if order.orders_invoice:
+            for invoice_obj in order.orders_invoice:
+                invoice_obj.cancelled=True
         db.session.query(OrderStatus).filter(OrderStatus.order_id == order.id).delete()
 
     db.session.commit()
@@ -1421,6 +1424,7 @@ def bulk_cancel_orders(resp):
         return jsonify({"success": False, "msg": "Invalid order ids"}), 400
 
     cur.execute("UPDATE orders SET status='CANCELED' WHERE id in %s"%order_tuple_str)
+    cur.execute("UPDATE orders_invoice SET cancelled=true WHERE order_id in %s"%order_tuple_str)
 
     conn.commit()
 
@@ -1798,6 +1802,10 @@ class OrderDetails(Resource):
                         req_ful = requests.post(cancel_url, data=json.dumps(cancel_data),
                                                 headers=cancel_header, verify=False)
 
+                    if order.orders_invoice: #cancel invoice
+                        for invoice_obj in order.orders_invoice:
+                            invoice_obj.cancelled = True
+
                 elif data.get('cod_verification') == True:
                     if order.shipments and order.shipments and order.shipments[0].awb:
                         order.status = 'READY TO SHIP'
@@ -1828,6 +1836,10 @@ class OrderDetails(Resource):
                             headers = {"Authorization": "Basic " + order.shipments[0].courier.api_key,
                                         "Content-Type": "application/json"}
                             req_can = requests.post("http://xbclientapi.xbees.in/POSTShipmentService.svc/RTONotifyShipment", headers=headers, data=cancel_body)
+
+                    if order.orders_invoice:
+                        for invoice_obj in order.orders_invoice:
+                            invoice_obj.cancelled = True
 
             db.session.commit()
             return {'status': 'success', 'msg': "successfully updated"}, 200

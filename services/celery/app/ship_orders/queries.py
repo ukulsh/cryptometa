@@ -14,7 +14,8 @@ get_pickup_points_query = """select aa.id, aa.pickup_id, aa.return_point_id,
                                 bb.phone, bb.address, bb.address_two, bb.city,
                                 bb.country, bb.pincode, bb.warehouse_prefix, bb.state, bb.name,
                                 cc.phone, cc.address, cc.address_two, cc.city,
-                                cc.country, cc.pincode, cc.warehouse_prefix, cc.state, cc.name, aa.enable_sdd
+                                cc.country, cc.pincode, cc.warehouse_prefix, cc.state, cc.name, 
+                                aa.enable_sdd, aa.invoice_last, aa.invoice_prefix
                                 from client_pickups aa
                                 left join pickup_points bb
                                 on aa.pickup_id=bb.id
@@ -29,7 +30,7 @@ get_orders_to_ship_query = """select aa.id,aa.channel_order_id,aa.order_date,aa.
                                 dd.subtotal,dd.order_id,ee.dimensions,ee.weights,ee.quan, ff.api_key, ff.api_password, 
                                 ff.shop_url, aa.order_id_channel_unique, ee.products_name, aa.pickup_data_id, xx.cod_verified, 
                                 xx.id, ee.ship_courier, gg.location_id, ff.channel_id, yy.verify_cod, yy.essential, ee.subcategories, 
-                                yy.cod_ship_unconfirmed, yy.client_name, aa.chargeable_weight, yy.cod_man_ver
+                                yy.cod_ship_unconfirmed, yy.client_name, aa.chargeable_weight, yy.cod_man_ver, zz.id
                                 from orders aa
                                 left join shipping_address cc
                                 on aa.delivery_address_id=cc.id
@@ -59,6 +60,8 @@ get_orders_to_ship_query = """select aa.id,aa.channel_order_id,aa.order_date,aa.
                                 on aa.id=xx.order_id
                                 left join client_mapping yy
                                 on aa.client_prefix=yy.client_prefix
+                                left join (select * from orders_invoice where cancelled!=true) zz
+                                on zz.order_id=aa.id
                                 where aa.client_prefix=%s
                                 __ORDER_SELECT_FILTERS__
                                 and NOT EXISTS (SELECT 1 FROM unnest(ee.weights) x WHERE x IS NULL)

@@ -176,7 +176,7 @@ def ship_delhivery_orders(cur, courier, courier_name, order_ids, order_id_tuple,
                 orders_dict[str(order[0])] = (order[0], order[33], order[34], order[35],
                                               order[36], order[37], order[38], order[39],
                                               order[5], order[9], order[45], order[46],
-                                              order[51], order[52], zone)
+                                              order[51], order[52], zone, order[54])
 
                 if order[17].lower() in ("bengaluru", "bangalore", "banglore") and courier[1] in ("SOHOMATTRESS",) and \
                         order[26].lower() != 'pickup' and not force_ship:
@@ -369,11 +369,15 @@ def ship_delhivery_orders(cur, courier, courier_name, order_ids, order_id_tuple,
         order_status_change_ids = list()
         insert_shipments_data_tuple = list()
         insert_order_status_dict = dict()
+        last_invoice_no = pickup_point[22]
         for package in return_data:
             try:
                 fulfillment_id = None
                 tracking_link = None
                 if package['waybill']:
+                    if not orders_dict[package['refnum']][15]:
+                        last_invoice_no = invoice_order(cur, last_invoice_no, pickup_point[23], orders_dict[package['refnum']][0], pickup_id)
+
                     order_status_change_ids.append(orders_dict[package['refnum']][0])
                     client_name = str(orders_dict[package['refnum']][12])
                     customer_phone = orders_dict[package['refnum']][8].replace(" ", "")
@@ -487,6 +491,8 @@ def ship_delhivery_orders(cur, courier, courier_name, order_ids, order_id_tuple,
             else:
                 cur.execute(update_orders_status_query, (tuple(order_status_change_ids),))
 
+        cur.execute("UPDATE client_pickups SET invoice_last=%s WHERE id=%s;", (last_invoice_no, pickup_id))
+
         conn.commit()
 
     if exotel_idx:
@@ -531,7 +537,7 @@ def ship_shadowfax_orders(cur, courier, courier_name, order_ids, order_id_tuple,
         order_status_change_ids = list()
 
         pickup_point = cur.fetchone()  # change this as we get to dynamic pickups
-
+        last_invoice_no = pickup_point[22]
         for order in all_new_orders:
             if order[26].lower() == 'cod' and not order[27] and not force_ship:
                 continue
@@ -663,6 +669,8 @@ def ship_shadowfax_orders(cur, courier, courier_name, order_ids, order_id_tuple,
                                                                                                     channel_fulfillment_id, tracking_link, zone)
                                                                                                     VALUES  %s RETURNING id;"""
                 if not return_data_raw['errors']:
+                    if not order[54]:
+                        last_invoice_no = invoice_order(cur, last_invoice_no, pickup_point[23], order[0], pickup_id)
                     order_status_change_ids.append(order[0])
                     return_data = return_data_raw['data']
                     client_name = str(order[51])
@@ -727,6 +735,8 @@ def ship_shadowfax_orders(cur, courier, courier_name, order_ids, order_id_tuple,
             else:
                 cur.execute(update_orders_status_query, (tuple(order_status_change_ids),))
 
+        cur.execute("UPDATE client_pickups SET invoice_last=%s WHERE id=%s;", (last_invoice_no, pickup_id))
+
         conn.commit()
 
     if exotel_idx:
@@ -775,6 +785,7 @@ def ship_xpressbees_orders(cur, courier, courier_name, order_ids, order_id_tuple
 
         pickup_point = cur.fetchone()  # change this as we get to dynamic pickups
 
+        last_invoice_no = pickup_point[22]
         for order in all_new_orders:
             if order[26].lower() == 'cod' and not order[27] and not force_ship:
                 continue
@@ -984,6 +995,9 @@ def ship_xpressbees_orders(cur, courier, courier_name, order_ids, order_id_tuple
                                                                                                     channel_fulfillment_id, tracking_link, zone)
                                                                                                     VALUES  %s RETURNING id;"""
                 if return_data_raw['AddManifestDetails'][0]['ReturnMessage'] == 'successful':
+                    if not order[54]:
+                        last_invoice_no = invoice_order(cur, last_invoice_no, pickup_point[23], order[0], pickup_id)
+
                     order_status_change_ids.append(order[0])
                     data_tuple = tuple([(
                         return_data_raw['AddManifestDetails'][0]['AWBNo'],
@@ -1060,6 +1074,8 @@ def ship_xpressbees_orders(cur, courier, courier_name, order_ids, order_id_tuple
             else:
                 cur.execute(update_orders_status_query, (tuple(order_status_change_ids),))
 
+        cur.execute("UPDATE client_pickups SET invoice_last=%s WHERE id=%s;", (last_invoice_no, pickup_id))
+
         conn.commit()
 
     if exotel_idx:
@@ -1125,6 +1141,8 @@ def ship_ecom_orders(cur, courier, courier_name, order_ids, order_id_tuple, back
         order_status_change_ids = list()
 
         pickup_point = cur.fetchone()  # change this as we get to dynamic pickups
+
+        last_invoice_no = pickup_point[22]
 
         for order in all_new_orders:
             if order[26].lower() == 'cod' and not order[27] and not force_ship:
@@ -1293,6 +1311,8 @@ def ship_ecom_orders(cur, courier, courier_name, order_ids, order_id_tuple, back
                                                                                                     channel_fulfillment_id, tracking_link, zone)
                                                                                                     VALUES  %s RETURNING id;"""
                 if return_data_raw['shipments'][0]['success']:
+                    if not order[54]:
+                        last_invoice_no = invoice_order(cur, last_invoice_no, pickup_point[23], order[0], pickup_id)
                     order_status_change_ids.append(order[0])
 
                     data_tuple = tuple([(
@@ -1368,6 +1388,8 @@ def ship_ecom_orders(cur, courier, courier_name, order_ids, order_id_tuple, back
             else:
                 cur.execute(update_orders_status_query, (tuple(order_status_change_ids),))
 
+        cur.execute("UPDATE client_pickups SET invoice_last=%s WHERE id=%s;", (last_invoice_no, pickup_id))
+
         conn.commit()
 
     if exotel_idx:
@@ -1421,6 +1443,8 @@ def ship_bluedart_orders(cur, courier, courier_name, order_ids, order_id_tuple, 
         order_status_change_ids = list()
 
         pickup_point = cur.fetchone()  # change this as we get to dynamic pickups
+
+        last_invoice_no = pickup_point[22]
 
         pickup_pincode = str(pickup_point[8]).rstrip() if pickup_point[8] else None
         if pickup_pincode and pickup_pincode in bluedart_area_code_mapping:
@@ -1605,6 +1629,8 @@ def ship_bluedart_orders(cur, courier, courier_name, order_ids, order_id_tuple, 
                                                                                                                 channel_fulfillment_id, tracking_link, zone)
                                                                                                                 VALUES  %s RETURNING id;"""
                 if req['AWBNo']:
+                    if not order[54]:
+                        last_invoice_no = invoice_order(cur, last_invoice_no, pickup_point[23], order[0], pickup_id)
                     order_status_change_ids.append(order[0])
                     routing_code = str(req['DestinationArea']) + "-" + str(req['DestinationLocation'])
                     data_tuple = tuple([(
@@ -1681,6 +1707,8 @@ def ship_bluedart_orders(cur, courier, courier_name, order_ids, order_id_tuple, 
             else:
                 cur.execute(update_orders_status_query, (tuple(order_status_change_ids),))
 
+        cur.execute("UPDATE client_pickups SET invoice_last=%s WHERE id=%s;", (last_invoice_no, pickup_id))
+
         conn.commit()
 
     if exotel_idx:
@@ -1725,6 +1753,8 @@ def ship_selfshp_orders(cur, courier, courier_name, order_ids, order_id_tuple, b
         order_status_change_ids = list()
 
         pickup_point = cur.fetchone()  # change this as we get to dynamic pickups
+
+        last_invoice_no = pickup_point[22]
 
         if not pickup_point[21]:
             continue
@@ -1788,6 +1818,9 @@ def ship_selfshp_orders(cur, courier, courier_name, order_ids, order_id_tuple, b
 
             cur.execute(order_status_add_query, tuple(order_status_add_tuple))
 
+            if not order[54]:
+                last_invoice_no = invoice_order(cur, last_invoice_no, pickup_point[23], order[0], pickup_id)
+
         if last_shipped_order_id:
             last_shipped_data_tuple = (
                 last_shipped_order_id, datetime.now(tz=pytz.timezone('Asia/Calcutta')), courier[1])
@@ -1798,6 +1831,8 @@ def ship_selfshp_orders(cur, courier, courier_name, order_ids, order_id_tuple, b
                 cur.execute(update_orders_status_query % (("(%s)") % str(order_status_change_ids[0])))
             else:
                 cur.execute(update_orders_status_query, (tuple(order_status_change_ids),))
+
+        cur.execute("UPDATE client_pickups SET invoice_last=%s WHERE id=%s;", (last_invoice_no, pickup_id))
 
         conn.commit()
 
@@ -2012,10 +2047,28 @@ def push_awb_easyecom(invoice_id, api_token, awb, courier, cur, client_prefix):
         logger.error("Easyecom not updated.")
 
 
+def invoice_order(cur, last_inv_no, inv_prefix, order_id, pickup_data_id):
+    try:
+        if not last_inv_no:
+            last_inv_no = 0
+        inv_no = last_inv_no+1
+        inv_text = str(inv_no)
+        inv_text = inv_text.zfill(5)
+        if inv_prefix:
+            inv_text = inv_prefix + "-" + inv_text
+
+        cur.execute("""INSERT INTO orders_invoice (order_id, pickup_data_id, invoice_no_text, invoice_no, date_created) 
+                        VALUES (%s, %s, %s, %s, %s);""", (order_id, pickup_data_id, inv_text, inv_no, datetime.utcnow()+timedelta(hours=5.5)))
+        return inv_no
+    except Exception:
+        return last_inv_no
+
+
 bluedart_area_code_mapping = {"110015":"DEL",
                                 "110077":"DEL",
                                 "110059":"DEL",
                                 "110093":"DEL",
+                                "160062":"MOH",
                                 "121002":"FAR",
                                 "122001":"GGN",
                                 "131028":"SOP",

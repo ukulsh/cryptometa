@@ -19,8 +19,8 @@ from reportlab.lib.units import mm
 from reportlab.pdfgen import canvas
 from reportlab.graphics import renderPDF
 
-from .models import ClientMapping
-
+from .models import ClientMapping, OrdersInvoice
+from project import db
 
 def authenticate(f):
     @wraps(f)
@@ -625,16 +625,21 @@ def fill_invoice_data(c, order, client_name):
 
     c.setFont('Helvetica', 8)
     order_date = order.order_date.strftime("%d/%m/%Y")
-    invoice_date = datetime.utcnow() + timedelta(hours=5.5)
-    invoice_date = invoice_date.strftime("%d/%m/%Y")
-    c.drawString(3.6 * inch, 9.7 * inch, order_date)
+    if order.orders_invoice:
+        invoice_no = order.orders_invoice[-1].invoice_no_text
+        invoice_date = order.orders_invoice[-1].date_created if order.orders_invoice[-1].date_created else datetime.utcnow() + timedelta(hours=5.5)
+        invoice_date = invoice_date.strftime("%d/%m/%Y")
+    else:
+        invoice_no = invoice_order(order)
+        invoice_date = datetime.utcnow() + timedelta(hours=5.5)
+        invoice_date = invoice_date.strftime("%d/%m/%Y")
+    c.drawString(3.6 * inch, 9.7 * inch, invoice_date)
     c.drawString(3.6 * inch, 9.45 * inch, order_date)
     c.drawString(3.7 * inch, 9.2 * inch, order.payments[0].payment_mode.lower())
     c.drawString(5.5 * inch, 9.45 * inch, order.channel_order_id)
     if order.shipments and order.shipments[0].awb:
         c.drawString(5.5 * inch, 9.2 * inch, order.shipments[0].awb)
 
-    invoice_no = order.client_prefix.lower() + order.channel_order_id
     c.drawString(5.5 * inch, 9.7 * inch, invoice_no)
 
     if order.pickup_data.gstin:
@@ -788,6 +793,30 @@ def fill_invoice_data(c, order, client_name):
     c.drawString(-0.70 * inch, y_axis * inch, "This is computer generated invoice no signature required.")
 
     c.setFont('Helvetica', 8)
+
+
+def invoice_order(order):
+    try:
+        last_inv_no = order.pickup_data.invoice_last
+        if not last_inv_no:
+            last_inv_no = 0
+        inv_no = last_inv_no+1
+        inv_text = str(inv_no)
+        inv_text = inv_text.zfill(5)
+        if order.pickup_data.invoice_prefix:
+            inv_text = order.pickup_data.invoice_prefix + "-" + inv_text
+
+        invoice_obj = OrdersInvoice(order=order,
+                                    pickup_data=order.pickup_data,
+                                    invoice_no_text=inv_text,
+                                    invoice_no=inv_no,
+                                    date_created=datetime.utcnow()+timedelta(hours=5.5))
+        order.pickup_data.invoice_last = inv_no
+        db.session.add(invoice_obj)
+        db.session.commit()
+        return inv_text
+    except Exception:
+        return False
 
 
 def split_string(str, limit, sep=" "):

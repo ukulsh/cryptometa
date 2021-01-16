@@ -597,6 +597,7 @@ def fetch_magento_orders(cur, channel):
             cur.execute(insert_payments_data_query, payments_tuple)
 
             already_used_prods = list()
+            mark_delivered = True
             for prod in order['items']:
                 if "parent_item" in prod:
                     prod = prod['parent_item']
@@ -606,6 +607,8 @@ def fetch_magento_orders(cur, channel):
                     continue
                 product_sku = str(prod['product_id'])
                 master_sku = str(prod['sku'])
+                if "GC" not in master_sku:
+                    mark_delivered = False
                 prod_tuple = (master_sku, channel[1])
                 select_products_query_temp = """SELECT id from products where master_sku=%s and client_prefix=%s;"""
                 cur.execute(select_products_query_temp, prod_tuple)
@@ -649,6 +652,9 @@ def fetch_magento_orders(cur, channel):
 
                 op_tuple = (product_id, order_id, prod['qty_ordered'], float(prod['qty_ordered'] * float(prod['price_incl_tax'])), str(prod['item_id']), json.dumps(tax_lines))
                 cur.execute(insert_op_association_query, op_tuple)
+
+            if mark_delivered and channel[1]=='KAMAAYURVEDA':
+                cur.execute("UPDATE orders SET status='DELIVERED' WHERE id=%s", (order_id, ))
 
         except Exception as e:
             logger.error("order fetch failed for" + str(order['increment_id']) + "\nError:" + str(e))

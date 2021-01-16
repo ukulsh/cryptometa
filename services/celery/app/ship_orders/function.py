@@ -161,10 +161,14 @@ def ship_delhivery_orders(cur, courier, courier_name, order_ids, order_id_tuple,
 
         pickup_point = cur.fetchone()  # change this as we get to dynamic pickups
 
+        last_invoice_no = pickup_point[22] if pickup_point[22] else 0
+
         headers = {"Authorization": "Token " + courier[14],
                    "Content-Type": "application/json"}
         for order in all_new_orders:
             try:
+                if not order[54]:
+                    last_invoice_no = invoice_order(cur, last_invoice_no, pickup_point[23], order[0], pickup_id)
                 if order[26].lower() == 'cod' and not order[27] and not force_ship:
                     continue
                 zone = None
@@ -369,14 +373,11 @@ def ship_delhivery_orders(cur, courier, courier_name, order_ids, order_id_tuple,
         order_status_change_ids = list()
         insert_shipments_data_tuple = list()
         insert_order_status_dict = dict()
-        last_invoice_no = pickup_point[22] if pickup_point[22] else 0
         for package in return_data:
             try:
                 fulfillment_id = None
                 tracking_link = None
                 if package['waybill']:
-                    if not orders_dict[package['refnum']][15]:
-                        last_invoice_no = invoice_order(cur, last_invoice_no, pickup_point[23], orders_dict[package['refnum']][0], pickup_id)
 
                     order_status_change_ids.append(orders_dict[package['refnum']][0])
                     client_name = str(orders_dict[package['refnum']][12])
@@ -539,6 +540,8 @@ def ship_shadowfax_orders(cur, courier, courier_name, order_ids, order_id_tuple,
         pickup_point = cur.fetchone()  # change this as we get to dynamic pickups
         last_invoice_no = pickup_point[22] if pickup_point[22] else 0
         for order in all_new_orders:
+            if not order[54]:
+                last_invoice_no = invoice_order(cur, last_invoice_no, pickup_point[23], order[0], pickup_id)
             if order[26].lower() == 'cod' and not order[27] and not force_ship:
                 continue
             if force_ship and order[26].lower() == 'pickup':
@@ -669,8 +672,7 @@ def ship_shadowfax_orders(cur, courier, courier_name, order_ids, order_id_tuple,
                                                                                                     channel_fulfillment_id, tracking_link, zone)
                                                                                                     VALUES  %s RETURNING id;"""
                 if not return_data_raw['errors']:
-                    if not order[54]:
-                        last_invoice_no = invoice_order(cur, last_invoice_no, pickup_point[23], order[0], pickup_id)
+
                     order_status_change_ids.append(order[0])
                     return_data = return_data_raw['data']
                     client_name = str(order[51])
@@ -787,6 +789,8 @@ def ship_xpressbees_orders(cur, courier, courier_name, order_ids, order_id_tuple
 
         last_invoice_no = pickup_point[22] if pickup_point[22] else 0
         for order in all_new_orders:
+            if not order[54]:
+                last_invoice_no = invoice_order(cur, last_invoice_no, pickup_point[23], order[0], pickup_id)
             if order[26].lower() == 'cod' and not order[27] and not force_ship:
                 continue
             if force_ship and order[26].lower() == 'pickup':
@@ -995,8 +999,6 @@ def ship_xpressbees_orders(cur, courier, courier_name, order_ids, order_id_tuple
                                                                                                     channel_fulfillment_id, tracking_link, zone)
                                                                                                     VALUES  %s RETURNING id;"""
                 if return_data_raw['AddManifestDetails'][0]['ReturnMessage'] == 'successful':
-                    if not order[54]:
-                        last_invoice_no = invoice_order(cur, last_invoice_no, pickup_point[23], order[0], pickup_id)
 
                     order_status_change_ids.append(order[0])
                     data_tuple = tuple([(
@@ -1145,6 +1147,8 @@ def ship_ecom_orders(cur, courier, courier_name, order_ids, order_id_tuple, back
         last_invoice_no = pickup_point[22] if pickup_point[22] else 0
 
         for order in all_new_orders:
+            if not order[54]:
+                last_invoice_no = invoice_order(cur, last_invoice_no, pickup_point[23], order[0], pickup_id)
             if order[26].lower() == 'cod' and not order[27] and not force_ship:
                 continue
             if force_ship and order[26].lower() == 'pickup':
@@ -1311,8 +1315,7 @@ def ship_ecom_orders(cur, courier, courier_name, order_ids, order_id_tuple, back
                                                                                                     channel_fulfillment_id, tracking_link, zone)
                                                                                                     VALUES  %s RETURNING id;"""
                 if return_data_raw['shipments'][0]['success']:
-                    if not order[54]:
-                        last_invoice_no = invoice_order(cur, last_invoice_no, pickup_point[23], order[0], pickup_id)
+
                     order_status_change_ids.append(order[0])
 
                     data_tuple = tuple([(
@@ -1460,6 +1463,8 @@ def ship_bluedart_orders(cur, courier, courier_name, order_ids, order_id_tuple, 
             "Version": "1.3"
         }
         for order in all_new_orders:
+            if not order[54]:
+                last_invoice_no = invoice_order(cur, last_invoice_no, pickup_point[23], order[0], pickup_id)
             if order[26].lower() == 'cod' and not order[27] and not force_ship:
                 continue
             if order[26].lower() == 'pickup':
@@ -1629,8 +1634,7 @@ def ship_bluedart_orders(cur, courier, courier_name, order_ids, order_id_tuple, 
                                                                                                                 channel_fulfillment_id, tracking_link, zone)
                                                                                                                 VALUES  %s RETURNING id;"""
                 if req['AWBNo']:
-                    if not order[54]:
-                        last_invoice_no = invoice_order(cur, last_invoice_no, pickup_point[23], order[0], pickup_id)
+
                     order_status_change_ids.append(order[0])
                     routing_code = str(req['DestinationArea']) + "-" + str(req['DestinationLocation'])
                     data_tuple = tuple([(
@@ -2114,6 +2118,7 @@ bluedart_area_code_mapping = {"110015":"DEL",
                                 "395001":"SUR",
                                 "396445":"NVS",
                                 "400001":"BOM",
+                                "400064":"BOM",
                                 "400705":"NBM",
                                 "401107":"BOM",
                                 "403001":"PNJ",

@@ -361,6 +361,8 @@ class OrderList(Resource):
                     not_shipped = "Pincode not serviceable"
                 elif not order[26]:
                     not_shipped = "Pickup point not assigned"
+                elif order[12] and "incorrect phone" in order[12].lower():
+                    not_shipped = "Invalid contact number"
 
                 if not_shipped:
                     resp_obj['not_shipped'] = not_shipped
@@ -1125,7 +1127,7 @@ def download_invoice(resp):
 
     if auth_data['user_group'] == 'client':
         orders_qs = orders_qs.filter(Orders.client_prefix==auth_data.get('client_prefix'))
-    orders_qs = orders_qs.order_by(Orders.id).all()
+    orders_qs = orders_qs.order_by(Orders.channel_order_id).all()
     if not orders_qs:
         return jsonify({"success": False, "msg": "No valid order ID"}), 404
 

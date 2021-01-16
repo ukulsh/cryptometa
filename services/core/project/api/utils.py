@@ -668,19 +668,20 @@ def fill_invoice_data(c, order, client_name):
     except Exception:
         pass
 
+    billing_address = order.billing_address if order.billing_address else order.delivery_address
     try:
-        full_name = order.billing_address.first_name
-        if order.billing_address.last_name:
-            full_name += " " + order.billing_address.last_name
+        full_name = billing_address.first_name
+        if billing_address.last_name:
+            full_name += " " + billing_address.last_name
 
         str_full_address = [full_name]
-        full_address = order.billing_address.address_one
-        if order.billing_address.address_two:
-            full_address += " "+order.billing_address.address_two
+        full_address = billing_address.address_one
+        if billing_address.address_two:
+            full_address += " "+billing_address.address_two
         full_address = split_string(full_address, 33)
         str_full_address += full_address
-        str_full_address.append(order.billing_address.city+", "+order.billing_address.state)
-        str_full_address.append(order.billing_address.country+", PIN: "+order.billing_address.pincode)
+        str_full_address.append(billing_address.city+", "+billing_address.state)
+        str_full_address.append(billing_address.country+", PIN: "+billing_address.pincode)
         y_axis = 8.3
         for addr in str_full_address:
             c.drawString(2.2 * inch, y_axis * inch, addr)
@@ -720,11 +721,35 @@ def fill_invoice_data(c, order, client_name):
                 y_axis -= 0.15
             c.setFont('Helvetica', 7)
             if prod.product.master_sku:
-                c.drawString(-0.65 * inch, y_axis* inch, "SKU: " + prod.product.master_sku)
+                c.drawString(0.45 * inch, y_axis* inch, "SKU: " + prod.product.master_sku)
+            if prod.product.hsn_code:
+                c.drawString(-0.65 * inch, y_axis* inch, "HSN: " + prod.product.hsn_code)
 
             c.drawString(2.02 * inch, (y_axis + 0.08) * inch, str(prod.quantity))
 
-            if prod.tax_lines:
+            if order.client_prefix=='JUSTHERBS': #todo: justherbs custom update this later
+                total_tax = 0.18
+                if order.delivery_address.state and order.pickup_data.pickup.state and "punjab" in order.delivery_address.state.lower() and "punjab" in order.pickup_data.pickup.state.lower():
+                    des_str = "SGST: 9% | CGST: 9%"
+                else:
+                    des_str = "IGST: 18%"
+
+                des_str = des_str.rstrip('| ')
+
+                c.drawString(2.42 * inch, (y_axis + 0.08) * inch, des_str)
+
+                taxable_val = prod.amount
+
+                taxable_val = taxable_val / (1 + total_tax)
+                c.drawString(3.82 * inch, (y_axis + 0.08) * inch, str(round(taxable_val, 2)))
+
+                tax_val = taxable_val * total_tax
+
+                c.drawString(4.82 * inch, (y_axis + 0.08) * inch,
+                             str(round(tax_val, 2)) + " | " + str(round(total_tax * 100, 1)) + "%")
+                c.drawString(6.22 * inch, (y_axis + 0.08) * inch, str(round(prod.amount, 2)))
+
+            elif prod.tax_lines:
                 des_str = ""
                 total_tax = 0
                 for tax_lines in prod.tax_lines:
@@ -746,7 +771,6 @@ def fill_invoice_data(c, order, client_name):
                 c.drawString(6.22 * inch, (y_axis + 0.08) * inch, str(round(prod.amount, 2)))
 
             else:
-
                 taxable_val = prod.amount
                 c.drawString(3.62 * inch, (y_axis + 0.08) * inch, str(round(taxable_val, 2)))
                 c.drawString(6.22 * inch, (y_axis + 0.08) * inch, str(round(prod.amount, 2)))
@@ -787,9 +811,10 @@ def fill_invoice_data(c, order, client_name):
 
     c.line(-0.75 * inch, y_axis * inch, 6.9 * inch, y_axis * inch)
 
-    y_axis -= 1.5
     c.setFont('Helvetica', 7)
+    c.drawString(4.82 * inch, (y_axis+0.09) * inch, "(incl. of all taxes)")
 
+    y_axis -= 1.5
     c.drawString(-0.70 * inch, y_axis * inch, "This is computer generated invoice no signature required.")
 
     c.setFont('Helvetica', 8)

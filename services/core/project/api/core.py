@@ -816,10 +816,10 @@ def ping_dev():
 
             """
             sku_list.append({"sku": sku,
-                             "warehouse": "SDDELHI",
+                             "warehouse": "HOLISOLBL",
                              "quantity": del_qty,
                              "type": "add",
-                             "remark": "1 jan inbound"})
+                             "remark": "16 jan inbound"})
 
             """
 
@@ -847,7 +847,7 @@ def ping_dev():
             """
             if row[0]%100==0:
                 headers = {
-                    'Authorization': "Bearer " + "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJleHAiOjE2MTEyMzg2NzgsImlhdCI6MTYwODY0NjY3OCwic3ViIjo5fQ._CjAh0kJG3r2aSraJDfHYID1mCUF88NeKdVZxREETsA",
+                    'Authorization': "Bearer " + "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJleHAiOjE2MTMxMzA0MjUsImlhdCI6MTYxMDUzODQyNSwic3ViIjo5fQ.TFfLz5guyQsOGvmXzTnkZcwureIFWbB0DZLzTaqk_QM",
                     'Content-Type': 'application/json'}
 
                 data = {"sku_list": sku_list}
@@ -862,7 +862,7 @@ def ping_dev():
             pass
 
     headers = {
-        'Authorization': "Bearer " + "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJleHAiOjE2MTEyMzg2NzgsImlhdCI6MTYwODY0NjY3OCwic3ViIjo5fQ._CjAh0kJG3r2aSraJDfHYID1mCUF88NeKdVZxREETsA",
+        'Authorization': "Bearer " + "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJleHAiOjE2MTMxMzA0MjUsImlhdCI6MTYxMDUzODQyNSwic3ViIjo5fQ.TFfLz5guyQsOGvmXzTnkZcwureIFWbB0DZLzTaqk_QM",
         'Content-Type': 'application/json'}
 
     data = {"sku_list": sku_list}

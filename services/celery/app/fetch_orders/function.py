@@ -518,25 +518,25 @@ def fetch_magento_orders(cur, channel):
             else:
                 pickup_data_id = None  # change this as we move to dynamic pickups
 
-            customer_name = order['billing_address']['firstname']
+            customer_name = order['billing_address']['firstname'] if order['billing_address']['firstname'] else order['billing_address']['lastname']
             customer_name += " " + order['billing_address']['lastname'] if order['billing_address']['lastname'] else ""
 
             address_1 = ""
             for addr in order['billing_address']['street']:
                 address_1 += str(addr)
 
-            billing_tuple = (order['billing_address']['firstname'],
-                             order['billing_address']['lastname'],
+            billing_tuple = (order['billing_address'].get('firstname'),
+                             order['billing_address'].get('lastname'),
                              address_1,
                              "",
-                             order['billing_address']['city'],
-                             order['billing_address']['postcode'],
-                             order['billing_address']['region'],
-                             order['billing_address']['country_id'],
-                             order['billing_address']['telephone'],
+                             order['billing_address'].get('city'),
+                             order['billing_address'].get('postcode'),
+                             order['billing_address'].get('region'),
+                             order['billing_address'].get('country_id'),
+                             order['billing_address'].get('telephone'),
                              None,
                              None,
-                             order['billing_address']['country_id']
+                             order['billing_address'].get('country_id')
                              )
             try:
                 address_1 = ""

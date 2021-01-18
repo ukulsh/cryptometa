@@ -249,7 +249,7 @@ class OrderList(Resource):
                                 new_row.append(str(order[13]))
                                 new_row.append(str(order[15]))
                                 new_row.append(str(order[14]))
-                                new_row.append(order[2].strftime("%Y-%m-%d") if order[2] else "N/A")
+                                new_row.append(order[2].strftime("%Y-%m-%d %H:%M:%S") if order[2] else "N/A")
                                 new_row.append(str(order[7]))
                                 new_row.append(str(order[9]) if not hide_weights else "")
                                 new_row.append(str(order[5]))

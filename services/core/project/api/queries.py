@@ -429,6 +429,7 @@ select_orders_list_query = """select distinct on (aa.order_date, aa.id) aa.chann
                              __CLIENT_FILTER__
                              __MV_CLIENT_FILTER__
                              __SINCE_ID_FILTER__
+                             __MASTER_CHANNEL__
                              order by order_date DESC, aa.id DESC
                              __PAGINATION__"""
 

@@ -948,8 +948,8 @@ def fetch_bikayi_orders(cur, channel):
             cur.execute(insert_payments_data_query, payments_tuple)
 
             for prod in order['items']:
-                product_sku = prod
-                master_sku = prod
+                product_sku = str(prod['id'])
+                master_sku = product_sku
                 prod_tuple = (master_sku, channel[1])
                 select_products_query_temp = """SELECT id from products where master_sku=%s and client_prefix=%s;"""
                 cur.execute(select_products_query_temp, prod_tuple)
@@ -959,23 +959,18 @@ def fetch_bikayi_orders(cur, channel):
                     dimensions = None
                     weight = None
                     subcategory_id = None
-                    warehouse_prefix = channel[1]
-                    master_sku = prod
+                    master_sku = str(prod['id'])
                     if not master_sku:
                         master_sku = product_sku
-                    product_insert_tuple = (prod, product_sku, True, channel[2],
-                                            channel[1], datetime.now(), dimensions, None,
+                    product_insert_tuple = (prod['name'], product_sku, True, channel[2],
+                                            channel[1], datetime.now(), dimensions, prod['unitPrice'],
                                             weight, master_sku, subcategory_id)
                     cur.execute(insert_product_query, product_insert_tuple)
                     product_id = cur.fetchone()[0]
 
-                    product_quantity_insert_tuple = (
-                        product_id, 100, 100, 100, warehouse_prefix, "APPROVED", datetime.now())
-                    cur.execute(insert_product_quantity_query, product_quantity_insert_tuple)
-
                 tax_lines = list()
 
-                op_tuple = (product_id, order_id, 1, None, None, json.dumps(tax_lines))
+                op_tuple = (product_id, order_id, prod['quantity'], None, None, json.dumps(tax_lines))
                 cur.execute(insert_op_association_query, op_tuple)
 
         except Exception as e:

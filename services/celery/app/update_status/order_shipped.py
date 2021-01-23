@@ -246,7 +246,7 @@ order_shipped = """<!-- THIS EMAIL WAS BUILT AND TESTED WITH LITMUS http://litmu
                 <tr>
                   <td align="center" valign="middle" style="padding: 20px 20px;">
                     <div style="border-radius: 4px;overflow: hidden;">
-                      <table style="width:640px;" role="presentation" border="0" cellpadding="0" cellspacing="0"
+                      <table style="width:100%;" role="presentation" border="0" cellpadding="0" cellspacing="0"
                         align="left">
                         <tr>
                           <td valign="middle" style="text-align: left; padding: 10px 20px;" bgcolor="__BACKGROUND_COLOR__">
@@ -255,7 +255,7 @@ order_shipped = """<!-- THIS EMAIL WAS BUILT AND TESTED WITH LITMUS http://litmu
                                     <v:fill type="tile" color="__BACKGROUND_COLOR__"/>
                                     <v:textbox inset="0,0,0,0">
                                     <![endif]-->
-                            <table style="width: 600px;" role="presentation" border="0" cellpadding="0" cellspacing="0"
+                            <table style="width: 100%;" role="presentation" border="0" cellpadding="0" cellspacing="0"
                               align="left">
                               <tr>
                                 <td valign="middle" style="text-align: left; padding: 0;" height="100" stye="height:100px">

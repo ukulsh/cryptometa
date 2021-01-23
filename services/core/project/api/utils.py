@@ -745,6 +745,25 @@ def fill_invoice_data(c, order, client_name):
 
                 c.drawString(6.22 * inch, (y_axis + 0.08) * inch, str(round(prod.amount, 2)))
 
+            elif order.client_prefix.startswith('LOTUS'): #todo: lotus custom update this later
+                total_tax = 0.18
+
+                taxable_val = prod.amount
+
+                taxable_val = taxable_val / (1 + total_tax)
+                c.drawString(2.42 * inch, (y_axis + 0.08) * inch, str(round(taxable_val, 2)))
+
+                if order.delivery_address.state and order.pickup_data.pickup.state and "delhi" in order.delivery_address.state.lower() and "delhi" in order.pickup_data.pickup.state.lower():
+                    des_str = "SGST(9.0%): _a_ | CGST(9.0%): _b_".replace('_a_', str(round(taxable_val*0.09, 2))).replace('_b_',str(round(taxable_val*0.09, 2)))
+                else:
+                    des_str = "IGST(18.0%): _a_".replace('_a_',str(round(taxable_val*0.18, 1)))
+
+                des_str = des_str.rstrip('| ')
+
+                c.drawString(3.82 * inch, (y_axis + 0.08) * inch, des_str)
+
+                c.drawString(6.22 * inch, (y_axis + 0.08) * inch, str(round(prod.amount, 2)))
+
             elif prod.tax_lines:
                 des_str = ""
                 total_tax = 0

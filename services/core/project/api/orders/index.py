@@ -1440,8 +1440,6 @@ def bulk_delivered_orders(resp):
     auth_data = resp.get('data')
     if not auth_data:
         return jsonify({"success": False, "msg": "Auth Failed"}), 404
-    if auth_data['user_group'] not in ('client', 'super-admin', 'multi-vendor'):
-        return jsonify({"success":False, "msg": "invalid user"}), 400
     data = json.loads(request.data)
     order_ids=data.get('order_ids')
     if not order_ids:
@@ -1453,19 +1451,27 @@ def bulk_delivered_orders(resp):
 
     query_to_run = """SELECT array_agg(aa.id) FROM orders aa
                         LEFT JOIN shipments bb on aa.id=bb.order_id
+                        LEFT JOIN client_pickups cc on aa.pickup_data_id=cc.id
+                        LEFT JOIN pickup_points dd on cc.pickup_id=dd.id
                         WHERE aa.id in __ORDER_IDS__
                         AND bb.courier_id in (3,19)
-                        __CLIENT_FILTER__;""".replace("__ORDER_IDS__", order_tuple_str)
+                        __CLIENT_FILTER__
+                        __WH_FILTER__;""".replace("__ORDER_IDS__", order_tuple_str)
 
     if auth_data['user_group'] == 'client':
-        query_to_run = query_to_run.replace('__CLIENT_FILTER__', "AND client_prefix='%s'"%auth_data['client_prefix'])
+        query_to_run = query_to_run.replace('__CLIENT_FILTER__', "AND aa.client_prefix='%s'"%auth_data['client_prefix'])
     elif auth_data['user_group'] == 'multi-vendor':
         cur.execute("SELECT vendor_list FROM multi_vendor WHERE client_prefix='%s';" % auth_data['client_prefix'])
         vendor_list = cur.fetchone()[0]
         query_to_run = query_to_run.replace("__CLIENT_FILTER__",
-                                            "AND client_prefix in %s" % str(tuple(vendor_list)))
+                                            "AND aa.client_prefix in %s" % str(tuple(vendor_list)))
     else:
         query_to_run = query_to_run.replace("__CLIENT_FILTER__","")
+
+    if auth_data['user_group'] == 'warehouse':
+        query_to_run = query_to_run.replace("__WH_FILTER__","AND dd.warehouse_prefix='%s'"%auth_data['warehouse_prefix'])
+    else:
+        query_to_run = query_to_run.replace("__WH_FILTER__","")
 
     cur.execute(query_to_run)
     order_ids = cur.fetchone()[0]

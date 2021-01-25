@@ -6,7 +6,8 @@ fetch_client_channels_query = """select aa.id,aa.client_prefix,aa.channel_id,aa.
                                 left join master_channels bb
                                 on aa.channel_id=bb.id
                                 left join client_mapping cc
-                                on aa.client_prefix=cc.client_prefix"""
+                                on aa.client_prefix=cc.client_prefix
+                                WHERE aa.status=true"""
 
 insert_shipping_address_query = """INSERT INTO shipping_address (first_name, last_name, address_one, address_two, city,	
                                             pincode, state, country, phone, latitude, longitude, country_code)

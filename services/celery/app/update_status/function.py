@@ -2234,7 +2234,7 @@ def lotus_botanicals_shipped(order):
         data = {"tracking_service": "WareIQ",
                 "tracking_number": str(order[1]),
                 "url" : tracking_link}
-        req = requests.post(url, headers, data=data)
+        req = requests.post(url, headers=headers, data=data)
 
     except Exception as e:
         logger.error("Couldn't update lotus for: " + str(order[0])
@@ -2247,7 +2247,7 @@ def lotus_botanicals_delivered(order):
         headers = {"Content-Type": "application/json",
                    "Authorization": "Ae76eH239jla*fgna#q6fG&5Khswq_kpaj$#1a"}
         data = {}
-        req = requests.post(url, headers, data=data)
+        req = requests.post(url, headers=headers, data=data)
     except Exception as e:
         logger.error("Couldn't update lotus for: " + str(order[0])
                      + "\nError: " + str(e.args))

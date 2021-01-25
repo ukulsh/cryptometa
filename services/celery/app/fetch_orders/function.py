@@ -236,10 +236,6 @@ def fetch_shopify_orders(cur, channel):
                     cur.execute(insert_product_query, product_insert_tuple)
                     product_id = cur.fetchone()[0]
 
-                    product_quantity_insert_tuple = (
-                        product_id, 100, 100, 100, warehouse_prefix, "APPROVED", datetime.now())
-                    cur.execute(insert_product_quantity_query, product_quantity_insert_tuple)
-
                 tax_lines = list()
                 try:
                     for tax_line in prod['tax_lines']:
@@ -440,10 +436,6 @@ def fetch_woocommerce_orders(cur, channel):
                     cur.execute(insert_product_query, product_insert_tuple)
                     product_id = cur.fetchone()[0]
 
-                    product_quantity_insert_tuple = (
-                        product_id, 100, 100, 100, warehouse_prefix, "APPROVED", datetime.now())
-                    cur.execute(insert_product_quantity_query, product_quantity_insert_tuple)
-
                 tax_lines = list()
                 try:
                     for tax_line in order['tax_lines']:
@@ -640,10 +632,6 @@ def fetch_magento_orders(cur, channel):
                     cur.execute(insert_product_query, product_insert_tuple)
                     product_id = cur.fetchone()[0]
 
-                    product_quantity_insert_tuple = (
-                        product_id, 100, 100, 100, warehouse_prefix, "APPROVED", datetime.now())
-                    cur.execute(insert_product_quantity_query, product_quantity_insert_tuple)
-
                 tax_lines = list()
                 try:
                     tax_lines.append({'title': "GST", 'rate': prod['tax_percent']/100})
@@ -675,10 +663,10 @@ def fetch_easyecom_orders(cur, channel):
         created_after = datetime.utcnow() - timedelta(days=30)
         created_after = created_after.strftime("%Y-%m-%d %X")
 
-    fetch_status="1,2"
+    fetch_status="1,2,3"
     if channel[15]:
         fetch_status = ','.join(str(x) for x in channel[15])
-    easyecom_orders_url = "%s/orders/getAllOrders?api_token=%s&created_after=%s" % (channel[5], channel[3], created_after)
+    easyecom_orders_url = "%s/orders/getAllOrders?api_token=%s&created_after=%s&status_id=%s" % (channel[5], channel[3], created_after, fetch_status)
     data = requests.get(easyecom_orders_url).json()
     last_synced_time = datetime.utcnow() + timedelta(hours=5.5)
     if 'data' not in data:
@@ -750,7 +738,7 @@ def fetch_easyecom_orders(cur, channel):
                 channel_order_id = str(channel[16]) + channel_order_id
 
             order_status="NEW"
-            if order['courier'] and order['courier'] in easyecom_wareiq_courier_map:
+            if order['courier']:
                 order_status = "NOT SHIPPED"
 
             if order['marketplace'] in easyecom_wareiq_channel_map:

@@ -44,7 +44,7 @@ app.config['CELERYBEAT_SCHEDULE'] = {
         },
     'run-fetch-orders': {
                 'task': 'fetch_orders',
-                'schedule': crontab(minute='*/20'),
+                'schedule': crontab(minute='15,45', hour='*'),
                 'options': {'queue': 'fetch_orders'}
             },
     'run-ship-orders': {

@@ -513,6 +513,7 @@ select_wallet_remittance_query = """select * from
                                     __SEARCH_KEY_FILTER__
                                     __CLIENT_FILTER__
                                     __MV_CLIENT_FILTER__
+                                    __STATUS_FILTER__
                                     __REMITTANCE_DATE_FILTER__
                                     order by remittance_date DESC, remittance_total DESC
                                     __PAGINATION__"""

@@ -445,6 +445,15 @@ class WalletRemittance(Resource):
                         filter_date_start = filters['remittance_date'][0][0:19].replace('T',' ')
                         filter_date_end = filters['remittance_date'][1][0:19].replace('T',' ')
                         query_to_execute = query_to_execute.replace("__REMITTANCE_DATE_FILTER__", "AND remittance_date between '%s' and '%s'" %(filter_date_start, filter_date_end))
+
+                    if 'status' in filters:
+                        if len(filters['status']) == 1:
+                            st_filter = "AND status in ('%s')"%filters['status'][0]
+                        else:
+                            st_filter = "AND status in %s"%str(tuple(filters['status']))
+                        # print(filters['status'])
+                        query_to_execute = query_to_execute.replace('__STATUS_FILTER__', st_filter)
+
                 if auth_data['user_group'] == 'client':
                     query_to_execute = query_to_execute.replace('__CLIENT_FILTER__', "AND client_prefix = '%s'"%client_prefix)
 
@@ -507,6 +516,9 @@ class WalletRemittance(Resource):
                                         __CLIENT_FILTER__
                                         GROUP BY client_prefix
                                         ORDER BY client_prefix"""
+                query_to_run_status = """SELECT status, count(*) FROM cod_remittance
+                                        GROUP BY status
+                                        ORDER BY status"""
                 if all_vendors:
                     query_to_run_client = query_to_run_client.replace("__CLIENT_FILTER__", "WHERE client_prefix in %s"%str(tuple(all_vendors)))
                 else:
@@ -515,9 +527,15 @@ class WalletRemittance(Resource):
                 cur.execute(query_to_run_client)
                 client_data = cur.fetchall()
                 filters['client'] = list()
+                filters['status'] = list()
+                cur.execute(query_to_run_status)
+                status_data = cur.fetchall()
+                print(status_data)
                 for client in client_data:
                     if client[0]:
                         filters['client'].append({client[0]:client[1]})
+                for status in status_data:
+                    filters['status'].append({status[0]:status[1]})
 
             return {"success": True, "filters": filters}, 200
 
@@ -944,7 +962,7 @@ def raise_dispute(resp):
 
         conn.commit()
 
-        response_object['status']="Success"
+        response_object['status'] = "Success"
         response_object['msg'] = "Dispute Raised"
 
         return jsonify(response_object), 200

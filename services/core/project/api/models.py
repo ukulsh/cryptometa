@@ -19,12 +19,12 @@ class Products(db.Model):
     product_image = db.Column(db.String, nullable=True)
     price = db.Column(db.FLOAT, nullable=True)
     client_prefix = db.Column(db.String, nullable=True)
-    active = db.Column(db.BOOLEAN, nullable=True, default=True)
-    inactive_reason = db.Column(db.String, nullable=True, default="")
     channel_id = db.Column(db.Integer, db.ForeignKey('master_channels.id'))
     channel = db.relationship("MasterChannels", backref=db.backref("products", uselist=True))
     subcategory_id = db.Column(db.Integer, db.ForeignKey('products_subcategories.id'))
     subcategory = db.relationship("ProductsSubCategories", backref=db.backref("products"))
+    master_product_id = db.Column(db.Integer, db.ForeignKey('master_products.id'))
+    master_product = db.relationship("MasterProducts", backref=db.backref("products", uselist=True))
     hsn_code = db.Column(db.String, nullable=True)
     date_created = db.Column(db.DateTime, default=datetime.now)
     date_updated = db.Column(db.DateTime, onupdate=datetime.now)
@@ -35,6 +35,25 @@ class Products(db.Model):
             'name': self.name,
             'sku': self.sku
         }
+
+
+class MasterProducts(db.Model):
+    __tablename__ = "master_products"
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    name = db.Column(db.String, nullable=False)
+    sku = db.Column(db.String, nullable=False)
+    dimensions = db.Column(JSON)
+    weight = db.Column(db.FLOAT, nullable=True)
+    product_image = db.Column(db.String, nullable=True)
+    price = db.Column(db.FLOAT, nullable=True)
+    client_prefix = db.Column(db.String, nullable=True)
+    active = db.Column(db.BOOLEAN, nullable=True, default=True)
+    subcategory_id = db.Column(db.Integer, db.ForeignKey('products_subcategories.id'))
+    subcategory = db.relationship("ProductsSubCategories", backref=db.backref("products"))
+    hsn_code = db.Column(db.String, nullable=True)
+    tax_rate = db.Column(db.FLOAT, nullable=True)
+    date_created = db.Column(db.DateTime, default=datetime.now)
+    date_updated = db.Column(db.DateTime, onupdate=datetime.now)
 
 
 class ProductQuantity(db.Model):
@@ -50,6 +69,7 @@ class ProductQuantity(db.Model):
     current_quantity = db.Column(db.Integer, nullable=True)
     warehouse_prefix = db.Column(db.String, nullable=False)
     status = db.Column(db.String, nullable=False)
+    wh_loc = db.Column(db.String, nullable=True)
     sync_easyecom = db.Column(db.BOOLEAN, default=False, nullable=True)
     date_created = db.Column(db.DateTime, default=datetime.now)
     date_updated = db.Column(db.DateTime, onupdate=datetime.now)

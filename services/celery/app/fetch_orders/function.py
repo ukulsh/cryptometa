@@ -738,7 +738,7 @@ def fetch_easyecom_orders(cur, channel):
                 channel_order_id = str(channel[16]) + channel_order_id
 
             order_status="NEW"
-            if order['courier']:
+            if order['courier'] and order['courier']!='Self Ship':
                 order_status = "NOT SHIPPED"
 
             if order['marketplace'] in easyecom_wareiq_channel_map:

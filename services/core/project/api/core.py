@@ -229,7 +229,7 @@ def verification_passthru(type):
                             </html>"""
 
             if type == 'cod':
-                return_template = return_template.replace("__TEXT__","COD order confirmed succesfully")
+                return_template = return_template.replace("__TEXT__","COD order confirmed successfully")
             elif type=='delivery':
                 return_template = return_template.replace("__TEXT__","We'll call you soon")
             elif type == 'ndr':

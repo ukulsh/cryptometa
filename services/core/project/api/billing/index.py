@@ -451,7 +451,6 @@ class WalletRemittance(Resource):
                             st_filter = "AND status in ('%s')"%filters['status'][0]
                         else:
                             st_filter = "AND status in %s"%str(tuple(filters['status']))
-                        # print(filters['status'])
                         query_to_execute = query_to_execute.replace('__STATUS_FILTER__', st_filter)
 
                 if auth_data['user_group'] == 'client':
@@ -530,7 +529,6 @@ class WalletRemittance(Resource):
                 filters['status'] = list()
                 cur.execute(query_to_run_status)
                 status_data = cur.fetchall()
-                print(status_data)
                 for client in client_data:
                     if client[0]:
                         filters['client'].append({client[0]:client[1]})

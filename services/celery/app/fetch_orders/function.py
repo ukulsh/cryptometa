@@ -236,10 +236,6 @@ def fetch_shopify_orders(cur, channel):
                     cur.execute(insert_product_query, product_insert_tuple)
                     product_id = cur.fetchone()[0]
 
-                    product_quantity_insert_tuple = (
-                        product_id, 100, 100, 100, warehouse_prefix, "APPROVED", datetime.now())
-                    cur.execute(insert_product_quantity_query, product_quantity_insert_tuple)
-
                 tax_lines = list()
                 try:
                     for tax_line in prod['tax_lines']:
@@ -440,10 +436,6 @@ def fetch_woocommerce_orders(cur, channel):
                     cur.execute(insert_product_query, product_insert_tuple)
                     product_id = cur.fetchone()[0]
 
-                    product_quantity_insert_tuple = (
-                        product_id, 100, 100, 100, warehouse_prefix, "APPROVED", datetime.now())
-                    cur.execute(insert_product_quantity_query, product_quantity_insert_tuple)
-
                 tax_lines = list()
                 try:
                     for tax_line in order['tax_lines']:
@@ -518,25 +510,25 @@ def fetch_magento_orders(cur, channel):
             else:
                 pickup_data_id = None  # change this as we move to dynamic pickups
 
-            customer_name = order['billing_address']['firstname']
+            customer_name = order['billing_address']['firstname'] if order['billing_address']['firstname'] else order['billing_address']['lastname']
             customer_name += " " + order['billing_address']['lastname'] if order['billing_address']['lastname'] else ""
 
             address_1 = ""
             for addr in order['billing_address']['street']:
                 address_1 += str(addr)
 
-            billing_tuple = (order['billing_address']['firstname'],
-                             order['billing_address']['lastname'],
+            billing_tuple = (order['billing_address'].get('firstname'),
+                             order['billing_address'].get('lastname'),
                              address_1,
                              "",
-                             order['billing_address']['city'],
-                             order['billing_address']['postcode'],
-                             order['billing_address']['region'],
-                             order['billing_address']['country_id'],
-                             order['billing_address']['telephone'],
+                             order['billing_address'].get('city'),
+                             order['billing_address'].get('postcode'),
+                             order['billing_address'].get('region'),
+                             order['billing_address'].get('country_id'),
+                             order['billing_address'].get('telephone'),
                              None,
                              None,
-                             order['billing_address']['country_id']
+                             order['billing_address'].get('country_id')
                              )
             try:
                 address_1 = ""
@@ -597,6 +589,7 @@ def fetch_magento_orders(cur, channel):
             cur.execute(insert_payments_data_query, payments_tuple)
 
             already_used_prods = list()
+            mark_delivered = True
             for prod in order['items']:
                 if "parent_item" in prod:
                     prod = prod['parent_item']
@@ -606,6 +599,8 @@ def fetch_magento_orders(cur, channel):
                     continue
                 product_sku = str(prod['product_id'])
                 master_sku = str(prod['sku'])
+                if "GC" not in master_sku:
+                    mark_delivered = False
                 prod_tuple = (master_sku, channel[1])
                 select_products_query_temp = """SELECT id from products where master_sku=%s and client_prefix=%s;"""
                 cur.execute(select_products_query_temp, prod_tuple)
@@ -637,10 +632,6 @@ def fetch_magento_orders(cur, channel):
                     cur.execute(insert_product_query, product_insert_tuple)
                     product_id = cur.fetchone()[0]
 
-                    product_quantity_insert_tuple = (
-                        product_id, 100, 100, 100, warehouse_prefix, "APPROVED", datetime.now())
-                    cur.execute(insert_product_quantity_query, product_quantity_insert_tuple)
-
                 tax_lines = list()
                 try:
                     tax_lines.append({'title': "GST", 'rate': prod['tax_percent']/100})
@@ -649,6 +640,9 @@ def fetch_magento_orders(cur, channel):
 
                 op_tuple = (product_id, order_id, prod['qty_ordered'], float(prod['qty_ordered'] * float(prod['price_incl_tax'])), str(prod['item_id']), json.dumps(tax_lines))
                 cur.execute(insert_op_association_query, op_tuple)
+
+            if mark_delivered and channel[1]=='KAMAAYURVEDA':
+                cur.execute("UPDATE orders SET status='DELIVERED' WHERE id=%s", (order_id, ))
 
         except Exception as e:
             logger.error("order fetch failed for" + str(order['increment_id']) + "\nError:" + str(e))
@@ -669,10 +663,10 @@ def fetch_easyecom_orders(cur, channel):
         created_after = datetime.utcnow() - timedelta(days=30)
         created_after = created_after.strftime("%Y-%m-%d %X")
 
-    fetch_status="1,2"
+    fetch_status="1,2,3"
     if channel[15]:
         fetch_status = ','.join(str(x) for x in channel[15])
-    easyecom_orders_url = "%s/orders/getAllOrders?api_token=%s&created_after=%s" % (channel[5], channel[3], created_after)
+    easyecom_orders_url = "%s/orders/getAllOrders?api_token=%s&created_after=%s&status_id=%s" % (channel[5], channel[3], created_after, fetch_status)
     data = requests.get(easyecom_orders_url).json()
     last_synced_time = datetime.utcnow() + timedelta(hours=5.5)
     if 'data' not in data:
@@ -744,7 +738,7 @@ def fetch_easyecom_orders(cur, channel):
                 channel_order_id = str(channel[16]) + channel_order_id
 
             order_status="NEW"
-            if order['courier'] and order['courier'] in easyecom_wareiq_courier_map:
+            if order['courier'] and order['courier']!='Self Ship':
                 order_status = "NOT SHIPPED"
 
             if order['marketplace'] in easyecom_wareiq_channel_map:
@@ -942,8 +936,8 @@ def fetch_bikayi_orders(cur, channel):
             cur.execute(insert_payments_data_query, payments_tuple)
 
             for prod in order['items']:
-                product_sku = prod
-                master_sku = prod
+                product_sku = str(prod['id'])
+                master_sku = product_sku
                 prod_tuple = (master_sku, channel[1])
                 select_products_query_temp = """SELECT id from products where master_sku=%s and client_prefix=%s;"""
                 cur.execute(select_products_query_temp, prod_tuple)
@@ -953,23 +947,18 @@ def fetch_bikayi_orders(cur, channel):
                     dimensions = None
                     weight = None
                     subcategory_id = None
-                    warehouse_prefix = channel[1]
-                    master_sku = prod
+                    master_sku = str(prod['id'])
                     if not master_sku:
                         master_sku = product_sku
-                    product_insert_tuple = (prod, product_sku, True, channel[2],
-                                            channel[1], datetime.now(), dimensions, None,
+                    product_insert_tuple = (prod['name'], product_sku, True, channel[2],
+                                            channel[1], datetime.now(), dimensions, prod['unitPrice'],
                                             weight, master_sku, subcategory_id)
                     cur.execute(insert_product_query, product_insert_tuple)
                     product_id = cur.fetchone()[0]
 
-                    product_quantity_insert_tuple = (
-                        product_id, 100, 100, 100, warehouse_prefix, "APPROVED", datetime.now())
-                    cur.execute(insert_product_quantity_query, product_quantity_insert_tuple)
-
                 tax_lines = list()
 
-                op_tuple = (product_id, order_id, 1, None, None, json.dumps(tax_lines))
+                op_tuple = (product_id, order_id, prod['quantity'], None, None, json.dumps(tax_lines))
                 cur.execute(insert_op_association_query, op_tuple)
 
         except Exception as e:

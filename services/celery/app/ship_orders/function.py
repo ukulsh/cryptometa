@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 from requests_oauthlib.oauth1_session import OAuth1Session
 from zeep import Client
 from app.db_utils import DbConnection
+#from fedex.config import FedexConfig
 
 from .queries import *
 
@@ -65,6 +66,9 @@ def ship_orders(courier_name=None, order_ids=None, force_ship=None):
 
         elif courier[10].startswith('Self Ship'):
             ship_selfshp_orders(cur, courier, courier_name, order_ids, order_id_tuple, force_ship=force_ship)
+
+        # elif courier[10].startswith('FedEx'):
+        #     ship_fedex_orders(cur, courier, courier_name, order_ids, order_id_tuple, force_ship=force_ship)
 
     cur.close()
 
@@ -161,10 +165,14 @@ def ship_delhivery_orders(cur, courier, courier_name, order_ids, order_id_tuple,
 
         pickup_point = cur.fetchone()  # change this as we get to dynamic pickups
 
+        last_invoice_no = pickup_point[22] if pickup_point[22] else 0
+
         headers = {"Authorization": "Token " + courier[14],
                    "Content-Type": "application/json"}
         for order in all_new_orders:
             try:
+                if not order[54]:
+                    last_invoice_no = invoice_order(cur, last_invoice_no, pickup_point[23], order[0], pickup_id)
                 if order[26].lower() == 'cod' and not order[27] and not force_ship:
                     continue
                 zone = None
@@ -176,7 +184,7 @@ def ship_delhivery_orders(cur, courier, courier_name, order_ids, order_id_tuple,
                 orders_dict[str(order[0])] = (order[0], order[33], order[34], order[35],
                                               order[36], order[37], order[38], order[39],
                                               order[5], order[9], order[45], order[46],
-                                              order[51], order[52], zone)
+                                              order[51], order[52], zone, order[54])
 
                 if order[17].lower() in ("bengaluru", "bangalore", "banglore") and courier[1] in ("SOHOMATTRESS",) and \
                         order[26].lower() != 'pickup' and not force_ship:
@@ -374,6 +382,7 @@ def ship_delhivery_orders(cur, courier, courier_name, order_ids, order_id_tuple,
                 fulfillment_id = None
                 tracking_link = None
                 if package['waybill']:
+
                     order_status_change_ids.append(orders_dict[package['refnum']][0])
                     client_name = str(orders_dict[package['refnum']][12])
                     customer_phone = orders_dict[package['refnum']][8].replace(" ", "")
@@ -487,6 +496,8 @@ def ship_delhivery_orders(cur, courier, courier_name, order_ids, order_id_tuple,
             else:
                 cur.execute(update_orders_status_query, (tuple(order_status_change_ids),))
 
+        cur.execute("UPDATE client_pickups SET invoice_last=%s WHERE id=%s;", (last_invoice_no, pickup_id))
+
         conn.commit()
 
     if exotel_idx:
@@ -531,8 +542,10 @@ def ship_shadowfax_orders(cur, courier, courier_name, order_ids, order_id_tuple,
         order_status_change_ids = list()
 
         pickup_point = cur.fetchone()  # change this as we get to dynamic pickups
-
+        last_invoice_no = pickup_point[22] if pickup_point[22] else 0
         for order in all_new_orders:
+            if not order[54]:
+                last_invoice_no = invoice_order(cur, last_invoice_no, pickup_point[23], order[0], pickup_id)
             if order[26].lower() == 'cod' and not order[27] and not force_ship:
                 continue
             if force_ship and order[26].lower() == 'pickup':
@@ -663,6 +676,7 @@ def ship_shadowfax_orders(cur, courier, courier_name, order_ids, order_id_tuple,
                                                                                                     channel_fulfillment_id, tracking_link, zone)
                                                                                                     VALUES  %s RETURNING id;"""
                 if not return_data_raw['errors']:
+
                     order_status_change_ids.append(order[0])
                     return_data = return_data_raw['data']
                     client_name = str(order[51])
@@ -727,6 +741,8 @@ def ship_shadowfax_orders(cur, courier, courier_name, order_ids, order_id_tuple,
             else:
                 cur.execute(update_orders_status_query, (tuple(order_status_change_ids),))
 
+        cur.execute("UPDATE client_pickups SET invoice_last=%s WHERE id=%s;", (last_invoice_no, pickup_id))
+
         conn.commit()
 
     if exotel_idx:
@@ -775,7 +791,10 @@ def ship_xpressbees_orders(cur, courier, courier_name, order_ids, order_id_tuple
 
         pickup_point = cur.fetchone()  # change this as we get to dynamic pickups
 
+        last_invoice_no = pickup_point[22] if pickup_point[22] else 0
         for order in all_new_orders:
+            if not order[54]:
+                last_invoice_no = invoice_order(cur, last_invoice_no, pickup_point[23], order[0], pickup_id)
             if order[26].lower() == 'cod' and not order[27] and not force_ship:
                 continue
             if force_ship and order[26].lower() == 'pickup':
@@ -984,6 +1003,7 @@ def ship_xpressbees_orders(cur, courier, courier_name, order_ids, order_id_tuple
                                                                                                     channel_fulfillment_id, tracking_link, zone)
                                                                                                     VALUES  %s RETURNING id;"""
                 if return_data_raw['AddManifestDetails'][0]['ReturnMessage'] == 'successful':
+
                     order_status_change_ids.append(order[0])
                     data_tuple = tuple([(
                         return_data_raw['AddManifestDetails'][0]['AWBNo'],
@@ -1060,6 +1080,8 @@ def ship_xpressbees_orders(cur, courier, courier_name, order_ids, order_id_tuple
             else:
                 cur.execute(update_orders_status_query, (tuple(order_status_change_ids),))
 
+        cur.execute("UPDATE client_pickups SET invoice_last=%s WHERE id=%s;", (last_invoice_no, pickup_id))
+
         conn.commit()
 
     if exotel_idx:
@@ -1126,7 +1148,11 @@ def ship_ecom_orders(cur, courier, courier_name, order_ids, order_id_tuple, back
 
         pickup_point = cur.fetchone()  # change this as we get to dynamic pickups
 
+        last_invoice_no = pickup_point[22] if pickup_point[22] else 0
+
         for order in all_new_orders:
+            if not order[54]:
+                last_invoice_no = invoice_order(cur, last_invoice_no, pickup_point[23], order[0], pickup_id)
             if order[26].lower() == 'cod' and not order[27] and not force_ship:
                 continue
             if force_ship and order[26].lower() == 'pickup':
@@ -1293,6 +1319,7 @@ def ship_ecom_orders(cur, courier, courier_name, order_ids, order_id_tuple, back
                                                                                                     channel_fulfillment_id, tracking_link, zone)
                                                                                                     VALUES  %s RETURNING id;"""
                 if return_data_raw['shipments'][0]['success']:
+
                     order_status_change_ids.append(order[0])
 
                     data_tuple = tuple([(
@@ -1368,6 +1395,8 @@ def ship_ecom_orders(cur, courier, courier_name, order_ids, order_id_tuple, back
             else:
                 cur.execute(update_orders_status_query, (tuple(order_status_change_ids),))
 
+        cur.execute("UPDATE client_pickups SET invoice_last=%s WHERE id=%s;", (last_invoice_no, pickup_id))
+
         conn.commit()
 
     if exotel_idx:
@@ -1422,6 +1451,8 @@ def ship_bluedart_orders(cur, courier, courier_name, order_ids, order_id_tuple, 
 
         pickup_point = cur.fetchone()  # change this as we get to dynamic pickups
 
+        last_invoice_no = pickup_point[22] if pickup_point[22] else 0
+
         pickup_pincode = str(pickup_point[8]).rstrip() if pickup_point[8] else None
         if pickup_pincode and pickup_pincode in bluedart_area_code_mapping:
             area_code = bluedart_area_code_mapping[pickup_pincode]
@@ -1436,6 +1467,8 @@ def ship_bluedart_orders(cur, courier, courier_name, order_ids, order_id_tuple, 
             "Version": "1.3"
         }
         for order in all_new_orders:
+            if not order[54]:
+                last_invoice_no = invoice_order(cur, last_invoice_no, pickup_point[23], order[0], pickup_id)
             if order[26].lower() == 'cod' and not order[27] and not force_ship:
                 continue
             if order[26].lower() == 'pickup':
@@ -1605,6 +1638,7 @@ def ship_bluedart_orders(cur, courier, courier_name, order_ids, order_id_tuple, 
                                                                                                                 channel_fulfillment_id, tracking_link, zone)
                                                                                                                 VALUES  %s RETURNING id;"""
                 if req['AWBNo']:
+
                     order_status_change_ids.append(order[0])
                     routing_code = str(req['DestinationArea']) + "-" + str(req['DestinationLocation'])
                     data_tuple = tuple([(
@@ -1681,6 +1715,319 @@ def ship_bluedart_orders(cur, courier, courier_name, order_ids, order_id_tuple, 
             else:
                 cur.execute(update_orders_status_query, (tuple(order_status_change_ids),))
 
+        cur.execute("UPDATE client_pickups SET invoice_last=%s WHERE id=%s;", (last_invoice_no, pickup_id))
+
+        conn.commit()
+
+    if exotel_idx:
+        logger.info("Sending messages...count:" + str(exotel_idx))
+        try:
+            lad = requests.post(
+                'https://ff2064142bc89ac5e6c52a6398063872f95f759249509009:783fa09c0ba1110309f606c7411889192335bab2e908a079@api.exotel.com/v1/Accounts/wareiq1/Sms/bulksend',
+                data=exotel_sms_data)
+        except Exception as e:
+            logger.error("messages not sent." + "   Error: " + str(e.args[0]))
+
+
+def ship_fedex_orders(cur, courier, courier_name, order_ids, order_id_tuple, backup_param=True, force_ship=None):
+    exotel_idx = 0
+    exotel_sms_data = {
+        'From': 'LM-WAREIQ'
+    }
+    if courier_name and order_ids:
+        orders_to_ship_query = get_orders_to_ship_query.replace("__ORDER_SELECT_FILTERS__",
+                                                                """and aa.id in %s""" % order_id_tuple)
+    else:
+        orders_to_ship_query = get_orders_to_ship_query.replace("__ORDER_SELECT_FILTERS__", """and aa.status='NEW'
+                                                                                                and ll.id is null""")
+    get_orders_data_tuple = (courier[1], courier[1])
+    if courier[3] == 2:
+        orders_to_ship_query = orders_to_ship_query.replace('__PRODUCT_FILTER__',
+                                                            "and ship_courier[1]='%s'" % courier[10])
+    else:
+        orders_to_ship_query = orders_to_ship_query.replace('__PRODUCT_FILTER__', '')
+
+    cur.execute(orders_to_ship_query, get_orders_data_tuple)
+    all_orders = cur.fetchall()
+    pickup_point_order_dict = dict()
+    for order in all_orders:
+        if order[41]:
+            if order[41] not in pickup_point_order_dict:
+                pickup_point_order_dict[order[41]] = [order]
+            else:
+                pickup_point_order_dict[order[41]].append(order)
+
+    api_key = courier[14].split('|')[0]
+    api_pass = courier[14].split('|')[1]
+    account_number = courier[15].split('|')[0]
+    meter_number = courier[15].split('|')[1]
+    CONFIG_OBJ = FedexConfig(key=api_key,
+                             password=api_pass,
+                             account_number=account_number,
+                             meter_number=meter_number,
+                             use_test_server=True)
+
+    for pickup_id, all_new_orders in pickup_point_order_dict.items():
+
+        last_shipped_order_id = 0
+        pickup_points_tuple = (pickup_id,)
+        cur.execute(get_pickup_points_query, pickup_points_tuple)
+        order_status_change_ids = list()
+
+        pickup_point = cur.fetchone()  # change this as we get to dynamic pickups
+
+        last_invoice_no = pickup_point[22] if pickup_point[22] else 0
+
+        for order in all_new_orders:
+            if not order[54]:
+                last_invoice_no = invoice_order(cur, last_invoice_no, pickup_point[23], order[0], pickup_id)
+            if order[26].lower() == 'cod' and not order[27] and not force_ship:
+                continue
+            if order[26].lower() == 'pickup':
+                continue
+            zone = None
+            try:
+                zone = get_delivery_zone(pickup_point[8], order[18])
+            except Exception as e:
+                logger.error("couldn't find zone: " + str(order[0]) + "\nError: " + str(e))
+
+            if courier[1] == "ZLADE" and zone in ('A', ) and not force_ship:
+                continue
+
+            if order[26].lower() == "prepaid" and courier[1] in ("ACTIFIBER", "BEHIR", "SHAHIKITCHEN", "SUKHILIFE", "ORGANICRIOT") and not force_ship:
+                continue
+
+            time_2_days = datetime.utcnow() + timedelta(hours=5.5) - timedelta(days=1)
+            if order[47] and not (order[50] and order[2] < time_2_days) and not force_ship:
+                if order[26].lower() == 'cod' and not order[42] and order[43]:
+                    continue  # change this to continue later
+                if order[26].lower() == 'cod' and not order[43]:
+                    try:  ## Cod confirmation  text
+                        sms_to_key, sms_body_key, customer_phone, sms_body_key_data = cod_verification_text(
+                            order, exotel_idx, cur)
+                        if not order[53]:
+                            exotel_sms_data[sms_to_key] = customer_phone
+                            exotel_sms_data[sms_body_key] = sms_body_key_data
+                            exotel_idx += 1
+                    except Exception as e:
+                        logger.error(
+                            "Cod confirmation not sent. Order id: " + str(order[0]))
+                    continue
+            if order[0] > last_shipped_order_id:
+                last_shipped_order_id = order[0]
+            try:
+                from fedex.services.availability_commitment_service import FedexAvailabilityCommitmentRequest
+                avc_request = FedexAvailabilityCommitmentRequest(CONFIG_OBJ)
+                avc_request.Origin.PostalCode = pickup_point[8]
+                avc_request.Origin.CountryCode = 'IN'
+                avc_request.Destination.PostalCode = order[18]  # 29631
+                avc_request.Destination.CountryCode = 'IN'
+                from fedex.services.ship_service import FedexProcessShipmentRequest
+                shipment = FedexProcessShipmentRequest(CONFIG_OBJ)
+
+                shipping_phone = order[21] if order[21] else order[5]
+                shipping_phone = ''.join(e for e in str(shipping_phone) if e.isalnum())
+                shipping_phone = shipping_phone[-10:]
+
+                customer_name = order[13]
+                if order[14]:
+                    customer_name += " " + order[14]
+
+                pickup_address = pickup_point[4]
+                if pickup_point[5]:
+                    pickup_address += pickup_point[5]
+
+                customer_address = order[15]
+                if order[16]:
+                    customer_address += order[16]
+
+                order_type = ""
+                if order[26].lower() in ("cod", "cash on delivery"):
+                    order_type = "COD"
+                if order[26].lower() in ("prepaid", "paid"):
+                    order_type = "PREPAID"
+
+                shipment.RequestedShipment.ShipTimestamp = datetime.now().replace(microsecond=0).isoformat()
+                shipment.RequestedShipment.DropoffType = 'REGULAR_PICKUP'
+                shipment.RequestedShipment.ServiceType = 'STANDARD_OVERNIGHT'
+                shipment.RequestedShipment.PackagingType = 'YOUR_PACKAGING'
+
+                shipment.RequestedShipment.Shipper.Contact.PersonName = pickup_point[11]
+                shipment.RequestedShipment.Shipper.Contact.CompanyName = pickup_point[9]
+                shipment.RequestedShipment.Shipper.Contact.PhoneNumber = pickup_point[3][-10:]
+                shipment.RequestedShipment.Shipper.Address.StreetLines = [pickup_address]
+                shipment.RequestedShipment.Shipper.Address.City = pickup_point[6]
+                shipment.RequestedShipment.Shipper.Address.StateOrProvinceCode = pickup_point[10]
+                shipment.RequestedShipment.Shipper.Address.PostalCode = pickup_point[8]
+                shipment.RequestedShipment.Shipper.Address.CountryCode = 'IN'
+
+                shipment.RequestedShipment.Recipient.Contact.PersonName = customer_name
+                shipment.RequestedShipment.Recipient.Contact.PhoneNumber = shipping_phone
+                shipment.RequestedShipment.Recipient.Address.StreetLines = customer_address
+                shipment.RequestedShipment.Recipient.Address.City = order[17]
+                shipment.RequestedShipment.Recipient.Address.StateOrProvinceCode = order[19]
+                shipment.RequestedShipment.Recipient.Address.PostalCode = order[18]
+                shipment.RequestedShipment.Recipient.Address.CountryCode = 'IN'
+
+                shipment.RequestedShipment.ShippingChargesPayment.PaymentType = "SENDER"
+                shipment.RequestedShipment.ShippingChargesPayment.Payor.ResponsibleParty.AccountNumber \
+                    = CONFIG_OBJ.account_number
+
+                # if order_type=='COD':
+                #     shipment.RequestedShipment.SpecialServiceTypes = 'COD'
+                #     shipment.RequestedShipment.SpecialServicesRequested.CodDetail.CodCollectionAmount.Currency = 'INR'
+                #     shipment.RequestedShipment.SpecialServicesRequested.CodDetail.CodCollectionAmount.Amount = order[27]
+                #     shipment.RequestedShipment.SpecialServicesRequested.CodDetail.RemitToName = 'Remitter'
+
+                package_string = ""
+                package_quantity = 0
+                for idx, prod in enumerate(order[40]):
+                    package_string += prod + " (" + str(order[35][idx]) + ") + "
+                    package_quantity += order[35][idx]
+
+                shipment.RequestedShipment.CustomsClearanceDetail.CustomsValue.Currency = "INR"
+                shipment.RequestedShipment.CustomsClearanceDetail.CustomsValue.Amount = order[27]
+
+                commodity = shipment.create_wsdl_object_of_type('CustomsClearanceDetail.Commodities')
+                commodity.NumberOfPieces=1
+                commodity.Description=package_string
+                commodity.CountryOfManufacture="IN"
+                package1_weight = shipment.create_wsdl_object_of_type('Weight')
+                package1_weight.Value = sum(order[34])
+                package1_weight.Units = "KG"
+                commodity.Weight = package1_weight
+                commodity.Quantity=1
+                commodity.QuantityUnits="EA"
+                commodity.UnitPrice.Currency="INR"
+                commodity.UnitPrice.Amount=order[27]
+                commodity.CustomsValue.Amount=order[27]
+                commodity.CustomsValue.Currency="INR"
+
+                shipment.RequestedShipment.CustomsClearanceDetail.Commodities.append(commodity)
+                shipment.RequestedShipment.CustomsClearanceDetail.CommercialInvoice.Purpose = 'SOLD'
+
+                shipment.RequestedShipment.LabelSpecification.LabelFormatType = 'COMMON2D'
+                shipment.RequestedShipment.LabelSpecification.ImageType = 'PDF'
+                shipment.RequestedShipment.LabelSpecification.LabelStockType = 'PAPER_7X4.75'
+
+                shipment.RequestedShipment.PackageCount = 1
+                shipment.RequestedShipment.TotalWeight.Units = 'KG'
+
+                package1_weight = shipment.create_wsdl_object_of_type('Weight')
+                package1_weight.Value = sum(order[34])
+                package1_weight.Units = "KG"
+                package1 = shipment.create_wsdl_object_of_type('RequestedPackageLineItem')
+                package1.Weight = package1_weight
+                package1.SequenceNumber = 1
+                shipment.add_package(package1)
+
+                shipment.send_validation_request()
+                shipment.send_request()
+
+                awb_no = None
+                try:
+                    awb_no = shipment.response.CompletedShipmentDetail.MasterTrackingId.TrackingNumber
+                except Exception as e:
+                    pass
+
+                dimensions = order[33][0]
+                dimensions['length'] = dimensions['length'] * order[35][0]
+                weight = order[34][0] * order[35][0]
+                volumetric_weight = (dimensions['length'] * dimensions['breadth'] * dimensions['height']) / 5000
+                for idx, dim in enumerate(order[33]):
+                    if idx == 0:
+                        continue
+                    dim['length'] += dim['length'] * (order[35][idx])
+                    volumetric_weight += (dim['length'] * dim['breadth'] * dim['height']) / 5000
+                    weight += order[34][idx] * (order[35][idx])
+                if dimensions['length'] and dimensions['breadth']:
+                    dimensions['height'] = round(
+                        (volumetric_weight * 5000) / (dimensions['length'] * dimensions['breadth']))
+
+                insert_shipments_data_query = """INSERT INTO SHIPMENTS (awb, status, order_id, pickup_id, courier_id, 
+                                                                                                                dimensions, volumetric_weight, weight, remark, return_point_id, routing_code, 
+                                                                                                                channel_fulfillment_id, tracking_link, zone)
+                                                                                                                VALUES  %s RETURNING id;"""
+                if awb_no:
+                    awb_no = str(awb_no)
+                    order_status_change_ids.append(order[0])
+                    #routing_code = str(req['DestinationArea']) + "-" + str(req['DestinationLocation'])
+                    data_tuple = tuple([(
+                        awb_no, "", order[0], pickup_point[1], courier[9], json.dumps(dimensions),
+                        volumetric_weight, weight,
+                        "", pickup_point[2], None, None, None, zone)])
+
+                    if order[46] == 7:
+                        push_awb_easyecom(order[39],order[36], awb_no, courier, cur, order[9])
+
+                    client_name = str(order[51])
+                    customer_phone = order[5].replace(" ", "")
+                    customer_phone = "0" + customer_phone[-10:]
+
+                    sms_to_key = "Messages[%s][To]" % str(exotel_idx)
+                    sms_body_key = "Messages[%s][Body]" % str(exotel_idx)
+
+                    exotel_sms_data[sms_to_key] = customer_phone
+                    try:
+                        tracking_link_wareiq = "http://webapp.wareiq.com/tracking/" + str(
+                            awb_no)
+                        """
+                        short_url = requests.get(
+                            "https://cutt.ly/api/api.php?key=f445d0bb52699d2f870e1832a1f77ef3f9078&short=%s" % tracking_link_wareiq)
+                        short_url_track = short_url.json()['url']['shortLink']
+                        """
+                        exotel_sms_data[
+                            sms_body_key] = "Received: Your order from %s. Track here: %s . Thanks!" % (
+                        client_name, tracking_link_wareiq)
+                    except Exception:
+                        pass
+
+                    exotel_idx += 1
+
+                else:
+                    cur.execute("select * from client_couriers where client_prefix=%s and priority=%s;",
+                                (courier[1], courier[3] + 1))
+                    qs = cur.fetchone()
+                    if not (qs and backup_param):
+                        insert_shipments_data_query = """INSERT INTO SHIPMENTS (awb, status, order_id, pickup_id, courier_id, 
+                                                                                dimensions, volumetric_weight, weight, remark, return_point_id, routing_code, zone)
+                                                                                VALUES  %s"""
+                        insert_shipments_data_tuple = list()
+                        insert_shipments_data_tuple.append(("", "Fail", order[0], None,
+                                                            None, None, None, None, "Pincode not serviceable", None,
+                                                            None, zone), )
+                        cur.execute(insert_shipments_data_query, tuple(insert_shipments_data_tuple))
+                    continue
+
+                cur.execute(insert_shipments_data_query, data_tuple)
+                ship_temp = cur.fetchone()
+                order_status_add_query = """INSERT INTO order_status (order_id, courier_id, shipment_id, 
+                                                            status_code, status, status_text, location, location_city, 
+                                                            status_time) VALUES %s"""
+
+                order_status_add_tuple = [(order[0], courier[9],
+                                           ship_temp[0], "UD", "Received", "Consignment Manifested",
+                                           pickup_point[6], pickup_point[6],
+                                           datetime.utcnow() + timedelta(hours=5.5))]
+
+                cur.execute(order_status_add_query, tuple(order_status_add_tuple))
+
+            except Exception as e:
+                print("couldn't assign order: " + str(order[1]) + "\nError: " + str(e))
+
+        if last_shipped_order_id:
+            last_shipped_data_tuple = (
+                last_shipped_order_id, datetime.now(tz=pytz.timezone('Asia/Calcutta')), courier[1])
+            cur.execute(update_last_shipped_order_query, last_shipped_data_tuple)
+
+        if order_status_change_ids:
+            if len(order_status_change_ids) == 1:
+                cur.execute(update_orders_status_query % (("(%s)") % str(order_status_change_ids[0])))
+            else:
+                cur.execute(update_orders_status_query, (tuple(order_status_change_ids),))
+
+        cur.execute("UPDATE client_pickups SET invoice_last=%s WHERE id=%s;", (last_invoice_no, pickup_id))
+
         conn.commit()
 
     if exotel_idx:
@@ -1726,6 +2073,8 @@ def ship_selfshp_orders(cur, courier, courier_name, order_ids, order_id_tuple, b
 
         pickup_point = cur.fetchone()  # change this as we get to dynamic pickups
 
+        last_invoice_no = pickup_point[22] if pickup_point[22] else 0
+
         if not pickup_point[21]:
             continue
 
@@ -1758,9 +2107,13 @@ def ship_selfshp_orders(cur, courier, courier_name, order_ids, order_id_tuple, b
             if zone != 'A' and not force_ship:
                 continue
 
-            # kama ayurveda assign mumbai orders to store
-            if pickup_point[0] == 170:
-                cur.execute("UPDATE orders SET pickup_data_id=1164 WHERE id=%s", (order[0], ))
+            # kama ayurveda assign mumbai orders pincode check
+            if pickup_point[0] == 170 and order[18] not in kama_mum_sdd_pincodes:
+                continue
+
+            # kama ayurveda assign blr orders pincode check
+            if pickup_point[0] == 143 and order[18] not in kama_blr_sdd_pincodes:
+                continue
 
             insert_shipments_data_query = """INSERT INTO SHIPMENTS (awb, status, order_id, pickup_id, courier_id, 
                                                                             dimensions, volumetric_weight, weight, remark, return_point_id, routing_code, 
@@ -1788,6 +2141,9 @@ def ship_selfshp_orders(cur, courier, courier_name, order_ids, order_id_tuple, b
 
             cur.execute(order_status_add_query, tuple(order_status_add_tuple))
 
+            if not order[54]:
+                last_invoice_no = invoice_order(cur, last_invoice_no, pickup_point[23], order[0], pickup_id)
+
         if last_shipped_order_id:
             last_shipped_data_tuple = (
                 last_shipped_order_id, datetime.now(tz=pytz.timezone('Asia/Calcutta')), courier[1])
@@ -1798,6 +2154,8 @@ def ship_selfshp_orders(cur, courier, courier_name, order_ids, order_id_tuple, b
                 cur.execute(update_orders_status_query % (("(%s)") % str(order_status_change_ids[0])))
             else:
                 cur.execute(update_orders_status_query, (tuple(order_status_change_ids),))
+
+        cur.execute("UPDATE client_pickups SET invoice_last=%s WHERE id=%s;", (last_invoice_no, pickup_id))
 
         conn.commit()
 
@@ -2012,10 +2370,28 @@ def push_awb_easyecom(invoice_id, api_token, awb, courier, cur, client_prefix):
         logger.error("Easyecom not updated.")
 
 
+def invoice_order(cur, last_inv_no, inv_prefix, order_id, pickup_data_id):
+    try:
+        if not last_inv_no:
+            last_inv_no = 0
+        inv_no = last_inv_no+1
+        inv_text = str(inv_no)
+        inv_text = inv_text.zfill(5)
+        if inv_prefix:
+            inv_text = inv_prefix + "-" + inv_text
+
+        cur.execute("""INSERT INTO orders_invoice (order_id, pickup_data_id, invoice_no_text, invoice_no, date_created) 
+                        VALUES (%s, %s, %s, %s, %s);""", (order_id, pickup_data_id, inv_text, inv_no, datetime.utcnow()+timedelta(hours=5.5)))
+        return inv_no
+    except Exception as e:
+        return last_inv_no
+
+
 bluedart_area_code_mapping = {"110015":"DEL",
                                 "110077":"DEL",
                                 "110059":"DEL",
                                 "110093":"DEL",
+                                "160062":"MOH",
                                 "121002":"FAR",
                                 "122001":"GGN",
                                 "131028":"SOP",
@@ -2061,6 +2437,8 @@ bluedart_area_code_mapping = {"110015":"DEL",
                                 "395001":"SUR",
                                 "396445":"NVS",
                                 "400001":"BOM",
+                                "400064":"BOM",
+                                "400097":"BOM",
                                 "400705":"NBM",
                                 "401107":"BOM",
                                 "403001":"PNJ",
@@ -2351,3 +2729,6 @@ easyecom_carrier_id = {"Delhivery Surface Standard": 2,
                        "Xpressbees 5 KG": 13,
                        "Bluedart": 1,
                        }
+
+kama_blr_sdd_pincodes = ('560001','560002','560003','560004','560005','560006','560007','560008','560009','560010','560011','560012','560013','560014','560015','560016','560017','560018','560019','560020','560021','560022','560023','560024','560025','560026','560027','560028','560029','560030','560031','560032','560033','560034','560035','560036','560037','560038','560039','560040','560041','560042','560043','560044','560045','560046','560047','560048','560049','560050','560051','560052','560053','560054','560055','560056','560057','560058','560059','560060','560061','560062','560063','560064','560065','560066','560067','560068','560069','560070','560071','560072','560073','560074','560075','560076','560077','560078','560079','560080','560081','560082','560083','560084','560085','560086','560087','560088','560089','560090','560091','560092','560093','560094','560095','560096','560097','560098','560099','560100','560102','560103','560104','560105','560106','560107','560108','560109','560110','560111','560113','560114','560300','562106','562107','562125','562130','562149','562157')
+kama_mum_sdd_pincodes = ('400082','400080','400081','400078','400042','400076','400083','400079','400072','400084','400086','400075','400077','400089','400070','400071','400024','400059','400053','400069','400096','400093','400099','400074','400022','400043','400088','400085','400094','400017','400029','400047','400049','400050','400051','400052','400054','400055','400056','400057','400058','400060','400062','400063','400064','400065','400067','400087','400090','400097','400098','400101','400102','400104','400601','400602','400603','400604','400605','400606','400607','400608','400610','400615','401107','406007','400016','400019','400037','400028','400014','400031','400025','400030','400018','400013','400012','400015','400033','400011','400027','400010','400035','400006','400036','400026','400034','400007','400008','400004','400009','400003','400002','400001','400020','400023','400032','400021','400039','400005')

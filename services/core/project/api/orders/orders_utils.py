@@ -12,7 +12,8 @@ ORDERS_DOWNLOAD_HEADERS = ["Order ID", "Customer Name", "Customer Email", "Custo
                            "Amount", "Manifest Time", "Pickup Date", "Delivered Date", "COD Verfication", "COD Verified Via", "NDR Verfication", "NDR Verified Via","PDD"]
 cur = conn.cursor()
 
-def filter_query(filters,query_to_run):
+
+def filter_query(filters, query_to_run, auth_data):
 
     if 'status' in filters:
         if len(filters['status']) == 1:
@@ -111,13 +112,18 @@ def filter_query(filters,query_to_run):
             channel_tuple = str(tuple(filters['channel']))
         query_to_run = query_to_run.replace("__MASTER_CHANNEL__", "AND vv.channel_name in %s" % channel_tuple)
 
+    if 'edd' in filters:
+        filter_date_start = filters['edd'][0][0:19].replace('T', ' ')
+        filter_date_end = filters['edd'][1][0:19].replace('T', ' ')
+        query_to_run = query_to_run.replace("__EDD_FILTER__",
+                                            "AND bb.edd between '%s' and '%s'" % (filter_date_start, filter_date_end))
+
     return query_to_run
 
-def download_flag_func(query_to_run,get_selected_product_details,auth_data):
 
+def download_flag_func(query_to_run, get_selected_product_details, auth_data, filters, hide_weights):
 
     client_prefix = auth_data.get('client_prefix')
-
     if not [i for i in ['order_date', 'pickup_time', 'manifest_time', 'delivered_time'] if i in filters]:
         date_month_ago = datetime.utcnow() + timedelta(hours=5.5) - timedelta(days=31)
         date_month_ago = date_month_ago.strftime("%Y-%m-%d %H:%M:%S")
@@ -148,7 +154,7 @@ def download_flag_func(query_to_run,get_selected_product_details,auth_data):
                     new_row.append(str(order[13]))
                     new_row.append(str(order[15]))
                     new_row.append(str(order[14]))
-                    new_row.append(order[2].strftime("%Y-%m-%d") if order[2] else "N/A")
+                    new_row.append(order[2].strftime("%Y-%m-%d %H:%M:%S") if order[2] else "N/A")
                     new_row.append(str(order[7]))
                     new_row.append(str(order[9]) if not hide_weights else "")
                     new_row.append(str(order[5]))
@@ -203,15 +209,16 @@ def download_flag_func(query_to_run,get_selected_product_details,auth_data):
     output.headers["Content-type"] = "text/csv"
     return output
 
-def user_group_filter(query_to_run,group):
 
-    if group == 'client':
-        query_to_run = query_to_run.replace("__CLIENT_FILTER__", "AND aa.client_prefix = '%s'" % client_prefix)
-    if group == 'warehouse':
+def user_group_filter(query_to_run, auth_data):
+
+    if auth_data['user_group'] == 'client':
+        query_to_run = query_to_run.replace("__CLIENT_FILTER__", "AND aa.client_prefix = '%s'" % auth_data.get('client_prefix'))
+    if auth_data['user_group'] == 'warehouse':
         query_to_run = query_to_run.replace("__PICKUP_FILTER__",
                                             "AND ii.warehouse_prefix = '%s'" % auth_data.get('warehouse_prefix'))
-    if group == 'multi-vendor':
-        cur.execute("SELECT vendor_list FROM multi_vendor WHERE client_prefix='%s';" % client_prefix)
+    if auth_data['user_group'] == 'multi-vendor':
+        cur.execute("SELECT vendor_list FROM multi_vendor WHERE client_prefix='%s';" % auth_data.get('client_prefix'))
         vendor_list = cur.fetchone()[0]
         query_to_run = query_to_run.replace("__MV_CLIENT_FILTER__",
                                             "AND aa.client_prefix in %s" % str(tuple(vendor_list)))

@@ -100,7 +100,7 @@ class OrderList(Resource):
                 query_to_run = query_to_run.replace("__SEARCH_KEY_FILTER_ON_CUSTOMER__", regex_check_customer_details)
                 query_to_run = query_to_run.replace("__SEARCH_KEY_ON_CUSTOMER_DETAILS__", search_key_on_customer_detail)
 
-            query_to_run = user_group_filter(query_to_run,auth_data['user_group'])
+            query_to_run = user_group_filter(query_to_run,auth_data)
 
             if since_id:
                 query_to_run = query_to_run.replace("__SINCE_ID_FILTER__", "AND id>%s" % str(since_id))
@@ -121,10 +121,10 @@ class OrderList(Resource):
                 return {"success": False, "msg": "Invalid URL"}, 404
 
             if filters:
-                query_to_run = filter_query(filters,query_to_run)
+                query_to_run = filter_query(filters, query_to_run, auth_data)
 
             if download_flag:
-                return download_flag_func(query_to_run,get_selected_product_details,auth_data)
+                return download_flag_func(query_to_run, get_selected_product_details, auth_data, filters, hide_weights)
 
             count_query = "select count(*) from ("+query_to_run.replace('__PAGINATION__', "") +") xx"
             count_query = re.sub(r"""__.+?__""", "", count_query)
@@ -183,6 +183,8 @@ class OrderList(Resource):
                     not_shipped = "Pincode not serviceable"
                 elif not order[26]:
                     not_shipped = "Pickup point not assigned"
+                elif order[12] and "incorrect phone" in order[12].lower():
+                    not_shipped = "Invalid contact number"
 
                 if not_shipped:
                     resp_obj['not_shipped'] = not_shipped
@@ -956,7 +958,7 @@ def download_invoice(resp):
 
     if auth_data['user_group'] == 'client':
         orders_qs = orders_qs.filter(Orders.client_prefix==auth_data.get('client_prefix'))
-    orders_qs = orders_qs.order_by(Orders.id).all()
+    orders_qs = orders_qs.order_by(Orders.channel_order_id).all()
     if not orders_qs:
         return jsonify({"success": False, "msg": "No valid order ID"}), 404
 
@@ -1166,6 +1168,9 @@ def cancel_order_channel(resp, order_id):
                            "Content-Type": "application/json"}
                 req_can = requests.post("http://xbclientapi.xbees.in/POSTShipmentService.svc/RTONotifyShipment",
                                         headers=headers, data=cancel_body)
+        if order.orders_invoice:
+            for invoice_obj in order.orders_invoice:
+                invoice_obj.cancelled=True
         db.session.query(OrderStatus).filter(OrderStatus.order_id == order.id).delete()
 
     db.session.commit()
@@ -1252,6 +1257,7 @@ def bulk_cancel_orders(resp):
         return jsonify({"success": False, "msg": "Invalid order ids"}), 400
 
     cur.execute("UPDATE orders SET status='CANCELED' WHERE id in %s"%order_tuple_str)
+    cur.execute("UPDATE orders_invoice SET cancelled=true WHERE order_id in %s"%order_tuple_str)
 
     conn.commit()
 
@@ -1265,8 +1271,6 @@ def bulk_delivered_orders(resp):
     auth_data = resp.get('data')
     if not auth_data:
         return jsonify({"success": False, "msg": "Auth Failed"}), 404
-    if auth_data['user_group'] not in ('client', 'super-admin', 'multi-vendor'):
-        return jsonify({"success":False, "msg": "invalid user"}), 400
     data = json.loads(request.data)
     order_ids=data.get('order_ids')
     if not order_ids:
@@ -1278,19 +1282,27 @@ def bulk_delivered_orders(resp):
 
     query_to_run = """SELECT array_agg(aa.id) FROM orders aa
                         LEFT JOIN shipments bb on aa.id=bb.order_id
+                        LEFT JOIN client_pickups cc on aa.pickup_data_id=cc.id
+                        LEFT JOIN pickup_points dd on cc.pickup_id=dd.id
                         WHERE aa.id in __ORDER_IDS__
                         AND bb.courier_id in (3,19)
-                        __CLIENT_FILTER__;""".replace("__ORDER_IDS__", order_tuple_str)
+                        __CLIENT_FILTER__
+                        __WH_FILTER__;""".replace("__ORDER_IDS__", order_tuple_str)
 
     if auth_data['user_group'] == 'client':
-        query_to_run = query_to_run.replace('__CLIENT_FILTER__', "AND client_prefix='%s'"%auth_data['client_prefix'])
+        query_to_run = query_to_run.replace('__CLIENT_FILTER__', "AND aa.client_prefix='%s'"%auth_data['client_prefix'])
     elif auth_data['user_group'] == 'multi-vendor':
         cur.execute("SELECT vendor_list FROM multi_vendor WHERE client_prefix='%s';" % auth_data['client_prefix'])
         vendor_list = cur.fetchone()[0]
         query_to_run = query_to_run.replace("__CLIENT_FILTER__",
-                                            "AND client_prefix in %s" % str(tuple(vendor_list)))
+                                            "AND aa.client_prefix in %s" % str(tuple(vendor_list)))
     else:
         query_to_run = query_to_run.replace("__CLIENT_FILTER__","")
+
+    if auth_data['user_group'] == 'warehouse':
+        query_to_run = query_to_run.replace("__WH_FILTER__","AND dd.warehouse_prefix='%s'"%auth_data['warehouse_prefix'])
+    else:
+        query_to_run = query_to_run.replace("__WH_FILTER__","")
 
     cur.execute(query_to_run)
     order_ids = cur.fetchone()[0]
@@ -1629,6 +1641,10 @@ class OrderDetails(Resource):
                         req_ful = requests.post(cancel_url, data=json.dumps(cancel_data),
                                                 headers=cancel_header, verify=False)
 
+                    if order.orders_invoice: #cancel invoice
+                        for invoice_obj in order.orders_invoice:
+                            invoice_obj.cancelled = True
+
                 elif data.get('cod_verification') == True:
                     if order.shipments and order.shipments and order.shipments[0].awb:
                         order.status = 'READY TO SHIP'
@@ -1659,6 +1675,10 @@ class OrderDetails(Resource):
                             headers = {"Authorization": "Basic " + order.shipments[0].courier.api_key,
                                         "Content-Type": "application/json"}
                             req_can = requests.post("http://xbclientapi.xbees.in/POSTShipmentService.svc/RTONotifyShipment", headers=headers, data=cancel_body)
+
+                    if order.orders_invoice:
+                        for invoice_obj in order.orders_invoice:
+                            invoice_obj.cancelled = True
 
             db.session.commit()
             return {'status': 'success', 'msg': "successfully updated"}, 200

@@ -223,6 +223,9 @@ def track_delhivery_orders(courier, cur):
                             "Couldn't mark paid Shopify for: " + str(orders_dict[current_awb][0])
                             + "\nError: " + str(e.args))
 
+                elif orders_dict[current_awb][3] == 'LOTUSBOTANICALS':
+                    lotus_botanicals_delivered(orders_dict[current_awb])
+
                 sms_to_key = "Messages[%s][To]" % str(exotel_idx)
                 sms_body_key = "Messages[%s][Body]" % str(exotel_idx)
 
@@ -318,6 +321,9 @@ def track_delhivery_orders(courier, cur):
                         except Exception as e:
                             logger.error("Couldn't update Magento for: " + str(orders_dict[current_awb][0])
                                          + "\nError: " + str(e.args))
+                    elif orders_dict[current_awb][3] == 'LOTUSBOTANICALS':
+                        lotus_botanicals_shipped(orders_dict[current_awb])
+
 
                 if orders_dict[current_awb][19]:
                     email = create_email(orders_dict[current_awb], edd.strftime('%-d %b') if edd else "",
@@ -339,8 +345,15 @@ def track_delhivery_orders(courier, cur):
                 exotel_idx += 1
 
             if orders_dict[current_awb][2] != new_status:
+
                 status_update_tuple = (new_status, status_type, status_detail, orders_dict[current_awb][0])
                 cur.execute(order_status_update_query, status_update_tuple)
+
+                if orders_dict[current_awb][3]=='LOTUSORGANICS':
+                    try:
+                        lotus_organics_update(orders_dict[current_awb], new_status)
+                    except Exception as e:
+                        pass
 
                 if new_status == 'PENDING' and status_code in delhivery_status_code_mapping_dict:
                     try:  # NDR check text
@@ -537,6 +550,9 @@ def track_shadowfax_orders(courier, cur):
                             "Couldn't mark paid Shopify for: " + str(orders_dict[current_awb][0])
                             + "\nError: " + str(e.args))
 
+                elif orders_dict[current_awb][3] == 'LOTUSBOTANICALS':
+                    lotus_botanicals_delivered(orders_dict[current_awb])
+
                 sms_to_key = "Messages[%s][To]" % str(exotel_idx)
                 sms_body_key = "Messages[%s][Body]" % str(exotel_idx)
 
@@ -628,6 +644,9 @@ def track_shadowfax_orders(courier, cur):
                         except Exception as e:
                             logger.error("Couldn't update Magento for: " + str(orders_dict[current_awb][0])
                                          + "\nError: " + str(e.args))
+                    elif orders_dict[current_awb][3] == 'LOTUSBOTANICALS':
+                        lotus_botanicals_shipped(orders_dict[current_awb])
+
                 if orders_dict[current_awb][19]:
                     email = create_email(orders_dict[current_awb], edd.strftime('%-d %b') if edd else "",
                                          orders_dict[current_awb][19])
@@ -678,6 +697,11 @@ def track_shadowfax_orders(courier, cur):
             if orders_dict[current_awb][2] != new_status:
                 status_update_tuple = (new_status, status_type, status_detail, orders_dict[current_awb][0])
                 cur.execute(order_status_update_query, status_update_tuple)
+                if orders_dict[current_awb][3]=='LOTUSORGANICS':
+                    try:
+                        lotus_organics_update(orders_dict[current_awb], new_status)
+                    except Exception as e:
+                        pass
                 if new_status == "PENDING" and ret_order['status'] in shadowfax_status_mapping \
                         and shadowfax_status_mapping[new_status][2]:
                     try:  # NDR check text
@@ -882,6 +906,8 @@ def track_xpressbees_orders(courier, cur):
                         logger.error(
                             "Couldn't mark paid Shopify for: " + str(orders_dict[current_awb][0])
                             + "\nError: " + str(e.args))
+                elif orders_dict[current_awb][3] == 'LOTUSBOTANICALS':
+                    lotus_botanicals_delivered(orders_dict[current_awb])
 
                 sms_to_key = "Messages[%s][To]" % str(exotel_idx)
                 sms_body_key = "Messages[%s][Body]" % str(exotel_idx)
@@ -991,6 +1017,8 @@ def track_xpressbees_orders(courier, cur):
                                 logger.error(
                                     "Couldn't update Magento for: " + str(orders_dict[current_awb][0])
                                     + "\nError: " + str(e.args))
+                        elif orders_dict[current_awb][3] == 'LOTUSBOTANICALS':
+                            lotus_botanicals_shipped(orders_dict[current_awb])
 
                     if orders_dict[current_awb][19]:
 
@@ -1003,6 +1031,11 @@ def track_xpressbees_orders(courier, cur):
             if orders_dict[current_awb][2] != new_status:
                 status_update_tuple = (new_status, status_type, status_detail, orders_dict[current_awb][0])
                 cur.execute(order_status_update_query, status_update_tuple)
+                if orders_dict[current_awb][3]=='LOTUSORGANICS':
+                    try:
+                        lotus_organics_update(orders_dict[current_awb], new_status)
+                    except Exception as e:
+                        pass
 
                 if ret_order['ShipmentSummary'][0]['StatusCode'] == 'UD' \
                         and ret_order['ShipmentSummary'][0]['Status'] in \
@@ -1232,6 +1265,9 @@ def track_bluedart_orders(courier, cur):
                             "Couldn't mark paid Shopify for: " + str(orders_dict[current_awb][0])
                             + "\nError: " + str(e.args))
 
+                elif orders_dict[current_awb][3] == 'LOTUSBOTANICALS':
+                    lotus_botanicals_delivered(orders_dict[current_awb])
+
                 sms_to_key = "Messages[%s][To]" % str(exotel_idx)
                 sms_body_key = "Messages[%s][Body]" % str(exotel_idx)
 
@@ -1325,6 +1361,8 @@ def track_bluedart_orders(courier, cur):
                         except Exception as e:
                             logger.error("Couldn't update Magento for: " + str(orders_dict[current_awb][0])
                                          + "\nError: " + str(e.args))
+                    elif orders_dict[current_awb][3] == 'LOTUSBOTANICALS':
+                        lotus_botanicals_shipped(orders_dict[current_awb])
 
                 if orders_dict[current_awb][19]:
                     email = create_email(orders_dict[current_awb], edd.strftime('%-d %b') if edd else "",
@@ -1348,6 +1386,11 @@ def track_bluedart_orders(courier, cur):
             if orders_dict[current_awb][2] != new_status:
                 status_update_tuple = (new_status, status_type, status_detail, orders_dict[current_awb][0])
                 cur.execute(order_status_update_query, status_update_tuple)
+                if orders_dict[current_awb][3]=='LOTUSORGANICS':
+                    try:
+                        lotus_organics_update(orders_dict[current_awb], new_status)
+                    except Exception as e:
+                        pass
 
                 if new_status == 'PENDING' and status_code in bluedart_status_mapping[scan_group]:
                     try:  # NDR check text
@@ -1561,6 +1604,9 @@ def track_ecomxp_orders(courier, cur):
                             "Couldn't mark paid Shopify for: " + str(orders_dict[current_awb][0])
                             + "\nError: " + str(e.args))
 
+                elif orders_dict[current_awb][3] == 'LOTUSBOTANICALS':
+                    lotus_botanicals_delivered(orders_dict[current_awb])
+
                 sms_to_key = "Messages[%s][To]" % str(exotel_idx)
                 sms_body_key = "Messages[%s][Body]" % str(exotel_idx)
 
@@ -1604,6 +1650,8 @@ def track_ecomxp_orders(courier, cur):
                         except Exception as e:
                             logger.error("Couldn't update Magento for: " + str(orders_dict[current_awb][0])
                                          + "\nError: " + str(e.args))
+                    elif orders_dict[current_awb][3] == 'LOTUSBOTANICALS':
+                        lotus_botanicals_shipped(orders_dict[current_awb])
 
                 if orders_dict[current_awb][19]:
                     email = create_email(orders_dict[current_awb], edd.strftime('%-d %b') if edd else "",
@@ -1627,6 +1675,11 @@ def track_ecomxp_orders(courier, cur):
             if orders_dict[current_awb][2] != new_status:
                 status_update_tuple = (new_status, status_type, status_detail, orders_dict[current_awb][0])
                 cur.execute(order_status_update_query, status_update_tuple)
+                if orders_dict[current_awb][3]=='LOTUSORGANICS':
+                    try:
+                        lotus_organics_update(orders_dict[current_awb], new_status)
+                    except Exception as e:
+                        pass
 
                 if new_status == 'PENDING' and status_code in ecom_express_ndr_reasons:
                     try:  # NDR check text
@@ -2151,11 +2204,53 @@ def woocommerce_fulfillment(order):
     status_mark = order[27]
     if not status_mark:
         status_mark = "completed"
-    r = wcapi.post('orders/%s' % str(order[5]), data={"status": status_mark})
+    r = wcapi.post('orders/%s?consumer_key=%s&consumer_secret=%s' % (str(order[5]), order[7], order[8]), data={"status": status_mark})
     try:
         r = wcapi.post('orders/%s/shipment-trackings' % str(order[5]), data={"tracking_provider": "WareIQ", "tracking_number":order[1]})
     except Exception:
         pass
+
+
+def lotus_organics_update(order, status):
+    url = "https://lotus-organics.com/api/v1/order/wareiq/update"
+    headers = {"Content-Type": "application/json",
+               "x-api-key": "901192e41675e1b908d26a7e95c77ddc"}
+    data = {
+        "id": int(order[5]),
+        "ware_iq_id": order[0],
+        "awb_number": str(order[1]),
+        "status_information": status
+    }
+
+    req = requests.put(url, headers, data=data)
+
+
+def lotus_botanicals_shipped(order):
+    try:
+        url = "http://webapps.lotusbotanicals.com/orders/update/shipping/"+str(order[0])
+        headers = {"Content-Type": "application/json",
+                   "Authorization": "Ae76eH239jla*fgna#q6fG&5Khswq_kpaj$#1a"}
+        tracking_link = "http://webapp.wareiq.com/tracking/%s" % str(order[1])
+        data = {"tracking_service": "WareIQ",
+                "tracking_number": str(order[1]),
+                "url" : tracking_link}
+        req = requests.post(url, headers=headers, data=data)
+
+    except Exception as e:
+        logger.error("Couldn't update lotus for: " + str(order[0])
+                     + "\nError: " + str(e.args))
+
+
+def lotus_botanicals_delivered(order):
+    try:
+        url = "http://webapps.lotusbotanicals.com/orders/update/delivered/"+str(order[0])
+        headers = {"Content-Type": "application/json",
+                   "Authorization": "Ae76eH239jla*fgna#q6fG&5Khswq_kpaj$#1a"}
+        data = {}
+        req = requests.post(url, headers=headers, data=data)
+    except Exception as e:
+        logger.error("Couldn't update lotus for: " + str(order[0])
+                     + "\nError: " + str(e.args))
 
 
 def woocommerce_returned(order):

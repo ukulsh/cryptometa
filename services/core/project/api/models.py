@@ -260,6 +260,20 @@ class Orders(db.Model):
                       )
 
 
+class OrdersInvoice(db.Model):
+    __tablename__ = "orders_invoice"
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    order_id = db.Column(db.Integer, db.ForeignKey('orders.id'))
+    order = db.relationship("Orders", backref=db.backref("orders_invoice", uselist=True))
+    pickup_data_id = db.Column(db.Integer, db.ForeignKey('client_pickups.id'))
+    pickup_data = db.relationship("ClientPickups", backref=db.backref("orders_invoice", uselist=True))
+    invoice_no_text = db.Column(db.String, nullable=False)
+    invoice_no = db.Column(db.Integer, nullable=False)
+    cancelled = db.Column(db.BOOLEAN, nullable=True)
+    date_created = db.Column(db.DateTime, default=datetime.now)
+    date_updated = db.Column(db.DateTime, onupdate=datetime.now)
+
+
 class OrdersPayments(db.Model):
     __tablename__ = "orders_payments"
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
@@ -529,6 +543,8 @@ class ClientPickups(db.Model):
     active = db.Column(db.BOOLEAN, nullable=True, default=True)
     wareiq_location = db.Column(db.BOOLEAN, nullable=False, server_default='false', default=False)
     enable_sdd = db.Column(db.BOOLEAN, nullable=True, default=False)
+    invoice_prefix = db.Column(db.String, nullable=True)
+    invoice_last = db.Column(db.Integer, nullable=True, default=0)
     date_created = db.Column(db.DateTime, default=datetime.now)
     date_updated = db.Column(db.DateTime, onupdate=datetime.now)
 

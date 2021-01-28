@@ -4,12 +4,13 @@ import json
 import math
 import re
 from datetime import datetime, timedelta
+import pandas as pd
 from flask import Blueprint, request, jsonify, make_response
 from flask_restful import Api, Resource
 from psycopg2.extras import RealDictCursor
 from sqlalchemy import func, or_
 from project import db
-from project.api.models import Products, ProductQuantity, MultiVendor, InventoryUpdate
+from project.api.models import Products, ProductQuantity, MultiVendor, InventoryUpdate, MasterProducts
 from project.api.queries import select_product_list_query
 from project.api.utils import authenticate_restful
 from project.api.utilities.db_utils import DbConnection
@@ -21,6 +22,8 @@ conn = DbConnection.get_db_connection_instance()
 conn_2 = DbConnection.get_pincode_db_connection_instance()
 PRODUCTS_DOWNLOAD_HEADERS = ["S. No.", "Product Name", "Channel SKU", "Master SKU", "Price", "Total Quantity",
                              "Available Quantity", "Current Quantity", "Inline Quantity", "RTO Quantity", "Dimensions", "Weight"]
+
+PRODUCT_UPLOAD_HEADERS = ["Name", "SKU", "Price", "WeightKG", "LengthCM", "BreadthCM", "HeightCM", "HSN", "TaxRate"]
 
 
 @products_blueprint.route('/products/v1/details', methods=['GET'])
@@ -91,6 +94,116 @@ def get_products_details(resp):
 
     except Exception as e:
         return jsonify({"success": False}), 400
+
+
+@products_blueprint.route('/products/v1/upload_clients', methods=['GET'])
+@authenticate_restful
+def get_upload_clients(resp):
+    try:
+        cur = conn.cursor()
+        auth_data = resp.get('data')
+        if auth_data['user_group'] not in ('warehouse', 'super-admin', 'multi-vendor'):
+            return jsonify({"success": False, "msg": "Invalid user type"}), 400
+
+        client_list = list()
+        if auth_data['user_group']=='warehouse':
+            query_to_execute = """select distinct(client_prefix) from client_pickups aa
+                                     left join pickup_points bb on aa.pickup_id=bb.id
+                                     WHERE bb.warehouse_prefix='%s'
+                                     order by client_prefix;"""%auth_data['warehouse_prefix']
+
+            cur.execute(query_to_execute)
+            all_clients = cur.fetchall()
+            for client in all_clients:
+                client_list.append(client[0])
+        elif auth_data['user_group'] == 'multi-vendor':
+            all_vendors = None
+            if auth_data['user_group'] == 'multi-vendor':
+                all_vendors = db.session.query(MultiVendor).filter(
+                    MultiVendor.client_prefix == auth_data['client_prefix']).first()
+                all_vendors = all_vendors.vendor_list
+            client_list = all_vendors
+        else:
+            query_to_execute = """select distinct(client_prefix) from client_mapping
+                                     order by client_prefix"""
+            cur.execute(query_to_execute)
+            all_clients = cur.fetchall()
+            for client in all_clients:
+                client_list.append(client[0])
+
+        return jsonify({"success": True, "client_list": client_list}), 200
+
+    except Exception as e:
+        return jsonify({"success": False, "Error": str(e.args[0])}), 400
+
+
+@products_blueprint.route('/products/v1/upload', methods=['POST'])
+@authenticate_restful
+def upload_master_products(resp):
+    auth_data = resp.get('data')
+    if not auth_data:
+        return {"success": False, "msg": "Auth Failed"}, 404
+
+    myfile = request.files['myfile']
+
+    if auth_data['user_group'] == 'client':
+        client_prefix=auth_data['client_prefix']
+    else:
+        client_prefix=request.args.get('client_prefix')
+
+    data_xlsx = pd.read_csv(myfile)
+    failed_skus = list()
+
+    si = io.StringIO()
+    cw = csv.writer(si)
+    cw.writerow(PRODUCT_UPLOAD_HEADERS)
+
+    def process_row(row, failed_skus):
+        row_data = row[1]
+        try:
+            order_exists = db.session.query(MasterProducts).filter(MasterProducts.sku==str(row_data.SKU).rstrip(), MasterProducts.client_prefix==client_prefix).first()
+            if order_exists:
+                failed_skus.append(str(row_data.SKU).rstrip())
+                cw.writerow(list(row_data.values)+["SKU already exists."])
+                return
+
+            dimensions = None
+            if row_data.LengthCM==row_data.LengthCM and row_data.BreadthCM==row_data.BreadthCM and row_data.HeightCM==row_data.HeightCM:
+                dimensions  = {"length": float(row_data.LengthCM), "breadth": float(row_data.BreadthCM), "height": float(row_data.HeightCM)}
+            prod_obj = MasterProducts(name=str(row_data.Name),
+                                               sku=str(row_data.SKU),
+                                               product_image=str(row_data.ImageURL) if row_data.ImageURL == row_data.ImageURL else None,
+                                               client_prefix=client_prefix,
+                                               price=float(row_data.Price),
+                                               weight=float(row_data.WeightKG) if row_data.WeightKG==row_data.WeightKG else None,
+                                               dimensions=dimensions,
+                                               active=True,
+                                               hsn_code=str(row_data.HSN) if row_data.HSN==row_data.HSN else None,
+                                               tax_rate=float(row_data.TaxRate) if row_data.TaxRate==row_data.TaxRate else None,
+                                               date_created=datetime.utcnow()+timedelta(hours=5.5))
+
+            db.session.add(prod_obj)
+            db.session.commit()
+
+        except Exception as e:
+            failed_skus.append(str(row_data.SKU).rstrip())
+            cw.writerow(list(row_data.values) + [str(e.args[0])])
+            db.session.rollback()
+
+    for row in data_xlsx.iterrows():
+        process_row(row, failed_skus)
+
+    if failed_skus:
+        output = make_response(si.getvalue())
+        filename = "failed_uploads.csv"
+        output.headers["Content-Disposition"] = "attachment; filename=" + filename
+        output.headers["Content-type"] = "text/csv"
+        return output
+
+    return jsonify({
+        'status': 'success',
+        "failed_skus": failed_skus
+    }), 200
 
 
 @products_blueprint.route('/products/v1/get_filters', methods=['GET'])

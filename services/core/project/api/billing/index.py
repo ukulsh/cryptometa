@@ -442,6 +442,8 @@ class WalletRemittance(Resource):
                             st_filter = "AND status in %s"%str(tuple(filters['status']))
                         query_to_execute = query_to_execute.replace('__STATUS_FILTER__', st_filter)
 
+                query_to_execute = query_to_execute.replace('__STATUS_FILTER__', "")
+
                 if auth_data['user_group'] == 'client':
                     query_to_execute = query_to_execute.replace('__CLIENT_FILTER__', "AND client_prefix = '%s'"%client_prefix)
 

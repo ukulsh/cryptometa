@@ -34,13 +34,13 @@ def get_products_details(resp):
         if not sku:
             return jsonify({"success": False, "msg": "SKU not provided"}), 400
 
-        query_to_run = """SELECT name, sku as channel_sku, master_sku, weight, dimensions, price, bb.warehouse_prefix as warehouse, 
+        query_to_run = """SELECT name, null, sku as master_sku, weight, dimensions, price, bb.warehouse_prefix as warehouse, 
                             bb.approved_quantity as total_quantity, bb.current_quantity, bb.available_quantity, bb.inline_quantity, bb.rto_quantity
-                            from products aa
+                            from master_products aa
                             left join products_quantity bb on aa.id=bb.product_id
                             WHERE client_prefix='%s'
-                            and (sku='%s' or master_sku='%s')
-                            __WAREHOUSE_FILTER__"""%(client_prefix, sku, sku)
+                            and (sku='%s')
+                            __WAREHOUSE_FILTER__"""%(client_prefix, sku)
         warehouse = request.args.get('warehouse')
         if warehouse:
             query_to_run = query_to_run.replace('__WAREHOUSE_FILTER__', "and warehouse_prefix='%s'"%warehouse)
@@ -50,7 +50,6 @@ def get_products_details(resp):
                 return jsonify({"success": False, "msg": "SKU, warehouse combination not found"}), 400
 
             ret_obj = {"name":ret_tuple[0],
-                       "channel_sku": ret_tuple[1],
                        "master_sku": ret_tuple[2],
                        "weight": ret_tuple[3],
                        "dimensions": ret_tuple[4],
@@ -74,7 +73,6 @@ def get_products_details(resp):
 
         for ret_tuple in ret_tuple_all:
             ret_obj = {"name": ret_tuple[0],
-                       "channel_sku": ret_tuple[1],
                        "master_sku": ret_tuple[2],
                        "weight": ret_tuple[3],
                        "dimensions": ret_tuple[4],

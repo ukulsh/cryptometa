@@ -369,13 +369,14 @@ fetch_warehouse_to_pick_from = """with temp_table (warehouse, pincode) as (VALUE
                                     order by tat,zone_value
                                     limit 1"""
 
-select_product_list_query = """SELECT aa.id, aa.name as product_name, aa.product_image, aa.sku as channel_sku, aa.master_sku, price, bb.total_quantity,  bb.available_quantity,
-                             bb.current_quantity, bb.inline_quantity, bb.rto_quantity,dimensions, weight, null as channel_logo FROM products aa
+select_product_list_query = """SELECT aa.id, aa.name as product_name, aa.product_image, aa.master_sku as channel_sku, cc.sku as master_sku, cc.price, bb.total_quantity,  bb.available_quantity,
+                             bb.current_quantity, bb.inline_quantity, bb.rto_quantity,cc.dimensions, cc.weight, null as channel_logo FROM products aa
+                             LEFT JOIN master_products cc on aa.master_product_id=cc.id
                             __JOIN_TYPE__ (select product_id, sum(approved_quantity) as total_quantity, sum(available_quantity) as available_quantity,
                                        sum(current_quantity) as current_quantity, sum(inline_quantity) as inline_quantity, sum(rto_quantity) as rto_quantity
                                       FROM products_quantity __WAREHOUSE_FILTER__ 
                                       GROUP BY product_id) bb
-                            ON aa.id=bb.product_id
+                            ON cc.id=bb.product_id
                             WHERE (aa.name ilike '%__SEARCH_KEY__%' or aa.sku ilike '%__SEARCH_KEY__%' or aa.master_sku ilike '%__SEARCH_KEY__%')
                             __CLIENT_FILTER__
                             __MV_CLIENT_FILTER__

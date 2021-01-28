@@ -49,7 +49,7 @@ class MasterProducts(db.Model):
     client_prefix = db.Column(db.String, nullable=True)
     active = db.Column(db.BOOLEAN, nullable=True, default=True)
     subcategory_id = db.Column(db.Integer, db.ForeignKey('products_subcategories.id'))
-    subcategory = db.relationship("ProductsSubCategories", backref=db.backref("products"))
+    subcategory = db.relationship("ProductsSubCategories", backref=db.backref("master_products"))
     hsn_code = db.Column(db.String, nullable=True)
     tax_rate = db.Column(db.FLOAT, nullable=True)
     date_created = db.Column(db.DateTime, default=datetime.now)
@@ -59,8 +59,8 @@ class MasterProducts(db.Model):
 class ProductQuantity(db.Model):
     __tablename__ = "products_quantity"
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    product_id = db.Column(db.Integer, db.ForeignKey('products.id'))
-    product = db.relationship("Products", backref=db.backref("quantity", uselist=True))
+    product_id = db.Column(db.Integer, db.ForeignKey('master_products.id'))
+    product = db.relationship("MasterProducts", backref=db.backref("quantity", uselist=True))
     total_quantity = db.Column(db.Integer, nullable=False)
     approved_quantity = db.Column(db.Integer, nullable=True)
     available_quantity = db.Column(db.Integer, nullable=True)

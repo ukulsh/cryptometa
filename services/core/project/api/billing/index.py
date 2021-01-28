@@ -434,6 +434,16 @@ class WalletRemittance(Resource):
                         filter_date_start = filters['remittance_date'][0][0:19].replace('T',' ')
                         filter_date_end = filters['remittance_date'][1][0:19].replace('T',' ')
                         query_to_execute = query_to_execute.replace("__REMITTANCE_DATE_FILTER__", "AND remittance_date between '%s' and '%s'" %(filter_date_start, filter_date_end))
+
+                    if 'status' in filters:
+                        if len(filters['status']) == 1:
+                            st_filter = "AND status in ('%s')"%filters['status'][0]
+                        else:
+                            st_filter = "AND status in %s"%str(tuple(filters['status']))
+                        query_to_execute = query_to_execute.replace('__STATUS_FILTER__', st_filter)
+
+                query_to_execute = query_to_execute.replace('__STATUS_FILTER__', "")
+
                 if auth_data['user_group'] == 'client':
                     query_to_execute = query_to_execute.replace('__CLIENT_FILTER__', "AND client_prefix = '%s'"%client_prefix)
 
@@ -491,11 +501,31 @@ class WalletRemittance(Resource):
                     MultiVendor.client_prefix == auth_data['client_prefix']).first()
                 all_vendors = all_vendors.vendor_list
             filters = dict()
+            query_to_run_status = """SELECT status, count(*) FROM cod_remittance
+                                                    __CLIENT_FILTER__
+                                                    GROUP BY status
+                                                    ORDER BY status"""
+            if auth_data['user_group']=='multi-vendor':
+                query_to_run_status = query_to_run_status.replace("__CLIENT_FILTER__",
+                                                                  "WHERE client_prefix in %s" % str(tuple(all_vendors)))
+            elif auth_data['user_group']=='client':
+                query_to_run_status = query_to_run_status.replace("__CLIENT_FILTER__",
+                                                                  "WHERE client_prefix = '%s'" % auth_data['client_prefix'])
+            else:
+                query_to_run_status = query_to_run_status.replace("__CLIENT_FILTER__", "")
+
+            filters['status'] = list()
+            cur.execute(query_to_run_status)
+            status_data = cur.fetchall()
+            for status in status_data:
+                filters['status'].append({status[0]: status[1]})
+
             if auth_data['user_group'] in ('super-admin', 'multi-vendor'):
                 query_to_run_client = """SELECT client_prefix, count(*) FROM cod_remittance
                                         __CLIENT_FILTER__
                                         GROUP BY client_prefix
                                         ORDER BY client_prefix"""
+
                 if all_vendors:
                     query_to_run_client = query_to_run_client.replace("__CLIENT_FILTER__", "WHERE client_prefix in %s"%str(tuple(all_vendors)))
                 else:
@@ -504,6 +534,7 @@ class WalletRemittance(Resource):
                 cur.execute(query_to_run_client)
                 client_data = cur.fetchall()
                 filters['client'] = list()
+
                 for client in client_data:
                     if client[0]:
                         filters['client'].append({client[0]:client[1]})
@@ -933,7 +964,7 @@ def raise_dispute(resp):
 
         conn.commit()
 
-        response_object['status']="Success"
+        response_object['status'] = "Success"
         response_object['msg'] = "Dispute Raised"
 
         return jsonify(response_object), 200

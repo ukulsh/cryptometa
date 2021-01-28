@@ -430,6 +430,7 @@ select_orders_list_query = """select distinct on (aa.order_date, aa.id) aa.chann
                              __CLIENT_FILTER__
                              __MV_CLIENT_FILTER__
                              __SINCE_ID_FILTER__
+                             __MASTER_CHANNEL__
                              __EDD_FILTER__
                              order by order_date DESC, aa.id DESC
                              __PAGINATION__"""
@@ -516,6 +517,7 @@ select_wallet_remittance_query = """select * from
                                     __SEARCH_KEY_FILTER__
                                     __CLIENT_FILTER__
                                     __MV_CLIENT_FILTER__
+                                    __STATUS_FILTER__
                                     __REMITTANCE_DATE_FILTER__
                                     order by remittance_date DESC, remittance_total DESC
                                     __PAGINATION__"""

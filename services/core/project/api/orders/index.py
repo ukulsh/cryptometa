@@ -1,7 +1,7 @@
 import json, random, string
 import math
 import re
-from datetime import datetime, timedelta
+
 import boto3
 import csv
 import io
@@ -9,7 +9,7 @@ import numpy as np
 import os
 import pandas as pd
 import requests
-import time
+
 from flask_cors import cross_origin
 from flask import Blueprint, request, jsonify, make_response
 from flask_restful import Api, Resource
@@ -22,7 +22,7 @@ from sqlalchemy.dialects.postgresql import insert
 from project import db
 from project.api.models import NDRReasons, MultiVendor, NDRShipments, Orders, ClientPickups, MasterCouriers, \
     PickupPoints, Shipments, Products, ShippingAddress, OPAssociation, OrdersPayments, ClientMapping, WarehouseMapping, \
-    Manifests, OrderStatus, IVRHistory, OrderPickups, BillingAddress
+    Manifests, OrderStatus, IVRHistory, OrderPickups, BillingAddress, MasterChannels
 from project.api.queries import select_orders_list_query, available_warehouse_product_quantity, \
     fetch_warehouse_to_pick_from, select_pickups_list_query, get_selected_product_details
 from project.api.utils import authenticate_restful, fill_shiplabel_data_thermal, \
@@ -32,6 +32,7 @@ from project.api.utils import authenticate_restful, fill_shiplabel_data_thermal,
     tracking_get_ecomxp_details, check_client_order_ids
 from project.api.generate_manifest import fill_manifest_data
 from project.api.utilities.db_utils import DbConnection
+from .orders_utils import *
 
 orders_blueprint = Blueprint('orders', __name__)
 api = Api(orders_blueprint)
@@ -99,16 +100,7 @@ class OrderList(Resource):
                 query_to_run = query_to_run.replace("__SEARCH_KEY_FILTER_ON_CUSTOMER__", regex_check_customer_details)
                 query_to_run = query_to_run.replace("__SEARCH_KEY_ON_CUSTOMER_DETAILS__", search_key_on_customer_detail)
 
-            if auth_data['user_group'] == 'client':
-                query_to_run = query_to_run.replace("__CLIENT_FILTER__", "AND aa.client_prefix = '%s'" % client_prefix)
-            if auth_data['user_group'] == 'warehouse':
-                query_to_run = query_to_run.replace("__PICKUP_FILTER__", "AND ii.warehouse_prefix = '%s'" % auth_data.get('warehouse_prefix'))
-            if auth_data['user_group'] == 'multi-vendor':
-                cur.execute("SELECT vendor_list FROM multi_vendor WHERE client_prefix='%s';" % client_prefix)
-                vendor_list = cur.fetchone()[0]
-                query_to_run = query_to_run.replace("__MV_CLIENT_FILTER__", "AND aa.client_prefix in %s"%str(tuple(vendor_list)))
-            else:
-                query_to_run = query_to_run.replace("__MV_CLIENT_FILTER__", "")
+            query_to_run = user_group_filter(query_to_run,auth_data)
 
             if since_id:
                 query_to_run = query_to_run.replace("__SINCE_ID_FILTER__", "AND id>%s" % str(since_id))
@@ -129,180 +121,10 @@ class OrderList(Resource):
                 return {"success": False, "msg": "Invalid URL"}, 404
 
             if filters:
-                if 'status' in filters:
-                    if len(filters['status']) == 1:
-                        status_tuple = "('"+filters['status'][0]+"')"
-                    else:
-                        status_tuple = str(tuple(filters['status']))
-                    query_to_run = query_to_run.replace("__STATUS_FILTER__", "AND aa.status in %s"% status_tuple)
-
-                if 'courier' in filters:
-                    if len(filters['courier']) == 1:
-                        courier_tuple = "('"+filters['courier'][0]+"')"
-                    else:
-                        courier_tuple = str(tuple(filters['courier']))
-                    query_to_run = query_to_run.replace("__COURIER_FILTER__", "AND courier_name in %s" %courier_tuple)
-
-                if 'client' in filters and auth_data['user_group'] != 'client':
-                    if len(filters['client']) == 1:
-                        client_tuple = "('"+filters['client'][0]+"')"
-                    else:
-                        client_tuple = str(tuple(filters['client']))
-                    query_to_run = query_to_run.replace("__CLIENT_FILTER__", "AND aa.client_prefix in %s" % client_tuple)
-
-                if 'pickup_point' in filters:
-                    if len(filters['pickup_point']) == 1:
-                        pickup_tuple = "('"+filters['pickup_point'][0]+"')"
-                    else:
-                        pickup_tuple = str(tuple(filters['pickup_point']))
-                    query_to_run = query_to_run.replace("__PICKUP_FILTER__", "AND ii.warehouse_prefix in %s" % pickup_tuple)
-
-                if 'ndr_reason' in filters:
-                    if len(filters['ndr_reason']) == 1:
-                        reason_tuple = "('"+filters['ndr_reason'][0]+"')"
-                    else:
-                        reason_tuple = str(tuple(filters['ndr_reason']))
-                    query_to_run = query_to_run.replace("__NDR_REASON_FILTER__", "AND rr.reason in %s" % reason_tuple)
-
-                if 'ndr_type' in filters:
-                    if 'Action Requested' in filters['ndr_type'] and 'Action Required' in filters['ndr_type']:
-                        ndr_type_filter = ""
-                    elif 'Action Requested' in filters['ndr_type']:
-                        ndr_type_filter = "AND nn.ndr_verified in ('true', 'false')"
-                    else:
-                        ndr_type_filter = "AND nn.ndr_verified is null"
-
-                    query_to_run = query_to_run.replace("__NDR_TYPE_FILTER__", ndr_type_filter)
-
-                if 'order_type' in filters:
-                    if len(filters['order_type']) == 1:
-                        type_tuple = "('"+filters['order_type'][0]+"')"
-                    else:
-                        type_tuple = str(tuple(filters['order_type']))
-                    query_to_run = query_to_run.replace("__TYPE_FILTER__", "AND upper(payment_mode) in %s" %type_tuple)
-
-                if 'order_date' in filters:
-                    filter_date_start = filters['order_date'][0][0:19].replace('T',' ')
-                    filter_date_end = filters['order_date'][1][0:19].replace('T',' ')
-                    query_to_run = query_to_run.replace("__ORDER_DATE_FILTER__", "AND order_date between '%s' and '%s'" %(filter_date_start, filter_date_end))
-
-                if 'thirdwatch_score' in filters:
-                    score_from = float(filters['thirdwatch_score'][0])
-                    score_to = float(filters['thirdwatch_score'][1])
-                    query_to_run = query_to_run.replace("__THIRDWATCH_SCORE_FILTER__", "AND uu.score between %s and %s" %(score_from, score_to))
-
-                if 'thirdwatch_flag' in filters:
-                    if len(filters['thirdwatch_flag']) == 1:
-                        flag_tuple = "('"+filters['thirdwatch_flag'][0]+"')"
-                    else:
-                        flag_tuple = str(tuple(filters['thirdwatch_flag']))
-                    query_to_run = query_to_run.replace("__TYPE_FILTER__", "AND lower(uu.flag) in %s" %flag_tuple)
-
-                if 'pickup_time' in filters:
-                    filter_date_start = filters['pickup_time'][0][0:19].replace('T',' ')
-                    filter_date_end = filters['pickup_time'][1][0:19].replace('T',' ')
-                    query_to_run = query_to_run.replace("__PICKUP_TIME_FILTER__", "AND pickup_time between '%s' and '%s'" %(filter_date_start, filter_date_end))
-
-                if 'manifest_time' in filters:
-                    filter_date_start = filters['manifest_time'][0][0:19].replace('T',' ')
-                    filter_date_end = filters['manifest_time'][1][0:19].replace('T',' ')
-                    query_to_run = query_to_run.replace("__MANIFEST_DATE_FILTER__", "AND manifest_time between '%s' and '%s'" %(filter_date_start, filter_date_end))
-
-                if 'delivered_time' in filters:
-                    filter_date_start = filters['delivered_time'][0][0:19].replace('T',' ')
-                    filter_date_end = filters['delivered_time'][1][0:19].replace('T',' ')
-                    query_to_run = query_to_run.replace("__PICKUP_TIME_FILTER__", "AND delivered_time between '%s' and '%s'" %(filter_date_start, filter_date_end))
-
-                if 'edd' in filters:
-                    filter_date_start = filters['edd'][0][0:19].replace('T',' ')
-                    filter_date_end = filters['edd'][1][0:19].replace('T',' ')
-                    query_to_run = query_to_run.replace("__EDD_FILTER__", "AND bb.edd between '%s' and '%s'" %(filter_date_start, filter_date_end))
+                query_to_run = filter_query(filters, query_to_run, auth_data)
 
             if download_flag:
-                if not [i for i in ['order_date', 'pickup_time', 'manifest_time', 'delivered_time'] if i in filters]:
-                    date_month_ago = datetime.utcnow() + timedelta(hours=5.5) - timedelta(days=31)
-                    date_month_ago = date_month_ago.strftime("%Y-%m-%d %H:%M:%S")
-                    query_to_run = query_to_run.replace('__ORDER_DATE_FILTER__', "AND order_date > '%s' "%date_month_ago)
-                    query_to_run = query_to_run.replace('__PAGINATION__', "")
-                query_to_run = re.sub(r"""__.+?__""", "", query_to_run)
-                cur.execute(query_to_run)
-                orders_qs_data = cur.fetchall()
-                order_id_data = ','.join([str(it[1]) for it in orders_qs_data])
-                product_detail_by_order_id = {}
-                if order_id_data:
-                    update_product_details_query = get_selected_product_details.replace('__FILTERED_ORDER_ID__',
-                                                                                        order_id_data)
-                    cur.execute(update_product_details_query)
-                    product_detail_data = cur.fetchall()
-                    for it in product_detail_data:
-                        product_detail_by_order_id[it[0]] = [it[1], it[2], it[3], it[4], it[5]]
-                si = io.StringIO()
-                cw = csv.writer(si)
-                cw.writerow(ORDERS_DOWNLOAD_HEADERS)
-                for order in orders_qs_data:
-                    try:
-                        product_data = product_detail_by_order_id[order[1]] if order[1] in product_detail_by_order_id else []
-                        if product_data and product_data[0]:
-                            for idx, val in enumerate(product_data[0]):
-                                new_row = list()
-                                new_row.append(str(order[0]))
-                                new_row.append(str(order[13]))
-                                new_row.append(str(order[15]))
-                                new_row.append(str(order[14]))
-                                new_row.append(order[2].strftime("%Y-%m-%d %H:%M:%S") if order[2] else "N/A")
-                                new_row.append(str(order[7]))
-                                new_row.append(str(order[9]) if not hide_weights else "")
-                                new_row.append(str(order[5]))
-                                new_row.append(order[8].strftime("%Y-%m-%d") if order[8] else "N/A")
-                                new_row.append(str(order[3]))
-                                new_row.append(str(order[16]))
-                                new_row.append(str(order[17]))
-                                new_row.append(str(order[18]))
-                                new_row.append(str(order[19]))
-                                new_row.append(str(order[20]))
-                                new_row.append(str(order[21]))
-                                new_row.append(order[26])
-                                new_row.append(str(val))
-                                new_row.append(str(product_data[1][idx]))
-                                new_row.append(str(product_data[2][idx]))
-                                new_row.append(str(order[24]))
-                                new_row.append(order[25])
-                                new_row.append(order[34].strftime("%Y-%m-%d %H:%M:%S") if order[34] else "N/A")
-                                new_row.append(order[23].strftime("%Y-%m-%d %H:%M:%S") if order[23] else "N/A")
-                                new_row.append(order[22].strftime("%Y-%m-%d %H:%M:%S") if order[22] else "N/A")
-                                if order[27] and order[28] is not None:
-                                    new_row.append("Confirmed" if order[28] else "Cancelled")
-                                    new_row.append(str(order[29]))
-                                else:
-                                    new_row.append("N/A")
-                                    new_row.append("N/A")
-                                if order[30] and order[31] is not None:
-                                    new_row.append("Cancelled" if order[31] else "Re-attempt")
-                                    new_row.append(str(order[32]))
-                                else:
-                                    new_row.append("N/A")
-                                    new_row.append("N/A")
-                                new_row.append(order[39].strftime("%Y-%m-%d %H:%M:%S") if order[39] else "N/A")
-                                not_shipped = None
-                                if not product_data[4][idx]:
-                                    not_shipped = "Weight/dimensions not entered for product(s)"
-                                elif order[12] == "Pincode not serviceable":
-                                    not_shipped = "Pincode not serviceable"
-                                elif not order[26]:
-                                    not_shipped = "Pickup point not assigned"
-                                if not_shipped:
-                                    new_row.append(not_shipped)
-                                if auth_data.get('user_group') == 'super-admin':
-                                    new_row.append(order[38])
-                                cw.writerow(new_row)
-                    except Exception as e:
-                        pass
-
-                output = make_response(si.getvalue())
-                filename = str(client_prefix)+"_EXPORT.csv"
-                output.headers["Content-Disposition"] = "attachment; filename="+filename
-                output.headers["Content-type"] = "text/csv"
-                return output
+                return download_flag_func(query_to_run, get_selected_product_details, auth_data, filters, hide_weights)
 
             count_query = "select count(*) from ("+query_to_run.replace('__PAGINATION__', "") +") xx"
             count_query = re.sub(r"""__.+?__""", "", count_query)
@@ -428,6 +250,7 @@ api.add_resource(OrderList, '/orders/<type>')
 @orders_blueprint.route('/orders/get_filters', methods=['GET'])
 @authenticate_restful
 def get_orders_filters(resp):
+
     response = {"filters":{}, "success": True}
     auth_data = resp.get('data')
     current_tab = request.args.get('tab')
@@ -498,6 +321,9 @@ def get_orders_filters(resp):
         .join(ClientPickups,Orders.pickup_data_id == ClientPickups.id).join(PickupPoints, PickupPoints.id == ClientPickups.pickup_id).group_by(MasterCouriers.courier_name)
     pickup_point_qs = db.session.query(PickupPoints.warehouse_prefix, func.count(PickupPoints.warehouse_prefix)) \
         .join(ClientPickups, PickupPoints.id == ClientPickups.pickup_id).join(Orders, ClientPickups.id == Orders.pickup_data_id).group_by(PickupPoints.warehouse_prefix)
+    channel_qs = db.session.query(MasterChannels.channel_name, func.count(MasterChannels.channel_name))\
+        .join(Orders, Orders.master_channel_id==MasterChannels.id).group_by(MasterChannels.channel_name)
+
 
     shipped_filters = ['NEW', 'READY TO SHIP', 'PICKUP REQUESTED','NOT PICKED','CANCELED', 'CLOSED', 'PENDING PAYMENT','NEW - FAILED', 'LOST', 'NOT SHIPPED']
     if auth_data['user_group'] == 'super-admin':
@@ -513,15 +339,18 @@ def get_orders_filters(resp):
         status_qs=status_qs.filter(Orders.client_prefix == client_prefix)
         courier_qs = courier_qs.filter(Orders.client_prefix == client_prefix)
         pickup_point_qs = pickup_point_qs.filter(Orders.client_prefix == client_prefix)
+        channel_qs = channel_qs.filter(Orders.client_prefix == client_prefix)
     if all_vendors:
         status_qs = status_qs.filter(Orders.client_prefix.in_(all_vendors))
         courier_qs = courier_qs.filter(Orders.client_prefix.in_(all_vendors))
         pickup_point_qs = pickup_point_qs.filter(Orders.client_prefix.in_(all_vendors))
+        channel_qs = channel_qs.filter(Orders.client_prefix.in_(all_vendors))
     if auth_data['user_group'] == 'warehouse':
         status_qs = status_qs.filter(PickupPoints.warehouse_prefix == warehouse_prefix)
         courier_qs = courier_qs.filter(PickupPoints.warehouse_prefix == warehouse_prefix)
         pickup_point_qs = pickup_point_qs.filter(PickupPoints.warehouse_prefix == warehouse_prefix)
-    if current_tab=="shipped":
+
+    if current_tab == "shipped":
         status_qs = status_qs.filter(not_(Orders.status.in_(shipped_filters)))
         courier_qs = courier_qs.filter(not_(Orders.status.in_(shipped_filters)))
         pickup_point_qs = pickup_point_qs.filter(not_(Orders.status.in_(shipped_filters)))
@@ -551,6 +380,8 @@ def get_orders_filters(resp):
     response['filters']['courier'] = [{x[0]:x[1]} for x in courier_qs]
     pickup_point_qs = pickup_point_qs.order_by(PickupPoints.warehouse_prefix).all()
     response['filters']['pickup_point'] = [{x[0]: x[1]} for x in pickup_point_qs]
+    channel_qs = channel_qs.order_by(MasterChannels.channel_name).all()
+    response['filters']['channels'] = [{x[0]: x[1]} for x in channel_qs]
     if client_qs:
         if all_vendors:
             client_qs = client_qs.filter(Orders.client_prefix.in_(all_vendors))

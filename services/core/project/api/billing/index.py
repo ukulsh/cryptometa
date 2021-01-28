@@ -510,14 +510,31 @@ class WalletRemittance(Resource):
                     MultiVendor.client_prefix == auth_data['client_prefix']).first()
                 all_vendors = all_vendors.vendor_list
             filters = dict()
+            query_to_run_status = """SELECT status, count(*) FROM cod_remittance
+                                                    __CLIENT_FILTER__
+                                                    GROUP BY status
+                                                    ORDER BY status"""
+            if auth_data['user_group']=='multi-vendor':
+                query_to_run_status = query_to_run_status.replace("__CLIENT_FILTER__",
+                                                                  "WHERE client_prefix in %s" % str(tuple(all_vendors)))
+            elif auth_data['user_group']=='client':
+                query_to_run_status = query_to_run_status.replace("__CLIENT_FILTER__",
+                                                                  "WHERE client_prefix = '%s'" % auth_data['client_prefix'])
+            else:
+                query_to_run_status = query_to_run_status.replace("__CLIENT_FILTER__", "")
+
+            filters['status'] = list()
+            cur.execute(query_to_run_status)
+            status_data = cur.fetchall()
+            for status in status_data:
+                filters['status'].append({status[0]: status[1]})
+
             if auth_data['user_group'] in ('super-admin', 'multi-vendor'):
                 query_to_run_client = """SELECT client_prefix, count(*) FROM cod_remittance
                                         __CLIENT_FILTER__
                                         GROUP BY client_prefix
                                         ORDER BY client_prefix"""
-                query_to_run_status = """SELECT status, count(*) FROM cod_remittance
-                                        GROUP BY status
-                                        ORDER BY status"""
+
                 if all_vendors:
                     query_to_run_client = query_to_run_client.replace("__CLIENT_FILTER__", "WHERE client_prefix in %s"%str(tuple(all_vendors)))
                 else:
@@ -526,14 +543,10 @@ class WalletRemittance(Resource):
                 cur.execute(query_to_run_client)
                 client_data = cur.fetchall()
                 filters['client'] = list()
-                filters['status'] = list()
-                cur.execute(query_to_run_status)
-                status_data = cur.fetchall()
+
                 for client in client_data:
                     if client[0]:
                         filters['client'].append({client[0]:client[1]})
-                for status in status_data:
-                    filters['status'].append({status[0]:status[1]})
 
             return {"success": True, "filters": filters}, 200
 

@@ -105,11 +105,11 @@ def filter_query(filters, query_to_run, auth_data):
         query_to_run = query_to_run.replace("__PICKUP_TIME_FILTER__", "AND delivered_time between '%s' and '%s'" % (
         filter_date_start, filter_date_end))
 
-    if 'channel' in filters:
-        if len(filters['channel']) == 1:
-            channel_tuple = "('" + filters['channel'][0] + "')"
+    if 'channels' in filters:
+        if len(filters['channels']) == 1:
+            channel_tuple = "('" + filters['channels'][0] + "')"
         else:
-            channel_tuple = str(tuple(filters['channel']))
+            channel_tuple = str(tuple(filters['channels']))
         query_to_run = query_to_run.replace("__MASTER_CHANNEL__", "AND vv.channel_name in %s" % channel_tuple)
 
     if 'edd' in filters:

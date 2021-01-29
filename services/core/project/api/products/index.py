@@ -563,10 +563,18 @@ class UpdateInventory(Resource):
                 return {"success": True, "sku_list": cur.fetchone()[0]}, 200
 
             else:
-                query_to_run = """select array_agg(warehouse_prefix) from
-                                    (select distinct(warehouse_prefix) from products_quantity WHERE product_id in
-                                    (select id from products where master_sku='%s') 
-                                    ORDER BY warehouse_prefix) ss"""%(str(sku))
+                if auth_data['user_group']=='super-admin':
+                    cur.execute("SELECT client_prefix from products where master_sku='%s'"%sku)
+                    client_prefix = cur.fetchone()
+                    client_prefix = client_prefix[0]
+                elif auth_data['user_group']=='client':
+                    client_prefix = auth_data['client_prefix']
+                else:
+                    return {"success": True, "warehouse_list": None, "sku": sku}, 200
+
+                query_to_run = """select array_agg(warehouse_prefix) from client_pickups aa
+                left join pickup_points bb on aa.pickup_id=bb.id
+                where client_prefix='%s'"""%(client_prefix)
 
                 cur.execute(query_to_run)
 

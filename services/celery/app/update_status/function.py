@@ -2212,7 +2212,7 @@ def woocommerce_fulfillment(order):
 
 
 def lotus_organics_update(order, status):
-    url = "https://lotus-organics.com/api/v1/order/wareiq/update"
+    url = "https://www.lotus-organics.com/api/v1/order/wareiq/update"
     headers = {"Content-Type": "application/json",
                "x-api-key": "901192e41675e1b908d26a7e95c77ddc"}
     data = {
@@ -2222,7 +2222,7 @@ def lotus_organics_update(order, status):
         "status_information": status
     }
 
-    req = requests.put(url, headers, data=data)
+    req = requests.put(url, headers=headers, data=data)
 
 
 def lotus_botanicals_shipped(order):

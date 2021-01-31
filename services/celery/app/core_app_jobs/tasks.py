@@ -2,6 +2,7 @@ from .contants import *
 from .queries import *
 from .utils import *
 from datetime import datetime
+import json
 from woocommerce import API
 from math import ceil
 from app.db_utils import DbConnection
@@ -190,6 +191,29 @@ def sync_all_products_with_channel(client_prefix):
 
                     count = len(all_prods)
                     page += 1
+                    conn.commit()
+
+            elif channel[3] == "EasyEcom":
+                create_fulfillment_url = "%s/Products/getProductData?api_token=%s" % (channel[0], channel[1])
+                qs = requests.get(create_fulfillment_url)
+                for key, prod in qs.json()['data'].items():
+                    cur.execute("""select id from products where sku='%s' and client_prefix='%s';"""%(str(prod['productId']), client_prefix))
+                    prod_obj_x = cur.fetchone()
+                    prod_name = prod['name']
+                    dimensions = None
+                    weight = None
+                    if prod['length'] and prod['width'] and prod['height']:
+                        dimensions = {"length": float(prod['length']), "breadth": float(prod['width']), "height": float(prod['height'])}
+                    if prod['weight']:
+                        weight = float(prod['weight'])/1000
+                    if prod_obj_x:
+                        cur.execute("""UPDATE products SET master_sku=%s, price=%s, name=%s, weight=%s, dimensions=%s WHERE id=%s""",
+                                    (prod['sku'], float(prod['mrp']), prod_name, weight, json.dumps(dimensions), prod_obj_x[0]))
+                    else:
+                        cur.execute("""INSERT INTO products (name, sku, active, channel_id, date_created, price, master_sku, weight, dimensions, client_prefix) VALUES 
+                                        (%s,%s,%s,%s,%s,%s,%s,%s);""", (prod_name, str(prod['productId']), True, channel[4], datetime.now(),
+                                                                     float(prod['mrp']), prod['sku'], weight, json.dumps(dimensions), client_prefix))
+
                     conn.commit()
 
         except Exception as e:

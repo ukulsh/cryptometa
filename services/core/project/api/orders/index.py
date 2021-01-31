@@ -787,9 +787,6 @@ def request_pickups(resp):
         if not auth_data:
             return jsonify({"success": False, "msg": "Auth Failed"}), 401
 
-        if auth_data['user_group'] != 'client':
-            return jsonify({"success": False, "msg": "Not allowed"}), 400
-
         order_ids = data['order_ids']
         orders_qs = db.session.query(Orders, Shipments).outerjoin(Shipments, Orders.id==Shipments.order_id).filter(Orders.id.in_(order_ids),
                                                     Orders.shipments!=None).all() #todo: client/wh filters here

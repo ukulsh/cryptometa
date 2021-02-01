@@ -324,7 +324,6 @@ def get_orders_filters(resp):
     channel_qs = db.session.query(MasterChannels.channel_name, func.count(MasterChannels.channel_name))\
         .join(Orders, Orders.master_channel_id==MasterChannels.id).group_by(MasterChannels.channel_name)
 
-
     shipped_filters = ['NEW', 'READY TO SHIP', 'PICKUP REQUESTED','NOT PICKED','CANCELED', 'CLOSED', 'PENDING PAYMENT','NEW - FAILED', 'LOST', 'NOT SHIPPED']
     if auth_data['user_group'] == 'super-admin':
         client_qs = db.session.query(Orders.client_prefix, func.count(Orders.client_prefix))
@@ -354,24 +353,28 @@ def get_orders_filters(resp):
         status_qs = status_qs.filter(not_(Orders.status.in_(shipped_filters)))
         courier_qs = courier_qs.filter(not_(Orders.status.in_(shipped_filters)))
         pickup_point_qs = pickup_point_qs.filter(not_(Orders.status.in_(shipped_filters)))
+        channel_qs = channel_qs.filter(not_(Orders.status.in_(shipped_filters)))
         if client_qs:
             client_qs = client_qs.filter(not_(Orders.status.in_(shipped_filters)))
     if current_tab=="return":
         status_qs = status_qs.filter(or_(Orders.status_type == 'RT', and_(Orders.status_type == 'DL', Orders.status == "RTO")))
         courier_qs = courier_qs.filter(or_(Orders.status_type == 'RT', and_(Orders.status_type == 'DL', Orders.status == "RTO")))
         pickup_point_qs = pickup_point_qs.filter(or_(Orders.status_type == 'RT', and_(Orders.status_type == 'DL', Orders.status == "RTO")))
+        channel_qs = channel_qs.filter(or_(Orders.status_type == 'RT', and_(Orders.status_type == 'DL', Orders.status == "RTO")))
         if client_qs:
             client_qs = client_qs.filter(or_(Orders.status_type == 'RT', and_(Orders.status_type == 'DL', Orders.status == "RTO")))
     if current_tab=="new":
         status_qs = status_qs.filter(Orders.status=="NEW")
         courier_qs = courier_qs.filter(Orders.status=="NEW")
         pickup_point_qs = pickup_point_qs.filter(Orders.status=="NEW")
+        channel_qs = channel_qs.filter(Orders.status=="NEW")
         if client_qs:
             client_qs = client_qs.filter(Orders.status=="NEW")
     if current_tab=="ready_to_ship":
         status_qs = status_qs.filter(Orders.status.in_(["READY TO SHIP","PICKUP REQUESTED"]))
         courier_qs = courier_qs.filter(Orders.status.in_(["READY TO SHIP","PICKUP REQUESTED"]))
         pickup_point_qs = pickup_point_qs.filter(Orders.status.in_(["READY TO SHIP","PICKUP REQUESTED"]))
+        channel_qs = channel_qs.filter(Orders.status.in_(["READY TO SHIP","PICKUP REQUESTED"]))
         if client_qs:
             client_qs = client_qs.filter(Orders.status.in_(["READY TO SHIP","PICKUP REQUESTED"]))
     status_qs = status_qs.order_by(Orders.status).all()
@@ -452,7 +455,8 @@ class AddOrder(Resource):
                            client_prefix=auth_data.get('client_prefix'),
                            pickup_data=pickup_data,
                            chargeable_weight=chargeable_weight,
-                           order_id_channel_unique=str(data.get('order_id')).rstrip()
+                           order_id_channel_unique=str(data.get('order_id')).rstrip(),
+                           master_channel_id=9
                            )
 
             if data.get('products'):
@@ -613,7 +617,8 @@ def upload_orders(resp):
                                delivery_address=delivery_address,
                                status="NEW",
                                client_prefix=auth_data.get('client_prefix'),
-                               pickup_data=pickup_data
+                               pickup_data=pickup_data,
+                               master_channel_id=9
                                )
 
             sku = list()
@@ -781,9 +786,6 @@ def request_pickups(resp):
         auth_data = resp.get('data')
         if not auth_data:
             return jsonify({"success": False, "msg": "Auth Failed"}), 401
-
-        if auth_data['user_group'] != 'client':
-            return jsonify({"success": False, "msg": "Not allowed"}), 400
 
         order_ids = data['order_ids']
         orders_qs = db.session.query(Orders, Shipments).outerjoin(Shipments, Orders.id==Shipments.order_id).filter(Orders.id.in_(order_ids),

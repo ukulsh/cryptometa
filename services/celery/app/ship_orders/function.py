@@ -2115,6 +2115,20 @@ def ship_selfshp_orders(cur, courier, courier_name, order_ids, order_id_tuple, b
             if pickup_point[0] == 143 and order[18] not in kama_blr_sdd_pincodes:
                 continue
 
+            dimensions = order[33][0]
+            dimensions['length'] = dimensions['length'] * order[35][0]
+            weight = order[34][0] * order[35][0]
+            volumetric_weight = (dimensions['length'] * dimensions['breadth'] * dimensions['height']) / 5000
+            for idx, dim in enumerate(order[33]):
+                if idx == 0:
+                    continue
+                dim['length'] += dim['length'] * (order[35][idx])
+                volumetric_weight += (dim['length'] * dim['breadth'] * dim['height']) / 5000
+                weight += order[34][idx] * (order[35][idx])
+            if dimensions['length'] and dimensions['breadth']:
+                dimensions['height'] = round(
+                    (volumetric_weight * 5000) / (dimensions['length'] * dimensions['breadth']))
+
             insert_shipments_data_query = """INSERT INTO SHIPMENTS (awb, status, order_id, pickup_id, courier_id, 
                                                                             dimensions, volumetric_weight, weight, remark, return_point_id, routing_code, 
                                                                             channel_fulfillment_id, tracking_link)
@@ -2125,7 +2139,7 @@ def ship_selfshp_orders(cur, courier, courier_name, order_ids, order_id_tuple, b
             order_status_change_ids.append(order[0])
             data_tuple = tuple([(
                 str(order[0]), "Success", order[0], pickup_point[1],
-                courier[9], None, None, None, "", pickup_point[2],
+                courier[9], json.dumps(dimensions), volumetric_weight, weight, "", pickup_point[2],
                 "", None, None)])
 
             cur.execute(insert_shipments_data_query, data_tuple)

@@ -72,13 +72,26 @@ def fetch_shopify_orders(cur, channel):
         updated_after = datetime.utcnow() - timedelta(days=30)
         updated_after = updated_after.strftime("%Y-%m-%dT%X")
 
-    shopify_orders_url = "https://%s:%s@%s/admin/api/2020-07/orders.json?updated_at_min=%s&limit=250&fulfillment_status=unfulfilled" % (
-        channel[3], channel[4], channel[5], updated_after)
-    data = requests.get(shopify_orders_url).json()
     last_synced_time = datetime.utcnow() + timedelta(hours=5.5)
-    if 'orders' not in data:
-        return None
-    for order in data['orders']:
+    data = list()
+    count = 250
+    next_url = None
+    while count == 250 or next_url:
+        shopify_orders_url = "https://%s:%s@%s/admin/api/2020-07/orders.json?updated_at_min=%s&limit=250&fulfillment_status=unfulfilled" % (
+            channel[3], channel[4], channel[5], updated_after)
+        if next_url:
+            shopify_orders_url = "https://"+channel[3]+":"+channel[4]+"@"+next_url.split("https://")[1]
+        req = requests.get(shopify_orders_url)
+        if 'orders' not in req.json():
+            return None
+        next_url = None
+        try:
+            next_url = req.links['next']['url']
+        except Exception:
+            pass
+        data += req.json()['orders']
+        count = len(req.json()['orders'])
+    for order in data:
         try:
             cur.execute("SELECT id from orders where order_id_channel_unique='%s' and client_prefix='%s'" % (
             str(order['id']), channel[1]))
@@ -128,19 +141,20 @@ def fetch_shopify_orders(cur, channel):
                               order['shipping_address']['country_code']
                               )
 
-            billing_address_1 = order['billing_address']['company'] + " " + order['billing_address']['address1'] if order['billing_address']['company'] else order['billing_address']['address1']
-            billing_tuple = (order['billing_address']['first_name'],
-                              order['billing_address']['last_name'],
+            billing_address_key = "billing_address" if "billing_address" in order else "shipping_address"
+            billing_address_1 = order[billing_address_key]['company'] + " " + order[billing_address_key]['address1'] if order[billing_address_key]['company'] else order[billing_address_key]['address1']
+            billing_tuple = (order[billing_address_key]['first_name'],
+                              order[billing_address_key]['last_name'],
                               billing_address_1,
-                              order['billing_address']['address2'],
-                              order['billing_address']['city'],
-                              order['billing_address']['zip'],
-                              order['billing_address']['province'],
-                              order['billing_address']['country'],
-                              order['billing_address']['phone'],
-                              order['billing_address']['latitude'],
-                              order['billing_address']['longitude'],
-                              order['billing_address']['country_code']
+                              order[billing_address_key]['address2'],
+                              order[billing_address_key]['city'],
+                              order[billing_address_key]['zip'],
+                              order[billing_address_key]['province'],
+                              order[billing_address_key]['country'],
+                              order[billing_address_key]['phone'],
+                              order[billing_address_key]['latitude'],
+                              order[billing_address_key]['longitude'],
+                              order[billing_address_key]['country_code']
                               )
 
             cur.execute(insert_shipping_address_query, shipping_tuple)
@@ -252,8 +266,8 @@ def fetch_shopify_orders(cur, channel):
 
         conn.commit()
 
-    if data['orders']:
-        last_sync_tuple = (str(data['orders'][-1]['id']), last_synced_time, channel[0])
+    if data:
+        last_sync_tuple = (str(data[0]['id']), last_synced_time, channel[0])
         cur.execute(update_last_fetched_data_query, last_sync_tuple)
 
     conn.commit()

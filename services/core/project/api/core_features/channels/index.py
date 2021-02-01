@@ -102,7 +102,7 @@ def get_channel(resp):
         channels_data = MasterChannels.query.order_by(MasterChannels.integrated.desc()).all()
         response_object['data'] = [channel.to_json() for channel in channels_data]
         for channel in response_object['data']:
-            if channel['channel_name'] in ('Bikayi','EasyEcom'):
+            if channel['channel_name'] in ('Bikayi','EasyEcom','Manual'):
                 response_object['data'].remove(channel)
         response_object['status'] = 'success'
         return jsonify(response_object), 200

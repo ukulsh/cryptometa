@@ -204,27 +204,8 @@ def track_delhivery_orders(courier, cur):
             customer_phone = "0" + customer_phone[-10:]
 
             if new_status == 'DELIVERED':
-                if orders_dict[current_awb][30] != False:
-                    if orders_dict[current_awb][14] == 6:  # Magento complete
-                        try:
-                            magento_complete_order(orders_dict[current_awb])
-                        except Exception as e:
-                            logger.error(
-                                "Couldn't complete Magento for: " + str(orders_dict[current_awb][0])
-                                + "\nError: " + str(e.args))
 
-                if orders_dict[current_awb][28] != False and str(
-                        orders_dict[current_awb][13]).lower() == 'cod' and orders_dict[current_awb][
-                    14] == 1:  # mark paid on shopify
-                    try:
-                        shopify_markpaid(orders_dict[current_awb])
-                    except Exception as e:
-                        logger.error(
-                            "Couldn't mark paid Shopify for: " + str(orders_dict[current_awb][0])
-                            + "\nError: " + str(e.args))
-
-                elif orders_dict[current_awb][3] == 'LOTUSBOTANICALS':
-                    lotus_botanicals_delivered(orders_dict[current_awb])
+                update_delivered_on_channels(orders_dict[current_awb])
 
                 sms_to_key = "Messages[%s][To]" % str(exotel_idx)
                 sms_body_key = "Messages[%s][Body]" % str(exotel_idx)
@@ -237,55 +218,8 @@ def track_delhivery_orders(courier, cur):
 
                 exotel_idx += 1
 
-                """
-                if orders_dict[current_awb][13] and str(orders_dict[current_awb][13]).lower() == 'prepaid':
-                    try:  ## Delivery check text
-                        sms_to_key, sms_body_key, customer_phone, sms_body_key_data = verification_text(
-                            orders_dict[current_awb], exotel_idx, cur, cur_2)
-                        exotel_sms_data[sms_to_key] = customer_phone
-                        exotel_sms_data[sms_body_key] = sms_body_key_data
-                        exotel_idx += 1
-                    except Exception as e:
-                        logger.error(
-                            "Delivery confirmation not sent. Order id: " + str(orders_dict[current_awb][0]))
-                """
             if new_status == 'RTO':
-                if orders_dict[current_awb][32] != False:
-                    if orders_dict[current_awb][14] == 6:  # Magento return
-                        try:
-                            magento_return_order(orders_dict[current_awb])
-                        except Exception as e:
-                            logger.error("Couldn't return Magento for: " + str(orders_dict[current_awb][0])
-                                         + "\nError: " + str(e.args))
-                    elif orders_dict[current_awb][14] == 5:  # Woocommerce Cancelled
-                        try:
-                            woocommerce_returned(orders_dict[current_awb])
-                        except Exception as e:
-                            logger.error(
-                                "Couldn't cancel on woocommerce for: " + str(orders_dict[current_awb][0])
-                                + "\nError: " + str(e.args))
-
-                    elif orders_dict[current_awb][14] == 1:  # Shopify Cancelled
-                        try:
-                            shopify_cancel(orders_dict[current_awb])
-                        except Exception as e:
-                            logger.error(
-                                "Couldn't cancel on Shopify for: " + str(orders_dict[current_awb][0])
-                                + "\nError: " + str(e.args))
-
-            """
-                if orders_dict[current_awb][6] and orders_dict[current_awb][5]:
-                    complete_fulfillment_url = "https://%s:%s@%s/admin/api/2019-10/orders/%s/fulfillments/%s/complete.json" % (
-                        orders_dict[current_awb][7], orders_dict[current_awb][8],
-                        orders_dict[current_awb][9], orders_dict[current_awb][5], orders_dict[current_awb][6])
-                    ful_header = {'Content-Type': 'application/json'}
-                    fulfil_data = {}
-                    try:
-                        req_ful = requests.post(complete_fulfillment_url, data=json.dumps(fulfil_data),
-                                                headers=ful_header)
-                    except Exception as e:
-                        print("Couldn't update shopify for: " + str(orders_dict[current_awb][0]))
-            """
+                update_rto_on_channels(orders_dict[current_awb])
 
             if orders_dict[current_awb][2] in (
                     'READY TO SHIP', 'PICKUP REQUESTED', 'NOT PICKED') and new_status == 'IN TRANSIT':
@@ -297,33 +231,8 @@ def track_delhivery_orders(courier, cur):
                 time_now = datetime.utcnow() + timedelta(hours=5.5)
                 cur.execute("UPDATE order_pickups SET picked=%s, pickup_time=%s WHERE order_id=%s",
                             (True, time_now, orders_dict[current_awb][0]))
-                if orders_dict[current_awb][3]=="NASHER" and orders_dict[current_awb][5]:
-                    hepta_fulfilment(orders_dict[current_awb])
-                if orders_dict[current_awb][26] != False:
-                    if orders_dict[current_awb][14] == 5:
-                        try:
-                            woocommerce_fulfillment(orders_dict[current_awb])
-                        except Exception as e:
-                            logger.error(
-                                "Couldn't update woocommerce for: " + str(orders_dict[current_awb][0])
-                                + "\nError: " + str(e.args))
-                    elif orders_dict[current_awb][14] == 1:
-                        try:
-                            shopify_fulfillment(orders_dict[current_awb], cur)
-                        except Exception as e:
-                            logger.error("Couldn't update shopify for: " + str(orders_dict[current_awb][0])
-                                         + "\nError: " + str(e.args))
-                    elif orders_dict[current_awb][14] == 6:  # Magento fulfilment
-                        try:
-                            if orders_dict[current_awb][28] != False:
-                                magento_invoice(orders_dict[current_awb])
-                            magento_fulfillment(orders_dict[current_awb], cur)
-                        except Exception as e:
-                            logger.error("Couldn't update Magento for: " + str(orders_dict[current_awb][0])
-                                         + "\nError: " + str(e.args))
-                    elif orders_dict[current_awb][3] == 'LOTUSBOTANICALS':
-                        lotus_botanicals_shipped(orders_dict[current_awb])
 
+                update_picked_on_channels(orders_dict[current_awb], cur)
 
                 if orders_dict[current_awb][19]:
                     email = create_email(orders_dict[current_awb], edd.strftime('%-d %b') if edd else "",
@@ -348,12 +257,6 @@ def track_delhivery_orders(courier, cur):
 
                 status_update_tuple = (new_status, status_type, status_detail, orders_dict[current_awb][0])
                 cur.execute(order_status_update_query, status_update_tuple)
-
-                if orders_dict[current_awb][3]=='LOTUSORGANICS':
-                    try:
-                        lotus_organics_update(orders_dict[current_awb], new_status)
-                    except Exception as e:
-                        pass
 
                 if new_status == 'PENDING' and status_code in delhivery_status_code_mapping_dict:
                     try:  # NDR check text
@@ -531,27 +434,8 @@ def track_shadowfax_orders(courier, cur):
             customer_phone = "0" + customer_phone[-10:]
 
             if new_status == 'DELIVERED':
-                if orders_dict[current_awb][30] != False:
-                    if orders_dict[current_awb][14] == 6:  # Magento complete
-                        try:
-                            magento_complete_order(orders_dict[current_awb])
-                        except Exception as e:
-                            logger.error(
-                                "Couldn't complete Magento for: " + str(orders_dict[current_awb][0])
-                                + "\nError: " + str(e.args))
 
-                if orders_dict[current_awb][28] != False and str(
-                        orders_dict[current_awb][13]).lower() == 'cod' and orders_dict[current_awb][
-                    14] == 1:  # mark paid on shopify
-                    try:
-                        shopify_markpaid(orders_dict[current_awb])
-                    except Exception as e:
-                        logger.error(
-                            "Couldn't mark paid Shopify for: " + str(orders_dict[current_awb][0])
-                            + "\nError: " + str(e.args))
-
-                elif orders_dict[current_awb][3] == 'LOTUSBOTANICALS':
-                    lotus_botanicals_delivered(orders_dict[current_awb])
+                update_delivered_on_channels(orders_dict[current_awb])
 
                 sms_to_key = "Messages[%s][To]" % str(exotel_idx)
                 sms_body_key = "Messages[%s][Body]" % str(exotel_idx)
@@ -563,54 +447,9 @@ def track_shadowfax_orders(courier, cur):
                     client_name, str(orders_dict[current_awb][12]))
 
                 exotel_idx += 1
-                """
-                if orders_dict[current_awb][13] and str(orders_dict[current_awb][13]).lower() == 'prepaid':
-                    try:  ## Delivery check text
-                        sms_to_key, sms_body_key, customer_phone, sms_body_key_data = verification_text(
-                            orders_dict[current_awb], exotel_idx, cur, cur_2)
-                        exotel_sms_data[sms_to_key] = customer_phone
-                        exotel_sms_data[sms_body_key] = sms_body_key_data
-                        exotel_idx += 1
-                    except Exception as e:
-                        logger.error(
-                            "Delivery confirmation not sent. Order id: " + str(orders_dict[current_awb][0]))
-                """
-            if new_status == 'RTO':
-                if orders_dict[current_awb][32] != False:
-                    if orders_dict[current_awb][14] == 6:  # Magento return
-                        try:
-                            magento_return_order(orders_dict[current_awb])
-                        except Exception as e:
-                            logger.error("Couldn't return Magento for: " + str(orders_dict[current_awb][0])
-                                         + "\nError: " + str(e.args))
-                    elif orders_dict[current_awb][14] == 5:  # Woocommerce Cancelled
-                        try:
-                            woocommerce_returned(orders_dict[current_awb])
-                        except Exception as e:
-                            logger.error(
-                                "Couldn't cancel on woocommerce for: " + str(orders_dict[current_awb][0])
-                                + "\nError: " + str(e.args))
 
-                    elif orders_dict[current_awb][14] == 1:  # Shopify Cancelled
-                        try:
-                            shopify_cancel(orders_dict[current_awb])
-                        except Exception as e:
-                            logger.error(
-                                "Couldn't cancel on Shopify for: " + str(orders_dict[current_awb][0])
-                                + "\nError: " + str(e.args))
-            """
-                if orders_dict[current_awb][6] and orders_dict[current_awb][5]:
-                    complete_fulfillment_url = "https://%s:%s@%s/admin/api/2019-10/orders/%s/fulfillments/%s/complete.json" % (
-                        orders_dict[current_awb][7], orders_dict[current_awb][8],
-                        orders_dict[current_awb][9], orders_dict[current_awb][5], orders_dict[current_awb][6])
-                    ful_header = {'Content-Type': 'application/json'}
-                    fulfil_data = {}
-                    try:
-                        req_ful = requests.post(complete_fulfillment_url, data=json.dumps(fulfil_data),
-                                                headers=ful_header)
-                    except Exception as e:
-                        print("Couldn't update shopify for: " + str(orders_dict[current_awb][0]))
-            """
+            if new_status == 'RTO':
+                update_rto_on_channels(orders_dict[current_awb])
 
             if orders_dict[current_awb][2] in (
                     'READY TO SHIP', 'PICKUP REQUESTED', 'NOT PICKED') and new_status == 'IN TRANSIT':
@@ -622,65 +461,15 @@ def track_shadowfax_orders(courier, cur):
                 time_now = datetime.utcnow() + timedelta(hours=5.5)
                 cur.execute("UPDATE order_pickups SET picked=%s, pickup_time=%s WHERE order_id=%s",
                             (True, time_now, orders_dict[current_awb][0]))
-                if orders_dict[current_awb][26] != False:
-                    if orders_dict[current_awb][14] == 5:
-                        try:
-                            woocommerce_fulfillment(orders_dict[current_awb])
-                        except Exception as e:
-                            logger.error(
-                                "Couldn't update woocommerce for: " + str(orders_dict[current_awb][0])
-                                + "\nError: " + str(e.args))
-                    elif orders_dict[current_awb][14] == 1:
-                        try:
-                            shopify_fulfillment(orders_dict[current_awb], cur)
-                        except Exception as e:
-                            logger.error("Couldn't update shopify for: " + str(orders_dict[current_awb][0])
-                                         + "\nError: " + str(e.args))
-                    elif orders_dict[current_awb][14] == 6:  # Magento fulfilment
-                        try:
-                            if orders_dict[current_awb][28] != False:
-                                magento_invoice(orders_dict[current_awb])
-                            magento_fulfillment(orders_dict[current_awb], cur)
-                        except Exception as e:
-                            logger.error("Couldn't update Magento for: " + str(orders_dict[current_awb][0])
-                                         + "\nError: " + str(e.args))
-                    elif orders_dict[current_awb][3] == 'LOTUSBOTANICALS':
-                        lotus_botanicals_shipped(orders_dict[current_awb])
+
+                update_picked_on_channels(orders_dict[current_awb], cur)
 
                 if orders_dict[current_awb][19]:
                     email = create_email(orders_dict[current_awb], edd.strftime('%-d %b') if edd else "",
                                          orders_dict[current_awb][19])
                     if email:
                         emails_list.append((email, [orders_dict[current_awb][19]]))
-                """
-                if orders_dict[current_awb][5] and not orders_dict[current_awb][6]:
-                    create_fulfillment_url = "https://%s:%s@%s/admin/api/2019-10/orders/%s/fulfillments.json" % (
-                        orders_dict[current_awb][7], orders_dict[current_awb][8],
-                        orders_dict[current_awb][9], orders_dict[current_awb][5])
-                    tracking_link = "https://saruman.shadowfax.in/awb/awb_to_unique_code/?order_id=%s" % str(current_awb)
-                    ful_header = {'Content-Type': 'application/json'}
-                    fulfil_data = {
-                        "fulfillment": {
-                            "tracking_number": str(current_awb),
-                            "tracking_urls": [
-                                tracking_link
-                            ],
-                            "tracking_company": "Delhivery",
-                            "location_id": 16721477681,
-                            "notify_customer": False
-                        }
-                    }
-                    try:
-                        req_ful = requests.post(create_fulfillment_url, data=json.dumps(fulfil_data),
-                                                headers=ful_header)
-                        fulfillment_id = str(req_ful.json()['fulfillment']['id'])
-                        cur.execute(
-                            "UPDATE shipments SET channel_fulfillment_id=%s, tracking_link=%s WHERE awb=%s;",
-                            (fulfillment_id, tracking_link, current_awb))
-                    except Exception as e:
-                        logger.error("Couldn't update shopify for: " + str(orders_dict[current_awb][0])
-                                     + "\nError: " + str(e.args))
-                """
+
                 if edd:
                     cur.execute("UPDATE shipments SET pdd=%s WHERE awb=%s", (edd, current_awb))
                     edd = edd.strftime('%-d %b')
@@ -697,11 +486,6 @@ def track_shadowfax_orders(courier, cur):
             if orders_dict[current_awb][2] != new_status:
                 status_update_tuple = (new_status, status_type, status_detail, orders_dict[current_awb][0])
                 cur.execute(order_status_update_query, status_update_tuple)
-                if orders_dict[current_awb][3]=='LOTUSORGANICS':
-                    try:
-                        lotus_organics_update(orders_dict[current_awb], new_status)
-                    except Exception as e:
-                        pass
                 if new_status == "PENDING" and ret_order['status'] in shadowfax_status_mapping \
                         and shadowfax_status_mapping[new_status][2]:
                     try:  # NDR check text
@@ -888,26 +672,8 @@ def track_xpressbees_orders(courier, cur):
             customer_phone = "0" + customer_phone[-10:]
 
             if new_status == 'DELIVERED':
-                if orders_dict[current_awb][30] != False:
-                    if orders_dict[current_awb][14] == 6:  # Magento complete
-                        try:
-                            magento_complete_order(orders_dict[current_awb])
-                        except Exception as e:
-                            logger.error(
-                                "Couldn't complete Magento for: " + str(orders_dict[current_awb][0])
-                                + "\nError: " + str(e.args))
 
-                if orders_dict[current_awb][28] != False and str(
-                        orders_dict[current_awb][13]).lower() == 'cod' and orders_dict[current_awb][
-                    14] == 1:  # mark paid on shopify
-                    try:
-                        shopify_markpaid(orders_dict[current_awb])
-                    except Exception as e:
-                        logger.error(
-                            "Couldn't mark paid Shopify for: " + str(orders_dict[current_awb][0])
-                            + "\nError: " + str(e.args))
-                elif orders_dict[current_awb][3] == 'LOTUSBOTANICALS':
-                    lotus_botanicals_delivered(orders_dict[current_awb])
+                update_delivered_on_channels(orders_dict[current_awb])
 
                 sms_to_key = "Messages[%s][To]" % str(exotel_idx)
                 sms_body_key = "Messages[%s][Body]" % str(exotel_idx)
@@ -920,41 +686,8 @@ def track_xpressbees_orders(courier, cur):
 
                 exotel_idx += 1
 
-                """
-                if orders_dict[current_awb][13] and str(orders_dict[current_awb][13]).lower() == 'prepaid':
-                    try:  ## Delivery check text
-                        sms_to_key, sms_body_key, customer_phone, sms_body_key_data = verification_text(
-                            orders_dict[current_awb], exotel_idx, cur, cur_2)
-                        exotel_sms_data[sms_to_key] = customer_phone
-                        exotel_sms_data[sms_body_key] = sms_body_key_data
-                        exotel_idx += 1
-                    except Exception as e:
-                        logger.error(
-                            "Delivery confirmation not sent. Order id: " + str(orders_dict[current_awb][0]))
-                """
             if new_status == 'RTO':
-                if orders_dict[current_awb][32] != False:
-                    if orders_dict[current_awb][14] == 6:  # Magento return
-                        try:
-                            magento_return_order(orders_dict[current_awb])
-                        except Exception as e:
-                            logger.error("Couldn't return Magento for: " + str(orders_dict[current_awb][0])
-                                         + "\nError: " + str(e.args))
-                    elif orders_dict[current_awb][14] == 5:  # Woocommerce Cancelled
-                        try:
-                            woocommerce_returned(orders_dict[current_awb])
-                        except Exception as e:
-                            logger.error(
-                                "Couldn't cancel on woocommerce for: " + str(orders_dict[current_awb][0])
-                                + "\nError: " + str(e.args))
-
-                    elif orders_dict[current_awb][14] == 1:  # Shopify Cancelled
-                        try:
-                            shopify_cancel(orders_dict[current_awb])
-                        except Exception as e:
-                            logger.error(
-                                "Couldn't cancel on Shopify for: " + str(orders_dict[current_awb][0])
-                                + "\nError: " + str(e.args))
+                update_rto_on_channels(orders_dict[current_awb])
 
             if orders_dict[current_awb][2] in (
                     'READY TO SHIP', 'PICKUP REQUESTED',
@@ -964,10 +697,6 @@ def track_xpressbees_orders(courier, cur):
                 sms_body_key = "Messages[%s][Body]" % str(exotel_idx)
 
                 exotel_sms_data[sms_to_key] = customer_phone
-                tracking_link_wareiq = "http://webapp.wareiq.com/tracking/" + str(
-                    orders_dict[current_awb][1])
-                if orders_dict[current_awb][3]=="NASHER" and orders_dict[current_awb][5]:
-                    hepta_fulfilment(orders_dict[current_awb])
                 if edd:
                     cur.execute("UPDATE shipments SET pdd=%s WHERE awb=%s", (edd, current_awb))
                     edd = edd.strftime('%-d %b')
@@ -993,32 +722,8 @@ def track_xpressbees_orders(courier, cur):
                     time_now = datetime.utcnow() + timedelta(hours=5.5)
                     cur.execute("UPDATE order_pickups SET picked=%s, pickup_time=%s WHERE order_id=%s",
                                 (True, time_now, orders_dict[current_awb][0]))
-                    if orders_dict[current_awb][26] != False:
-                        if orders_dict[current_awb][14] == 5:
-                            try:
-                                woocommerce_fulfillment(orders_dict[current_awb])
-                            except Exception as e:
-                                logger.error(
-                                    "Couldn't update woocommerce for: " + str(orders_dict[current_awb][0])
-                                    + "\nError: " + str(e.args))
-                        elif orders_dict[current_awb][14] == 1:
-                            try:
-                                shopify_fulfillment(orders_dict[current_awb], cur)
-                            except Exception as e:
-                                logger.error(
-                                    "Couldn't update shopify for: " + str(orders_dict[current_awb][0])
-                                    + "\nError: " + str(e.args))
-                        elif orders_dict[current_awb][14] == 6:  # Magento fulfilment
-                            try:
-                                if orders_dict[current_awb][28] != False:
-                                    magento_invoice(orders_dict[current_awb])
-                                magento_fulfillment(orders_dict[current_awb], cur)
-                            except Exception as e:
-                                logger.error(
-                                    "Couldn't update Magento for: " + str(orders_dict[current_awb][0])
-                                    + "\nError: " + str(e.args))
-                        elif orders_dict[current_awb][3] == 'LOTUSBOTANICALS':
-                            lotus_botanicals_shipped(orders_dict[current_awb])
+
+                    update_picked_on_channels(orders_dict[current_awb], cur)
 
                     if orders_dict[current_awb][19]:
 
@@ -1031,11 +736,6 @@ def track_xpressbees_orders(courier, cur):
             if orders_dict[current_awb][2] != new_status:
                 status_update_tuple = (new_status, status_type, status_detail, orders_dict[current_awb][0])
                 cur.execute(order_status_update_query, status_update_tuple)
-                if orders_dict[current_awb][3]=='LOTUSORGANICS':
-                    try:
-                        lotus_organics_update(orders_dict[current_awb], new_status)
-                    except Exception as e:
-                        pass
 
                 if ret_order['ShipmentSummary'][0]['StatusCode'] == 'UD' \
                         and ret_order['ShipmentSummary'][0]['Status'] in \
@@ -1246,27 +946,8 @@ def track_bluedart_orders(courier, cur):
             customer_phone = "0" + customer_phone[-10:]
 
             if new_status == 'DELIVERED':
-                if orders_dict[current_awb][30] != False:
-                    if orders_dict[current_awb][14] == 6:  # Magento complete
-                        try:
-                            magento_complete_order(orders_dict[current_awb])
-                        except Exception as e:
-                            logger.error(
-                                "Couldn't complete Magento for: " + str(orders_dict[current_awb][0])
-                                + "\nError: " + str(e.args))
 
-                if orders_dict[current_awb][28] != False and str(
-                        orders_dict[current_awb][13]).lower() == 'cod' and orders_dict[current_awb][
-                    14] == 1:  # mark paid on shopify
-                    try:
-                        shopify_markpaid(orders_dict[current_awb])
-                    except Exception as e:
-                        logger.error(
-                            "Couldn't mark paid Shopify for: " + str(orders_dict[current_awb][0])
-                            + "\nError: " + str(e.args))
-
-                elif orders_dict[current_awb][3] == 'LOTUSBOTANICALS':
-                    lotus_botanicals_delivered(orders_dict[current_awb])
+                update_delivered_on_channels(orders_dict[current_awb])
 
                 sms_to_key = "Messages[%s][To]" % str(exotel_idx)
                 sms_body_key = "Messages[%s][Body]" % str(exotel_idx)
@@ -1279,55 +960,8 @@ def track_bluedart_orders(courier, cur):
 
                 exotel_idx += 1
 
-                """
-                if orders_dict[current_awb][13] and str(orders_dict[current_awb][13]).lower() == 'prepaid':
-                    try:  ## Delivery check text
-                        sms_to_key, sms_body_key, customer_phone, sms_body_key_data = verification_text(
-                            orders_dict[current_awb], exotel_idx, cur, cur_2)
-                        exotel_sms_data[sms_to_key] = customer_phone
-                        exotel_sms_data[sms_body_key] = sms_body_key_data
-                        exotel_idx += 1
-                    except Exception as e:
-                        logger.error(
-                            "Delivery confirmation not sent. Order id: " + str(orders_dict[current_awb][0]))
-                """
             if new_status == 'RTO':
-                if orders_dict[current_awb][32] != False:
-                    if orders_dict[current_awb][14] == 6:  # Magento return
-                        try:
-                            magento_return_order(orders_dict[current_awb])
-                        except Exception as e:
-                            logger.error("Couldn't return Magento for: " + str(orders_dict[current_awb][0])
-                                         + "\nError: " + str(e.args))
-                    elif orders_dict[current_awb][14] == 5:  # Woocommerce Cancelled
-                        try:
-                            woocommerce_returned(orders_dict[current_awb])
-                        except Exception as e:
-                            logger.error(
-                                "Couldn't cancel on woocommerce for: " + str(orders_dict[current_awb][0])
-                                + "\nError: " + str(e.args))
-
-                    elif orders_dict[current_awb][14] == 1:  # Shopify Cancelled
-                        try:
-                            shopify_cancel(orders_dict[current_awb])
-                        except Exception as e:
-                            logger.error(
-                                "Couldn't cancel on Shopify for: " + str(orders_dict[current_awb][0])
-                                + "\nError: " + str(e.args))
-
-            """
-                if orders_dict[current_awb][6] and orders_dict[current_awb][5]:
-                    complete_fulfillment_url = "https://%s:%s@%s/admin/api/2019-10/orders/%s/fulfillments/%s/complete.json" % (
-                        orders_dict[current_awb][7], orders_dict[current_awb][8],
-                        orders_dict[current_awb][9], orders_dict[current_awb][5], orders_dict[current_awb][6])
-                    ful_header = {'Content-Type': 'application/json'}
-                    fulfil_data = {}
-                    try:
-                        req_ful = requests.post(complete_fulfillment_url, data=json.dumps(fulfil_data),
-                                                headers=ful_header)
-                    except Exception as e:
-                        print("Couldn't update shopify for: " + str(orders_dict[current_awb][0]))
-            """
+                update_rto_on_channels(orders_dict[current_awb])
 
             if orders_dict[current_awb][2] in (
                     'READY TO SHIP', 'PICKUP REQUESTED', 'NOT PICKED') and new_status == 'IN TRANSIT':
@@ -1339,30 +973,7 @@ def track_bluedart_orders(courier, cur):
                 time_now = datetime.utcnow() + timedelta(hours=5.5)
                 cur.execute("UPDATE order_pickups SET picked=%s, pickup_time=%s WHERE order_id=%s",
                             (True, time_now, orders_dict[current_awb][0]))
-                if orders_dict[current_awb][26] != False:
-                    if orders_dict[current_awb][14] == 5:
-                        try:
-                            woocommerce_fulfillment(orders_dict[current_awb])
-                        except Exception as e:
-                            logger.error(
-                                "Couldn't update woocommerce for: " + str(orders_dict[current_awb][0])
-                                + "\nError: " + str(e.args))
-                    elif orders_dict[current_awb][14] == 1:
-                        try:
-                            shopify_fulfillment(orders_dict[current_awb], cur)
-                        except Exception as e:
-                            logger.error("Couldn't update shopify for: " + str(orders_dict[current_awb][0])
-                                         + "\nError: " + str(e.args))
-                    elif orders_dict[current_awb][14] == 6:  # Magento fulfilment
-                        try:
-                            if orders_dict[current_awb][28] != False:
-                                magento_invoice(orders_dict[current_awb])
-                            magento_fulfillment(orders_dict[current_awb], cur)
-                        except Exception as e:
-                            logger.error("Couldn't update Magento for: " + str(orders_dict[current_awb][0])
-                                         + "\nError: " + str(e.args))
-                    elif orders_dict[current_awb][3] == 'LOTUSBOTANICALS':
-                        lotus_botanicals_shipped(orders_dict[current_awb])
+                update_picked_on_channels(orders_dict[current_awb], cur)
 
                 if orders_dict[current_awb][19]:
                     email = create_email(orders_dict[current_awb], edd.strftime('%-d %b') if edd else "",
@@ -1386,11 +997,6 @@ def track_bluedart_orders(courier, cur):
             if orders_dict[current_awb][2] != new_status:
                 status_update_tuple = (new_status, status_type, status_detail, orders_dict[current_awb][0])
                 cur.execute(order_status_update_query, status_update_tuple)
-                if orders_dict[current_awb][3]=='LOTUSORGANICS':
-                    try:
-                        lotus_organics_update(orders_dict[current_awb], new_status)
-                    except Exception as e:
-                        pass
 
                 if new_status == 'PENDING' and status_code in bluedart_status_mapping[scan_group]:
                     try:  # NDR check text
@@ -1585,27 +1191,8 @@ def track_ecomxp_orders(courier, cur):
             customer_phone = "0" + customer_phone[-10:]
 
             if new_status == 'DELIVERED':
-                if orders_dict[current_awb][30] != False:
-                    if orders_dict[current_awb][14] == 6:  # Magento complete
-                        try:
-                            magento_complete_order(orders_dict[current_awb])
-                        except Exception as e:
-                            logger.error(
-                                "Couldn't complete Magento for: " + str(orders_dict[current_awb][0])
-                                + "\nError: " + str(e.args))
 
-                if orders_dict[current_awb][28] != False and str(
-                        orders_dict[current_awb][13]).lower() == 'cod' and orders_dict[current_awb][
-                    14] == 1:  # mark paid on shopify
-                    try:
-                        shopify_markpaid(orders_dict[current_awb])
-                    except Exception as e:
-                        logger.error(
-                            "Couldn't mark paid Shopify for: " + str(orders_dict[current_awb][0])
-                            + "\nError: " + str(e.args))
-
-                elif orders_dict[current_awb][3] == 'LOTUSBOTANICALS':
-                    lotus_botanicals_delivered(orders_dict[current_awb])
+                update_delivered_on_channels(orders_dict[current_awb])
 
                 sms_to_key = "Messages[%s][To]" % str(exotel_idx)
                 sms_body_key = "Messages[%s][Body]" % str(exotel_idx)
@@ -1618,6 +1205,9 @@ def track_ecomxp_orders(courier, cur):
 
                 exotel_idx += 1
 
+            if new_status == 'RTO':
+                update_rto_on_channels(orders_dict[current_awb])
+
             if orders_dict[current_awb][2] in (
                     'READY TO SHIP', 'PICKUP REQUESTED', 'NOT PICKED') and new_status == 'IN TRANSIT':
                 pickup_count += 1
@@ -1628,30 +1218,8 @@ def track_ecomxp_orders(courier, cur):
                 time_now = datetime.utcnow() + timedelta(hours=5.5)
                 cur.execute("UPDATE order_pickups SET picked=%s, pickup_time=%s WHERE order_id=%s",
                             (True, time_now, orders_dict[current_awb][0]))
-                if orders_dict[current_awb][26] != False:
-                    if orders_dict[current_awb][14] == 5:
-                        try:
-                            woocommerce_fulfillment(orders_dict[current_awb])
-                        except Exception as e:
-                            logger.error(
-                                "Couldn't update woocommerce for: " + str(orders_dict[current_awb][0])
-                                + "\nError: " + str(e.args))
-                    elif orders_dict[current_awb][14] == 1:
-                        try:
-                            shopify_fulfillment(orders_dict[current_awb], cur)
-                        except Exception as e:
-                            logger.error("Couldn't update shopify for: " + str(orders_dict[current_awb][0])
-                                         + "\nError: " + str(e.args))
-                    elif orders_dict[current_awb][14] == 6:  # Magento fulfilment
-                        try:
-                            if orders_dict[current_awb][28] != False:
-                                magento_invoice(orders_dict[current_awb])
-                            magento_fulfillment(orders_dict[current_awb], cur)
-                        except Exception as e:
-                            logger.error("Couldn't update Magento for: " + str(orders_dict[current_awb][0])
-                                         + "\nError: " + str(e.args))
-                    elif orders_dict[current_awb][3] == 'LOTUSBOTANICALS':
-                        lotus_botanicals_shipped(orders_dict[current_awb])
+
+                update_picked_on_channels(orders_dict[current_awb], cur)
 
                 if orders_dict[current_awb][19]:
                     email = create_email(orders_dict[current_awb], edd.strftime('%-d %b') if edd else "",
@@ -1675,11 +1243,6 @@ def track_ecomxp_orders(courier, cur):
             if orders_dict[current_awb][2] != new_status:
                 status_update_tuple = (new_status, status_type, status_detail, orders_dict[current_awb][0])
                 cur.execute(order_status_update_query, status_update_tuple)
-                if orders_dict[current_awb][3]=='LOTUSORGANICS':
-                    try:
-                        lotus_organics_update(orders_dict[current_awb], new_status)
-                    except Exception as e:
-                        pass
 
                 if new_status == 'PENDING' and status_code in ecom_express_ndr_reasons:
                     try:  # NDR check text
@@ -2212,7 +1775,7 @@ def woocommerce_fulfillment(order):
 
 
 def lotus_organics_update(order, status):
-    url = "https://lotus-organics.com/api/v1/order/wareiq/update"
+    url = "https://www.lotus-organics.com/api/v1/order/wareiq/update"
     headers = {"Content-Type": "application/json",
                "x-api-key": "901192e41675e1b908d26a7e95c77ddc"}
     data = {
@@ -2222,7 +1785,7 @@ def lotus_organics_update(order, status):
         "status_information": status
     }
 
-    req = requests.put(url, headers, data=data)
+    req = requests.put(url, headers=headers, data=json.dumps(data))
 
 
 def lotus_botanicals_shipped(order):
@@ -2234,7 +1797,7 @@ def lotus_botanicals_shipped(order):
         data = {"tracking_service": "WareIQ",
                 "tracking_number": str(order[1]),
                 "url" : tracking_link}
-        req = requests.post(url, headers=headers, data=data)
+        req = requests.post(url, headers=headers, data=json.dumps(data))
 
     except Exception as e:
         logger.error("Couldn't update lotus for: " + str(order[0])
@@ -2247,7 +1810,7 @@ def lotus_botanicals_delivered(order):
         headers = {"Content-Type": "application/json",
                    "Authorization": "Ae76eH239jla*fgna#q6fG&5Khswq_kpaj$#1a"}
         data = {}
-        req = requests.post(url, headers=headers, data=data)
+        req = requests.post(url, headers=headers, data=json.dumps(data))
     except Exception as e:
         logger.error("Couldn't update lotus for: " + str(order[0])
                      + "\nError: " + str(e.args))
@@ -2497,6 +2060,133 @@ def magento_return_order(order):
         }
     }
     req_ful = requests.post(complete_order_url, data=json.dumps(complete_data),
+                            headers=ful_header)
+
+
+def update_picked_on_channels(order, cur):
+    if order[3] == "NASHER" and order[5]:
+        hepta_fulfilment(order)
+    if order[26] != False:
+        if order[14] == 5:
+            try:
+                woocommerce_fulfillment(order)
+            except Exception as e:
+                logger.error(
+                    "Couldn't update woocommerce for: " + str(order[0])
+                    + "\nError: " + str(e.args))
+        elif order[14] == 1:
+            try:
+                shopify_fulfillment(order, cur)
+            except Exception as e:
+                logger.error("Couldn't update shopify for: " + str(order[0])
+                             + "\nError: " + str(e.args))
+        elif order[14] == 6:  # Magento fulfilment
+            try:
+                if order[28] != False:
+                    magento_invoice(order)
+                magento_fulfillment(order, cur)
+            except Exception as e:
+                logger.error("Couldn't update Magento for: " + str(order[0])
+                             + "\nError: " + str(e.args))
+        elif order[3] == 'LOTUSBOTANICALS':
+            lotus_botanicals_shipped(order)
+        elif order[3] == 'LOTUSORGANICS':
+            try:
+                lotus_organics_update(order, "Orders Shipped")
+            except Exception as e:
+                pass
+        elif order[14] == 7: #Easyecom fulfilment
+            try:
+                update_easyecom_status(order, 2)
+            except Exception as e:
+                logger.error("Couldn't update Easyecom for: " + str(order[0])
+                             + "\nError: " + str(e.args))
+
+
+def update_delivered_on_channels(order):
+    if order[30] != False:
+        if order[14] == 6:  # Magento complete
+            try:
+                magento_complete_order(order)
+            except Exception as e:
+                logger.error(
+                    "Couldn't complete Magento for: " + str(order[0])
+                    + "\nError: " + str(e.args))
+
+    if order[28] != False and str(
+            order[13]).lower() == 'cod' and order[
+        14] == 1:  # mark paid on shopify
+        try:
+            shopify_markpaid(order)
+        except Exception as e:
+            logger.error(
+                "Couldn't mark paid Shopify for: " + str(order[0])
+                + "\nError: " + str(e.args))
+
+    elif order[3] == 'LOTUSBOTANICALS':
+        lotus_botanicals_delivered(order)
+
+    elif order[3] == 'LOTUSORGANICS':
+        try:
+            lotus_organics_update(order, "Orders Delivered")
+        except Exception as e:
+            pass
+
+    elif order[14] == 7:  # Easyecom Delivered
+        try:
+            update_easyecom_status(order, 3)
+        except Exception as e:
+            logger.error("Couldn't update Easyecom for: " + str(order[0])
+                         + "\nError: " + str(e.args))
+
+
+def update_rto_on_channels(order):
+    if order[32] != False:
+        if order[14] == 6:  # Magento return
+            try:
+                magento_return_order(order)
+            except Exception as e:
+                logger.error("Couldn't return Magento for: " + str(order[0])
+                             + "\nError: " + str(e.args))
+        elif order[14] == 5:  # Woocommerce Cancelled
+            try:
+                woocommerce_returned(order)
+            except Exception as e:
+                logger.error(
+                    "Couldn't cancel on woocommerce for: " + str(order[0])
+                    + "\nError: " + str(e.args))
+
+        elif order[14] == 1:  # Shopify Cancelled
+            try:
+                shopify_cancel(order)
+            except Exception as e:
+                logger.error(
+                    "Couldn't cancel on Shopify for: " + str(order[0])
+                    + "\nError: " + str(e.args))
+
+        elif order[3] == 'LOTUSORGANICS':
+            try:
+                lotus_organics_update(order, "Cancelled")
+            except Exception as e:
+                pass
+
+        elif order[14] == 7:  # Easyecom RTO
+            try:
+                update_easyecom_status(order, 9)
+            except Exception as e:
+                logger.error("Couldn't update Easyecom for: " + str(order[0])
+                             + "\nError: " + str(e.args))
+
+
+def update_easyecom_status(order, status_id):
+    create_fulfillment_url = "%s/Carrier/updateTrackingStatus?api_token=%s" % (order[9], order[7])
+    ful_header = {'Content-Type': 'application/json'}
+    fulfil_data = {
+        "api_token": order[7],
+        "current_shipment_status_id": status_id,
+        "awb": order[1],
+    }
+    req_ful = requests.post(create_fulfillment_url, data=json.dumps(fulfil_data),
                             headers=ful_header)
 
 

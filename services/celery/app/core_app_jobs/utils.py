@@ -253,6 +253,60 @@ def magento_return_order(order):
                             headers=ful_header)
 
 
+def lotus_organics_update(order, status):
+    url = "https://www.lotus-organics.com/api/v1/order/wareiq/update"
+    headers = {"Content-Type": "application/json",
+               "x-api-key": "901192e41675e1b908d26a7e95c77ddc"}
+    data = {
+        "id": int(order[5]),
+        "ware_iq_id": order[0],
+        "awb_number": str(order[1]),
+        "status_information": status
+    }
+
+    req = requests.put(url, headers=headers, data=json.dumps(data))
+
+
+def lotus_botanicals_shipped(order):
+    try:
+        url = "http://webapps.lotusbotanicals.com/orders/update/shipping/"+str(order[0])
+        headers = {"Content-Type": "application/json",
+                   "Authorization": "Ae76eH239jla*fgna#q6fG&5Khswq_kpaj$#1a"}
+        tracking_link = "http://webapp.wareiq.com/tracking/%s" % str(order[1])
+        data = {"tracking_service": "WareIQ",
+                "tracking_number": str(order[1]),
+                "url" : tracking_link}
+        req = requests.post(url, headers=headers, data=json.dumps(data))
+
+    except Exception as e:
+        logger.error("Couldn't update lotus for: " + str(order[0])
+                     + "\nError: " + str(e.args))
+
+
+def lotus_botanicals_delivered(order):
+    try:
+        url = "http://webapps.lotusbotanicals.com/orders/update/delivered/"+str(order[0])
+        headers = {"Content-Type": "application/json",
+                   "Authorization": "Ae76eH239jla*fgna#q6fG&5Khswq_kpaj$#1a"}
+        data = {}
+        req = requests.post(url, headers=headers, data=json.dumps(data))
+    except Exception as e:
+        logger.error("Couldn't update lotus for: " + str(order[0])
+                     + "\nError: " + str(e.args))
+
+
+def update_easyecom_status(order, status_id):
+    create_fulfillment_url = "%s/Carrier/updateTrackingStatus?api_token=%s" % (order[9], order[7])
+    ful_header = {'Content-Type': 'application/json'}
+    fulfil_data = {
+        "api_token": order[7],
+        "current_shipment_status_id": status_id,
+        "awb": order[1],
+    }
+    req_ful = requests.post(create_fulfillment_url, data=json.dumps(fulfil_data),
+                            headers=ful_header)
+
+
 def update_ndr_shipment(order, cur, ndr_reason):
     insert_ndr_ver_tuple = (order[0], "", datetime.utcnow() + timedelta(hours=5.5))
     ndr_ship_tuple = (
@@ -272,8 +326,9 @@ def mark_picked_channel(order, cur):
             try:
                 woocommerce_fulfillment(order)
             except Exception as e:
-                logger.error("Couldn't update woocommerce for: " + str(order[0])
-                             + "\nError: " + str(e.args))
+                logger.error(
+                    "Couldn't update woocommerce for: " + str(order[0])
+                    + "\nError: " + str(e.args))
         elif order[14] == 1:
             try:
                 shopify_fulfillment(order, cur)
@@ -288,6 +343,19 @@ def mark_picked_channel(order, cur):
             except Exception as e:
                 logger.error("Couldn't update Magento for: " + str(order[0])
                              + "\nError: " + str(e.args))
+        elif order[3] == 'LOTUSBOTANICALS':
+            lotus_botanicals_shipped(order)
+        elif order[3] == 'LOTUSORGANICS':
+            try:
+                lotus_organics_update(order, "Orders Shipped")
+            except Exception as e:
+                pass
+        elif order[14] == 7:  # Easyecom fulfilment
+            try:
+                update_easyecom_status(order, 2)
+            except Exception as e:
+                logger.error("Couldn't update Easyecom for: " + str(order[0])
+                             + "\nError: " + str(e.args))
 
 
 def mark_delivered_channel(order):
@@ -300,13 +368,31 @@ def mark_delivered_channel(order):
                     "Couldn't complete Magento for: " + str(order[0])
                     + "\nError: " + str(e.args))
 
-    if order[28] != False and str(order[13]).lower() == 'cod' and order[14] == 1:  # mark paid on shopify
+    if order[28] != False and str(
+            order[13]).lower() == 'cod' and order[
+        14] == 1:  # mark paid on shopify
         try:
             shopify_markpaid(order)
         except Exception as e:
             logger.error(
                 "Couldn't mark paid Shopify for: " + str(order[0])
                 + "\nError: " + str(e.args))
+
+    elif order[3] == 'LOTUSBOTANICALS':
+        lotus_botanicals_delivered(order)
+
+    elif order[3] == 'LOTUSORGANICS':
+        try:
+            lotus_organics_update(order, "Orders Delivered")
+        except Exception as e:
+            pass
+
+    elif order[14] == 7:  # Easyecom Delivered
+        try:
+            update_easyecom_status(order, 3)
+        except Exception as e:
+            logger.error("Couldn't update Easyecom for: " + str(order[0])
+                         + "\nError: " + str(e.args))
 
 
 def mark_rto_channel(order):
@@ -332,6 +418,19 @@ def mark_rto_channel(order):
                 logger.error(
                     "Couldn't cancel on Shopify for: " + str(order[0])
                     + "\nError: " + str(e.args))
+
+        elif order[3] == 'LOTUSORGANICS':
+            try:
+                lotus_organics_update(order, "Cancelled")
+            except Exception as e:
+                pass
+
+        elif order[14] == 7:  # Easyecom RTO
+            try:
+                update_easyecom_status(order, 9)
+            except Exception as e:
+                logger.error("Couldn't update Easyecom for: " + str(order[0])
+                             + "\nError: " + str(e.args))
 
 
 def exotel_send_shipped_sms(order, courier):

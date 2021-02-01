@@ -9,7 +9,8 @@ conn = DbConnection.get_db_connection_instance()
 ORDERS_DOWNLOAD_HEADERS = ["Order ID", "Customer Name", "Customer Email", "Customer Phone", "Order Date",
                            "Courier", "Weight", "awb", "Expected Delivery Date", "Status", "Address_one", "Address_two",
                            "City", "State", "Country", "Pincode", "Pickup Point", "Product", "SKU", "Quantity", "Order Type",
-                           "Amount", "Manifest Time", "Pickup Date", "Delivered Date", "COD Verfication", "COD Verified Via", "NDR Verfication", "NDR Verified Via","PDD"]
+                           "Amount", "Manifest Time", "Pickup Date", "Delivered Date", "COD Verfication", "COD Verified Via",
+                           "NDR Verfication", "NDR Verified Via", "PDD", "ShippingCharges", "InvoiceNo"]
 cur = conn.cursor()
 
 
@@ -188,6 +189,8 @@ def download_flag_func(query_to_run, get_selected_product_details, auth_data, fi
                         new_row.append("N/A")
                         new_row.append("N/A")
                     new_row.append(order[39].strftime("%Y-%m-%d %H:%M:%S") if order[39] else "N/A")
+                    new_row.append(str(order[43]) if order[43] else "0")
+                    new_row.append(str(order[44]) if order[44] else "N/A")
                     not_shipped = None
                     if not product_data[4][idx]:
                         not_shipped = "Weight/dimensions not entered for product(s)"

@@ -1298,6 +1298,32 @@ def ship_ecom_orders(cur, courier, courier_name, order_ids, order_id_tuple, back
                     "DG_SHIPMENT": "false",
                     "DECLARED_VALUE": order[27]}
 
+                dict2 = {  "INVOICE_NUMBER": str(order[54]) if order[54] else str(last_invoice_no),
+                            "INVOICE_DATE": datetime.now().strftime('%Y-%m-%d'),
+                            "ITEM_CATEGORY": "ECOMMERCE",
+                            "PACKING_TYPE": "Box",
+                            "PICKUP_TYPE": "WH",
+                            "RETURN_TYPE": "WH",
+                            "CONSIGNEE_ADDRESS_TYPE": "HOME",
+                            "PICKUP_LOCATION_CODE": pickup_point[9],
+                            "SELLER_GSTIN": "",
+                            "GST_HSN": "123456",
+                            "GST_ERN": "123456789123",
+                            "GST_TAX_NAME": "GST",
+                            "GST_TAX_BASE": order[27],
+                            "DISCOUNT": 0.0,
+                            "GST_TAX_RATE_CGSTN": 0.0,
+                            "GST_TAX_RATE_SGSTN": 0.0,
+                            "GST_TAX_RATE_IGSTN": 18.0,
+                            "GST_TAX_TOTAL": round(order[27]*0.18),
+                            "GST_TAX_CGSTN": 0,
+                            "GST_TAX_SGSTN": 0,
+                            "GST_TAX_IGSTN": round(order[27]*0.18),
+                            "ESUGAM_NUMBER": "eSUGAM_1234",
+
+                           }
+
+                json_input.update(dict2)
                 if order[26].lower() == "cod":
                     json_input["COLLECTABLE_VALUE"] = order[27]
                 else:
@@ -1309,7 +1335,7 @@ def ship_ecom_orders(cur, courier, courier_name, order_ids, order_id_tuple, back
                 if req.json()['shipments'][0]['reason'] == 'INCORRECT_AWB_NUMBER':
                     fetch_awb_url = courier[16] + "/apiv2/fetch_awb/"
                     fetch_awb_req = requests.post(fetch_awb_url, data={"username": courier[14], "password": courier[15],
-                                                    "count": 100, "type":json_input['PRODUCT']})
+                                                    "count": 50, "type":json_input['PRODUCT']})
                     json_input['AWB_NUMBER'] = str(fetch_awb_req.json()['awb'][0])
                     req = requests.post(ecom_url, data={"username": courier[14], "password": courier[15],
                                                         "json_input": json.dumps(json_input)})

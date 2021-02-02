@@ -1272,7 +1272,7 @@ def ship_ecom_orders(cur, courier, courier_name, order_ids, order_id_tuple, back
                     "PICKUP_PHONE": pickup_point[3][-10:],
                     "PICKUP_ADDRESS_LINE1": pickup_address,
                     "PICKUP_ADDRESS_LINE2": "",
-                    "PICKUP_PINCODE": pickup_point[8],
+                    "PICKUP_PINCODE": str(pickup_point[8]),
                     "CONSIGNEE": customer_name,
                     "CONSIGNEE_ADDRESS1": customer_address,
                     "CONSIGNEE_ADDRESS2": "",
@@ -1289,7 +1289,7 @@ def ship_ecom_orders(cur, courier, courier_name, order_ids, order_id_tuple, back
                     "RETURN_PHONE": pickup_point[12][-10:],
                     "RETURN_ADDRESS_LINE1": rto_address,
                     "RETURN_ADDRESS_LINE2": "",
-                    "RETURN_PINCODE": pickup_point[17],
+                    "RETURN_PINCODE": str(pickup_point[17]),
                     "ACTUAL_WEIGHT": sum(order[34]),
                     "VOLUMETRIC_WEIGHT": volumetric_weight,
                     "LENGTH": dimensions['length'],
@@ -1306,21 +1306,6 @@ def ship_ecom_orders(cur, courier, courier_name, order_ids, order_id_tuple, back
                             "RETURN_TYPE": "WH",
                             "CONSIGNEE_ADDRESS_TYPE": "HOME",
                             "PICKUP_LOCATION_CODE": pickup_point[9],
-                            "SELLER_GSTIN": "",
-                            "GST_HSN": "123456",
-                            "GST_ERN": "123456789123",
-                            "GST_TAX_NAME": "GST",
-                            "GST_TAX_BASE": order[27],
-                            "DISCOUNT": 0.0,
-                            "GST_TAX_RATE_CGSTN": 0.0,
-                            "GST_TAX_RATE_SGSTN": 0.0,
-                            "GST_TAX_RATE_IGSTN": 18.0,
-                            "GST_TAX_TOTAL": round(order[27]*0.18),
-                            "GST_TAX_CGSTN": 0,
-                            "GST_TAX_SGSTN": 0,
-                            "GST_TAX_IGSTN": round(order[27]*0.18),
-                            "ESUGAM_NUMBER": "eSUGAM_1234",
-
                            }
 
                 json_input.update(dict2)
@@ -1338,7 +1323,7 @@ def ship_ecom_orders(cur, courier, courier_name, order_ids, order_id_tuple, back
                                                     "count": 50, "type":json_input['PRODUCT']})
                     json_input['AWB_NUMBER'] = str(fetch_awb_req.json()['awb'][0])
                     req = requests.post(ecom_url, data={"username": courier[14], "password": courier[15],
-                                                        "json_input": json.dumps(json_input)})
+                                                        "json_input": json.dumps([json_input])})
                 return_data_raw = req.json()
                 insert_shipments_data_query = """INSERT INTO SHIPMENTS (awb, status, order_id, pickup_id, courier_id, 
                                                                                                     dimensions, volumetric_weight, weight, remark, return_point_id, routing_code, 

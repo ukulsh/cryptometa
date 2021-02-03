@@ -384,6 +384,18 @@ select_product_list_query = """SELECT aa.id, aa.name as product_name, aa.product
                             __PAGINATION__
                             """
 
+select_product_list_channel_query = """SELECT aa.id, aa.name as product_name,aa.sku as channel_product_id, aa.product_image, aa.master_sku as channel_sku, cc.sku as master_sku, cc.price, dd.logo_url as channel_logo, dd.channel_name, cc.id as master_product_id FROM products aa
+                             LEFT JOIN master_products cc on aa.master_product_id=cc.id
+                             LEFT JOIN master_channels dd on aa.channel_id=dd.id
+                             WHERE (aa.name ilike '%__SEARCH_KEY__%' or aa.master_sku ilike '%__SEARCH_KEY__%' or cc.sku ilike '%__SEARCH_KEY__%')
+                            __CLIENT_FILTER__
+                            __MV_CLIENT_FILTER__
+                            __CHANNEL_FILTER__
+                            __STATUS_FILTER__
+                            ORDER BY __ORDER_BY__ __ORDER_TYPE__ 
+                            __PAGINATION__
+                            """
+
 select_orders_list_query = """select distinct on (aa.order_date, aa.id) aa.channel_order_id as order_id, aa.id as unique_id, aa.order_date, aa.status, 
                               aa.status_detail, bb.awb, CONCAT('http://webapp.wareiq.com/tracking/', bb.awb) as tracking_link, cc.courier_name, bb.edd, 
                               bb.weight, bb.dimensions, bb.volumetric_weight,bb.remark, aa.customer_name, aa.customer_phone, aa.customer_email, dd.address_one, 

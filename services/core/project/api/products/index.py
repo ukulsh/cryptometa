@@ -10,8 +10,8 @@ from flask_restful import Api, Resource
 from psycopg2.extras import RealDictCursor
 from sqlalchemy import func, or_
 from project import db
-from project.api.models import Products, ProductQuantity, MultiVendor, InventoryUpdate, MasterProducts
-from project.api.queries import select_product_list_query
+from project.api.models import Products, ProductQuantity, MultiVendor, InventoryUpdate, MasterProducts, MasterChannels
+from project.api.queries import select_product_list_query, select_product_list_channel_query
 from project.api.utils import authenticate_restful
 from project.api.utilities.db_utils import DbConnection
 
@@ -23,7 +23,11 @@ conn_2 = DbConnection.get_pincode_db_connection_instance()
 PRODUCTS_DOWNLOAD_HEADERS = ["S. No.", "Product Name", "Channel SKU", "Master SKU", "Price", "Total Quantity",
                              "Available Quantity", "Current Quantity", "Inline Quantity", "RTO Quantity", "Dimensions", "Weight"]
 
+CHANNEL_PRODUCTS_DOWNLOAD_HEADERS = ["S. No.", "Product Name", "Channel product id", "Channel SKU", "Master SKU", "Price", "Channel Name", "Status"]
+
 PRODUCT_UPLOAD_HEADERS = ["Name", "SKU", "Price", "WeightKG", "LengthCM", "BreadthCM", "HeightCM", "HSN", "TaxRate"]
+PRODUCT_UPLOAD_HEADERS_CHANNEL = ["Name", "ChannelProductId", "SKU", "Price", "MasterSKU", "ChannelName", "ImageURL"]
+BULKMAP_SKU_HEADERS = ["ChannelName", "ChannelProdID", "ChannelSKU", "MasterSKU"]
 
 
 @products_blueprint.route('/products/v1/details', methods=['GET'])
@@ -206,6 +210,212 @@ def upload_master_products(resp):
     }), 200
 
 
+@products_blueprint.route('/products/v1/channel_product_upload', methods=['POST'])
+@authenticate_restful
+def upload_channel_products(resp):
+    auth_data = resp.get('data')
+    if not auth_data:
+        return {"success": False, "msg": "Auth Failed"}, 404
+
+    myfile = request.files['myfile']
+
+    if auth_data['user_group'] == 'client':
+        client_prefix=auth_data['client_prefix']
+    else:
+        client_prefix=request.args.get('client_prefix')
+
+    data_xlsx = pd.read_csv(myfile)
+    failed_skus = list()
+
+    si = io.StringIO()
+    cw = csv.writer(si)
+    cw.writerow(PRODUCT_UPLOAD_HEADERS_CHANNEL)
+
+    def process_row(row, failed_skus):
+        row_data = row[1]
+        try:
+            channel = db.session.query(MasterChannels).filter(MasterChannels.channel_name.ilike(row_data.ChannelName)).first()
+            if not channel:
+                failed_skus.append(str(row_data.SKU).rstrip())
+                cw.writerow(list(row_data.values)+["Channel not found"])
+                return
+            master_prod = db.session.query(MasterProducts).filter(MasterProducts.sku==str(row_data.MasterSKU).rstrip(), MasterProducts.client_prefix==client_prefix).first()
+            if row_data.MasterSKU==row_data.MasterSKU and not master_prod:
+                failed_skus.append(str(row_data.SKU).rstrip())
+                cw.writerow(list(row_data.values) + ["Master SKU not found"])
+                return
+
+            prod_obj = Products(name=str(row_data.Name),
+                                               sku=str(row_data.SKU),
+                                               product_image=str(row_data.ImageURL) if row_data.ImageURL == row_data.ImageURL else None,
+                                               client_prefix=client_prefix,
+                                               price=float(row_data.Price),
+                                               master_product=master_prod,
+                                               date_created=datetime.utcnow()+timedelta(hours=5.5))
+
+            db.session.add(prod_obj)
+            db.session.commit()
+
+        except Exception as e:
+            failed_skus.append(str(row_data.SKU).rstrip())
+            cw.writerow(list(row_data.values) + [str(e.args[0])])
+            db.session.rollback()
+
+    for row in data_xlsx.iterrows():
+        process_row(row, failed_skus)
+
+    if failed_skus:
+        output = make_response(si.getvalue())
+        filename = "failed_uploads.csv"
+        output.headers["Content-Disposition"] = "attachment; filename=" + filename
+        output.headers["Content-type"] = "text/csv"
+        return output
+
+    return jsonify({
+        'status': 'success',
+        "failed_skus": failed_skus
+    }), 200
+
+
+@products_blueprint.route('/products/v1/bulk_map_sku', methods=['POST'])
+@authenticate_restful
+def bulk_map_sku(resp):
+    auth_data = resp.get('data')
+    if not auth_data:
+        return {"success": False, "msg": "Auth Failed"}, 404
+
+    myfile = request.files['myfile']
+
+    if auth_data['user_group'] == 'client':
+        client_prefix=auth_data['client_prefix']
+    else:
+        client_prefix=request.args.get('client_prefix')
+
+    data_xlsx = pd.read_csv(myfile)
+    failed_skus = list()
+
+    si = io.StringIO()
+    cw = csv.writer(si)
+    cw.writerow(BULKMAP_SKU_HEADERS)
+
+    def process_row(row, failed_skus):
+        row_data = row[1]
+        try:
+            channel = db.session.query(MasterChannels).filter(MasterChannels.channel_name.ilike(row_data.ChannelName)).first()
+            if not channel:
+                failed_skus.append(str(row_data.SKU).rstrip())
+                cw.writerow(list(row_data.values)+["Channel not found"])
+                return
+            master_prod = db.session.query(MasterProducts).filter(MasterProducts.sku==str(row_data.MasterSKU).rstrip(), MasterProducts.client_prefix==client_prefix).first()
+            if not master_prod:
+                failed_skus.append(str(row_data.SKU).rstrip())
+                cw.writerow(list(row_data.values) + ["MasterSKU not found"])
+                return
+
+            channel_prod = db.session.query(Products).filter(Products.sku==str(row_data.ChannelProdID).rstrip(), Products.master_sku==str(row_data.ChannelSKU), Products.client_prefix==client_prefix).first()
+            if not channel_prod:
+                failed_skus.append(str(row_data.SKU).rstrip())
+                cw.writerow(list(row_data.values)+["Channel prod not found"])
+                return
+
+            channel_prod.master_product=master_prod
+            db.session.commit()
+
+        except Exception as e:
+            failed_skus.append(str(row_data.SKU).rstrip())
+            cw.writerow(list(row_data.values) + [str(e.args[0])])
+            db.session.rollback()
+
+    for row in data_xlsx.iterrows():
+        process_row(row, failed_skus)
+
+    if failed_skus:
+        output = make_response(si.getvalue())
+        filename = "failed_uploads.csv"
+        output.headers["Content-Disposition"] = "attachment; filename=" + filename
+        output.headers["Content-type"] = "text/csv"
+        return output
+
+    return jsonify({
+        'status': 'success',
+        "failed_skus": failed_skus
+    }), 200
+
+
+@products_blueprint.route('/products/v1/get_master_products', methods=['GET'])
+@authenticate_restful
+def get_master_products(resp):
+    response = {"success": True}
+    try:
+        auth_data = resp.get('data')
+        search_key = request.args.get('search', "")
+        client_prefix = auth_data.get('client_prefix')
+        all_vendors = None
+        if auth_data['user_group'] == 'multi-vendor':
+            all_vendors = db.session.query(MultiVendor).filter(MultiVendor.client_prefix == client_prefix).first()
+            all_vendors = all_vendors.vendor_list
+        product_qs = db.session.query(MasterProducts).filter(or_(MasterProducts.name.ilike(r"%{}%".format(search_key)), MasterProducts.sku.ilike(r"%{}%".format(search_key))))
+        if auth_data['user_group'] == 'client':
+            product_qs = product_qs.filter(MasterProducts.client_prefix == client_prefix)
+
+        if all_vendors:
+            product_qs = product_qs.filter(Products.client_prefix.in_(all_vendors))
+
+        product_qs = product_qs.limit(10).all()
+        response['data'] = [{"name": x.name, "sku": x.sku, "id":x.id} for x in product_qs]
+        return jsonify(response), 200
+    except Exception:
+        response['success'] = False
+        return jsonify(response), 400
+
+
+@products_blueprint.route('/products/v1/map_sku', methods=['GET'])
+@authenticate_restful
+def map_products(resp):
+    response = {"success": True}
+    try:
+        auth_data = resp.get('data')
+        channel_id = request.args.get('channel_id', None)
+        master_id = request.args.get('master_id', None)
+        map = request.args.get('map', 1)
+        client_prefix = auth_data.get('client_prefix')
+
+        if not channel_id:
+            return jsonify({"success": False}), 400
+        if master_id:
+            master_id = int(master_id)
+        channel_prod = db.session.query(Products).filter(Products.id == int(channel_id))
+        master_prod = db.session.query(MasterProducts).filter(MasterProducts.id == master_id)
+        all_vendors = None
+        if auth_data['user_group'] == 'multi-vendor':
+            all_vendors = db.session.query(MultiVendor).filter(MultiVendor.client_prefix == client_prefix).first()
+            all_vendors = all_vendors.vendor_list
+
+        if auth_data['user_group'] == 'client':
+            channel_prod = channel_prod.filter(Products.client_prefix == client_prefix)
+            master_prod = master_prod.filter(MasterProducts.client_prefix == client_prefix)
+
+        if all_vendors:
+            channel_prod = channel_prod.filter(Products.client_prefix.in_(all_vendors))
+            master_prod = master_prod.filter(MasterProducts.client_prefix.in_(all_vendors))
+
+        channel_prod = channel_prod.first()
+        master_prod = master_prod.first()
+        if not channel_prod:
+            return jsonify({"success": False}), 400
+
+        master_prod = master_prod.first()
+        channel_prod.master_product = master_prod
+        db.session.commit()
+
+        return jsonify({"success": True}), 200
+
+    except Exception as e:
+        response['success'] = False
+        response['error'] = str(e.args[0])
+        return jsonify(response), 400
+
+
 @products_blueprint.route('/products/v1/get_filters', methods=['GET'])
 @authenticate_restful
 def get_products_filters(resp):
@@ -285,7 +495,7 @@ class ProductList(Resource):
 
     method_decorators = {'post': [authenticate_restful]}
 
-    def post(self, resp, type):
+    def post(self, resp):
         try:
             cur = conn.cursor(cursor_factory=RealDictCursor)
             response = {'status':'success', 'data': dict(), "meta": dict()}
@@ -333,9 +543,6 @@ class ProductList(Resource):
                         cl_filter = "AND aa.client_prefix in %s"%str(tuple(filters['client']))
 
                     query_to_execute = query_to_execute.replace('__CLIENT_FILTER__', cl_filter)
-
-            if type != 'all':
-                return {"success": False, "msg": "Invalid URL"}, 404
 
             query_to_execute = query_to_execute.replace('__JOIN_TYPE__', "LEFT JOIN")
             query_to_execute = query_to_execute.replace('__CLIENT_FILTER__',"").replace('__WAREHOUSE_FILTER__', "")
@@ -391,6 +598,174 @@ class ProductList(Resource):
                                               'per_page':per_page,
                                               'current_page': page,
                                               'total_pages':total_pages}
+
+            return response, 200
+        except Exception as e:
+            return {"success": False, "error":str(e.args[0])}, 404
+
+
+class ProductListChannel(Resource):
+
+    method_decorators = [authenticate_restful]
+
+    def post(self, resp):
+        try:
+            cur = conn.cursor()
+            response = {'status':'success', 'data': dict(), "meta": dict()}
+            data = json.loads(request.data)
+            page = data.get('page', 1)
+            per_page = data.get('per_page', 10)
+            if int(per_page) > 250:
+                return {"success": False, "error": "upto 250 results allowed per page"}, 401
+            sort = data.get('sort', "desc")
+            sort_by = data.get('sort_by', 'cc.sku')
+            search_key = data.get('search_key', '')
+            filters = data.get('filters', {})
+            download_flag = request.args.get("download", None)
+            auth_data = resp.get('data')
+            if not auth_data:
+                return {"success": False, "msg": "Auth Failed"}, 404
+            client_prefix = auth_data.get('client_prefix')
+            query_to_execute = select_product_list_channel_query
+            if auth_data['user_group'] == 'client':
+                query_to_execute = query_to_execute.replace('__CLIENT_FILTER__', "AND aa.client_prefix in ('%s')"%client_prefix)
+            if auth_data['user_group'] == 'multi-vendor':
+                cur.execute("SELECT vendor_list FROM multi_vendor WHERE client_prefix='%s';"%client_prefix)
+                vendor_list = cur.fetchone()['vendor_list']
+                query_to_execute = query_to_execute.replace('__MV_CLIENT_FILTER__', "AND aa.client_prefix in %s"%str(tuple(vendor_list)))
+            else:
+                query_to_execute = query_to_execute.replace('__MV_CLIENT_FILTER__', "")
+
+            if filters:
+                if 'client' in filters:
+                    if len(filters['client'])==1:
+                        cl_filter = "AND aa.client_prefix in ('%s')"%filters['client'][0]
+                    else:
+                        cl_filter = "AND aa.client_prefix in %s"%str(tuple(filters['client']))
+
+                    query_to_execute = query_to_execute.replace('__CLIENT_FILTER__', cl_filter)
+
+                if 'channel' in filters:
+                    if len(filters['channel'])==1:
+                        ch_filter = "AND dd.channel_name in ('%s')"%filters['channel'][0]
+                    else:
+                        ch_filter = "AND dd.channel_name in %s"%str(tuple(filters['channel']))
+
+                    query_to_execute = query_to_execute.replace('__CHANNEL_FILTER__', ch_filter)
+
+                if 'status' in filters:
+                    ch_filter = ""
+                    if "mapped" in filters['status']:
+                        ch_filter += "AND cc.id is not null "
+                    elif "unmapped" in filters['status']:
+                        ch_filter += "AND cc.id is null "
+
+                    query_to_execute = query_to_execute.replace('__STATUS_FILTER__', ch_filter)
+
+            query_to_execute = query_to_execute.replace('__CLIENT_FILTER__',"").replace('__WAREHOUSE_FILTER__', "").replace('__CHANNEL_FILTER__', "").replace('__STATUS_FILTER__', "")
+            if sort.lower() == 'desc':
+                sort = "DESC NULLS LAST"
+            query_to_execute = query_to_execute.replace('__ORDER_BY__', sort_by).replace('__ORDER_TYPE__', sort)
+            query_to_execute = query_to_execute.replace('__SEARCH_KEY__', search_key)
+            if download_flag:
+                s_no = 1
+                query_to_run = query_to_execute.replace('__PAGINATION__', "")
+                query_to_run = re.sub(r"""__.+?__""", "", query_to_run)
+                cur.execute(query_to_run)
+                products_qs_data = cur.fetchall()
+                si = io.StringIO()
+                cw = csv.writer(si)
+                cw.writerow(CHANNEL_PRODUCTS_DOWNLOAD_HEADERS)
+                for product in products_qs_data:
+                    try:
+                        new_row = list()
+                        new_row.append(str(s_no))
+                        new_row.append(str(product[1]))
+                        new_row.append(str(product[2]))
+                        new_row.append(str(product[4]))
+                        new_row.append(str(product[5]))
+                        new_row.append(str(product[6]))
+                        new_row.append(str(product[8]))
+                        status = "mapped" if product[9] else "unmapped"
+                        new_row.append(status)
+                        cw.writerow(new_row)
+                        s_no += 1
+                    except Exception as e:
+                        pass
+
+                output = make_response(si.getvalue())
+                filename = str(client_prefix)+"_EXPORT.csv"
+                output.headers["Content-Disposition"] = "attachment; filename="+filename
+                output.headers["Content-type"] = "text/csv"
+                return output
+
+            cur.execute(query_to_execute.replace('__PAGINATION__', ""))
+            total_count = cur.rowcount
+
+            query_to_execute = query_to_execute.replace('__PAGINATION__', "OFFSET %s LIMIT %s"%(str((page-1)*per_page), str(per_page)))
+            data = list()
+            cur.execute(query_to_execute)
+            all_products = cur.fetchall()
+            for product in all_products:
+                status = "mapped" if product[9] else "unmapped"
+                prod_obj = {"product_name": product[1],
+                            "channel_product_id": product[2],
+                            "channel_sku": product[4],
+                            "master_sku": product[5],
+                            "price": product[6],
+                            "channel_logo": product[7],
+                            "product_image": product[3],
+                            "channel_name": product[8],
+                            "status":status,
+                            "id":product[0],
+                            }
+
+                data.append(prod_obj)
+            response['data'] = data
+
+            total_pages = math.ceil(total_count/per_page)
+            response['meta']['pagination'] = {'total': total_count,
+                                              'per_page':per_page,
+                                              'current_page': page,
+                                              'total_pages':total_pages}
+
+            return response, 200
+        except Exception as e:
+            return {"success": False, "error":str(e.args[0])}, 404
+
+    def get(self, resp):
+        try:
+            response = {"filters": {}, "success": True}
+            auth_data = resp.get('data')
+            client_prefix = auth_data.get('client_prefix')
+            all_vendors = None
+            if auth_data['user_group'] == 'multi-vendor':
+                all_vendors = db.session.query(MultiVendor).filter(MultiVendor.client_prefix == client_prefix).first()
+                all_vendors = all_vendors.vendor_list
+            channel_qs = db.session.query(MasterChannels.channel_name,
+                                            func.count(MasterChannels.channel_name)) \
+                .join(Products, Products.channel_id == MasterChannels.id)
+            if auth_data['user_group'] == 'client':
+                channel_qs = channel_qs.filter(Products.client_prefix == client_prefix)
+            if all_vendors:
+                channel_qs = channel_qs.filter(Products.client_prefix.in_(all_vendors))
+
+            channel_qs = channel_qs.group_by(MasterChannels.channel_name)
+            response['filters']['channel'] = [{x[0]: x[1]} for x in channel_qs]
+            if auth_data['user_group'] == 'super-admin':
+                client_qs = db.session.query(Products.client_prefix, func.count(Products.client_prefix)).join(
+                    ProductQuantity,
+                    ProductQuantity.product_id == Products.id).group_by(
+                    Products.client_prefix)
+                if auth_data['user_group'] == 'warehouse':
+                    client_qs = client_qs.filter(ProductQuantity.warehouse_prefix == auth_data.get('warehouse_prefix'))
+                response['filters']['client'] = [{x[0]: x[1]} for x in client_qs]
+            if all_vendors:
+                client_qs = db.session.query(Products.client_prefix, func.count(Products.client_prefix)).join(
+                    ProductQuantity,
+                    ProductQuantity.product_id == Products.id).filter(
+                    Products.client_prefix.in_(all_vendors)).group_by(Products.client_prefix)
+                response['filters']['client'] = [{x[0]: x[1]} for x in client_qs]
 
             return response, 200
         except Exception as e:
@@ -500,7 +875,7 @@ class UpdateInventory(Resource):
                         conn.rollback()
 
                     try:
-                        cur.execute("""  select COALESCE(sum(quantity), 0) from op_association aa
+                        cur.execute("""select COALESCE(sum(quantity), 0) from op_association aa
                                 left join orders bb on aa.order_id=bb.id
                                 left join client_pickups cc on bb.pickup_data_id=cc.id
                                 left join pickup_points dd on cc.pickup_id=dd.id
@@ -670,6 +1045,7 @@ class AddSKU(Resource):
 
 
 api.add_resource(ProductUpdate, '/products/v1/product/<product_id>')
-api.add_resource(ProductList, '/products/<type>')
+api.add_resource(ProductList, '/products/v1/master')
+api.add_resource(ProductListChannel, '/products/v1/channel')
 api.add_resource(UpdateInventory, '/products/v1/update_inventory')
 api.add_resource(AddSKU, '/products/v1/add_sku')

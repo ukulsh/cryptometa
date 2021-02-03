@@ -852,7 +852,7 @@ def track_bluedart_orders(courier, cur):
             new_status = bluedart_status_mapping[scan_group][scan_code][0]
             current_awb = ret_order['@WaybillNo']
             is_return = False
-            if str(ret_order['@RefNo']).startswith("074"):
+            if '@RefNo' in ret_order and str(ret_order['@RefNo']).startswith("074"):
                 current_awb = str(str(ret_order['@RefNo']).split("-")[1]).strip()
                 is_return = True
 
@@ -1910,7 +1910,7 @@ def shopify_cancel(order):
         order[9], order[5])
 
     tra_header = {'Content-Type': 'application/json'}
-    cancel_data = {"restock": True}
+    cancel_data = {"restock": False}
     req_ful = requests.post(get_cancel_url, data=json.dumps(cancel_data),
                             headers=tra_header)
 

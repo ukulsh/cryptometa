@@ -104,13 +104,14 @@ def create_bikayi_user(merchant_id):
     pan_link = None
     signed_agreement_link = None
     gst_cert_url=None
-    for doc in req_doc_data['documents']:
-        if doc['type'].lower()=='pan_card':
-            pan_link=doc['urls'][0] if doc['urls'] else None
-        elif doc['type'].lower()=="aadhar_card":
-            signed_agreement_link = doc['urls'][0] if doc['urls'] else None
-        elif doc['type'].lower()=="gst_certificate":
-            gst_cert_url = doc['urls'][0] if doc['urls'] else None
+    if 'documents' in req_doc_data:
+        for doc in req_doc_data['documents']:
+            if doc['type'].lower()=='pan_card':
+                pan_link=doc['urls'][0] if doc['urls'] else None
+            elif doc['type'].lower()=="aadhar_card":
+                signed_agreement_link = doc['urls'][0] if doc['urls'] else None
+            elif doc['type'].lower()=="gst_certificate":
+                gst_cert_url = doc['urls'][0] if doc['urls'] else None
 
     tabs=["Home","Products","Orders","Pickups","Billing","Serviceability","Settings","Apps"]
     client = Client(client_name=str(req_data['merchant'].get('name')),

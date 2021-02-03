@@ -1910,7 +1910,7 @@ def shopify_cancel(order):
         order[9], order[5])
 
     tra_header = {'Content-Type': 'application/json'}
-    cancel_data = {"restock": True}
+    cancel_data = {"restock": False}
     req_ful = requests.post(get_cancel_url, data=json.dumps(cancel_data),
                             headers=tra_header)
 

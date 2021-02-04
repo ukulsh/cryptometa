@@ -93,10 +93,10 @@ class KeywordWeights(db.Model):
 class ProductsCombos(db.Model):
     __tablename__ = "products_combos"
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    combo_id = db.Column(db.Integer, db.ForeignKey('products.id'))
-    combo = db.relationship("Products", backref=db.backref("combo", uselist=True), foreign_keys=[combo_id])
-    combo_prod_id = db.Column(db.Integer, db.ForeignKey('products.id'))
-    combo_prod = db.relationship("Products", backref=db.backref("combo_prod", uselist=True), foreign_keys=[combo_prod_id])
+    combo_id = db.Column(db.Integer, db.ForeignKey('master_products.id'))
+    combo = db.relationship("MasterProducts", backref=db.backref("combo", uselist=True), foreign_keys=[combo_id])
+    combo_prod_id = db.Column(db.Integer, db.ForeignKey('master_products.id'))
+    combo_prod = db.relationship("MasterProducts", backref=db.backref("combo_prod", uselist=True), foreign_keys=[combo_prod_id])
     quantity = db.Column(db.Integer, nullable=False, default=1)
     date_created = db.Column(db.DateTime, default=datetime.now)
     date_updated = db.Column(db.DateTime, onupdate=datetime.now)

@@ -396,6 +396,19 @@ select_product_list_channel_query = """SELECT aa.id, aa.name as product_name,aa.
                             __PAGINATION__
                             """
 
+select_combo_list_query = """select aa.id, bb.id as parent_id, cc.id as child_id, bb.name, bb.sku, aa.date_created, 
+                            cc.sku as child_sku, cc.name as child_name, aa.quantity as child_qty from products_combos aa
+                            left join products bb on aa.combo_id=bb.id
+                            left join products cc on aa.combo_prod_id=cc.id
+                            left join products_quantity dd on cc.id=dd.product_id
+                            WHERE (bb.name ilike '%__SEARCH_KEY__%' or bb.sku ilike '%__SEARCH_KEY__%')
+                            __CLIENT_FILTER__
+                            __MV_CLIENT_FILTER__
+                            __WAREHOUSE_FILTER__
+                            ORDER BY __ORDER_BY__ __ORDER_TYPE__ 
+                            __PAGINATION__
+                            """
+
 select_orders_list_query = """select distinct on (aa.order_date, aa.id) aa.channel_order_id as order_id, aa.id as unique_id, aa.order_date, aa.status, 
                               aa.status_detail, bb.awb, CONCAT('http://webapp.wareiq.com/tracking/', bb.awb) as tracking_link, cc.courier_name, bb.edd, 
                               bb.weight, bb.dimensions, bb.volumetric_weight,bb.remark, aa.customer_name, aa.customer_phone, aa.customer_email, dd.address_one, 

@@ -10,8 +10,8 @@ from flask_restful import Api, Resource
 from psycopg2.extras import RealDictCursor
 from sqlalchemy import func, or_
 from project import db
-from project.api.models import Products, ProductQuantity, MultiVendor, InventoryUpdate, MasterProducts, MasterChannels
-from project.api.queries import select_product_list_query, select_product_list_channel_query
+from project.api.models import Products, ProductQuantity, MultiVendor, InventoryUpdate, MasterProducts, MasterChannels, ProductsCombos
+from project.api.queries import select_product_list_query, select_product_list_channel_query, select_combo_list_query
 from project.api.utils import authenticate_restful
 from project.api.utilities.db_utils import DbConnection
 
@@ -24,10 +24,12 @@ PRODUCTS_DOWNLOAD_HEADERS = ["S. No.", "Product Name", "Channel SKU", "Master SK
                              "Available Quantity", "Current Quantity", "Inline Quantity", "RTO Quantity", "Dimensions", "Weight"]
 
 CHANNEL_PRODUCTS_DOWNLOAD_HEADERS = ["S. No.", "Product Name", "Channel product id", "Channel SKU", "Master SKU", "Price", "Channel Name", "Status"]
+COMBO_DOWNLOAD_HEADERS = ["S. No.", "ParentName", "ParentSKU", "ChildName", "ChildSKU", "Quantity"]
 
 PRODUCT_UPLOAD_HEADERS = ["Name", "SKU", "Price", "WeightKG", "LengthCM", "BreadthCM", "HeightCM", "HSN", "TaxRate"]
 PRODUCT_UPLOAD_HEADERS_CHANNEL = ["Name", "ChannelProductId", "SKU", "Price", "MasterSKU", "ChannelName", "ImageURL"]
 BULKMAP_SKU_HEADERS = ["ChannelName", "ChannelProdID", "ChannelSKU", "MasterSKU"]
+BULK_COMBO_HEADERS = ["ParentSKU", "ChildSKU", "Quantity"]
 
 
 @products_blueprint.route('/products/v1/details', methods=['GET'])
@@ -342,6 +344,73 @@ def bulk_map_sku(resp):
     }), 200
 
 
+@products_blueprint.route('/products/v1/bulk_add_combos', methods=['POST'])
+@authenticate_restful
+def bulk_add_combos(resp):
+    auth_data = resp.get('data')
+    if not auth_data:
+        return {"success": False, "msg": "Auth Failed"}, 404
+
+    myfile = request.files['myfile']
+
+    if auth_data['user_group'] == 'client':
+        client_prefix=auth_data['client_prefix']
+    else:
+        client_prefix=request.args.get('client_prefix')
+
+    data_xlsx = pd.read_csv(myfile)
+    failed_skus = list()
+
+    si = io.StringIO()
+    cw = csv.writer(si)
+    cw.writerow(BULK_COMBO_HEADERS)
+
+    def process_row(row, failed_skus):
+        row_data = row[1]
+        try:
+            parent_prod = db.session.query(MasterProducts).filter(MasterProducts.sku==str(row_data.ParentSKU).rstrip(), MasterProducts.client_prefix==client_prefix).first()
+            if not parent_prod:
+                failed_skus.append(str(row_data.SKU).rstrip())
+                cw.writerow(list(row_data.values) + ["ParentSKU not found"])
+                return
+
+            child_prod = db.session.query(MasterProducts).filter(
+                MasterProducts.sku == str(row_data.ChildSKU).rstrip(),
+                MasterProducts.client_prefix == client_prefix).first()
+            if not child_prod:
+                failed_skus.append(str(row_data.SKU).rstrip())
+                cw.writerow(list(row_data.values) + ["ChildSKU not found"])
+                return
+
+            combo_obj = ProductsCombos(combo=parent_prod,
+                                       combo_prod=child_prod,
+                                       quantity = int(row_data.Quantity),
+                                       date_created = datetime.utcnow()+timedelta(hours=5.5))
+
+            db.session.add(combo_obj)
+            db.session.commit()
+
+        except Exception as e:
+            failed_skus.append(str(row_data.SKU).rstrip())
+            cw.writerow(list(row_data.values) + [str(e.args[0])])
+            db.session.rollback()
+
+    for row in data_xlsx.iterrows():
+        process_row(row, failed_skus)
+
+    if failed_skus:
+        output = make_response(si.getvalue())
+        filename = "failed_uploads.csv"
+        output.headers["Content-Disposition"] = "attachment; filename=" + filename
+        output.headers["Content-type"] = "text/csv"
+        return output
+
+    return jsonify({
+        'status': 'success',
+        "failed_skus": failed_skus
+    }), 200
+
+
 @products_blueprint.route('/products/v1/get_master_products', methods=['GET'])
 @authenticate_restful
 def get_master_products(resp):
@@ -408,6 +477,53 @@ def map_products(resp):
         channel_prod.master_product = master_prod
         db.session.commit()
 
+        return jsonify({"success": True}), 200
+
+    except Exception as e:
+        response['success'] = False
+        response['error'] = str(e.args[0])
+        return jsonify(response), 400
+
+
+@products_blueprint.route('/products/v1/add_combo', methods=['POST'])
+@authenticate_restful
+def add_combo(resp):
+    response = {"success": True}
+    try:
+        auth_data = resp.get('data')
+        data = json.loads(request.data)
+        parent_id = data.get('parent_id')
+        parent_id = int(parent_id)
+        client_prefix = auth_data.get('client_prefix')
+        parent_prod = db.session.query(MasterProducts).filter(MasterProducts.id == parent_id)
+        all_vendors=None
+        if auth_data['user_group'] == 'multi-vendor':
+            all_vendors = db.session.query(MultiVendor).filter(MultiVendor.client_prefix == client_prefix).first()
+            all_vendors = all_vendors.vendor_list
+
+        if auth_data['user_group'] == 'client':
+            parent_prod = parent_prod.filter(MasterProducts.client_prefix == client_prefix)
+
+        if all_vendors:
+            parent_prod = parent_prod.filter(MasterProducts.client_prefix.in_(all_vendors))
+
+        parent_prod = parent_prod.first()
+
+        if not parent_prod:
+            return jsonify({"success": False}), 400
+
+        for child in data.get('child_skus'):
+            child_prod = db.session.query(MasterProducts).filter(MasterProducts.id == child['id']).first()
+            if not child_prod:
+                return jsonify({"success": False}), 400
+            combo_obj = ProductsCombos(combo=parent_prod,
+                                       combo_prod=child_prod,
+                                       quantity=child['quantity'],
+                                       date_created = datetime.utcnow()+timedelta(hours=5.5))
+
+            db.session.add(combo_obj)
+
+        db.session.commit()
         return jsonify({"success": True}), 200
 
     except Exception as e:
@@ -772,6 +888,181 @@ class ProductListChannel(Resource):
             return {"success": False, "error":str(e.args[0])}, 404
 
 
+class ComboList(Resource):
+
+    method_decorators = [authenticate_restful]
+
+    def post(self, resp):
+        try:
+            cur = conn.cursor()
+            response = {'status':'success', 'data': dict(), "meta": dict()}
+            data = json.loads(request.data)
+            page = data.get('page', 1)
+            per_page = data.get('per_page', 10)
+            if int(per_page) > 250:
+                return {"success": False, "error": "upto 250 results allowed per page"}, 401
+            sort = data.get('sort', "desc")
+            sort_by = data.get('sort_by', 'aa.date_created')
+            search_key = data.get('search_key', '')
+            filters = data.get('filters', {})
+            download_flag = request.args.get("download", None)
+            auth_data = resp.get('data')
+            if not auth_data:
+                return {"success": False, "msg": "Auth Failed"}, 404
+            client_prefix = auth_data.get('client_prefix')
+            query_to_execute = select_combo_list_query
+            if auth_data['user_group'] == 'client':
+                query_to_execute = query_to_execute.replace('__CLIENT_FILTER__', "AND bb.client_prefix in ('%s')"%client_prefix)
+            if auth_data['user_group'] == 'warehouse':
+                query_to_execute = query_to_execute.replace('__WAREHOUSE_FILTER__', "AND dd.warehouse_prefix='%s'"%auth_data['warehouse_prefix'])
+            if auth_data['user_group'] == 'multi-vendor':
+                cur.execute("SELECT vendor_list FROM multi_vendor WHERE client_prefix='%s';"%client_prefix)
+                vendor_list = cur.fetchone()['vendor_list']
+                query_to_execute = query_to_execute.replace('__MV_CLIENT_FILTER__', "AND aa.client_prefix in %s"%str(tuple(vendor_list)))
+            else:
+                query_to_execute = query_to_execute.replace('__MV_CLIENT_FILTER__', "")
+
+            if filters:
+                if 'client' in filters:
+                    if len(filters['client'])==1:
+                        cl_filter = "AND bb.client_prefix in ('%s')"%filters['client'][0]
+                    else:
+                        cl_filter = "AND bb.client_prefix in %s"%str(tuple(filters['client']))
+
+                    query_to_execute = query_to_execute.replace('__CLIENT_FILTER__', cl_filter)
+
+            query_to_execute = query_to_execute.replace('__CLIENT_FILTER__',"").replace('__WAREHOUSE_FILTER__', "")
+            if sort.lower() == 'desc':
+                sort = "DESC NULLS LAST"
+            query_to_execute = query_to_execute.replace('__ORDER_BY__', sort_by).replace('__ORDER_TYPE__', sort)
+            query_to_execute = query_to_execute.replace('__SEARCH_KEY__', search_key)
+            if download_flag:
+                s_no = 1
+                query_to_run = query_to_execute.replace('__PAGINATION__', "")
+                query_to_run = re.sub(r"""__.+?__""", "", query_to_run)
+                cur.execute(query_to_run)
+                products_qs_data = cur.fetchall()
+                si = io.StringIO()
+                cw = csv.writer(si)
+                cw.writerow(COMBO_DOWNLOAD_HEADERS)
+                for product in products_qs_data:
+                    try:
+                        new_row = list()
+                        new_row.append(str(s_no))
+                        new_row.append(str(product[3]))
+                        new_row.append(str(product[4]))
+                        new_row.append(str(product[7]))
+                        new_row.append(str(product[6]))
+                        new_row.append(str(product[8]))
+                        cw.writerow(new_row)
+                        s_no += 1
+                    except Exception as e:
+                        pass
+
+                output = make_response(si.getvalue())
+                filename = str(client_prefix)+"_EXPORT.csv"
+                output.headers["Content-Disposition"] = "attachment; filename="+filename
+                output.headers["Content-type"] = "text/csv"
+                return output
+
+            cur.execute(query_to_execute.replace('__PAGINATION__', ""))
+            total_count = cur.rowcount
+
+            query_to_execute = query_to_execute.replace('__PAGINATION__', "OFFSET %s LIMIT %s"%(str((page-1)*per_page), str(per_page)))
+            cur.execute(query_to_execute)
+            all_products = cur.fetchall()
+            combo_dict = dict()
+            for product in all_products:
+                if product[1] not in combo_dict:
+                    combo_dict[product[1]] = {"child_skus":[{"id": product[2], "name": product[7], "sku":product[6], "quantity": product[8]}],
+                                              "name": product[3], "sku": product[4], "id":product[1]}
+                else:
+                    combo_dict[product[1]]['child_skus'].append({"id": product[2], "name": product[7], "sku":product[6], "quantity": product[8]})
+
+            response['data'] = combo_dict
+
+            total_pages = math.ceil(total_count/per_page)
+            response['meta']['pagination'] = {'total': total_count,
+                                              'per_page':per_page,
+                                              'current_page': page,
+                                              'total_pages':total_pages}
+
+            return response, 200
+        except Exception as e:
+            return {"success": False, "error":str(e.args[0])}, 404
+
+    def get(self, resp):
+        try:
+            response = {"filters": {}, "success": True}
+            auth_data = resp.get('data')
+            client_prefix = auth_data.get('client_prefix')
+            all_vendors = None
+            if auth_data['user_group'] == 'multi-vendor':
+                all_vendors = db.sessi11on.query(MultiVendor).filter(MultiVendor.client_prefix == client_prefix).first()
+                all_vendors = all_vendors.vendor_list
+
+            if auth_data['user_group'] == 'super-admin':
+                client_qs = db.session.query(MasterProducts.client_prefix, func.count(MasterProducts.client_prefix)).join(
+                    ProductsCombos,
+                    ProductsCombos.combo_id == MasterProducts.id).join(ProductQuantity, ProductQuantity.product_id==MasterProducts.id).group_by(
+                    MasterProducts.client_prefix)
+                if auth_data['user_group'] == 'warehouse':
+                    client_qs = client_qs.filter(ProductQuantity.warehouse_prefix == auth_data.get('warehouse_prefix'))
+                response['filters']['client'] = [{x[0]: x[1]} for x in client_qs]
+            if all_vendors:
+                client_qs = db.session.query(MasterProducts.client_prefix, func.count(MasterProducts.client_prefix)).join(
+                    ProductsCombos,
+                    ProductsCombos.combo_id == MasterProducts.id).filter(
+                    MasterProducts.client_prefix.in_(all_vendors)).group_by(MasterProducts.client_prefix)
+                response['filters']['client'] = [{x[0]: x[1]} for x in client_qs]
+
+            return response, 200
+        except Exception as e:
+            return {"success": False, "error":str(e.args[0])}, 404
+
+    def patch(self, resp):
+        try:
+            auth_data = resp.get('data')
+            data = json.loads(request.data)
+            parent_id = data.get('parent_id')
+            parent_id = int(parent_id)
+            client_prefix = auth_data.get('client_prefix')
+            parent_prod = db.session.query(MasterProducts).filter(MasterProducts.id == parent_id)
+            all_vendors = None
+            if auth_data['user_group'] == 'multi-vendor':
+                all_vendors = db.session.query(MultiVendor).filter(MultiVendor.client_prefix == client_prefix).first()
+                all_vendors = all_vendors.vendor_list
+
+            if auth_data['user_group'] == 'client':
+                parent_prod = parent_prod.filter(MasterProducts.client_prefix == client_prefix)
+
+            if all_vendors:
+                parent_prod = parent_prod.filter(MasterProducts.client_prefix.in_(all_vendors))
+
+            parent_prod = parent_prod.first()
+
+            if not parent_prod:
+                return jsonify({"success": False}), 400
+
+            db.session.query(ProductsCombos).filter(ProductsCombos.combo_id==parent_id).delete()
+
+            for child in data.get('child_skus'):
+                child_prod = db.session.query(MasterProducts).filter(MasterProducts.id == child['id']).first()
+                if not child_prod:
+                    return jsonify({"success": False}), 400
+                combo_obj = ProductsCombos(combo=parent_prod,
+                                           combo_prod=child_prod,
+                                           quantity=child['quantity'],
+                                           date_created=datetime.utcnow() + timedelta(hours=5.5))
+
+                db.session.add(combo_obj)
+
+            db.session.commit()
+            return jsonify({"success": True}), 200
+        except Exception as e:
+            return {"success": False, "error":str(e.args[0])}, 404
+
+
 class UpdateInventory(Resource):
 
     method_decorators = [authenticate_restful]
@@ -1047,5 +1338,6 @@ class AddSKU(Resource):
 api.add_resource(ProductUpdate, '/products/v1/product/<product_id>')
 api.add_resource(ProductList, '/products/v1/master')
 api.add_resource(ProductListChannel, '/products/v1/channel')
+api.add_resource(ComboList, '/products/v1/combos')
 api.add_resource(UpdateInventory, '/products/v1/update_inventory')
 api.add_resource(AddSKU, '/products/v1/add_sku')

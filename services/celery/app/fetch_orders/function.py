@@ -1314,6 +1314,7 @@ def update_thirdwatch_data(cur):
 
 easyecom_wareiq_channel_map = {"Amazon.in": 2,
                            "Shopify": 1,
+                           "FlipkartSmart": 3,
                                "Flipkart":3}
 
 easyecom_wareiq_courier_map = {"eKart": 7}

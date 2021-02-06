@@ -39,17 +39,29 @@ def get_products_details(resp):
         cur = conn.cursor()
         auth_data = resp.get('data')
         client_prefix = auth_data.get('client_prefix')
-        sku = request.args.get('sku')
-        if not sku:
-            return jsonify({"success": False, "msg": "SKU not provided"}), 400
+        prod_id = request.args.get('sku_id')
+        if not prod_id:
+            return jsonify({"success": False, "msg": "Prod ID not provided"}), 400
 
         query_to_run = """SELECT name, null, sku as master_sku, weight, dimensions, price, bb.warehouse_prefix as warehouse, 
-                            bb.approved_quantity as total_quantity, bb.current_quantity, bb.available_quantity, bb.inline_quantity, bb.rto_quantity
+                            bb.approved_quantity as total_quantity, bb.current_quantity, bb.available_quantity, bb.inline_quantity, bb.rto_quantity, aa.id
                             from master_products aa
                             left join products_quantity bb on aa.id=bb.product_id
-                            WHERE client_prefix='%s'
-                            and (sku='%s')
-                            __WAREHOUSE_FILTER__"""%(client_prefix, sku)
+                            WHERE aa.id=%s
+                            __CLIENT_FILTER__
+                            __WAREHOUSE_FILTER__"""%(str(prod_id))
+
+        if auth_data['user_group'] == 'client':
+            query_to_run = query_to_run.replace('__CLIENT_FILTER__',
+                                                        "AND aa.client_prefix in ('%s')" % client_prefix)
+        elif auth_data['user_group'] == 'multi-vendor':
+            cur.execute("SELECT vendor_list FROM multi_vendor WHERE client_prefix='%s';" % client_prefix)
+            vendor_list = cur.fetchone()['vendor_list']
+            query_to_run = query_to_run.replace('__CLIENT_FILTER__',
+                                                        "AND aa.client_prefix in %s" % str(tuple(vendor_list)))
+        else:
+            query_to_run = query_to_run.replace('__CLIENT_FILTER__', "")
+
         warehouse = request.args.get('warehouse')
         if warehouse:
             query_to_run = query_to_run.replace('__WAREHOUSE_FILTER__', "and warehouse_prefix='%s'"%warehouse)
@@ -78,15 +90,13 @@ def get_products_details(resp):
         if not ret_tuple_all:
             return jsonify({"success": False, "msg": "SKU, warehouse combination not found"}), 400
 
-        ret_list = list()
+        wh_list = list()
+
+        data = {"id": ret_tuple_all[0][12], "name": ret_tuple_all[0][0], "master_sku": ret_tuple_all[0][2],
+                "weight": ret_tuple_all[0][3], "dimensions": ret_tuple_all[0][4], "price": ret_tuple_all[0][5]}
 
         for ret_tuple in ret_tuple_all:
-            ret_obj = {"name": ret_tuple[0],
-                       "master_sku": ret_tuple[2],
-                       "weight": ret_tuple[3],
-                       "dimensions": ret_tuple[4],
-                       "price": ret_tuple[5],
-                       "warehouse": ret_tuple[6],
+            ret_obj = {"warehouse": ret_tuple[6],
                        "total_quantity": ret_tuple[7],
                        "current_quantity": ret_tuple[8],
                        "available_quantity": ret_tuple[9],
@@ -94,11 +104,14 @@ def get_products_details(resp):
                        "rto_quantity": ret_tuple[11],
                        }
 
-            ret_list.append(ret_obj)
+            wh_list.append(ret_obj)
 
-        return jsonify({"success": True, "data": ret_list}), 200
+        data["inventory"] = wh_list
+
+        return jsonify({"success": True, "data": data}), 200
 
     except Exception as e:
+        conn.rollback()
         return jsonify({"success": False}), 400
 
 
@@ -717,6 +730,7 @@ class ProductList(Resource):
 
             return response, 200
         except Exception as e:
+            conn.rollback()
             return {"success": False, "error":str(e.args[0])}, 404
 
 
@@ -847,6 +861,7 @@ class ProductListChannel(Resource):
 
             return response, 200
         except Exception as e:
+            conn.rollback()
             return {"success": False, "error":str(e.args[0])}, 404
 
     def get(self, resp):
@@ -885,6 +900,7 @@ class ProductListChannel(Resource):
 
             return response, 200
         except Exception as e:
+            conn.rollback()
             return {"success": False, "error":str(e.args[0])}, 404
 
 
@@ -989,6 +1005,7 @@ class ComboList(Resource):
 
             return response, 200
         except Exception as e:
+            conn.rollback()
             return {"success": False, "error":str(e.args[0])}, 404
 
     def get(self, resp):
@@ -1060,6 +1077,7 @@ class ComboList(Resource):
             db.session.commit()
             return jsonify({"success": True}), 200
         except Exception as e:
+            conn.rollback()
             return {"success": False, "error":str(e.args[0])}, 404
 
 
@@ -1307,6 +1325,7 @@ class AddSKU(Resource):
             return {"success": True, "msg": "Successfully added"}, 201
 
         except Exception as e:
+            conn.rollback()
             return {"success": False, "msg": ""}, 404
 
     def get(self, resp):

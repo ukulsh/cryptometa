@@ -67,6 +67,9 @@ def ship_orders(courier_name=None, order_ids=None, force_ship=None):
         elif courier[10].startswith('Self Ship'):
             ship_selfshp_orders(cur, courier, courier_name, order_ids, order_id_tuple, force_ship=force_ship)
 
+        # elif courier[10].startswith('SDD'):
+        #     ship_sdd_orders(cur, courier, courier_name, order_ids, order_id_tuple, force_ship=force_ship)
+
         # elif courier[10].startswith('FedEx'):
         #     ship_fedex_orders(cur, courier, courier_name, order_ids, order_id_tuple, force_ship=force_ship)
 
@@ -2061,7 +2064,7 @@ def ship_selfshp_orders(cur, courier, courier_name, order_ids, order_id_tuple, b
                                                                 """and aa.id in %s""" % order_id_tuple)
     else:
         orders_to_ship_query = get_orders_to_ship_query.replace("__ORDER_SELECT_FILTERS__", """and aa.status='NEW'
-                                                                                                and ll.id is null""")
+-                                                                                                and ll.id is null""")
     get_orders_data_tuple = (courier[1], courier[1])
 
     cur.execute(orders_to_ship_query, get_orders_data_tuple)
@@ -2152,6 +2155,238 @@ def ship_selfshp_orders(cur, courier, courier_name, order_ids, order_id_tuple, b
                 str(order[0]), "Success", order[0], pickup_point[1],
                 courier[9], json.dumps(dimensions), volumetric_weight, weight, "", pickup_point[2],
                 "", None, None)])
+
+            cur.execute(insert_shipments_data_query, data_tuple)
+            ship_temp = cur.fetchone()
+            order_status_add_query = """INSERT INTO order_status (order_id, courier_id, shipment_id, 
+                                                                        status_code, status, status_text, location, location_city, 
+                                                                        status_time) VALUES %s"""
+
+            order_status_add_tuple = [(order[0], courier[9],
+                                       ship_temp[0], "UD", "Received", "Consignment Manifested",
+                                       pickup_point[6], pickup_point[6],
+                                       datetime.utcnow() + timedelta(hours=5.5))]
+
+            cur.execute(order_status_add_query, tuple(order_status_add_tuple))
+
+            if not order[54]:
+                last_invoice_no = invoice_order(cur, last_invoice_no, pickup_point[23], order[0], pickup_id)
+
+        if last_shipped_order_id:
+            last_shipped_data_tuple = (
+                last_shipped_order_id, datetime.now(tz=pytz.timezone('Asia/Calcutta')), courier[1])
+            cur.execute(update_last_shipped_order_query, last_shipped_data_tuple)
+
+        if order_status_change_ids:
+            if len(order_status_change_ids) == 1:
+                cur.execute(update_orders_status_query % (("(%s)") % str(order_status_change_ids[0])))
+            else:
+                cur.execute(update_orders_status_query, (tuple(order_status_change_ids),))
+
+        cur.execute("UPDATE client_pickups SET invoice_last=%s WHERE id=%s;", (last_invoice_no, pickup_id))
+
+        conn.commit()
+
+    if exotel_idx:
+        logger.info("Sending messages...count:" + str(exotel_idx))
+        try:
+            lad = requests.post(
+                'https://ff2064142bc89ac5e6c52a6398063872f95f759249509009:783fa09c0ba1110309f606c7411889192335bab2e908a079@api.exotel.com/v1/Accounts/wareiq1/Sms/bulksend',
+                data=exotel_sms_data)
+        except Exception as e:
+            logger.error("messages not sent." + "   Error: " + str(e.args[0]))
+
+
+def ship_sdd_orders(cur, courier, courier_name, order_ids, order_id_tuple, backup_param=True, force_ship=None):
+    exotel_idx = 0
+    exotel_sms_data = {
+        'From': 'LM-WAREIQ'
+    }
+    if courier_name and order_ids:
+        orders_to_ship_query = get_orders_to_ship_query.replace("__ORDER_SELECT_FILTERS__",
+                                                                """and aa.id in %s""" % order_id_tuple)
+    else:
+        orders_to_ship_query = get_orders_to_ship_query.replace("__ORDER_SELECT_FILTERS__", """and aa.channel_order_id='343345678'""")
+    get_orders_data_tuple = (courier[1], courier[1])
+
+    cur.execute(orders_to_ship_query, get_orders_data_tuple)
+    all_orders = cur.fetchall()
+
+    pickup_point_order_dict = dict()
+    headers = {"Authorization": "Token " + courier[14],
+               "Content-Type": "application/json"}
+
+    for order in all_orders:
+        if order[41]:
+            if order[41] not in pickup_point_order_dict:
+                pickup_point_order_dict[order[41]] = [order]
+            else:
+                pickup_point_order_dict[order[41]].append(order)
+
+    for pickup_id, all_new_orders in pickup_point_order_dict.items():
+
+        last_shipped_order_id = 0
+        pickup_points_tuple = (pickup_id,)
+        cur.execute(get_pickup_points_query, pickup_points_tuple)
+        order_status_change_ids = list()
+
+        pickup_point = cur.fetchone()  # change this as we get to dynamic pickups
+
+        last_invoice_no = pickup_point[22] if pickup_point[22] else 0
+
+        if not pickup_point[21]:
+            continue
+
+        for order in all_new_orders:
+            if order[26].lower() == 'pickup':
+                continue
+            zone = None
+            try:
+                zone = get_delivery_zone(pickup_point[8], order[18])
+            except Exception as e:
+                logger.error("couldn't find zone: " + str(order[0]) + "\nError: " + str(e))
+
+            time_2_days = datetime.utcnow() + timedelta(hours=5.5) - timedelta(days=1)
+            if order[47] and not (order[50] and order[2] < time_2_days) and not force_ship:
+                if order[26].lower() == 'cod' and not order[42] and order[43]:
+                    continue  # change this to continue later
+                if order[26].lower() == 'cod' and not order[43]:
+                    try:  ## Cod confirmation  text
+                        sms_to_key, sms_body_key, customer_phone, sms_body_key_data = cod_verification_text(
+                            order, exotel_idx, cur)
+                        if not order[53]:
+                            exotel_sms_data[sms_to_key] = customer_phone
+                            exotel_sms_data[sms_body_key] = sms_body_key_data
+                            exotel_idx += 1
+                    except Exception as e:
+                        logger.error(
+                            "Cod confirmation not sent. Order id: " + str(order[0]))
+                    continue
+
+            if zone != 'A' and not force_ship:
+                continue
+
+            lat, lon = order[22], order[23]
+
+            if not (lat and lon):
+                lat, lon = get_lat_lon(order, cur)
+
+            # kama ayurveda assign mumbai orders pincode check
+            if pickup_point[0] == 170 and order[18] not in kama_mum_sdd_pincodes:
+                continue
+
+            # kama ayurveda assign blr orders pincode check
+            if pickup_point[0] == 143 and order[18] not in kama_blr_sdd_pincodes:
+                continue
+
+            dimensions = order[33][0]
+            dimensions['length'] = dimensions['length'] * order[35][0]
+            weight = order[34][0] * order[35][0]
+            volumetric_weight = (dimensions['length'] * dimensions['breadth'] * dimensions['height']) / 5000
+            for idx, dim in enumerate(order[33]):
+                if idx == 0:
+                    continue
+                dim['length'] += dim['length'] * (order[35][idx])
+                volumetric_weight += (dim['length'] * dim['breadth'] * dim['height']) / 5000
+                weight += order[34][idx] * (order[35][idx])
+            if dimensions['length'] and dimensions['breadth']:
+                dimensions['height'] = round(
+                    (volumetric_weight * 5000) / (dimensions['length'] * dimensions['breadth']))
+
+            package_string = ""
+            for idx, prod in enumerate(order[40]):
+                package_string += prod + " (" + str(order[35][idx]) + ") + "
+
+            time_now = datetime.utcnow()+timedelta(hours=5.5)
+            if time_now.hour>12:
+                alloted_time = time_now + timedelta(days=1)
+            else:
+                alloted_time = time_now
+            alloted_time = alloted_time.replace(hour=14, minute=0)
+            sdd_body = {"pickup_contact_number":pickup_point[3],
+                        "store_code":"wareiqstore001",
+                        "order_details":{
+                        "scheduled_time":alloted_time.strftime('%Y-%m-%d %X'),
+                        "order_value":str(order[27]),
+                        "paid":False if order[26].lower()=='cod' else True,
+                        "client_order_id":order[1],
+                        "delivery_instruction": {
+                            "drop_instruction_text": "",
+                            "take_drop_off_picture": True,
+                            "drop_off_picture_mandatory": False
+                            }
+                        },
+                        "customer_details":{
+                        "address_line_1":order[15],
+                        "city":order[17],
+                        "contact_number":order[5],
+                        "address_line_2":order[16],
+                        "name":order[13],
+                        "latitude": lat,
+                        "longitude": lon
+                        },
+                        "misc":{
+                        "type":"slotted",
+                        "promised_delivery_time":(alloted_time+timedelta(hours=2)).strftime('%Y-%m-%d %X'),
+                        "weight": weight
+                        },
+                        "product_details":[{
+                        "weight":weight,
+                        "id":str(order[0]),
+                        "quantity":1,
+                        "name":package_string,
+                        "price":order[27] if order[27] else 1}]}
+
+            return_data_raw = requests.post(courier[16] + "/api/v2/stores/orders/", headers=headers, data=json.dumps(sdd_body)).json()
+
+            if return_data_raw['message'] == 'Success':
+                order_status_change_ids.append(order[0])
+                data_tuple = tuple([(
+                    str(return_data_raw['data']['sfx_order_id']),
+                    return_data_raw['message'],
+                    order[0], pickup_point[1], courier[9], json.dumps(dimensions), volumetric_weight, weight,
+                    "", pickup_point[2], "", None, return_data_raw['data']['track_url'], zone)])
+
+                if order[46] == 7:
+                    push_awb_easyecom(order[39], order[36], return_data_raw['AddManifestDetails'][0]['AWBNo'], courier,
+                                      cur, order[9])
+
+                client_name = str(order[51])
+                customer_phone = order[5].replace(" ", "")
+                customer_phone = "0" + customer_phone[-10:]
+
+                sms_to_key = "Messages[%s][To]" % str(exotel_idx)
+                sms_body_key = "Messages[%s][Body]" % str(exotel_idx)
+
+                exotel_sms_data[sms_to_key] = customer_phone
+                try:
+                    tracking_link_wareiq = return_data_raw['data']['track_url']
+                    exotel_sms_data[
+                        sms_body_key] = "Received: Your order from %s. Track here: %s . Thanks!" % (
+                        client_name, tracking_link_wareiq)
+                except Exception:
+                    pass
+
+                exotel_idx += 1
+            else:
+                cur.execute("select * from client_couriers where client_prefix=%s and priority=%s;",
+                            (courier[1], courier[3] + 1))
+                qs = cur.fetchone()
+                if not (qs and backup_param) or force_ship:
+                    insert_shipments_data_query = """INSERT INTO SHIPMENTS (awb, status, order_id, pickup_id, courier_id, 
+                                                                dimensions, volumetric_weight, weight, remark, return_point_id, routing_code, zone)
+                                                                VALUES  %s"""
+                    insert_shipments_data_tuple = list()
+                    insert_shipments_data_tuple.append(("", "Fail", order[0], None,
+                                                        None, None, None, None, "Pincode not serviceable", None,
+                                                        None, zone), )
+                    cur.execute(insert_shipments_data_query, tuple(insert_shipments_data_tuple))
+                continue
+
+            insert_shipments_data_query = """INSERT INTO SHIPMENTS (awb, status, order_id, pickup_id, courier_id, 
+                                                dimensions, volumetric_weight, weight, remark, return_point_id, routing_code, 
+                                                channel_fulfillment_id, tracking_link, zone)
+                                                VALUES  %s RETURNING id;"""
 
             cur.execute(insert_shipments_data_query, data_tuple)
             ship_temp = cur.fetchone()
@@ -2410,6 +2645,38 @@ def invoice_order(cur, last_inv_no, inv_prefix, order_id, pickup_data_id):
         return inv_no
     except Exception as e:
         return last_inv_no
+
+
+def get_lat_lon(order, cur):
+    try:
+        lat, lon = None, None
+        address = order[15]
+        if order[16]:
+            address += " " + order[16]
+        if order[17]:
+            address += ", " + order[17]
+        if order[19]:
+            address += ", " + order[19]
+        if order[18]:
+            address += ", " + order[18]
+        res = requests.get("https://maps.googleapis.com/maps/api/geocode/json?address=%s&key=%s" % (
+        address, "AIzaSyBg7syNb_e1gZgyL1lHXBHRmg3jeaXrkco"))
+        loc_rank = 0
+        location_rank_dict = {"ROOFTOP": 1,
+                              "RANGE_INTERPOLATED": 2,
+                              "GEOMETRIC_CENTER": 3,
+                              "APPROXIMATE": 4}
+        for result in res.json()['results']:
+            if location_rank_dict[result['geometry']['location_type']] > loc_rank:
+                loc_rank = location_rank_dict[result['geometry']['location_type']]
+                lat, lon = result['geometry']['location']['lat'], result['geometry']['location']['lng']
+
+        if lat and lon:
+            cur.execute("UPDATE shipping_address SET latitude=%s, longitude=%s WHERE id=%s", (lat, lon, order[12]))
+        return lat, lon
+    except Exception as e:
+        logger.error("lat lon on found for order: ." + str(order[0]) + "   Error: " + str(e.args[0]))
+        return None, None
 
 
 bluedart_area_code_mapping = {"110015":"DEL",

@@ -482,7 +482,6 @@ def map_products(resp):
             master_prod = master_prod.filter(MasterProducts.client_prefix.in_(all_vendors))
 
         channel_prod = channel_prod.first()
-        master_prod = master_prod.first()
         if not channel_prod:
             return jsonify({"success": False}), 400
 

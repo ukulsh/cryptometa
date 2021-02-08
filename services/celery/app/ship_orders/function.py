@@ -2206,7 +2206,8 @@ def ship_sdd_orders(cur, courier, courier_name, order_ids, order_id_tuple, backu
         orders_to_ship_query = get_orders_to_ship_query.replace("__ORDER_SELECT_FILTERS__",
                                                                 """and aa.id in %s""" % order_id_tuple)
     else:
-        orders_to_ship_query = get_orders_to_ship_query.replace("__ORDER_SELECT_FILTERS__", """and aa.channel_order_id='343345678'""")
+        orders_to_ship_query = get_orders_to_ship_query.replace("__ORDER_SELECT_FILTERS__", """and aa.status='NEW' and ll.id is null""")
+
     get_orders_data_tuple = (courier[1], courier[1])
 
     cur.execute(orders_to_ship_query, get_orders_data_tuple)

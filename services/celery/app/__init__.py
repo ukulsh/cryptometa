@@ -155,6 +155,12 @@ def consume_ecom_scan(payload):
     return msg
 
 
+@celery_app.task(name='consume_ecom_scan')
+def consume_sfxsdd_scan(payload):
+    msg = consume_sfxsdd_scan_util(payload)
+    return msg
+
+
 @app.route('/scans/v1/consume/ecom', methods = ['POST'])
 @authenticate_username_password
 def ecom_scan(resp):
@@ -166,6 +172,19 @@ def ecom_scan(resp):
     data = json.loads(request.data)
     consume_ecom_scan.apply_async(queue='consume_scans', args=(data, ))
     return jsonify({"awb": data['awb'], "status": True, "status_update_number": data['status_update_number'] }), 200
+
+
+@app.route('/scans/v1/consume/sfxsdd', methods = ['POST'])
+@authenticate_username_password
+def sfxsdd_scan(resp):
+    auth_data = resp.get('data')
+    if not auth_data:
+        return jsonify({"success": False, "msg": "Auth Failed"}), 404
+    if auth_data.get("username")!="sfxsdd" or auth_data.get("user_group")!="courier":
+        return jsonify({"success": False, "msg": "Not allowed"}), 404
+    data = json.loads(request.data)
+    consume_sfxsdd_scan.apply_async(queue='consume_scans', args=(data, ))
+    return jsonify({"awb": data['sfx_order_id'], "status": True, "order_status": data['order_status'] }), 200
 
 
 @celery_app.task(name='sync_channel_products')

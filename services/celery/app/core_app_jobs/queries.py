@@ -5,7 +5,7 @@ get_order_details_query = """select aa.id, bb.awb, aa.status, aa.client_prefix, 
                                     nn.client_name, nn.client_logo, nn.custom_email_subject, bb.courier_id, nn.theme_color, cc.unique_parameter,
                                     cc.mark_shipped, cc.shipped_status, cc.mark_invoiced, cc.invoiced_status, cc.mark_delivered, 
                                     cc.delivered_status, cc.mark_returned, cc.returned_status, cc.id, ee.amount, oo.warehouse_prefix, 
-                                    nn.client_name, bb.courier_id
+                                    nn.client_name, bb.courier_id, oo.city
                                     from orders aa
                                     left join shipments bb
                                     on aa.id=bb.order_id

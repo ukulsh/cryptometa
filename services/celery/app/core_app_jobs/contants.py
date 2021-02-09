@@ -68,6 +68,16 @@ ecom_express_status_mapping = {"303": ("IN TRANSIT", "UD", "In Transit", "Shipme
                              "1410": (None, None, None, "Pickup Rescheduled For Next Day"),
                              }
 
+sfxsdd_status_mapping = {"ALLOTTED": ("READY TO SHIP", "UD", "Received", "Order Received"),
+                            "ARRIVED": ("READY TO SHIP", "UD", "Received", "Order Received"),
+                             "DISPATCHED": ("IN TRANSIT", "UD", "Picked", "Shipment picked up"),
+                             "ARRIVED_CUSTOMER_DOORSTEP": ("DISPATCHED", "UD", "Out for delivery", "Shipment out for delivery"),
+                             "DELIVERED": ("DELIVERED", "DL", "Delivered", "Shipment delivered"),
+                             "CANCELLED": ("CANCELED", "UD", "Cancelled", "order cancelled"),
+                             "CANCELLED_BY_CUSTOMER": ("CANCELED", "UD", "Cancelled", "order cancelled"),
+                             "UNDELIVERED": ("IN TRANSIT", "RT", "Returned", "Order returned"),
+                             "RETURNED_TO_SELLER": ("RTO", "DL", "RTO", "Order RTO")}
+
 ecom_express_ndr_reasons = {
                               "228": 8,
                               "227": 6,

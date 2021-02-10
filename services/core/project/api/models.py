@@ -1074,3 +1074,28 @@ class IVRHistory(db.Model):
     to_no = db.Column(db.String, nullable=True)
     date_created = db.Column(db.DateTime, default=datetime.now)
     date_updated = db.Column(db.DateTime, onupdate=datetime.now)
+
+
+class WarehouseRO(db.Model):
+    __tablename__ = "warehouse_ro"
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    warehouse_prefix = db.Column(db.String, nullable=False)
+    client_prefix = db.Column(db.String, nullable=False)
+    created_by = db.Column(db.String, nullable=True)
+    no_of_boxes = db.Column(db.Integer, nullable=True)
+    tracking_details = db.Column(db.String, nullable=True)
+    edd = db.Column(db.DateTime)
+    status = db.Column(db.String, nullable=False, default='awaiting')
+    date_created = db.Column(db.DateTime, default=datetime.now)
+    date_updated = db.Column(db.DateTime, onupdate=datetime.now)
+
+
+class ProductsWRO(db.Model):
+    __tablename__ = "products_wro"
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    wro_id = db.Column('wro_id', db.Integer, db.ForeignKey('warehouse_ro.id'), index=True)
+    master_product_id = db.Column('master_product_id', db.Integer, db.ForeignKey('master_products.id'))
+    ro_quantity = db.Column(db.Integer)
+    received_quantity = db.Column(db.Integer)
+    wro = db.relationship("WarehouseRO")
+    product = db.relationship("MasterProducts")

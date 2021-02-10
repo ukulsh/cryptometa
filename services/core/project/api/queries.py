@@ -396,6 +396,20 @@ select_product_list_channel_query = """SELECT aa.id, aa.name as product_name,aa.
                             __PAGINATION__
                             """
 
+select_wro_list_query = """select aa.id, aa.warehouse_prefix, aa.client_prefix, aa.created_by, aa.no_of_boxes, aa.tracking_details, aa.edd, aa.status,
+                            aa.date_created, bb.master_id, bb.master_sku, bb.ro_quantity, bb.received_quantity from warehouse_ro aa
+                            left join (select wro_id, array_agg(yy.id) as master_id, array_agg(yy.sku) as master_sku, array_agg(xx.ro_quantity) as ro_quantity, 
+                            array_agg(xx.received_quantity) as received_quantity from products_wro xx
+                            left join master_products yy on xx.master_product_id=yy.id
+                            group by wro_id) bb on aa.id=bb.wro_id
+                            WHERE ('__SEARCH_KEY__' = any(bb.master_sku) or aa.tracking_details ilike '%__SEARCH_KEY__%')
+                            __CLIENT_FILTER__
+                            __WAREHOUSE_FILTER__
+                            __STATUS_FILTER__
+                            __MV_CLIENT_FILTER__
+                             ORDER BY __ORDER_BY__ __ORDER_TYPE__ 
+                            __PAGINATION__"""
+
 select_combo_list_query = """select aa.id, bb.id as parent_id, cc.id as child_id, bb.name, bb.sku, aa.date_created, 
                             cc.sku as child_sku, cc.name as child_name, aa.quantity as child_qty from products_combos aa
                             left join products bb on aa.combo_id=bb.id

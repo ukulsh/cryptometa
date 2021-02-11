@@ -1419,6 +1419,87 @@ class WROList(Resource):
             return {"success": False, "error":str(e.args[0])}, 404
 
 
+@products_blueprint.route('/products/v1/wro_labels', methods=['GET'])
+@authenticate_restful
+def download_wro_labels(resp):
+    return jsonify({
+        'status': 'success',
+        'url': "https://wareiqshiplabels.s3.us-east-2.amazonaws.com/shiplabels_87STORE_02_Oct_2020_13_41_35.pdf",
+        "failed_ids": []
+    }), 200
+
+
+@products_blueprint.route('/products/v1/wro_status', methods=['GET'])
+@authenticate_restful
+def update_wro_status(resp):
+    response = {"success": True}
+    try:
+        auth_data = resp.get('data')
+        wro_id = request.args.get('wro_id', None)
+        status = request.args.get('status', None)
+        if not wro_id or not status or status not in ("arrived", "received"):
+            return jsonify({"success": False}), 400
+
+        if auth_data['user_group'] !='warehouse':
+            return jsonify({"success": False, "error": "Invalid User"}), 400
+
+        wro_obj = db.session.query(WarehouseRO).filter(WarehouseRO.id==int(wro_id), WarehouseRO.warehouse_prefix == auth_data['warehouse_prefix']).first()
+
+        if not wro_obj:
+            return jsonify({"success": False}), 400
+
+        if status=='arrived':
+            wro_obj.status='arrived'
+            db.session.commit()
+            return jsonify({"success": True}), 200
+
+        if status=='received':
+            wro_obj.status = 'received'
+            prod_wro_list = db.session.query(ProductsWRO).filter(ProductsWRO.wro_id==wro_obj.id).all()
+            for prod_wro in prod_wro_list:
+                quan_obj = db.session.query(ProductQuantity).filter(ProductQuantity.warehouse_prefix==wro_obj.warehouse_prefix,
+                                                                    ProductQuantity.product_id==prod_wro.master_product_id).first()
+                if quan_obj:
+                    quan_obj.approved_quantity = quan_obj.approved_quantity+prod_wro.ro_quantity if quan_obj.approved_quantity else prod_wro.ro_quantity
+                    quan_obj.total_quantity = quan_obj.total_quantity+prod_wro.ro_quantity if quan_obj.total_quantity else prod_wro.ro_quantity
+                    quan_obj.available_quantity = quan_obj.available_quantity+prod_wro.ro_quantity if quan_obj.available_quantity else prod_wro.ro_quantity
+                    quan_obj.current_quantity = quan_obj.current_quantity+prod_wro.ro_quantity if quan_obj.current_quantity else prod_wro.ro_quantity
+                else:
+                    quan_obj = ProductQuantity(product=prod_wro.master_product,
+                                               total_quantity=prod_wro.ro_quantity,
+                                               approved_quantity=prod_wro.ro_quantity,
+                                               available_quantity=prod_wro.ro_quantity,
+                                               current_quantity=prod_wro.ro_quantity,
+                                               inline_quantity=0,
+                                               rto_quantity=0,
+                                               exception_quantity=0,
+                                               warehouse_prefix=wro_obj.warehouse_prefix,
+                                               status="APPROVED",
+                                               date_created=datetime.utcnow()
+                                               )
+                    db.session.add(quan_obj)
+
+                inv_update_obj = InventoryUpdate(product_id=prod_wro.master_product_id,
+                                                 warehouse_prefix=wro_obj.warehouse_prefix,
+                                                 quantity=prod_wro.ro_quantity,
+                                                 user=auth_data['username'],
+                                                 remark="Inbound "+datetime.utcnow().strftime('%Y-%m-%d'),
+                                                 type = "add",
+                                                 date_created = datetime.utcnow()+timedelta(hours=5.5)
+                                                 )
+
+                db.session.add(inv_update_obj)
+
+            db.session.commit()
+            return jsonify({"success": True}), 200
+
+        return jsonify({"success": False}), 400
+    except Exception as e:
+        response['success'] = False
+        response['error'] = str(e.args[0])
+        return jsonify(response), 400
+
+
 class UpdateInventory(Resource):
 
     method_decorators = [authenticate_restful]

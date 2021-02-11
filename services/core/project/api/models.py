@@ -123,8 +123,8 @@ class ProductsSubCategories(db.Model):
 class InventoryUpdate(db.Model):
     __tablename__ = "inventory_update"
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    product_id = db.Column(db.Integer, db.ForeignKey('products.id'))
-    product = db.relationship("Products", backref=db.backref("inventory_update", uselist=True))
+    product_id = db.Column(db.Integer, db.ForeignKey('master_products.id'))
+    product = db.relationship("MasterProducts", backref=db.backref("inventory_update", uselist=True))
     warehouse_prefix = db.Column(db.String, nullable=False)
     user = db.Column(db.String, nullable=False)
     remark = db.Column(db.String, nullable=True)

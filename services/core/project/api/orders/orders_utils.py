@@ -8,9 +8,9 @@ from project.api.utilities.db_utils import DbConnection
 conn = DbConnection.get_db_connection_instance()
 ORDERS_DOWNLOAD_HEADERS = ["Order ID", "Customer Name", "Customer Email", "Customer Phone", "Order Date",
                            "Courier", "Weight", "awb", "Expected Delivery Date", "Status", "Address_one", "Address_two",
-                           "City", "State", "Country", "Pincode", "Pickup Point", "Product", "SKU", "Quantity", "Order Type",
-                           "Amount", "Manifest Time", "Pickup Date", "Delivered Date", "COD Verfication", "COD Verified Via",
-                           "NDR Verfication", "NDR Verified Via", "PDD", "ShippingCharges", "InvoiceNo"]
+                           "City", "State", "Country", "Pincode", "Pickup Point", "Product", "SKU", "Quantity", "ProductAmount", "Order Type",
+                           "OrderAmount", "Manifest Time", "Pickup Date", "Delivered Date", "COD Verfication", "COD Verified Via",
+                           "NDR Verfication", "NDR Verified Via", "PDD", "ShippingCharges", "InvoiceNo", "InvoiceDate", "OrderDiscount"]
 cur = conn.cursor()
 
 
@@ -66,7 +66,6 @@ def filter_query(filters, query_to_run, auth_data):
             type_tuple = "('" + filters['order_type'][0] + "')"
         else:
             type_tuple = str(tuple(filters['order_type']))
-        print("here")
         query_to_run = query_to_run.replace("__TYPE_FILTER__", "AND upper(payment_mode) in %s" % type_tuple)
 
     if 'order_date' in filters:
@@ -141,7 +140,7 @@ def download_flag_func(query_to_run, get_selected_product_details, auth_data, fi
         cur.execute(update_product_details_query)
         product_detail_data = cur.fetchall()
         for it in product_detail_data:
-            product_detail_by_order_id[it[0]] = [it[1], it[2], it[3], it[4], it[5]]
+            product_detail_by_order_id[it[0]] = [it[1], it[2], it[3], it[4], it[5], it[6]]
     si = io.StringIO()
     cw = csv.writer(si)
     cw.writerow(ORDERS_DOWNLOAD_HEADERS)
@@ -150,6 +149,13 @@ def download_flag_func(query_to_run, get_selected_product_details, auth_data, fi
             product_data = product_detail_by_order_id[order[1]] if order[1] in product_detail_by_order_id else []
             if product_data and product_data[0]:
                 for idx, val in enumerate(product_data[0]):
+                    order_disc = "N/A"
+                    try:
+                        order_disc = sum(product_data[5])-order[25]
+                        if order[43]:
+                            order_disc+=order[43]
+                    except Exception:
+                        pass
                     new_row = list()
                     new_row.append(str(order[0]))
                     new_row.append(str(order[13]))
@@ -171,6 +177,7 @@ def download_flag_func(query_to_run, get_selected_product_details, auth_data, fi
                     new_row.append(str(val))
                     new_row.append(str(product_data[1][idx]))
                     new_row.append(str(product_data[2][idx]))
+                    new_row.append(str(product_data[5][idx]))
                     new_row.append(str(order[24]))
                     new_row.append(order[25])
                     new_row.append(order[34].strftime("%Y-%m-%d %H:%M:%S") if order[34] else "N/A")
@@ -191,6 +198,8 @@ def download_flag_func(query_to_run, get_selected_product_details, auth_data, fi
                     new_row.append(order[39].strftime("%Y-%m-%d %H:%M:%S") if order[39] else "N/A")
                     new_row.append(str(order[43]) if order[43] else "0")
                     new_row.append(str(order[44]) if order[44] else "N/A")
+                    new_row.append(order[45].strftime("%Y-%m-%d %H:%M:%S") if order[45] else "N/A")
+                    new_row.append(str(order_disc))
                     not_shipped = None
                     if not product_data[4][idx]:
                         not_shipped = "Weight/dimensions not entered for product(s)"

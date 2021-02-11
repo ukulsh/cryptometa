@@ -428,7 +428,7 @@ select_orders_list_query = """select distinct on (aa.order_date, aa.id) aa.chann
                               bb.weight, bb.dimensions, bb.volumetric_weight,bb.remark, aa.customer_name, aa.customer_phone, aa.customer_email, dd.address_one, 
                               dd.address_two, dd.city, dd.state, dd.country, dd.pincode, ee.delivered_time, ff.pickup_time, gg.payment_mode, gg.amount, ii.warehouse_prefix,
                              mm.id,  mm.cod_verified, mm.verified_via, nn.id,  nn.ndr_verified, nn.verified_via, vv.logo_url, qq.manifest_time, rr.reason_id, 
-                             rr.reason, rr.date_created, aa.client_prefix, bb.pdd, uu.flag, uu.score, uu.reasons, gg.shipping_charges, ww.invoice_no
+                             rr.reason, rr.date_created, aa.client_prefix, bb.pdd, uu.flag, uu.score, uu.reasons, gg.shipping_charges, ww.invoice_no, ww.date_created
                              from orders aa
                              left join shipments bb
                              on aa.id=bb.order_id
@@ -475,8 +475,8 @@ select_orders_list_query = """select distinct on (aa.order_date, aa.id) aa.chann
                              order by order_date DESC, aa.id DESC
                              __PAGINATION__"""
 
-get_selected_product_details = """select ll.order_id, ll.product_names, ll.skus, ll.quantity, ll.weights, ll.dimensions  from (SELECT order_id, array_agg(name) as product_names, array_agg(master_sku) as skus, 
-                                        array_agg(quantity) as quantity, array_agg(weight) as weights, array_agg(dimensions) as dimensions from op_association jj 
+get_selected_product_details = """select ll.order_id, ll.product_names, ll.skus, ll.quantity, ll.weights, ll.dimensions, ll.prod_price  from (SELECT order_id, array_agg(name) as product_names, array_agg(master_sku) as skus, 
+                                        array_agg(quantity) as quantity, array_agg(weight) as weights, array_agg(dimensions) as dimensions, array_agg(jj.amount) as prod_price from op_association jj 
                                        left join products kk on jj.product_id=kk.id
                                        group by order_id) ll where ll.order_id in (__FILTERED_ORDER_ID__)"""
 

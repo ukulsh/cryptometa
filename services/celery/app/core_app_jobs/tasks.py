@@ -7,6 +7,7 @@ from woocommerce import API
 from math import ceil
 from app.db_utils import DbConnection
 from app.ship_orders.function import ship_orders
+from app.update_status.function import update_delivered_on_channels
 
 conn = DbConnection.get_db_connection_instance()
 conn_2 = DbConnection.get_pincode_db_connection_instance()
@@ -24,7 +25,7 @@ def consume_ecom_scan_util(payload):
         if not reason_code_number:
             return "Skipped: no reason code"
 
-        cur.execute(get_order_details_query%str(awb))
+        cur.execute(get_order_details_query.replace('__FILTER_ORDER__', "bb.awb='%s'"%str(awb)))
         try:
             status_time = payload.get("datetime")
             status_time = datetime.strptime(status_time, "%Y-%m-%d %H:%M:%S")
@@ -100,6 +101,95 @@ def consume_ecom_scan_util(payload):
         conn.rollback()
         return "Failed: " + str(e.args[0])
     return "Successful: all tasks done"
+
+
+def consume_sfxsdd_scan_util(payload):
+    try:
+        cur = conn.cursor()
+        awb = payload.get('sfx_order_id')
+        if not awb:
+            return "Skipped: no awb"
+
+        reason_code_number = payload.get('order_status')
+        if not reason_code_number:
+            return "Skipped: no reason code"
+
+        cur.execute(get_order_details_query.replace('__FILTER_ORDER__', "bb.awb='%s'"%str(awb)))
+        try:
+            status_time = next(v for (k,v) in payload.items() if k.endswith('time'))
+            status_time = datetime.strptime(status_time.split('.')[0], "%Y-%m-%dT%H:%M:%S")
+        except Exception:
+            status_time = datetime.utcnow() + timedelta(hours=5.5)
+
+        order = None
+        try:
+            order = cur.fetchone()
+        except Exception:
+            pass
+
+        if not order:
+            return "Failed: order not found"
+
+        status_code = reason_code_number
+        status = reason_code_number
+        status_text = ""
+        location = order[39]
+        location_city = order[39]
+
+        if reason_code_number in sfxsdd_status_mapping:
+            status = sfxsdd_status_mapping[reason_code_number][0]
+            status_type = sfxsdd_status_mapping[reason_code_number][1]
+            status_text = sfxsdd_status_mapping[reason_code_number][3]
+        else:
+            cur.execute(insert_scan_query, (
+                order[0], order[38], order[10], status_code, status, status_text, location, location_city, status_time))
+            conn.commit()
+            return "Successful: scan saved only"
+
+        cur.execute(insert_scan_query, (
+            order[0], order[38], order[10], status_code, status, status_text, location, location_city, status_time))
+
+        if not status:
+            return "Successful: scan saved only"
+
+        tracking_status = sfxsdd_status_mapping[reason_code_number][2]
+        if tracking_status:
+            cur.execute(insert_status_query, (
+                order[0], order[38], order[10], status_type, tracking_status, status_text, location, location_city, status_time))
+
+        if tracking_status == "Picked":
+            mark_picked_channel(order, cur)
+            exotel_send_shipped_sms(order, "Shadowfax")
+            send_shipped_email(order)
+            mark_order_picked_pickups(order, cur)
+
+        elif tracking_status == "Delivered":
+            mark_delivered_channel(order)
+            exotel_send_delivered_sms(order)
+
+        elif tracking_status == "RTO":
+            mark_rto_channel(order)
+
+        cur.execute("UPDATE orders SET status=%s, status_type=%s WHERE id=%s;", (status, status_type, order[0]))
+
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        return "Failed: " + str(e.args[0])
+    return "Successful: all tasks done"
+
+
+def mark_order_delivered_channels(data):
+    cur = conn.cursor()
+    order_ids = data.get("order_ids")
+    if len(order_ids) == 1:
+        order_tuple = "('" + order_ids[0] + "')"
+    else:
+        order_tuple = str(tuple(order_ids))
+    cur.execute(get_order_details_query.replace('__FILTER_ORDER__', "aa.id in %s" % order_tuple))
+    all_orders = cur.fetchall()
+    for order in all_orders:
+        mark_delivered_channel(order)
 
 
 def sync_all_products_with_channel(client_prefix):

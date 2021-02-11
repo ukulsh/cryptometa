@@ -66,7 +66,6 @@ def filter_query(filters, query_to_run, auth_data):
             type_tuple = "('" + filters['order_type'][0] + "')"
         else:
             type_tuple = str(tuple(filters['order_type']))
-        print("here")
         query_to_run = query_to_run.replace("__TYPE_FILTER__", "AND upper(payment_mode) in %s" % type_tuple)
 
     if 'order_date' in filters:

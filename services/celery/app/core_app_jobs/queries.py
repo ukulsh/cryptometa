@@ -27,8 +27,8 @@ get_order_details_query = """select aa.id, bb.awb, aa.status, aa.client_prefix, 
                                     on aa.client_channel_id=gg.client_channel_id
                                     and aa.pickup_data_id=gg.pickup_data_id
                                     left join client_mapping nn
-                                    on aa.client_prefix=nn.client_prefix   
-                                    where bb.awb = '%s';"""
+                                    on aa.client_prefix=nn.client_prefix 
+                                    where __FILTER_ORDER__;"""
 
 insert_scan_query = """INSERT INTO order_scans (order_id, courier_id, shipment_id, status_code, status, status_text, 
                     location, location_city, status_time) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)

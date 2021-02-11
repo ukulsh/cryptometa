@@ -7,6 +7,7 @@ from woocommerce import API
 from math import ceil
 from app.db_utils import DbConnection
 from app.ship_orders.function import ship_orders
+from app.update_status.function import update_delivered_on_channels
 
 conn = DbConnection.get_db_connection_instance()
 conn_2 = DbConnection.get_pincode_db_connection_instance()
@@ -24,7 +25,7 @@ def consume_ecom_scan_util(payload):
         if not reason_code_number:
             return "Skipped: no reason code"
 
-        cur.execute(get_order_details_query%str(awb))
+        cur.execute(get_order_details_query.replace('__FILTER_ORDER__', "bb.awb='%s'"%str(awb)))
         try:
             status_time = payload.get("datetime")
             status_time = datetime.strptime(status_time, "%Y-%m-%d %H:%M:%S")
@@ -113,7 +114,7 @@ def consume_sfxsdd_scan_util(payload):
         if not reason_code_number:
             return "Skipped: no reason code"
 
-        cur.execute(get_order_details_query%str(awb))
+        cur.execute(get_order_details_query.replace('__FILTER_ORDER__', "bb.awb='%s'"%str(awb)))
         try:
             status_time = next(v for (k,v) in payload.items() if k.endswith('time'))
             status_time = datetime.strptime(status_time.split('.')[0], "%Y-%m-%dT%H:%M:%S")
@@ -176,6 +177,19 @@ def consume_sfxsdd_scan_util(payload):
         conn.rollback()
         return "Failed: " + str(e.args[0])
     return "Successful: all tasks done"
+
+
+def mark_order_delivered_channels(data):
+    cur = conn.cursor()
+    order_ids = data.get("order_ids")
+    if len(order_ids) == 1:
+        order_tuple = "('" + order_ids[0] + "')"
+    else:
+        order_tuple = str(tuple(order_ids))
+    cur.execute(get_order_details_query.replace('__FILTER_ORDER__', "aa.id in %s" % order_tuple))
+    all_orders = cur.fetchall()
+    for order in all_orders:
+        mark_delivered_channel(order)
 
 
 def sync_all_products_with_channel(client_prefix):

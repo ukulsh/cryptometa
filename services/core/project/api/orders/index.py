@@ -11,7 +11,7 @@ import pandas as pd
 import requests
 
 from flask_cors import cross_origin
-from flask import Blueprint, request, jsonify, make_response
+from flask import Blueprint, request, jsonify, make_response, current_app
 from flask_restful import Api, Resource
 from reportlab.lib.pagesizes import landscape, A4
 from reportlab.lib.units import inch
@@ -1315,6 +1315,9 @@ def bulk_delivered_orders(resp):
         order_tuple_str = "("+str(order_ids[0])+")"
     else:
         order_tuple_str = str(tuple(order_ids))
+
+    requests.post('{0}/scans/v1/mark_delivered_channel'.format(current_app.config['CELERY_SERVICE_URL']), data={"token": "b4r74rn3r84rn4ru84hr",
+                                                                                                                "order_ids": order_ids})
 
     cur.execute("UPDATE orders SET status='DELIVERED' WHERE id in %s"%order_tuple_str)
 

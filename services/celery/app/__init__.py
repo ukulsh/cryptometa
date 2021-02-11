@@ -187,6 +187,22 @@ def sfxsdd_scan(resp):
     return jsonify({"awb": data['sfx_order_id'], "status": True, "order_status": data['order_status'] }), 200
 
 
+@app.route('/scans/v1/mark_delivered_channel', methods = ['POST'])
+def mark_delivered_channel_api():
+    data = json.loads(request.data)
+    token = data.get("token")
+    if token!="b4r74rn3r84rn4ru84hr":
+        jsonify({"status": "Unauthorized"}), 302
+    mark_delivered_channel.apply_async(queue='consume_scans', args=(data, ))
+    return jsonify({"status":"success"}), 200
+
+
+@celery_app.task(name='mark_delivered_channel')
+def mark_delivered_channel(payload):
+    msg = mark_order_delivered_channels(payload)
+    return msg
+
+
 @celery_app.task(name='sync_channel_products')
 def sync_channel_prods(client_prefix):
     msg = sync_all_products_with_channel(client_prefix)

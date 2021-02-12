@@ -193,7 +193,7 @@ def mark_delivered_channel_api():
     token = data.get("token")
     if token!="b4r74rn3r84rn4ru84hr":
         jsonify({"status": "Unauthorized"}), 302
-    mark_delivered_channel.apply_async(queue='consume_scans', args=(data, ))
+    mark_delivered_channel.apply_async(queue='mark_channel_delivered', args=(data, ))
     return jsonify({"status":"success"}), 200
 
 

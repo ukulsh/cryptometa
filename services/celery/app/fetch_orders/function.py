@@ -208,8 +208,7 @@ def fetch_shopify_orders(cur, channel):
                 try:
                     product_id = cur.fetchone()[0]
                 except Exception:
-                    if product_sku == "19675086585915" and channel[
-                        1] == 'DAPR':  # DAPR combination sku not present in products
+                    if product_sku == "19675086585915" and channel[1] == 'DAPR':  # DAPR combination sku not present in products
                         for i in (3204, 3206):
                             product_id = i
                             op_tuple = (
@@ -986,7 +985,7 @@ def fetch_bikayi_orders(cur, channel):
 
 
 def assign_pickup_points_for_unassigned(cur, cur_2):
-    time_after = datetime.utcnow() - timedelta(days=1)
+    time_after = datetime.utcnow() - timedelta(days=30)
     cur.execute(get_orders_to_assign_pickups, (time_after,))
     all_orders = cur.fetchall()
     for order in all_orders:

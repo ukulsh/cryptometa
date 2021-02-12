@@ -12,6 +12,7 @@ class BaseConfig:
     SECRET_KEY = os.environ.get('SECRET_KEY')
     SQLALCHEMY_TRACK_MODIFICATIONS = False  # new
     USERS_SERVICE_URL = os.environ.get('USERS_SERVICE_URL')  # new
+    CELERY_SERVICE_URL = os.environ.get('CELERY_SERVICE_URL')  # new
 
 
 class StagingConfig(BaseConfig):

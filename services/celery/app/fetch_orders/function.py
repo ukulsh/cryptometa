@@ -4,6 +4,7 @@ from requests_oauthlib.oauth1_session import OAuth1Session
 from woocommerce import API
 import logging
 from app.db_utils import DbConnection
+from app.ship_orders.function import kama_chn_sdd_pincodes
 
 from .queries import *
 
@@ -1041,6 +1042,8 @@ def assign_pickup_points_for_unassigned(cur, cur_2):
 
             warehouse_pincode_str = ""
             for key, value in wh_dict.items():
+                if key == 'TNPMRO' and order[2] not in kama_chn_sdd_pincodes: #todo generalise this
+                    continue
                 if value['count'] == no_sku:
                     warehouse_pincode_str += "('" + key + "','" + str(value['pincode']) + "'),"
 

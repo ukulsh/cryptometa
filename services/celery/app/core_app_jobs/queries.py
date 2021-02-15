@@ -80,8 +80,11 @@ select_remittance_amount_query = """select * from
                                         left join orders_payments bb on aa.id=bb.order_id
                                         left join (select * from order_status where status='Delivered') cc
                                         on aa.id=cc.order_id
+                                        left join shipments dd on dd.order_id=aa.id
+                                        left join master_couriers ee on dd.courier_id=ee.id
                                         where aa.status = 'DELIVERED'
-                                        and bb.payment_mode ilike 'cod') yy
+                                        and bb.payment_mode ilike 'cod'
+                                        and ee.integrated=true) yy
                                         on xx.client_prefix=yy.client_prefix 
                                         and yy.delivered_date BETWEEN xx.order_start AND xx.order_end
                                         group by xx.unique_id, xx.client_prefix, xx.remittance_id, xx.date, xx.status, xx.transaction_id) zz

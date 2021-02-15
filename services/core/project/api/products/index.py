@@ -11,7 +11,7 @@ from psycopg2.extras import RealDictCursor
 from sqlalchemy import func, or_
 from project import db
 from project.api.models import Products, ProductQuantity, MultiVendor, InventoryUpdate, MasterProducts, MasterChannels, \
-    ProductsCombos, WarehouseRO, ProductsWRO
+    ProductsCombos, WarehouseRO, ProductsWRO, PickupPoints
 from project.api.queries import select_product_list_query, select_product_list_channel_query, select_combo_list_query, select_wro_list_query
 from project.api.utils import authenticate_restful
 from project.api.utilities.db_utils import DbConnection
@@ -34,6 +34,7 @@ PRODUCT_UPLOAD_HEADERS = ["Name", "SKU", "Price", "WeightKG", "LengthCM", "Bread
 PRODUCT_UPLOAD_HEADERS_CHANNEL = ["Name", "ChannelProductId", "SKU", "Price", "MasterSKU", "ChannelName", "ImageURL"]
 BULKMAP_SKU_HEADERS = ["ChannelName", "ChannelProdID", "ChannelSKU", "MasterSKU"]
 BULK_COMBO_HEADERS = ["ParentSKU", "ChildSKU", "Quantity"]
+INV_INBOUND_HEADERS = ["SKU", "Quantity"]
 
 
 @products_blueprint.route('/products/v1/details', methods=['GET'])
@@ -338,6 +339,119 @@ def bulk_map_sku(resp):
                 return
 
             channel_prod.master_product=master_prod
+            db.session.commit()
+
+        except Exception as e:
+            failed_skus.append(str(row_data.SKU).rstrip())
+            cw.writerow(list(row_data.values) + [str(e.args[0])])
+            db.session.rollback()
+
+    for row in data_xlsx.iterrows():
+        process_row(row, failed_skus)
+
+    if failed_skus:
+        output = make_response(si.getvalue())
+        filename = "failed_uploads.csv"
+        output.headers["Content-Disposition"] = "attachment; filename=" + filename
+        output.headers["Content-type"] = "text/csv"
+        return output
+
+    return jsonify({
+        'status': 'success',
+        "failed_skus": failed_skus
+    }), 200
+
+
+@products_blueprint.route('/products/v1/bulk_inbound', methods=['POST'])
+@authenticate_restful
+def bulk_inbound(resp):
+    auth_data = resp.get('data')
+    if not auth_data:
+        return {"success": False, "msg": "Auth Failed"}, 404
+
+    myfile = request.files['myfile']
+
+    if auth_data['user_group'] != 'warehouse':
+        return {"success": False, "msg": "Invalid User type"}, 400
+
+    warehouse_prefix = auth_data['warehouse_prefix']
+    wro_id=request.args.get('wro_id')
+    if wro_id:
+        wro_obj = db.session.query(WarehouseRO).filter(WarehouseRO.id==int(wro_id), WarehouseRO.warehouse_prefix==warehouse_prefix).first()
+        client_prefix = wro_obj.client_prefix
+    else:
+        client_prefix = request.args.get('client_prefix')
+        wro_obj = WarehouseRO(warehouse_prefix=warehouse_prefix,
+                              client_prefix=client_prefix,
+                              created_by=auth_data['username'],
+                              no_of_boxes=int(request.args.get('box_no')) if request.args.get('box_no') else None,
+                              status='received',
+                              date_created=datetime.utcnow()+timedelta(hours=5.5)
+                              )
+
+        db.session.add(wro_obj)
+
+    data_xlsx = pd.read_csv(myfile)
+    failed_skus = list()
+
+    si = io.StringIO()
+    cw = csv.writer(si)
+    cw.writerow(INV_INBOUND_HEADERS)
+
+    def process_row(row, failed_skus):
+        row_data = row[1]
+        try:
+            if wro_id:
+                prod_wro_obj = db.session.query(ProductsWRO)\
+                    .join(MasterProducts, MasterProducts.id==ProductsWRO.master_product_id).filter(MasterProducts.sku==row_data.SKU, ProductsWRO.wro_id==int(wro_id)).first()
+                prod_wro_obj.received_quantity = int(row_data.Quantity)
+                prod_obj = prod_wro_obj.product
+            else:
+                prod_obj = db.session.query(MasterProducts).filter(MasterProducts.sku==row_data.SKU, MasterProducts.client_prefix==client_prefix).first()
+                if not prod_obj:
+                    failed_skus.append(str(row_data.SKU).rstrip())
+                    cw.writerow(list(row_data.values) + ["SKU not found"])
+                    return
+                prod_wro_obj = ProductsWRO(wro=wro_obj,
+                                           master_product_id=prod_obj.id,
+                                           ro_quantity=int(row_data.Quantity),
+                                           received_quantity=int(row_data.Quantity))
+                db.session.add(prod_wro_obj)
+
+            quan_obj = db.session.query(ProductQuantity).filter(
+                ProductQuantity.warehouse_prefix == warehouse_prefix,
+                ProductQuantity.product_id == prod_obj.id).first()
+            if quan_obj:
+                quan_obj.approved_quantity = quan_obj.approved_quantity + int(row_data.Quantity) if quan_obj.approved_quantity else int(row_data.Quantity)
+                quan_obj.total_quantity = quan_obj.total_quantity + int(row_data.Quantity) if quan_obj.total_quantity else int(row_data.Quantity)
+                quan_obj.available_quantity = quan_obj.available_quantity + int(row_data.Quantity) if quan_obj.available_quantity else int(row_data.Quantity)
+                quan_obj.current_quantity = quan_obj.current_quantity + int(row_data.Quantity) if quan_obj.current_quantity else int(row_data.Quantity)
+            else:
+                quan_obj = ProductQuantity(product=prod_obj,
+                                           total_quantity=int(row_data.Quantity),
+                                           approved_quantity=int(row_data.Quantity),
+                                           available_quantity=int(row_data.Quantity),
+                                           current_quantity=int(row_data.Quantity),
+                                           inline_quantity=0,
+                                           rto_quantity=0,
+                                           exception_quantity=0,
+                                           warehouse_prefix=warehouse_prefix,
+                                           status="APPROVED",
+                                           date_created=datetime.utcnow()
+                                           )
+                db.session.add(quan_obj)
+
+            inv_update_obj = InventoryUpdate(product_id=prod_obj.id,
+                                             warehouse_prefix=warehouse_prefix,
+                                             quantity=int(row_data.Quantity),
+                                             user=auth_data['username'],
+                                             remark="Inbound " + datetime.utcnow().strftime('%Y-%m-%d'),
+                                             type="add",
+                                             date_created=datetime.utcnow() + timedelta(hours=5.5)
+                                             )
+
+            db.session.add(inv_update_obj)
+
             db.session.commit()
 
         except Exception as e:
@@ -1146,8 +1260,9 @@ class CreateWRO(Resource):
                 all_vendors = db.session.query(MultiVendor).filter(MultiVendor.client_prefix == client_prefix).first()
                 all_vendors = all_vendors.vendor_list
 
-            wro_qs = db.session.query(WarehouseRO, ProductsWRO).join(ProductsWRO, WarehouseRO.id == ProductsWRO.wro_id).filter(
-                WarehouseRO.id == int(wro_id))
+            wro_qs = db.session.query(WarehouseRO, ProductsWRO, PickupPoints).join(ProductsWRO, WarehouseRO.id ==
+                        ProductsWRO.wro_id).join(PickupPoints, WarehouseRO.warehouse_prefix==PickupPoints.warehouse_prefix).filter(
+                        WarehouseRO.id == int(wro_id))
 
             if auth_data['user_group'] == 'client':
                 wro_qs = wro_qs.filter(WarehouseRO.client_prefix == client_prefix)
@@ -1171,6 +1286,12 @@ class CreateWRO(Resource):
             ret_obj['status'] = wro_obj[0][0].status
             ret_obj['edd'] = wro_obj[0][0].edd.strftime("%Y-%m-%d") if wro_obj[0][0].edd else None
             ret_obj['date_created'] = wro_obj[0][0].date_created.strftime("%Y-%m-%d") if wro_obj[0][0].date_created else None
+            ret_obj['address'] = wro_obj[0][2].address
+            if wro_obj[0][2].address_two:
+                ret_obj['address'] += wro_obj[0][2].address_two
+            ret_obj['city'] = wro_obj[0][2].city
+            ret_obj['state'] = wro_obj[0][2].state
+            ret_obj['pincode'] = wro_obj[0][2].pincode
             ret_obj["sku_list"] = list()
             for wro in wro_obj:
                 ret_obj["sku_list"].append({"id": wro[1].master_product_id,
@@ -1408,7 +1529,7 @@ class WROList(Resource):
             else:
                 warehouse_qs = warehouse_qs.group_by(WarehouseRO.warehouse_prefix)
                 response['filters']['warehouse'] = [{x[0]: x[1]} for x in warehouse_qs]
-                status_qs = status_qs.group_by(WarehouseRO.warehouse_prefix)
+                status_qs = status_qs.group_by(WarehouseRO.status)
                 response['filters']['status'] = [{x[0]: x[1]} for x in status_qs]
                 client_qs = client_qs.group_by(WarehouseRO.client_prefix)
                 response['filters']['client'] = [{x[0]: x[1]} for x in client_qs]

@@ -380,11 +380,15 @@ def queue_cod_remittance_razorpay():
                 continue
 
             amount = int(remit[6] * 100)
+            if amount>20000000:
+                mode='NEFT'
+            else:
+                mode='IMPS'
             razorpay_body = {
                 "account_number": "7878780047779262",
                 "amount": amount,
                 "currency": "INR",
-                "mode": "NEFT",
+                "mode": mode,
                 "purpose": "COD Remittance",
                 "fund_account": {
                     "account_type": "bank_account",

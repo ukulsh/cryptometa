@@ -183,13 +183,15 @@ def mark_order_delivered_channels(data):
     cur = conn.cursor()
     order_ids = data.get("order_ids")
     if len(order_ids) == 1:
-        order_tuple = "('" + order_ids[0] + "')"
+        order_tuple = "(" + str(order_ids[0]) + ")"
     else:
         order_tuple = str(tuple(order_ids))
     cur.execute(get_order_details_query.replace('__FILTER_ORDER__', "aa.id in %s" % order_tuple))
     all_orders = cur.fetchall()
     for order in all_orders:
         mark_delivered_channel(order)
+
+    return ""
 
 
 def sync_all_products_with_channel(client_prefix):

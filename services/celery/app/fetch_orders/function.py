@@ -4,6 +4,7 @@ from requests_oauthlib.oauth1_session import OAuth1Session
 from woocommerce import API
 import logging
 from app.db_utils import DbConnection
+from app.ship_orders.function import kama_chn_sdd_pincodes
 
 from .queries import *
 
@@ -208,8 +209,7 @@ def fetch_shopify_orders(cur, channel):
                 try:
                     product_id = cur.fetchone()[0]
                 except Exception:
-                    if product_sku == "19675086585915" and channel[
-                        1] == 'DAPR':  # DAPR combination sku not present in products
+                    if product_sku == "19675086585915" and channel[1] == 'DAPR':  # DAPR combination sku not present in products
                         for i in (3204, 3206):
                             product_id = i
                             op_tuple = (
@@ -986,7 +986,7 @@ def fetch_bikayi_orders(cur, channel):
 
 
 def assign_pickup_points_for_unassigned(cur, cur_2):
-    time_after = datetime.utcnow() - timedelta(days=1)
+    time_after = datetime.utcnow() - timedelta(days=30)
     cur.execute(get_orders_to_assign_pickups, (time_after,))
     all_orders = cur.fetchall()
     for order in all_orders:
@@ -1042,6 +1042,8 @@ def assign_pickup_points_for_unassigned(cur, cur_2):
 
             warehouse_pincode_str = ""
             for key, value in wh_dict.items():
+                if key == 'TNPMRO' and order[2] not in kama_chn_sdd_pincodes: #todo generalise this
+                    continue
                 if value['count'] == no_sku:
                     warehouse_pincode_str += "('" + key + "','" + str(value['pincode']) + "'),"
 

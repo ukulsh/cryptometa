@@ -1316,14 +1316,18 @@ def bulk_delivered_orders(resp):
     else:
         order_tuple_str = str(tuple(order_ids))
 
-    requests.post('{0}/scans/v1/mark_delivered_channel'.format(current_app.config['CELERY_SERVICE_URL']), data={"token": "b4r74rn3r84rn4ru84hr",
+    try:
+        req = requests.post('{0}/scans/v1/mark_delivered_channel'.format(current_app.config['CELERY_SERVICE_URL']), json={"token": "b4r74rn3r84rn4ru84hr",
                                                                                                                 "order_ids": order_ids})
+        msg = str(req.json())
+    except Exception as e:
+        msg = str(e.args[0])
 
     cur.execute("UPDATE orders SET status='DELIVERED' WHERE id in %s"%order_tuple_str)
 
     conn.commit()
 
-    return jsonify({"success": True, "msg": "Cancelled orders successfully"}), 200
+    return jsonify({"success": True, "msg": msg}), 200
 
 
 @orders_blueprint.route('/orders/v1/bulkAssignPickup', methods=['POST'])
@@ -2310,7 +2314,12 @@ class PincodeServiceabilty(Resource):
             if cod_req['delivery_codes'][0]['postal_code']['pickup'].lower() == 'y':
                 reverse_pickup = True
 
-            return {"success": True, "data": {"serviceable": True, "cod_available": cod_available, "reverse_pickup": reverse_pickup}}, 200
+            covid_zone = cod_req['delivery_codes'][0]['postal_code']['covid_zone']
+            city = cod_req['delivery_codes'][0]['postal_code']['district']
+            state = cod_req['delivery_codes'][0]['postal_code']['state_code']
+
+            return {"success": True, "data": {"serviceable": True, "cod_available": cod_available, "reverse_pickup": reverse_pickup,
+                                              "covid_zone": covid_zone, "city": city, "state": state}}, 200
 
         except Exception as e:
             return {"success": False, "msg": ""}, 400

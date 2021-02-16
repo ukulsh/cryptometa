@@ -2314,7 +2314,12 @@ class PincodeServiceabilty(Resource):
             if cod_req['delivery_codes'][0]['postal_code']['pickup'].lower() == 'y':
                 reverse_pickup = True
 
-            return {"success": True, "data": {"serviceable": True, "cod_available": cod_available, "reverse_pickup": reverse_pickup}}, 200
+            covid_zone = cod_req['delivery_codes'][0]['postal_code']['covid_zone']
+            city = cod_req['delivery_codes'][0]['postal_code']['district']
+            state = cod_req['delivery_codes'][0]['postal_code']['state_code']
+
+            return {"success": True, "data": {"serviceable": True, "cod_available": cod_available, "reverse_pickup": reverse_pickup,
+                                              "covid_zone": covid_zone, "city": city, "state": state}}, 200
 
         except Exception as e:
             return {"success": False, "msg": ""}, 400

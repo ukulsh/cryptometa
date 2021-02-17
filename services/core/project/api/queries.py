@@ -423,6 +423,15 @@ select_combo_list_query = """select aa.id, bb.id as parent_id, cc.id as child_id
                             __PAGINATION__
                             """
 
+select_inventory_history_query = """select bb.sku, aa.warehouse_prefix, aa.user, aa.quantity, aa.type, aa.date_created as update_date, aa.remark from inventory_update aa
+                                    left join master_products bb on aa.product_id=bb.id
+                                    where (bb.name ilike '%__SEARCH_KEY__%' or bb.sku ilike '%__SEARCH_KEY__%')
+                                    __CLIENT_FILTER__
+                                    __WAREHOUSE_FILTER__
+                                    __TYPE_FILTER__
+                                    ORDER BY __ORDER_BY__ __ORDER_TYPE__ 
+                                    __PAGINATION__"""
+
 select_orders_list_query = """select distinct on (aa.order_date, aa.id) aa.channel_order_id as order_id, aa.id as unique_id, aa.order_date, aa.status, 
                               aa.status_detail, bb.awb, CONCAT('http://webapp.wareiq.com/tracking/', bb.awb) as tracking_link, cc.courier_name, bb.edd, 
                               bb.weight, bb.dimensions, bb.volumetric_weight,bb.remark, aa.customer_name, aa.customer_phone, aa.customer_email, dd.address_one, 

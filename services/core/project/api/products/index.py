@@ -12,7 +12,8 @@ from sqlalchemy import func, or_
 from project import db
 from project.api.models import Products, ProductQuantity, MultiVendor, InventoryUpdate, MasterProducts, MasterChannels, \
     ProductsCombos, WarehouseRO, ProductsWRO, PickupPoints
-from project.api.queries import select_product_list_query, select_product_list_channel_query, select_combo_list_query, select_wro_list_query
+from project.api.queries import select_product_list_query, select_product_list_channel_query, select_combo_list_query, \
+    select_wro_list_query, select_inventory_history_query
 from project.api.utils import authenticate_restful
 from project.api.utilities.db_utils import DbConnection
 
@@ -28,6 +29,7 @@ CHANNEL_PRODUCTS_DOWNLOAD_HEADERS = ["S. No.", "Product Name", "Channel product 
 COMBO_DOWNLOAD_HEADERS = ["S. No.", "ParentName", "ParentSKU", "ChildName", "ChildSKU", "Quantity"]
 WRO_DOWNLOAD_HEADERS = ["Warehouse", "Client", "MasterSKU", "CreatedBy", "NoOfBoxes", "TrackingDetails", "EDD", "DateCreated",
                         "MasterSKU", "EnteredQty", "ReceivedQty", "Status"]
+INV_HISTORY_DOWNLOAD_HEADERS = ["SKU", "Warehouse", "UpdatedBy", "Quantity", "Type", "UpdateTime", "Remark"]
 
 
 PRODUCT_UPLOAD_HEADERS = ["Name", "SKU", "Price", "WeightKG", "LengthCM", "BreadthCM", "HeightCM", "HSN", "TaxRate"]
@@ -35,6 +37,7 @@ PRODUCT_UPLOAD_HEADERS_CHANNEL = ["Name", "ChannelProductId", "SKU", "Price", "M
 BULKMAP_SKU_HEADERS = ["ChannelName", "ChannelProdID", "ChannelSKU", "MasterSKU"]
 BULK_COMBO_HEADERS = ["ParentSKU", "ChildSKU", "Quantity"]
 INV_INBOUND_HEADERS = ["SKU", "Quantity"]
+INV_RECONCILIATION_HEADERS = ["SKU", "Quantity", "Type", "Remark"]
 
 
 @products_blueprint.route('/products/v1/details', methods=['GET'])
@@ -461,6 +464,147 @@ def bulk_inbound(resp):
 
     for row in data_xlsx.iterrows():
         process_row(row, failed_skus)
+
+    if failed_skus:
+        output = make_response(si.getvalue())
+        filename = "failed_uploads.csv"
+        output.headers["Content-Disposition"] = "attachment; filename=" + filename
+        output.headers["Content-type"] = "text/csv"
+        return output
+
+    return jsonify({
+        'status': 'success',
+        "failed_skus": failed_skus
+    }), 200
+
+
+@products_blueprint.route('/products/v1/bulk_reconciliation', methods=['POST'])
+@authenticate_restful
+def bulk_reconciliation(resp):
+    cur=conn.cursor()
+    auth_data = resp.get('data')
+    if not auth_data:
+        return {"success": False, "msg": "Auth Failed"}, 404
+
+    myfile = request.files['myfile']
+
+    if auth_data['user_group'] != 'warehouse':
+        return {"success": False, "msg": "Invalid User type"}, 400
+
+    warehouse_prefix = auth_data['warehouse_prefix']
+    client_prefix = request.args.get('client_prefix')
+    data_xlsx = pd.read_csv(myfile)
+    failed_skus = list()
+
+    si = io.StringIO()
+    cw = csv.writer(si)
+    cw.writerow(INV_RECONCILIATION_HEADERS)
+
+    for row in data_xlsx.iterrows():
+        row_data = row[1]
+        try:
+            sku = row_data.SKU
+            if not sku:
+                failed_skus.append(str(row_data.SKU).rstrip())
+                cw.writerow(list(row_data.values) + ["SKU not found"])
+                continue
+
+            type = row_data.Type
+            if not type or str(type).lower() not in ('add', 'subtract', 'replace'):
+                failed_skus.append(str(row_data.SKU).rstrip())
+                cw.writerow(list(row_data.values) + ["Invalid type"])
+                continue
+
+            quantity = row_data.Quantity
+
+            quantity = int(quantity)
+
+            quan_obj = db.session.query(ProductQuantity).join(MasterProducts,
+                                                              ProductQuantity.product_id == MasterProducts.id) \
+                .filter(ProductQuantity.warehouse_prefix == warehouse_prefix).filter(MasterProducts.sku == sku).filter(
+                MasterProducts.client_prefix == client_prefix)
+
+            quan_obj = quan_obj.first()
+
+            if not quan_obj:
+                prod_obj = db.session.query(MasterProducts).filter(MasterProducts.sku == sku,
+                                                                   MasterProducts.client_prefix == client_prefix).first()
+                if not prod_obj:
+                    failed_skus.append(str(row_data.SKU).rstrip())
+                    cw.writerow(list(row_data.values) + ["SKU not found"])
+                    continue
+                else:
+                    quan_obj = ProductQuantity(product=prod_obj,
+                                               total_quantity=0,
+                                               approved_quantity=0,
+                                               available_quantity=0,
+                                               inline_quantity=0,
+                                               rto_quantity=0,
+                                               current_quantity=0,
+                                               warehouse_prefix=warehouse_prefix,
+                                               status="APPROVED",
+                                               date_created=datetime.now())
+                    db.session.add(quan_obj)
+
+            update_obj = InventoryUpdate(product=quan_obj.product,
+                                         warehouse_prefix=warehouse_prefix,
+                                         user=auth_data['username'] if auth_data.get('username') else auth_data['client_prefix'],
+                                         remark=str(row_data.Remark) if row_data.Remark==row_data.Remark else "",
+                                         quantity=int(quantity),
+                                         type=str(type).lower(),
+                                         date_created=datetime.utcnow() + timedelta(hours=5.5))
+
+            shipped_quantity = 0
+            dto_quantity = 0
+            try:
+                cur.execute("""  select COALESCE(sum(quantity), 0) from op_association aa
+                        left join orders bb on aa.order_id=bb.id
+                        left join client_pickups cc on bb.pickup_data_id=cc.id
+                        left join pickup_points dd on cc.pickup_id=dd.id
+                        left join products ee on aa.product_id=ee.id
+                        where status in ('DELIVERED','DISPATCHED','IN TRANSIT','ON HOLD','PENDING','LOST')
+                        and dd.warehouse_prefix='__WAREHOUSE__'
+                        and ee.master_sku='__SKU__';""".replace('__WAREHOUSE__', warehouse_prefix).replace('__SKU__', sku))
+                shipped_quantity_obj = cur.fetchone()
+                if shipped_quantity_obj is not None:
+                    shipped_quantity = shipped_quantity_obj[0]
+            except Exception:
+                conn.rollback()
+
+            try:
+                cur.execute("""select COALESCE(sum(quantity), 0) from op_association aa
+                        left join orders bb on aa.order_id=bb.id
+                        left join client_pickups cc on bb.pickup_data_id=cc.id
+                        left join pickup_points dd on cc.pickup_id=dd.id
+                        left join products ee on aa.product_id=ee.id
+                        where status in ('DTO')
+                        and dd.warehouse_prefix='__WAREHOUSE__'
+                        and ee.master_sku='__SKU__';""".replace('__WAREHOUSE__', warehouse_prefix).replace('__SKU__', sku))
+                dto_quantity_obj = cur.fetchone()
+                if dto_quantity_obj is not None:
+                    dto_quantity = dto_quantity_obj[0]
+            except Exception:
+                conn.rollback()
+
+            if str(type).lower() == 'add':
+                quan_obj.total_quantity = quan_obj.total_quantity + quantity
+                quan_obj.approved_quantity = quan_obj.approved_quantity + quantity
+            elif str(type).lower() == 'subtract':
+                quan_obj.total_quantity = quan_obj.total_quantity - quantity
+                quan_obj.approved_quantity = quan_obj.approved_quantity - quantity
+            elif str(type).lower() == 'replace':
+                quan_obj.total_quantity = quantity + shipped_quantity - dto_quantity
+                quan_obj.approved_quantity = quantity + shipped_quantity - dto_quantity
+            else:
+                continue
+
+        except Exception:
+            failed_skus.append(str(row_data.SKU).rstrip())
+            cw.writerow(list(row_data.values) + ["Something went wrong"])
+            continue
+
+        db.session.add(update_obj)
+        db.session.commit()
 
     if failed_skus:
         output = make_response(si.getvalue())
@@ -1353,6 +1497,182 @@ class CreateWRO(Resource):
             return {"success": False, "error":str(e.args[0])}, 404
 
 
+class InvHistoryList(Resource):
+
+    method_decorators = [authenticate_restful]
+
+    def post(self, resp):
+        try:
+            cur = conn.cursor()
+            response = {'status':'success', 'data': dict(), "meta": dict()}
+            data = json.loads(request.data)
+            page = data.get('page', 1)
+            per_page = data.get('per_page', 10)
+            if int(per_page) > 250:
+                return {"success": False, "error": "upto 250 results allowed per page"}, 401
+            sort = data.get('sort', "desc")
+            sort_by = data.get('sort_by', 'aa.date_created')
+            search_key = data.get('search_key', '')
+            filters = data.get('filters', {})
+            download_flag = request.args.get("download", None)
+            auth_data = resp.get('data')
+            if not auth_data:
+                return {"success": False, "msg": "Auth Failed"}, 404
+            client_prefix = auth_data.get('client_prefix')
+            query_to_execute = select_inventory_history_query
+            if auth_data['user_group'] == 'client':
+                query_to_execute = query_to_execute.replace('__CLIENT_FILTER__', "AND bb.client_prefix in ('%s')"%client_prefix)
+            if auth_data['user_group'] == 'warehouse':
+                query_to_execute = query_to_execute.replace('__WAREHOUSE_FILTER__', "AND aa.warehouse_prefix='%s'"%auth_data['warehouse_prefix'])
+            if auth_data['user_group'] == 'multi-vendor':
+                cur.execute("SELECT vendor_list FROM multi_vendor WHERE client_prefix='%s';"%client_prefix)
+                vendor_list = cur.fetchone()['vendor_list']
+                query_to_execute = query_to_execute.replace('__MV_CLIENT_FILTER__', "AND bb.client_prefix in %s"%str(tuple(vendor_list)))
+            else:
+                query_to_execute = query_to_execute.replace('__MV_CLIENT_FILTER__', "")
+
+            if filters:
+                if 'client' in filters:
+                    if len(filters['client'])==1:
+                        cl_filter = "AND bb.client_prefix in ('%s')"%filters['client'][0]
+                    else:
+                        cl_filter = "AND bb.client_prefix in %s"%str(tuple(filters['client']))
+
+                    query_to_execute = query_to_execute.replace('__CLIENT_FILTER__', cl_filter)
+
+                if 'warehouse' in filters:
+                    if len(filters['warehouse'])==1:
+                        cl_filter = "AND aa.warehouse_prefix in ('%s')"%filters['warehouse'][0]
+                    else:
+                        cl_filter = "AND aa.warehouse_prefix in %s"%str(tuple(filters['warehouse']))
+
+                    query_to_execute = query_to_execute.replace('__WAREHOUSE_FILTER__', cl_filter)
+
+                if 'type' in filters:
+                    if len(filters['type'])==1:
+                        cl_filter = "AND aa.type in ('%s')"%filters['type'][0]
+                    else:
+                        cl_filter = "AND aa.type in %s"%str(tuple(filters['type']))
+
+                    query_to_execute = query_to_execute.replace('__TYPE_FILTER__', cl_filter)
+
+            query_to_execute = query_to_execute.replace('__CLIENT_FILTER__',"").replace('__WAREHOUSE_FILTER__', "").replace('__TYPE_FILTER__', "")
+            if sort.lower() == 'desc':
+                sort = "DESC NULLS LAST"
+            query_to_execute = query_to_execute.replace('__ORDER_BY__', sort_by).replace('__ORDER_TYPE__', sort)
+            query_to_execute = query_to_execute.replace('__SEARCH_KEY__', search_key)
+            if download_flag:
+                query_to_run = query_to_execute.replace('__PAGINATION__', "")
+                query_to_run = re.sub(r"""__.+?__""", "", query_to_run)
+                cur.execute(query_to_run)
+                products_qs_data = cur.fetchall()
+                si = io.StringIO()
+                cw = csv.writer(si)
+                cw.writerow(INV_HISTORY_DOWNLOAD_HEADERS)
+                for product in products_qs_data:
+                    try:
+                        new_row = list()
+                        new_row.append(str(product[0]))
+                        new_row.append(str(product[1]))
+                        new_row.append(str(product[2]))
+                        new_row.append(str(product[3]))
+                        new_row.append(str(product[4]))
+                        new_row.append(str(product[5].strftime("%Y-%m-%d %X")) if product[4] else "N/A")
+                        new_row.append(str(product[6]))
+                        cw.writerow(new_row)
+                    except Exception as e:
+                        pass
+
+                output = make_response(si.getvalue())
+                filename = str(client_prefix)+"_EXPORT.csv"
+                output.headers["Content-Disposition"] = "attachment; filename="+filename
+                output.headers["Content-type"] = "text/csv"
+                return output
+
+            cur.execute("SELECT count(*) FROM ("+query_to_execute.replace('__PAGINATION__', "")+") xxx")
+            total_count = cur.fetchone()[0]
+
+            query_to_execute = query_to_execute.replace('__PAGINATION__', "OFFSET %s LIMIT %s"%(str((page-1)*per_page), str(per_page)))
+            cur.execute(query_to_execute)
+            all_products = cur.fetchall()
+            ret_list = list()
+            for product in all_products:
+                ret_obj = dict()
+                ret_obj['master_sku'] = product[0]
+                ret_obj['warehouse'] = product[1]
+                ret_obj['updatedby'] = product[2]
+                ret_obj['quantity'] = product[3]
+                ret_obj['type'] = product[4]
+                ret_obj['update_time'] = str(product[5].strftime("%Y-%m-%d %X")) if product[4] else "N/A"
+                ret_obj['remark'] = product[6]
+                ret_list.append(ret_obj)
+
+            response['data'] = ret_list
+
+            total_pages = math.ceil(total_count/per_page)
+            response['meta']['pagination'] = {'total': total_count,
+                                              'per_page':per_page,
+                                              'current_page': page,
+                                              'total_pages':total_pages}
+
+            return response, 200
+        except Exception as e:
+            conn.rollback()
+            return {"success": False, "error":str(e.args[0])}, 404
+
+    def get(self, resp):
+        try:
+            response = {"filters": {}, "success": True}
+            auth_data = resp.get('data')
+            client_prefix = auth_data.get('client_prefix')
+            all_vendors = None
+            if auth_data['user_group'] == 'multi-vendor':
+                all_vendors = db.session.query(MultiVendor).filter(MultiVendor.client_prefix == client_prefix).first()
+                all_vendors = all_vendors.vendor_list
+
+            type_qs = db.session.query(InventoryUpdate.type, func.count(InventoryUpdate.type)).join(MasterProducts, MasterProducts.id==InventoryUpdate.product_id)
+            client_qs = db.session.query(MasterProducts.client_prefix, func.count(MasterProducts.client_prefix)).join(
+                InventoryUpdate, InventoryUpdate.product_id == MasterProducts.id)
+            warehouse_qs = db.session.query(InventoryUpdate.warehouse_prefix, func.count(InventoryUpdate.warehouse_prefix)).join(
+                MasterProducts, InventoryUpdate.product_id == MasterProducts.id)
+            if auth_data['user_group'] == 'client':
+                warehouse_qs = warehouse_qs.filter(MasterProducts.client_prefix == client_prefix).group_by(
+                    InventoryUpdate.warehouse_prefix)
+                response['filters']['warehouse'] = [{x[0]: x[1]} for x in warehouse_qs]
+                type_qs = type_qs.filter(MasterProducts.client_prefix == client_prefix).group_by(InventoryUpdate.type)
+                response['filters']['type'] = [{x[0]: x[1]} for x in type_qs]
+
+            elif all_vendors:
+                warehouse_qs = warehouse_qs.filter(MasterProducts.client_prefix.in_(all_vendors)).group_by(
+                    InventoryUpdate.warehouse_prefix)
+                response['filters']['warehouse'] = [{x[0]: x[1]} for x in warehouse_qs]
+                type_qs = type_qs.filter(MasterProducts.client_prefix.in_(all_vendors)).group_by(InventoryUpdate.type)
+                response['filters']['type'] = [{x[0]: x[1]} for x in type_qs]
+                client_qs = client_qs.filter(MasterProducts.client_prefix.in_(all_vendors)).group_by(
+                    MasterProducts.client_prefix)
+                response['filters']['client'] = [{x[0]: x[1]} for x in client_qs]
+
+            elif auth_data['user_group'] == 'warehouse':
+                type_qs = type_qs.filter(InventoryUpdate.warehouse_prefix == auth_data['warehouse_prefix']).group_by(
+                    InventoryUpdate.type)
+                response['filters']['type'] = [{x[0]: x[1]} for x in type_qs]
+                client_qs = client_qs.filter(InventoryUpdate.warehouse_prefix == auth_data['warehouse_prefix']).group_by(
+                    MasterProducts.client_prefix)
+                response['filters']['client'] = [{x[0]: x[1]} for x in client_qs]
+
+            else:
+                warehouse_qs = warehouse_qs.group_by(InventoryUpdate.warehouse_prefix)
+                response['filters']['warehouse'] = [{x[0]: x[1]} for x in warehouse_qs]
+                type_qs = type_qs.group_by(InventoryUpdate.type)
+                response['filters']['type'] = [{x[0]: x[1]} for x in type_qs]
+                client_qs = client_qs.group_by(MasterProducts.client_prefix)
+                response['filters']['client'] = [{x[0]: x[1]} for x in client_qs]
+
+            return response, 200
+        except Exception as e:
+            return {"success": False, "error":str(e.args[0])}, 404
+
+
 class WROList(Resource):
 
     method_decorators = [authenticate_restful]
@@ -1633,16 +1953,16 @@ class UpdateInventory(Resource):
             if not auth_data:
                 return {"success": False, "msg": "Auth Failed"}, 404
 
+            if auth_data['user_group']!='warehouse':
+                return {"success": False, "msg": "Invalid user type"}, 400
+
+            warehouse = auth_data['warehouse_prefix']
+            client_prefix = request.args.get('client_prefix')
             sku_list = data.get("sku_list")
             failed_list = list()
             current_quantity = list()
             for sku_obj in sku_list:
                 try:
-                    warehouse = sku_obj.get('warehouse')
-                    if not warehouse:
-                        sku_obj['error'] = "Warehouse not provided."
-                        failed_list.append(sku_obj)
-                        continue
                     sku = sku_obj.get('sku')
                     if not sku:
                         sku_obj['error'] = "SKU not provided."
@@ -1650,7 +1970,6 @@ class UpdateInventory(Resource):
                         continue
 
                     sku = str(sku)
-
                     type = sku_obj.get('type')
                     if not type or str(type).lower() not in ('add', 'subtract', 'replace'):
                         sku_obj['error'] = "Invalid type"
@@ -1665,23 +1984,15 @@ class UpdateInventory(Resource):
 
                     quantity = int(quantity)
 
-                    quan_obj = db.session.query(ProductQuantity).join(Products, ProductQuantity.product_id==Products.id)\
-                        .filter(ProductQuantity.warehouse_prefix==warehouse).filter(
-                        or_(Products.sku==sku, Products.master_sku==sku))
-
-                    if auth_data.get('user_group') != 'super-admin':
-                        quan_obj = quan_obj.filter(Products.client_prefix==auth_data['client_prefix'])
+                    quan_obj = db.session.query(ProductQuantity).join(MasterProducts, ProductQuantity.product_id==MasterProducts.id)\
+                        .filter(ProductQuantity.warehouse_prefix==warehouse).filter(MasterProducts.sku==sku).filter(MasterProducts.client_prefix==client_prefix)
 
                     quan_obj = quan_obj.first()
 
                     if not quan_obj:
-                        prod_obj = db.session.query(Products).filter(or_(Products.sku==sku, Products.master_sku==sku))
-                        if auth_data.get('user_group') != 'super-admin':
-                            prod_obj = prod_obj.filter(Products.client_prefix == auth_data['client_prefix'])
-
-                        prod_obj = prod_obj.first()
+                        prod_obj = db.session.query(MasterProducts).filter(MasterProducts.sku==sku, MasterProducts.client_prefix==client_prefix).first()
                         if not prod_obj:
-                            sku_obj['error'] = "Warehouse sku combination not found."
+                            sku_obj['error'] = "SKU not found."
                             failed_list.append(sku_obj)
                             continue
                         else:
@@ -1699,8 +2010,7 @@ class UpdateInventory(Resource):
 
                     update_obj = InventoryUpdate(product=quan_obj.product,
                                                  warehouse_prefix=warehouse,
-                                                 user=auth_data['email'] if auth_data.get('email') else auth_data[
-                                                     'client_prefix'],
+                                                 user=auth_data['username'] if auth_data.get('username') else auth_data['client_prefix'],
                                                  remark=sku_obj.get('remark', None),
                                                  quantity=int(quantity),
                                                  type=str(type).lower(),
@@ -1769,40 +2079,20 @@ class UpdateInventory(Resource):
         try:
             cur = conn.cursor()
             auth_data = resp.get('data')
-            sku = request.args.get('sku')
             search_key = request.args.get('search', '')
+            client_prefix = request.args.get('client_prefix', '')
             if not auth_data:
                 return {"success": False, "msg": "Auth Failed"}, 404
+            if not auth_data['user_group']!='warehouse':
+                return {"success": False, "msg": "Invalid user type"}, 400
 
-            if not sku:
-                query_to_run = """select array_agg(master_sku) from 
-                                (SELECT master_sku from products WHERE master_sku ilike '%__SEARCH_KEY__%' __CLIENT_FILTER__ ORDER BY master_sku LIMIT 10) ss""".replace('__SEARCH_KEY__', search_key)
-                if auth_data['user_group'] != 'super-admin':
-                    query_to_run = query_to_run.replace("__CLIENT_FILTER__", "AND client_prefix='%s'"%auth_data['client_prefix'])
-                else:
-                    query_to_run = query_to_run.replace("__CLIENT_FILTER__", "")
+            query_to_run = """select array_agg(sku) from 
+                            (SELECT sku from master_products WHERE sku ilike '%__SEARCH_KEY__%' __CLIENT_FILTER__ ORDER BY sku LIMIT 10) ss""".replace('__SEARCH_KEY__', search_key)
+            query_to_run = query_to_run.replace("__CLIENT_FILTER__", "AND client_prefix='%s'"%client_prefix)
 
-                cur.execute(query_to_run)
+            cur.execute(query_to_run)
 
-                return {"success": True, "sku_list": cur.fetchone()[0]}, 200
-
-            else:
-                if auth_data['user_group']=='super-admin':
-                    cur.execute("SELECT client_prefix from products where master_sku='%s'"%sku)
-                    client_prefix = cur.fetchone()
-                    client_prefix = client_prefix[0]
-                elif auth_data['user_group']=='client':
-                    client_prefix = auth_data['client_prefix']
-                else:
-                    return {"success": True, "warehouse_list": None, "sku": sku}, 200
-
-                query_to_run = """select array_agg(warehouse_prefix) from client_pickups aa
-                left join pickup_points bb on aa.pickup_id=bb.id
-                where client_prefix='%s'"""%(client_prefix)
-
-                cur.execute(query_to_run)
-
-                return {"success": True, "warehouse_list": cur.fetchone()[0], "sku":sku}, 200
+            return {"success": True, "sku_list": cur.fetchone()[0]}, 200
 
         except Exception as e:
             return {"success": False, "msg": ""}, 404
@@ -1902,3 +2192,4 @@ api.add_resource(UpdateInventory, '/products/v1/update_inventory')
 api.add_resource(WROList, '/products/v1/wro_list')
 api.add_resource(AddSKU, '/products/v1/add_sku')
 api.add_resource(CreateWRO, '/products/v1/warehouse_ro')
+api.add_resource(InvHistoryList, '/products/v1/inventory_history')

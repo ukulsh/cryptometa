@@ -421,6 +421,9 @@ def bulk_inbound(resp):
                                            received_quantity=int(row_data.Quantity))
                 db.session.add(prod_wro_obj)
 
+            shelf = None
+            if row_data.Shelf==row_data.Shelf:
+                shelf = str(row_data.Shelf)
             quan_obj = db.session.query(ProductQuantity).filter(
                 ProductQuantity.warehouse_prefix == warehouse_prefix,
                 ProductQuantity.product_id == prod_obj.id).first()
@@ -429,6 +432,8 @@ def bulk_inbound(resp):
                 quan_obj.total_quantity = quan_obj.total_quantity + int(row_data.Quantity) if quan_obj.total_quantity else int(row_data.Quantity)
                 quan_obj.available_quantity = quan_obj.available_quantity + int(row_data.Quantity) if quan_obj.available_quantity else int(row_data.Quantity)
                 quan_obj.current_quantity = quan_obj.current_quantity + int(row_data.Quantity) if quan_obj.current_quantity else int(row_data.Quantity)
+                if shelf:
+                    quan_obj.wh_loc=shelf
             else:
                 quan_obj = ProductQuantity(product=prod_obj,
                                            total_quantity=int(row_data.Quantity),
@@ -440,6 +445,7 @@ def bulk_inbound(resp):
                                            exception_quantity=0,
                                            warehouse_prefix=warehouse_prefix,
                                            status="APPROVED",
+                                           wh_loc=shelf,
                                            date_created=datetime.utcnow()
                                            )
                 db.session.add(quan_obj)

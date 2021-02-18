@@ -25,7 +25,7 @@ from .queries import product_count_query, available_warehouse_product_quantity, 
 from project.api.models import Products, ProductQuantity, InventoryUpdate, WarehouseMapping, NDRReasons, MultiVendor, \
     Orders, OrdersPayments, PickupPoints, MasterChannels, ClientPickups, CodVerification, NDRVerification, NDRShipments,\
     MasterCouriers, Shipments, OPAssociation, ShippingAddress, Manifests, ClientCouriers, OrderStatus, DeliveryCheck, \
-    ClientMapping, IVRHistory, ClientRecharges, CODRemittance, ThirdwatchData
+    ClientMapping, IVRHistory, ClientRecharges, CODRemittance, ThirdwatchData, ClientChannel
 from project.api.utils import authenticate_restful, get_products_sort_func, fill_shiplabel_data_thermal, \
     get_orders_sort_func, create_shiplabel_blank_page, fill_shiplabel_data, create_shiplabel_blank_page_thermal, \
     create_invoice_blank_page, fill_invoice_data, generate_picklist, generate_packlist
@@ -398,16 +398,34 @@ def consume_x_payout():
 def thirdwatch_webhook():
     try:
         webhook_body = json.loads(request.data)
-        thirdwatch_obj = ThirdwatchData(order_id=int(webhook_body['order_id']),
-                                         flag=webhook_body['flag'],
-                                         order_timestamp=webhook_body['order_timestamp'],
-                                         score=webhook_body['score'],
-                                         tags=webhook_body['tags'],
-                                         reasons=webhook_body['reasons']
-                                         )
+        client = db.session.query(ClientChannel).filter(ClientChannel.unique_parameter==webhook_body['merchant_identifier']).first()
+        if not client:
+            return jsonify({"success": False, "msg": "Merchant not found"}), 400
 
-        db.session.add(thirdwatch_obj)
-        db.session.commit()
+        event = webhook_body['event']
+        order_data = webhook_body['payload']
+        order = db.session.query(Orders).filter(Orders.client_prefix == client.client_prefix,
+                                                Orders.client_channel_id == str(order_data['order_id'])).first()
+        if not order:
+            return jsonify({"success": False, "msg": "Order not found"}), 400
+
+        if event.lower()=='score':
+            thirdwatch_obj = ThirdwatchData(order=order,
+                                             flag=webhook_body['flag'],
+                                             order_timestamp=webhook_body['order_timestamp'],
+                                             score=webhook_body['score'],
+                                             tags=webhook_body['tags'],
+                                             reasons=webhook_body['reasons']
+                                             )
+
+            db.session.add(thirdwatch_obj)
+            db.session.commit()
+
+        if event.lower()=='action':
+            if order_data['action_type'] == "declined" and order.status in ('NEW', 'READY TO SHIP', 'PICKUP REQUESTED'):
+                order.status='CANCELED'
+                db.session.commit()
+
         return jsonify({"success": True}), 200
 
     except Exception as e:

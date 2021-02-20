@@ -432,6 +432,26 @@ def thirdwatch_webhook():
         return jsonify({"success": False}), 400
 
 
+@core_blueprint.route('/core/v1/thirdwatch/postbackPartner', methods=['POST'])
+def thirdwatch_webhook_partner():
+    try:
+        webhook_body = json.loads(request.data)
+        thirdwatch_obj = ThirdwatchData(order_id=int(webhook_body['order_id']),
+                                         flag=webhook_body['flag'],
+                                         order_timestamp=webhook_body['order_timestamp'],
+                                         score=webhook_body['score'],
+                                         tags=webhook_body['tags'],
+                                         reasons=webhook_body['reasons']
+                                         )
+
+        db.session.add(thirdwatch_obj)
+        db.session.commit()
+        return jsonify({"success": True}), 200
+
+    except Exception as e:
+        return jsonify({"success": False}), 400
+
+
 @core_blueprint.route('/core/v1/getshipcouriers', methods=['GET'])
 @authenticate_restful
 def getshiporders(resp):

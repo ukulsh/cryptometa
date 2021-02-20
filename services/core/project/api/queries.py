@@ -212,7 +212,7 @@ get_status_update_orders_query = """select aa.id, bb.awb, aa.status, aa.client_p
                                     left join (select order_id, array_agg(channel_item_id) as item_list, array_agg(quantity) as sku_quan_list from
                                       		  (select kk.order_id, kk.channel_item_id, kk.quantity
                                               from op_association kk
-                                              left join products ll on kk.product_id=ll.id) nn
+                                              left join master_products ll on kk.master_product_id=ll.id) nn
                                               group by order_id) mm
                                     on aa.id=mm.order_id
                                     left join client_channel cc
@@ -346,10 +346,10 @@ available_warehouse_product_quantity = """select pp.*, qq.pincode from
                                         where bb.status in
                                         ('DELIVERED','DISPATCHED','IN TRANSIT','ON HOLD','PENDING','NEW','NOT PICKED','PICKUP REQUESTED','READY TO SHIP')
                                         and aa.product_id in 
-                                        (select id from products where sku in __SKU_STR__ and client_prefix='__CLIENT_PREFIX__') 
+                                        (select id from master_products where sku in __SKU_STR__ and client_prefix='__CLIENT_PREFIX__') 
                                          group by dd.warehouse_prefix, product_id) as xx
                                         on ll.product_id=xx.product_id and ll.warehouse_prefix=xx.warehouse_prefix
-                                        left join products mm on ll.product_id=mm.id
+                                        left join master_products mm on ll.product_id=mm.id
                                         left join master_couriers kk on mm.inactive_reason=kk.courier_name
                                         where ll.product_id in 
                                         (select id from products where sku in __SKU_STR__ and client_prefix='__CLIENT_PREFIX__')) pp
@@ -402,7 +402,8 @@ select_wro_list_query = """select aa.id, aa.warehouse_prefix, aa.client_prefix, 
                             array_agg(xx.received_quantity) as received_quantity from products_wro xx
                             left join master_products yy on xx.master_product_id=yy.id
                             group by wro_id) bb on aa.id=bb.wro_id
-                            WHERE ('__SEARCH_KEY__' = any(bb.master_sku) or aa.tracking_details ilike '%__SEARCH_KEY__%')
+                            WHERE 1=1
+                            __SEARCH_FILTER__
                             __CLIENT_FILTER__
                             __WAREHOUSE_FILTER__
                             __STATUS_FILTER__
@@ -410,8 +411,8 @@ select_wro_list_query = """select aa.id, aa.warehouse_prefix, aa.client_prefix, 
                              ORDER BY __ORDER_BY__ __ORDER_TYPE__ 
                             __PAGINATION__"""
 
-select_combo_list_query = """select aa.id, bb.id as parent_id, cc.id as child_id, bb.name, bb.sku, aa.date_created, 
-                            cc.sku as child_sku, cc.name as child_name, aa.quantity as child_qty from products_combos aa
+select_combo_list_query = """select aa.id, bb.id as parent_id, array_agg(cc.id) as child_id, bb.name, bb.sku, aa.date_created, 
+                            array_agg(cc.sku) as child_sku, array_agg(cc.name) as child_name, array_agg(aa.quantity) as child_qty from products_combos aa
                             left join products bb on aa.combo_id=bb.id
                             left join products cc on aa.combo_prod_id=cc.id
                             left join products_quantity dd on cc.id=dd.product_id
@@ -419,6 +420,7 @@ select_combo_list_query = """select aa.id, bb.id as parent_id, cc.id as child_id
                             __CLIENT_FILTER__
                             __MV_CLIENT_FILTER__
                             __WAREHOUSE_FILTER__
+                            GROUP BY aa.id, bb.id, bb.name, bb.sku, aa.date_created
                             ORDER BY __ORDER_BY__ __ORDER_TYPE__ 
                             __PAGINATION__
                             """
@@ -452,8 +454,6 @@ select_orders_list_query = """select distinct on (aa.order_date, aa.id) aa.chann
                              left join orders_payments gg on aa.id=gg.order_id
                              left join client_pickups hh on aa.pickup_data_id=hh.id
                              left join pickup_points ii on hh.pickup_id=ii.id
-                             left join op_association jj on aa.id=jj.order_id
-                             left join products kk on jj.product_id=kk.id
                              left join cod_verification mm on mm.order_id=aa.id
                              left join ndr_verification nn on nn.order_id=aa.id
                              left join thirdwatch_data uu on uu.order_id=aa.id
@@ -484,9 +484,9 @@ select_orders_list_query = """select distinct on (aa.order_date, aa.id) aa.chann
                              order by order_date DESC, aa.id DESC
                              __PAGINATION__"""
 
-get_selected_product_details = """select ll.order_id, ll.product_names, ll.skus, ll.quantity, ll.weights, ll.dimensions, ll.prod_price  from (SELECT order_id, array_agg(name) as product_names, array_agg(master_sku) as skus, 
+get_selected_product_details = """select ll.order_id, ll.product_names, ll.skus, ll.quantity, ll.weights, ll.dimensions, ll.prod_price  from (SELECT order_id, array_agg(name) as product_names, array_agg(sku) as skus, 
                                         array_agg(quantity) as quantity, array_agg(weight) as weights, array_agg(dimensions) as dimensions, array_agg(jj.amount) as prod_price from op_association jj 
-                                       left join products kk on jj.product_id=kk.id
+                                       left join master_products kk on jj.master_product_id=kk.id
                                        group by order_id) ll where ll.order_id in (__FILTERED_ORDER_ID__)"""
 
 select_wallet_deductions_query = """SELECT aa.status_time, aa.status, bb.courier_name, cc.awb, dd.channel_order_id, dd.id, ee.cod_charge, 

@@ -249,6 +249,7 @@ class OPAssociation(db.Model):
     tax_lines = db.Column(JSON)
     order = db.relationship("Orders")
     product = db.relationship("Products")
+    master_product = db.relationship("MasterProducts")
 
 
 class Orders(db.Model):

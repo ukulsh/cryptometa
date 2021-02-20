@@ -26,8 +26,7 @@ from project.api.models import Products, ProductQuantity, InventoryUpdate, Wareh
     Orders, OrdersPayments, PickupPoints, MasterChannels, ClientPickups, CodVerification, NDRVerification, NDRShipments,\
     MasterCouriers, Shipments, OPAssociation, ShippingAddress, Manifests, ClientCouriers, OrderStatus, DeliveryCheck, \
     ClientMapping, IVRHistory, ClientRecharges, CODRemittance, ThirdwatchData
-from project.api.utils import authenticate_restful, get_products_sort_func, fill_shiplabel_data_thermal, \
-    get_orders_sort_func, create_shiplabel_blank_page, fill_shiplabel_data, create_shiplabel_blank_page_thermal, \
+from project.api.utils import authenticate_restful, fill_shiplabel_data_thermal, create_shiplabel_blank_page, fill_shiplabel_data, create_shiplabel_blank_page_thermal, \
     create_invoice_blank_page, fill_invoice_data, generate_picklist, generate_packlist
 
 core_blueprint = Blueprint('core', __name__)

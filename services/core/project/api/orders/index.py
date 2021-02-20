@@ -22,7 +22,7 @@ from sqlalchemy.dialects.postgresql import insert
 from project import db
 from project.api.models import NDRReasons, MultiVendor, NDRShipments, Orders, ClientPickups, MasterCouriers, \
     PickupPoints, Shipments, Products, ShippingAddress, OPAssociation, OrdersPayments, ClientMapping, WarehouseMapping, \
-    Manifests, OrderStatus, IVRHistory, OrderPickups, BillingAddress, MasterChannels
+    Manifests, OrderStatus, IVRHistory, OrderPickups, BillingAddress, MasterChannels, MasterProducts
 from project.api.queries import select_orders_list_query, available_warehouse_product_quantity, \
     fetch_warehouse_to_pick_from, select_pickups_list_query, get_selected_product_details
 from project.api.utils import authenticate_restful, fill_shiplabel_data_thermal, \
@@ -462,13 +462,12 @@ class AddOrder(Resource):
             if data.get('products'):
                 for prod in data.get('products'):
                     if 'sku' in prod:
-                        prod_obj = db.session.query(Products).filter(or_(Products.sku == prod['sku'], Products.master_sku==prod['sku']), Products.client_prefix==auth_data.get('client_prefix')).first()
+                        prod_obj = db.session.query(MasterProducts).filter(MasterProducts.sku == prod['sku'], MasterProducts.client_prefix==auth_data.get('client_prefix')).first()
                         if not prod_obj:
                             dimensions = {"length": float(prod.get('length')) if prod.get('length') else None,
                                           "breadth": float(prod.get('breadth')) if prod.get('breadth') else None,
                                           "height": float(prod.get('height')) if prod.get('height') else None}
-                            prod_obj = Products(sku=str(prod['product_id']) if prod['product_id'] else str(prod['sku']),
-                                                master_sku=str(prod['sku']),
+                            prod_obj = MasterProducts(sku=str(prod['sku']),
                                                 name=str(prod.get('name') if prod.get('name') else prod.get('sku')),
                                                 client_prefix=auth_data.get('client_prefix'),
                                                 dimensions=dimensions,
@@ -478,12 +477,12 @@ class AddOrder(Resource):
                             db.session.add(prod_obj)
 
                     else:
-                        prod_obj = db.session.query(Products).filter(Products.id == int(prod['id'])).first()
+                        prod_obj = db.session.query(MasterProducts).filter(MasterProducts.id == int(prod['id'])).first()
 
                     if prod_obj:
                         tax_lines = prod.get('tax_lines')
                         amount = prod.get('amount')
-                        op_association = OPAssociation(order=new_order, product=prod_obj, quantity=prod['quantity'], amount=amount, tax_lines=tax_lines)
+                        op_association = OPAssociation(order=new_order, master_product=prod_obj, quantity=prod['quantity'], amount=amount, tax_lines=tax_lines)
                         new_order.products.append(op_association)
 
             if data.get('shipping_charges'):
@@ -521,10 +520,9 @@ class AddOrder(Resource):
             return {"success": False, "msg": "Auth Failed"}, 404
 
         cur = conn.cursor()
-        query_to_execute = """SELECT id, name, sku, master_sku FROM products
+        query_to_execute = """SELECT id, name, sku, sku FROM master_products
                               WHERE (name ilike '%__SEARCH_KEY__%'
                               OR sku ilike '%__SEARCH_KEY__%'
-                              OR master_sku ilike '%__SEARCH_KEY__%')
                               __CLIENT_FILTER__
                               ORDER BY master_sku
                               LIMIT 10 
@@ -546,7 +544,6 @@ class AddOrder(Resource):
             search_dict = dict()
             search_dict['id'] = search_obj[0]
             search_dict['name'] = search_obj[1]
-            search_dict['channel_sku'] = search_obj[2]
             search_dict['master_sku'] = search_obj[3]
             search_list.append(search_dict)
 
@@ -627,9 +624,9 @@ def upload_orders(resp):
                 sku = str(row_data.sku).split('|')
                 sku_quantity = str(row_data.sku_quantity).split('|')
                 for idx, sku_str in enumerate(sku):
-                    prod_obj = db.session.query(Products).filter(or_(Products.sku == sku_str.strip(), Products.master_sku==sku_str.strip()), Products.client_prefix==auth_data.get('client_prefix')).first()
+                    prod_obj = db.session.query(MasterProducts).filter(MasterProducts.sku == sku_str.strip(), MasterProducts.client_prefix==auth_data.get('client_prefix')).first()
                     if prod_obj:
-                        op_association = OPAssociation(order=new_order, product=prod_obj, quantity=int(sku_quantity[idx].strip()))
+                        op_association = OPAssociation(order=new_order, master_product=prod_obj, quantity=int(sku_quantity[idx].strip()))
                         new_order.products.append(op_association)
                     else:
                         failed_ids.append(str(row_data.order_id).rstrip())
@@ -1040,10 +1037,10 @@ def download_picklist_util(orders_qs, auth_data):
             order_count[order.client_prefix] += 1
             pass
         for prod in order.products:
-            if prod.product.combo:
-                for new_prod in prod.product.combo:
+            if prod.master_product.combo:
+                for new_prod in prod.master_product.combo:
                     if new_prod.combo_prod_id not in products_dict[order.client_prefix]:
-                        sku = new_prod.combo_prod.master_sku if new_prod.combo_prod.master_sku else new_prod.combo_prod.sku
+                        sku = new_prod.combo_prod.sku
                         products_dict[order.client_prefix][new_prod.combo_prod_id] = {"sku": sku,
                                                                                       "name": new_prod.combo_prod.name,
                                                                                       "quantity": prod.quantity * new_prod.quantity}
@@ -1051,12 +1048,12 @@ def download_picklist_util(orders_qs, auth_data):
                         products_dict[order.client_prefix][new_prod.combo_prod_id][
                             'quantity'] += prod.quantity * new_prod.quantity
             else:
-                if prod.product_id not in products_dict[order.client_prefix]:
-                    sku = prod.product.master_sku if prod.product.master_sku else prod.product.sku
-                    products_dict[order.client_prefix][prod.product_id] = {"sku": sku, "name": prod.product.name,
+                if prod.master_product_id not in products_dict[order.client_prefix]:
+                    sku = prod.master_product.sku
+                    products_dict[order.client_prefix][prod.master_product_id] = {"sku": sku, "name": prod.master_product.name,
                                                                            "quantity": prod.quantity}
                 else:
-                    products_dict[order.client_prefix][prod.product_id]['quantity'] += prod.quantity
+                    products_dict[order.client_prefix][prod.master_product_id]['quantity'] += prod.quantity
 
     file_pref = auth_data['client_prefix'] if auth_data['client_prefix'] else auth_data['warehouse_prefix']
     file_name = "picklist_" + str(file_pref) + "_" + str(datetime.now().strftime("%d_%b_%Y_%H_%M_%S")) + ".pdf"
@@ -1110,9 +1107,9 @@ def download_packlist_util(orders_qs, auth_data):
             order_count[order.client_prefix] += 1
             pass
         for prod in order.products:
-            if prod.product.combo:
-                for new_prod in prod.product.combo:
-                    sku = new_prod.combo_prod.master_sku if new_prod.combo_prod.master_sku else new_prod.combo_prod.sku
+            if prod.master_product.combo:
+                for new_prod in prod.master_product.combo:
+                    sku = new_prod.combo_prod.sku
                     if new_prod.combo_prod_id not in orders_dict[order.client_prefix][order.channel_order_id]:
                         orders_dict[order.client_prefix][order.channel_order_id][new_prod.combo_prod_id] = {"sku": sku,
                                                                                                             "name": new_prod.combo_prod.name,
@@ -1121,13 +1118,13 @@ def download_packlist_util(orders_qs, auth_data):
                         orders_dict[order.client_prefix][order.channel_order_id][new_prod.combo_prod_id][
                             'quantity'] += prod.quantity * new_prod.quantity
             else:
-                sku = prod.product.master_sku if prod.product.master_sku else prod.product.sku
+                sku = prod.master_product.sku
                 if prod.product_id not in orders_dict[order.client_prefix][order.channel_order_id]:
-                    orders_dict[order.client_prefix][order.channel_order_id][prod.product_id] = {"sku": sku,
-                                                                                                 "name": prod.product.name,
+                    orders_dict[order.client_prefix][order.channel_order_id][prod.master_product_id] = {"sku": sku,
+                                                                                                 "name": prod.master_product.name,
                                                                                                  "quantity": prod.quantity}
                 else:
-                    orders_dict[order.client_prefix][order.channel_order_id][prod.product_id][
+                    orders_dict[order.client_prefix][order.channel_order_id][prod.master_product_id][
                         'quantity'] += prod.quantity
 
     file_pref = auth_data['client_prefix'] if auth_data['client_prefix'] else auth_data['warehouse_prefix']
@@ -1222,7 +1219,7 @@ def download_manifest_util(orders_qs, auth_data):
         prod_quan = list()
 
         for prod in order.products:
-            prod_names.append(prod.product.name)
+            prod_names.append(prod.master_product.name)
             prod_quan.append(prod.quantity)
 
         order_tuple = (
@@ -1518,8 +1515,8 @@ class OrderDetails(Resource):
                 resp_obj['product_details'] = list()
                 for prod in order.products:
                     resp_obj['product_details'].append(
-                        {"name": prod.product.name,
-                         "sku": prod.product.master_sku,
+                        {"name": prod.master_product.name,
+                         "sku": prod.master_product.sku,
                          "quantity": prod.quantity,
                          "id": prod.product.id,
                          "total": prod.amount}
@@ -1729,10 +1726,10 @@ class CreateReturn(Resource):
 
             if data.get('products'):
                 for prod in data.get('products'):
-                    prod_obj = db.session.query(Products).filter(Products.id == prod['id']).first()
+                    prod_obj = db.session.query(MasterProducts).filter(MasterProducts.id == prod['id']).first()
 
                     if prod_obj:
-                        op_association = OPAssociation(order=new_order, product=prod_obj, quantity=prod['quantity'])
+                        op_association = OPAssociation(order=new_order, master_product=prod_obj, quantity=prod['quantity'])
                         new_order.products.append(op_association)
 
             payment = OrdersPayments(
@@ -1939,7 +1936,7 @@ def track_order(awb):
         response['theme_color'] = None
         response['products'] = list()
         for op_ass in shipment.order.products:
-            prod_obj = {"name": op_ass.product.name, "quantity": op_ass.quantity}
+            prod_obj = {"name": op_ass.master_product.name, "quantity": op_ass.quantity}
             response['products'].append(prod_obj)
         response['destination_city'] = None
         if shipment.order.status not in ('DELIVERED','RTO') and shipment.order.status_type!='RT':
@@ -2129,15 +2126,15 @@ class PincodeServiceabilty(Resource):
             sku_string += ")"
             sku_dict = dict()
 
-            cur.execute("""select cc.sku, cc.master_sku from products_combos aa
-                            left join products bb on aa.combo_id=bb.id
-                            left join products cc on aa.combo_prod_id=cc.id
-                            WHERE (bb.sku in __SKU_STR__ or bb.master_sku in __SKU_STR__) 
+            cur.execute("""select cc.sku, cc.sku from products_combos aa
+                            left join master_products bb on aa.combo_id=bb.id
+                            left join master_products cc on aa.combo_prod_id=cc.id
+                            WHERE (bb.sku in __SKU_STR__) 
                             and bb.client_prefix='__CLIENT__'""".replace('__SKU_STR__', sku_string).replace('__CLIENT__', auth_data[
                                                                                                             'client_prefix']))
             sku_tuple = cur.fetchall()
             if not sku_tuple:
-                cur.execute("SELECT sku, master_sku FROM products WHERE (sku in __SKU_STR__ or master_sku in __SKU_STR__) and client_prefix='__CLIENT__'".replace('__SKU_STR__', sku_string).replace('__CLIENT__', auth_data[
+                cur.execute("SELECT sku, sku FROM master_products WHERE (sku in __SKU_STR__) and client_prefix='__CLIENT__'".replace('__SKU_STR__', sku_string).replace('__CLIENT__', auth_data[
                                                                                                             'client_prefix']))
                 sku_tuple = cur.fetchall()
 
@@ -2428,7 +2425,7 @@ class TrackShipments(Resource):
                     response['theme_color'] = None
                     response['products'] = list()
                     for op_ass in shipment.order.products:
-                        prod_obj = {"name": op_ass.product.name, "quantity": op_ass.quantity}
+                        prod_obj = {"name": op_ass.master_product.name, "quantity": op_ass.quantity}
                         response['products'].append(prod_obj)
                     response['destination_city'] = None
                     if shipment.order.status not in ('DELIVERED', 'RTO') and shipment.order.status_type != 'RT':

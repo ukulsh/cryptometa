@@ -102,42 +102,6 @@ def ensure_authenticated(token):
         return False
 
 
-def get_products_sort_func(Products, ProductsQuantity, sort, sort_by):
-    if sort_by == 'product_name':
-        x = Products.name
-    elif sort_by == 'price':
-        x = Products.price
-    elif sort_by == 'master_sku':
-        x = Products.master_sku
-    elif sort_by == 'total_quantity':
-        x = ProductsQuantity.approved_quantity
-    elif sort_by == 'weight':
-        x = Products.weight
-    else:
-        x = ProductsQuantity.available_quantity
-
-    if sort.lower() == 'desc':
-        x = x.desc().nullslast
-    else:
-        x = x.asc
-    return x
-
-
-def get_orders_sort_func(Orders, sort, sort_by):
-    if sort_by == 'order_id':
-        x = Orders.channel_order_id
-    elif sort_by == 'status':
-        x = Orders.status
-    else:
-        x = Orders.order_date
-
-    if sort.lower() == 'asc':
-        x = x.asc
-    else:
-        x = x.desc
-    return x
-
-
 def create_shiplabel_blank_page(canvas):
     canvas.setLineWidth(.8)
     canvas.setFont('Helvetica', 12)
@@ -252,7 +216,7 @@ def fill_shiplabel_data(c, order, offset, client_name=None):
         try:
             products_string = ""
             for prod in order.products:
-                products_string += prod.product.name + " (" + str(prod.quantity) + ") + "
+                products_string += prod.master_product.name + " (" + str(prod.quantity) + ") + "
             products_string = products_string.rstrip(" + ")
             if order.payments[0].shipping_charges:
                 products_string += " + Shipping"
@@ -387,7 +351,7 @@ def fill_shiplabel_data_thermal(c, order, client_name=None):
         try:
             products_string = ""
             for prod in order.products:
-                products_string += prod.product.name + " (" + str(prod.quantity) + ") + "
+                products_string += prod.master_product.name + " (" + str(prod.quantity) + ") + "
             products_string = products_string.rstrip(" + ")
             if order.payments[0].shipping_charges:
                 products_string += " + Shipping"
@@ -713,16 +677,16 @@ def fill_invoice_data(c, order, client_name):
     for prod in order.products:
         try:
             c.setFont('Helvetica-Bold', 7)
-            product_name = str(s_no) + ". " + prod.product.name
+            product_name = str(s_no) + ". " + prod.master_product.name
             product_name = split_string(product_name, 40)
             for addr in product_name:
                 c.drawString(-0.75 * inch, y_axis * inch, addr)
                 y_axis -= 0.15
             c.setFont('Helvetica', 7)
-            if prod.product.master_sku:
-                c.drawString(0.45 * inch, y_axis* inch, "SKU: " + prod.product.master_sku)
-            if prod.product.hsn_code:
-                c.drawString(-0.65 * inch, y_axis* inch, "HSN: " + prod.product.hsn_code)
+            if prod.master_product.sku:
+                c.drawString(0.45 * inch, y_axis* inch, "SKU: " + prod.master_product.sku)
+            if prod.master_product.hsn_code:
+                c.drawString(-0.65 * inch, y_axis* inch, "HSN: " + prod.master_product.hsn_code)
 
             c.drawString(2.02 * inch, (y_axis + 0.08) * inch, str(prod.quantity))
 

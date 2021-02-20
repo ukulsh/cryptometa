@@ -11,7 +11,7 @@ from psycopg2.extras import RealDictCursor
 from sqlalchemy import func, or_
 from project import db
 from project.api.models import Products, ProductQuantity, MultiVendor, InventoryUpdate, MasterProducts, MasterChannels, \
-    ProductsCombos, WarehouseRO, ProductsWRO, PickupPoints
+    ProductsCombos, WarehouseRO, ProductsWRO, PickupPoints, OPAssociation
 from project.api.queries import select_product_list_query, select_product_list_channel_query, select_combo_list_query, \
     select_wro_list_query, select_inventory_history_query
 from project.api.utils import authenticate_restful
@@ -52,7 +52,8 @@ def get_products_details(resp):
             return jsonify({"success": False, "msg": "Prod ID not provided"}), 400
 
         query_to_run = """SELECT name, null, sku as master_sku, weight, dimensions, price, bb.warehouse_prefix as warehouse, 
-                            bb.approved_quantity as total_quantity, bb.current_quantity, bb.available_quantity, bb.inline_quantity, bb.rto_quantity, aa.id
+                            bb.approved_quantity as total_quantity, bb.current_quantity, bb.available_quantity, bb.inline_quantity, 
+                            bb.rto_quantity, aa.id, aa.hsn_code, aa.tax_rate
                             from master_products aa
                             left join products_quantity bb on aa.id=bb.product_id
                             WHERE aa.id=%s
@@ -92,7 +93,10 @@ def get_products_details(resp):
                        }
             return jsonify({"success": True, "data": ret_obj}), 200
 
-        query_to_run = query_to_run.replace('__WAREHOUSE_FILTER__', "")
+        if auth_data['user_group'] == 'warehouse':
+            query_to_run = query_to_run.replace('__WAREHOUSE_FILTER__', "AND bb.warehouse_prefix = '%s'" % str(auth_data['warehouse_prefix']))
+        else:
+            query_to_run = query_to_run.replace('__WAREHOUSE_FILTER__', "")
         cur.execute(query_to_run)
         ret_tuple_all = cur.fetchall()
         if not ret_tuple_all:
@@ -101,7 +105,8 @@ def get_products_details(resp):
         wh_list = list()
 
         data = {"id": ret_tuple_all[0][12], "name": ret_tuple_all[0][0], "master_sku": ret_tuple_all[0][2],
-                "weight": ret_tuple_all[0][3], "dimensions": ret_tuple_all[0][4], "price": ret_tuple_all[0][5]}
+                "weight": ret_tuple_all[0][3], "dimensions": ret_tuple_all[0][4], "price": ret_tuple_all[0][5],
+                "hsn": ret_tuple_all[0][13], "tax_rate": ret_tuple_all[0][14]}
 
         for ret_tuple in ret_tuple_all:
             ret_obj = {"warehouse": ret_tuple[6],
@@ -341,6 +346,7 @@ def bulk_map_sku(resp):
                 cw.writerow(list(row_data.values)+["Channel prod not found"])
                 return
 
+            db.session.query(OPAssociation).filter(OPAssociation.product_id==channel_prod.id, OPAssociation.master_product_id==None).update({OPAssociation.master_product_id:master_prod.id})
             channel_prod.master_product=master_prod
             db.session.commit()
 
@@ -381,6 +387,9 @@ def bulk_inbound(resp):
     wro_id=request.args.get('wro_id')
     if wro_id:
         wro_obj = db.session.query(WarehouseRO).filter(WarehouseRO.id==int(wro_id), WarehouseRO.warehouse_prefix==warehouse_prefix).first()
+        if not wro_obj:
+            return {"success": False, "msg": "Invalid wro id"}, 400
+        wro_obj.status='received'
         client_prefix = wro_obj.client_prefix
     else:
         client_prefix = request.args.get('client_prefix')
@@ -754,6 +763,9 @@ def map_products(resp):
             return jsonify({"success": False}), 400
 
         master_prod = master_prod.first()
+        db.session.query(OPAssociation).filter(OPAssociation.product_id == channel_prod.id,
+                                               OPAssociation.master_product_id == None).update({OPAssociation.master_product_id: master_prod.id})
+
         channel_prod.master_product = master_prod
         db.session.commit()
 
@@ -1254,15 +1266,16 @@ class ComboList(Resource):
             query_to_execute = query_to_execute.replace('__PAGINATION__', "OFFSET %s LIMIT %s"%(str((page-1)*per_page), str(per_page)))
             cur.execute(query_to_execute)
             all_products = cur.fetchall()
-            combo_dict = dict()
+            combo_list = list()
             for product in all_products:
-                if product[1] not in combo_dict:
-                    combo_dict[product[1]] = {"child_skus":[{"id": product[2], "name": product[7], "sku":product[6], "quantity": product[8]}],
-                                              "name": product[3], "sku": product[4], "id":product[1]}
-                else:
-                    combo_dict[product[1]]['child_skus'].append({"id": product[2], "name": product[7], "sku":product[6], "quantity": product[8]})
+                combo_obj = {
+                    "child_skus": list(),
+                    "name": product[3], "sku": product[4], "id": product[1]}
+                for idx, child_id in enumerate(product[2]):
+                    combo_obj['child_skus'].append({"id": child_id, "name": product[7][idx], "sku":product[6][idx], "quantity": product[8][idx]})
+                combo_list.append(combo_obj)
 
-            response['data'] = combo_dict
+            response['data'] = combo_list
 
             total_pages = math.ceil(total_count/per_page)
             response['meta']['pagination'] = {'total': total_count,
@@ -1329,6 +1342,7 @@ class ComboList(Resource):
                 return jsonify({"success": False}), 400
 
             db.session.query(ProductsCombos).filter(ProductsCombos.combo_id==parent_id).delete()
+            db.session.commit()
 
             for child in data.get('child_skus'):
                 child_prod = db.session.query(MasterProducts).filter(MasterProducts.id == child['id']).first()
@@ -1746,7 +1760,11 @@ class WROList(Resource):
             if sort.lower() == 'desc':
                 sort = "DESC NULLS LAST"
             query_to_execute = query_to_execute.replace('__ORDER_BY__', sort_by).replace('__ORDER_TYPE__', sort)
-            query_to_execute = query_to_execute.replace('__SEARCH_KEY__', search_key)
+            if search_key:
+                query_to_execute = query_to_execute.replace('__SEARCH_FILTER__', "AND ('__SEARCH_KEY__' = any(bb.master_sku) or aa.tracking_details ilike '%__SEARCH_KEY__%')".replace('__SEARCH_KEY__', search_key))
+            else:
+                query_to_execute = query_to_execute.replace('__SEARCH_FILTER__', "")
+
             if download_flag:
                 query_to_run = query_to_execute.replace('__PAGINATION__', "")
                 query_to_run = re.sub(r"""__.+?__""", "", query_to_run)
@@ -1847,7 +1865,7 @@ class WROList(Resource):
                 response['filters']['client'] = [{x[0]: x[1]} for x in client_qs]
 
             elif auth_data['user_group'] == 'warehouse':
-                status_qs = status_qs.filter(WarehouseRO.warehouse_prefix == auth_data['warehouse_prefix']).group_by(WarehouseRO.warehouse_prefix)
+                status_qs = status_qs.filter(WarehouseRO.warehouse_prefix == auth_data['warehouse_prefix']).group_by(WarehouseRO.status)
                 response['filters']['status'] = [{x[0]: x[1]} for x in status_qs]
                 client_qs = client_qs.filter(WarehouseRO.warehouse_prefix == auth_data['warehouse_prefix']).group_by(WarehouseRO.client_prefix)
                 response['filters']['client'] = [{x[0]: x[1]} for x in client_qs]
@@ -2123,6 +2141,8 @@ class AddSKU(Resource):
             weight = data.get('weight')
             price = float(data.get('price', 0))
             client = data.get('client')
+            hsn = data.get('hsn')
+            tax_rate = data.get('tax_rate')
             warehouse_list= data.get('warehouse_list', [])
             if auth_data['user_group'] != 'super-admin':
                 client = auth_data['client_prefix']
@@ -2138,6 +2158,8 @@ class AddSKU(Resource):
                                   weight=weight,
                                   price=price,
                                   client_prefix=client,
+                                  hsn_code=hsn,
+                                  tax_rate=float(tax_rate) if tax_rate else None,
                                   active=True,
                                   channel_id=4,
                                   date_created=datetime.now()

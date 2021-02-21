@@ -2107,7 +2107,7 @@ class UpdateInventory(Resource):
             client_prefix = request.args.get('client_prefix', '')
             if not auth_data:
                 return {"success": False, "msg": "Auth Failed"}, 404
-            if not auth_data['user_group']!='warehouse':
+            if auth_data['user_group']!='warehouse':
                 return {"success": False, "msg": "Invalid user type"}, 400
 
             query_to_run = """select array_agg(sku) from 

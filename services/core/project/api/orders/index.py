@@ -520,11 +520,11 @@ class AddOrder(Resource):
             return {"success": False, "msg": "Auth Failed"}, 404
 
         cur = conn.cursor()
-        query_to_execute = """SELECT id, name, sku, sku FROM master_products
+        query_to_execute = """SELECT id, name, sku FROM master_products
                               WHERE (name ilike '%__SEARCH_KEY__%'
                               OR sku ilike '%__SEARCH_KEY__%'
                               __CLIENT_FILTER__
-                              ORDER BY master_sku
+                              ORDER BY sku
                               LIMIT 10 
                               """.replace('__SEARCH_KEY__', search_key)
         if auth_data['user_group'] != 'super-admin':
@@ -544,7 +544,7 @@ class AddOrder(Resource):
             search_dict = dict()
             search_dict['id'] = search_obj[0]
             search_dict['name'] = search_obj[1]
-            search_dict['master_sku'] = search_obj[3]
+            search_dict['master_sku'] = search_obj[2]
             search_list.append(search_dict)
 
         response = {"search_list": search_list}
@@ -618,8 +618,6 @@ def upload_orders(resp):
                                master_channel_id=9
                                )
 
-            sku = list()
-            sku_quantity = list()
             if row_data.sku:
                 sku = str(row_data.sku).split('|')
                 sku_quantity = str(row_data.sku_quantity).split('|')

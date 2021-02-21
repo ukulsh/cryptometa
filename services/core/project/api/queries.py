@@ -369,15 +369,14 @@ fetch_warehouse_to_pick_from = """with temp_table (warehouse, pincode) as (VALUE
                                     order by tat,zone_value
                                     limit 1"""
 
-select_product_list_query = """SELECT aa.id, aa.name as product_name, aa.product_image, aa.master_sku as channel_sku, cc.sku as master_sku, cc.price, bb.total_quantity,  bb.available_quantity,
-                             bb.current_quantity, bb.inline_quantity, bb.rto_quantity,cc.dimensions, cc.weight, null as channel_logo FROM products aa
-                             LEFT JOIN master_products cc on aa.master_product_id=cc.id
+select_product_list_query = """SELECT aa.id, aa.name as product_name, aa.product_image, aa.sku as master_sku, aa.price, bb.total_quantity,  bb.available_quantity,
+                             bb.current_quantity, bb.inline_quantity, bb.rto_quantity,aa.dimensions, aa.weight, aa.hsn_code as hsn, aa.tax_rate FROM master_products aa
                             __JOIN_TYPE__ (select product_id, sum(approved_quantity) as total_quantity, sum(available_quantity) as available_quantity,
                                        sum(current_quantity) as current_quantity, sum(inline_quantity) as inline_quantity, sum(rto_quantity) as rto_quantity
                                       FROM products_quantity __WAREHOUSE_FILTER__ 
                                       GROUP BY product_id) bb
-                            ON cc.id=bb.product_id
-                            WHERE (aa.name ilike '%__SEARCH_KEY__%' or aa.sku ilike '%__SEARCH_KEY__%' or aa.master_sku ilike '%__SEARCH_KEY__%')
+                            ON aa.id=bb.product_id
+                            WHERE (aa.name ilike '%__SEARCH_KEY__%' or aa.sku ilike '%__SEARCH_KEY__%')
                             __CLIENT_FILTER__
                             __MV_CLIENT_FILTER__
                             ORDER BY __ORDER_BY__ __ORDER_TYPE__ 
@@ -411,16 +410,17 @@ select_wro_list_query = """select aa.id, aa.warehouse_prefix, aa.client_prefix, 
                              ORDER BY __ORDER_BY__ __ORDER_TYPE__ 
                             __PAGINATION__"""
 
-select_combo_list_query = """select aa.id, bb.id as parent_id, array_agg(cc.id) as child_id, bb.name, bb.sku, aa.date_created, 
-                            array_agg(cc.sku) as child_sku, array_agg(cc.name) as child_name, array_agg(aa.quantity) as child_qty from products_combos aa
-                            left join products bb on aa.combo_id=bb.id
-                            left join products cc on aa.combo_prod_id=cc.id
-                            left join products_quantity dd on cc.id=dd.product_id
+select_combo_list_query = """select parent_id, array_agg(child_id) as child_id, name, sku, date_created, 
+                            array_agg(child_sku) as child_sku, array_agg(child_name) as child_name, array_agg(child_qty) as child_qty from
+                            (select bb.id as parent_id, cc.id as child_id, bb.name, bb.sku, aa.date_created::date as date_created, 
+                            cc.sku as child_sku, cc.name as child_name, aa.quantity as child_qty from products_combos aa
+                            left join master_products bb on aa.combo_id=bb.id
+                            left join master_products cc on aa.combo_prod_id=cc.id
                             WHERE (bb.name ilike '%__SEARCH_KEY__%' or bb.sku ilike '%__SEARCH_KEY__%')
                             __CLIENT_FILTER__
                             __MV_CLIENT_FILTER__
-                            __WAREHOUSE_FILTER__
-                            GROUP BY aa.id, bb.id, bb.name, bb.sku, aa.date_created
+                            __WAREHOUSE_FILTER__) xx
+                            GROUP BY parent_id,name, sku, date_created
                             ORDER BY __ORDER_BY__ __ORDER_TYPE__ 
                             __PAGINATION__
                             """

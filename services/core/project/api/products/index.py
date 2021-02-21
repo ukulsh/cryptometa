@@ -22,8 +22,8 @@ api = Api(products_blueprint)
 
 conn = DbConnection.get_db_connection_instance()
 conn_2 = DbConnection.get_pincode_db_connection_instance()
-PRODUCTS_DOWNLOAD_HEADERS = ["S. No.", "Product Name", "Channel SKU", "Master SKU", "Price", "Total Quantity",
-                             "Available Quantity", "Current Quantity", "Inline Quantity", "RTO Quantity", "Dimensions", "Weight"]
+PRODUCTS_DOWNLOAD_HEADERS = ["S. No.", "Product Name", "Master SKU", "Price", "Total Quantity",
+                             "Available Quantity", "Current Quantity", "Inline Quantity", "RTO Quantity", "Dimensions", "Weight", "HSN", "TaxRate"]
 
 CHANNEL_PRODUCTS_DOWNLOAD_HEADERS = ["S. No.", "Product Name", "Channel product id", "Channel SKU", "Master SKU", "Price", "Channel Name", "Status"]
 COMBO_DOWNLOAD_HEADERS = ["S. No.", "ParentName", "ParentSKU", "ChildName", "ChildSKU", "Quantity"]
@@ -876,7 +876,7 @@ class ProductUpdate(Resource):
             if not auth_data:
                 return {"success": False, "msg": "Auth Failed"}, 404
 
-            product = db.session.query(Products).filter(Products.id==int(product_id)).first()
+            product = db.session.query(MasterProducts).filter(MasterProducts.id==int(product_id)).first()
 
             if not product:
                 return {"success": False, "msg": "No product found for given id"}, 400
@@ -884,7 +884,7 @@ class ProductUpdate(Resource):
             if data.get('product_name'):
                 product.name =data.get('product_name')
             if data.get('master_sku'):
-                product.master_sku =data.get('master_sku')
+                product.sku =data.get('master_sku')
             if data.get('price'):
                 product.price = float(data.get('price'))
             if data.get('dimensions'):
@@ -972,7 +972,6 @@ class ProductList(Resource):
                         new_row = list()
                         new_row.append(str(s_no))
                         new_row.append(str(product['product_name']))
-                        new_row.append(str(product['channel_sku']))
                         new_row.append(str(product['master_sku']))
                         new_row.append(str(product['price']))
                         new_row.append(str(product['total_quantity']))
@@ -982,6 +981,8 @@ class ProductList(Resource):
                         new_row.append(str(product['rto_quantity']))
                         new_row.append(str(product['dimensions']))
                         new_row.append(str(product['weight']))
+                        new_row.append(str(product['hsn']))
+                        new_row.append(str(product['tax_rate']))
                         cw.writerow(new_row)
                         s_no += 1
                     except Exception as e:
@@ -1197,7 +1198,7 @@ class ComboList(Resource):
             if int(per_page) > 250:
                 return {"success": False, "error": "upto 250 results allowed per page"}, 401
             sort = data.get('sort', "desc")
-            sort_by = data.get('sort_by', 'aa.date_created')
+            sort_by = data.get('sort_by', 'date_created')
             search_key = data.get('search_key', '')
             filters = data.get('filters', {})
             download_flag = request.args.get("download", None)
@@ -1209,7 +1210,7 @@ class ComboList(Resource):
             if auth_data['user_group'] == 'client':
                 query_to_execute = query_to_execute.replace('__CLIENT_FILTER__', "AND bb.client_prefix in ('%s')"%client_prefix)
             if auth_data['user_group'] == 'warehouse':
-                query_to_execute = query_to_execute.replace('__WAREHOUSE_FILTER__', "AND dd.warehouse_prefix='%s'"%auth_data['warehouse_prefix'])
+                query_to_execute = query_to_execute.replace('__WAREHOUSE_FILTER__', "AND bb.id in (select product_id from products_quantity where warehouse_prefix='%s')"%auth_data['warehouse_prefix'])
             if auth_data['user_group'] == 'multi-vendor':
                 cur.execute("SELECT vendor_list FROM multi_vendor WHERE client_prefix='%s';"%client_prefix)
                 vendor_list = cur.fetchone()['vendor_list']
@@ -1244,11 +1245,11 @@ class ComboList(Resource):
                     try:
                         new_row = list()
                         new_row.append(str(s_no))
+                        new_row.append(str(product[2]))
                         new_row.append(str(product[3]))
-                        new_row.append(str(product[4]))
-                        new_row.append(str(product[7]))
                         new_row.append(str(product[6]))
-                        new_row.append(str(product[8]))
+                        new_row.append(str(product[5]))
+                        new_row.append(str(product[7]))
                         cw.writerow(new_row)
                         s_no += 1
                     except Exception as e:
@@ -1270,9 +1271,9 @@ class ComboList(Resource):
             for product in all_products:
                 combo_obj = {
                     "child_skus": list(),
-                    "name": product[3], "sku": product[4], "id": product[1]}
-                for idx, child_id in enumerate(product[2]):
-                    combo_obj['child_skus'].append({"id": child_id, "name": product[7][idx], "sku":product[6][idx], "quantity": product[8][idx]})
+                    "name": product[2], "sku": product[3], "id": product[0]}
+                for idx, child_id in enumerate(product[1]):
+                    combo_obj['child_skus'].append({"id": child_id, "name": product[6][idx], "sku":product[5][idx], "quantity": product[7][idx]})
                 combo_list.append(combo_obj)
 
             response['data'] = combo_list

@@ -25,8 +25,9 @@ from .queries import product_count_query, available_warehouse_product_quantity, 
 from project.api.models import Products, ProductQuantity, InventoryUpdate, WarehouseMapping, NDRReasons, MultiVendor, \
     Orders, OrdersPayments, PickupPoints, MasterChannels, ClientPickups, CodVerification, NDRVerification, NDRShipments,\
     MasterCouriers, Shipments, OPAssociation, ShippingAddress, Manifests, ClientCouriers, OrderStatus, DeliveryCheck, \
-    ClientMapping, IVRHistory, ClientRecharges, CODRemittance, ThirdwatchData
-from project.api.utils import authenticate_restful, fill_shiplabel_data_thermal, create_shiplabel_blank_page, fill_shiplabel_data, create_shiplabel_blank_page_thermal, \
+    ClientMapping, IVRHistory, ClientRecharges, CODRemittance, ThirdwatchData, ClientChannel
+from project.api.utils import authenticate_restful, get_products_sort_func, fill_shiplabel_data_thermal, \
+    get_orders_sort_func, create_shiplabel_blank_page, fill_shiplabel_data, create_shiplabel_blank_page_thermal, \
     create_invoice_blank_page, fill_invoice_data, generate_picklist, generate_packlist
 
 core_blueprint = Blueprint('core', __name__)
@@ -395,6 +396,44 @@ def consume_x_payout():
 
 @core_blueprint.route('/core/v1/thirdwatch/postback', methods=['POST'])
 def thirdwatch_webhook():
+    try:
+        webhook_body = json.loads(request.data)
+        client = db.session.query(ClientChannel).filter(ClientChannel.unique_parameter==webhook_body['merchant_identifier']).first()
+        if not client:
+            return jsonify({"success": False, "msg": "Merchant not found"}), 400
+
+        event = webhook_body['event']
+        order_data = webhook_body['payload']
+        order = db.session.query(Orders).filter(Orders.client_prefix == client.client_prefix,
+                                                Orders.client_channel_id == str(order_data['order_id'])).first()
+        if not order:
+            return jsonify({"success": False, "msg": "Order not found"}), 400
+
+        if event.lower()=='score':
+            thirdwatch_obj = ThirdwatchData(order=order,
+                                             flag=webhook_body['flag'],
+                                             order_timestamp=webhook_body['order_timestamp'],
+                                             score=webhook_body['score'],
+                                             tags=webhook_body['tags'],
+                                             reasons=webhook_body['reasons']
+                                             )
+
+            db.session.add(thirdwatch_obj)
+            db.session.commit()
+
+        if event.lower()=='action':
+            if order_data['action_type'] == "declined" and order.status in ('NEW', 'READY TO SHIP', 'PICKUP REQUESTED'):
+                order.status='CANCELED'
+                db.session.commit()
+
+        return jsonify({"success": True}), 200
+
+    except Exception as e:
+        return jsonify({"success": False}), 400
+
+
+@core_blueprint.route('/core/v1/thirdwatch/postbackPartner', methods=['POST'])
+def thirdwatch_webhook_partner():
     try:
         webhook_body = json.loads(request.data)
         thirdwatch_obj = ThirdwatchData(order_id=int(webhook_body['order_id']),
@@ -815,10 +854,10 @@ def ping_dev():
 
             """
             sku_list.append({"sku": sku,
-                             "warehouse": "HOLISOLBL",
+                             "warehouse": "TNPMRO",
                              "quantity": del_qty,
-                             "type": "add",
-                             "remark": "16 jan inbound"})
+                             "type": "subtract",
+                             "remark": "21 feb sale"})
 
             """
 
@@ -846,7 +885,7 @@ def ping_dev():
             """
             if row[0]%100==0:
                 headers = {
-                    'Authorization': "Bearer " + "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJleHAiOjE2MTMxMzA0MjUsImlhdCI6MTYxMDUzODQyNSwic3ViIjo5fQ.TFfLz5guyQsOGvmXzTnkZcwureIFWbB0DZLzTaqk_QM",
+                    'Authorization': "Bearer " + "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJleHAiOjE2MTU1NzI1MzUsImlhdCI6MTYxMjk4MDUzNSwic3ViIjo5fQ.H4MjEuE2zhPqSufcyC9WIr27coPALTn7IIlmgbtCnxI",
                     'Content-Type': 'application/json'}
 
                 data = {"sku_list": sku_list}
@@ -861,7 +900,7 @@ def ping_dev():
             pass
 
     headers = {
-        'Authorization': "Bearer " + "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJleHAiOjE2MTMxMzA0MjUsImlhdCI6MTYxMDUzODQyNSwic3ViIjo5fQ.TFfLz5guyQsOGvmXzTnkZcwureIFWbB0DZLzTaqk_QM",
+        'Authorization': "Bearer " + "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJleHAiOjE2MTU1NzI1MzUsImlhdCI6MTYxMjk4MDUzNSwic3ViIjo5fQ.H4MjEuE2zhPqSufcyC9WIr27coPALTn7IIlmgbtCnxI",
         'Content-Type': 'application/json'}
 
     data = {"sku_list": sku_list}

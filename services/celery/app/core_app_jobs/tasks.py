@@ -405,7 +405,7 @@ def queue_cod_remittance_razorpay():
                 },
                 "queue_if_low_balance": True,
                 "reference_id": remit[1] + str(remit[0]),
-                "narration": "COD remittance " + remit[1],
+                "narration": "COD remittance",
                 "notes": {
                     "notes_key_1": "COD remittance " + remit[1] + "\nDate: " + str(remittance_date.date()),
                 }

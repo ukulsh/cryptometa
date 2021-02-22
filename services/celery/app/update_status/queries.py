@@ -13,7 +13,7 @@ get_status_update_orders_query = """select aa.id, bb.awb, aa.status, aa.client_p
                                     left join (select order_id, array_agg(channel_item_id) as item_list, array_agg(quantity) as sku_quan_list from
                                       		  (select kk.order_id, kk.channel_item_id, kk.quantity
                                               from op_association kk
-                                              left join products ll on kk.product_id=ll.id) nn
+                                              left join master_products ll on kk.master_product_id=ll.id) nn
                                               group by order_id) mm
                                     on aa.id=mm.order_id
                                     left join client_channel cc

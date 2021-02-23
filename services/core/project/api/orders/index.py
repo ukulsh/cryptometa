@@ -522,7 +522,7 @@ class AddOrder(Resource):
         cur = conn.cursor()
         query_to_execute = """SELECT id, name, sku FROM master_products
                               WHERE (name ilike '%__SEARCH_KEY__%'
-                              OR sku ilike '%__SEARCH_KEY__%'
+                              OR sku ilike '%__SEARCH_KEY__%')
                               __CLIENT_FILTER__
                               ORDER BY sku
                               LIMIT 10 
@@ -1516,7 +1516,7 @@ class OrderDetails(Resource):
                         {"name": prod.master_product.name,
                          "sku": prod.master_product.sku,
                          "quantity": prod.quantity,
-                         "id": prod.product.id,
+                         "id": prod.master_product.id,
                          "total": prod.amount}
                     )
 

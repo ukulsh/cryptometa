@@ -208,14 +208,15 @@ def fetch_shopify_orders(cur, channel):
                 cur.execute(select_products_query, prod_tuple)
                 master_product_id = None
                 try:
-                    product_id = cur.fetchone()[0]
-                    master_product_id = cur.fetchone()[1]
+                    qry_obj = cur.fetchone()
+                    product_id = qry_obj[0]
+                    master_product_id = qry_obj[1]
                 except Exception:
                     dimensions = None
                     weight = None
                     subcategory_id = None
                     master_sku = prod['sku']
-                    if master_sku:
+                    if master_sku and not master_product_id:
                         cur.execute(select_master_products_query, (master_sku, channel[1]))
                         try:
                             master_product_id = cur.fetchone()[0]
@@ -237,7 +238,7 @@ def fetch_shopify_orders(cur, channel):
                                 break
                     except Exception as e:
                         logger.error("product weight assignment failed for: " + str(order['order_number']) + "\nError:" + str(e))
-                    product_insert_tuple = (prod['name'], product_sku, True, channel[2],
+                    product_insert_tuple = (prod['name'], product_sku, channel[2],
                                             channel[1], datetime.now(), dimensions,
                                             float(prod['price']), weight, master_sku, subcategory_id, master_product_id)
                     cur.execute(insert_product_query, product_insert_tuple)
@@ -418,13 +419,14 @@ def fetch_woocommerce_orders(cur, channel):
                 prod_tuple = (product_sku, channel[1])
                 cur.execute(select_products_query, prod_tuple)
                 try:
-                    product_id = cur.fetchone()[0]
-                    master_product_id = cur.fetchone()[1]
+                    qry_obj = cur.fetchone()
+                    product_id = qry_obj[0]
+                    master_product_id = qry_obj[1]
                 except Exception:
                     dimensions = None
                     weight = None
                     subcategory_id = None
-                    if master_sku:
+                    if master_sku and not master_product_id:
                         cur.execute(select_master_products_query, (master_sku, channel[1]))
                         try:
                             master_product_id = cur.fetchone()[0]
@@ -447,7 +449,7 @@ def fetch_woocommerce_orders(cur, channel):
                                 break
                     except Exception as e:
                         logger.error("product weight assignment failed for: " + str(order['number']) + "\nError:" + str(e))
-                    product_insert_tuple = (prod['name'], product_sku, True, channel[2],
+                    product_insert_tuple = (prod['name'], product_sku, channel[2],
                                             channel[1], datetime.now(), dimensions,
                                             float(prod['price']), weight, master_sku, subcategory_id, master_product_id)
                     cur.execute(insert_product_query, product_insert_tuple)
@@ -620,29 +622,30 @@ def fetch_magento_orders(cur, channel):
                 if "GC" not in master_sku:
                     mark_delivered = False
                 prod_tuple = (master_sku, channel[1])
-                select_products_query_temp = """SELECT id from products where master_sku=%s and client_prefix=%s;"""
+                select_products_query_temp = """SELECT id, master_product_id from products where master_sku=%s and client_prefix=%s;"""
                 cur.execute(select_products_query_temp, prod_tuple)
                 try:
-                    product_id = cur.fetchone()[0]
-                    master_product_id = cur.fetchone()[1]
+                    qry_obj = cur.fetchone()
+                    product_id = qry_obj[0]
+                    master_product_id = qry_obj[1]
                 except Exception:
                     dimensions = None
                     weight = None
                     subcategory_id = None
                     master_sku = str(prod['sku'])
-                    if master_sku:
+                    if master_sku and not master_product_id:
                         cur.execute(select_master_products_query, (master_sku, channel[1]))
                         try:
                             master_product_id = cur.fetchone()[0]
                         except Exception:
                             master_product_insert_tuple = (prod['name'], product_sku, True, channel[1], datetime.now(), dimensions,
-                                                    float(prod['price']), weight, subcategory_id)
+                                                    float(prod['original_price']), weight, subcategory_id)
                             cur.execute(insert_master_product_query, master_product_insert_tuple)
                             master_product_id = cur.fetchone()[0]
                     if not master_sku:
                         master_sku = product_sku
 
-                    product_insert_tuple = (prod['name'], product_sku, True, channel[2],
+                    product_insert_tuple = (prod['name'], product_sku, channel[2],
                                             channel[1], datetime.now(), dimensions, float(prod['original_price']),
                                             weight, master_sku, subcategory_id, master_product_id)
                     cur.execute(insert_product_query, product_insert_tuple)
@@ -797,8 +800,9 @@ def fetch_easyecom_orders(cur, channel):
                 cur.execute(select_products_query, prod_tuple)
                 master_product_id = None
                 try:
-                    product_id = cur.fetchone()[0]
-                    master_product_id = cur.fetchone()[1]
+                    qry_obj = cur.fetchone()
+                    product_id = qry_obj[0]
+                    master_product_id = qry_obj[1]
                 except Exception:
                     try:
                         dimensions = json.dumps({"length":float(prod['length']),
@@ -812,18 +816,18 @@ def fetch_easyecom_orders(cur, channel):
                         weight=None
                     subcategory_id = None
                     master_sku = prod['sku']
-                    if master_sku:
+                    if master_sku and not master_product_id:
                         cur.execute(select_master_products_query, (master_sku, channel[1]))
                         try:
                             master_product_id = cur.fetchone()[0]
                         except Exception:
-                            master_product_insert_tuple = (prod['name'], product_sku, True, channel[1], datetime.now(), dimensions,
-                                                    float(prod['price']), weight, subcategory_id)
+                            master_product_insert_tuple = (prod['productName'], product_sku, True, channel[1], datetime.now(), dimensions,
+                                                    float(prod['mrp']), weight, subcategory_id)
                             cur.execute(insert_master_product_query, master_product_insert_tuple)
                             master_product_id = cur.fetchone()[0]
                     if not master_sku:
                         master_sku = product_sku
-                    product_insert_tuple = (prod['productName'], product_sku, True, channel[2],
+                    product_insert_tuple = (prod['productName'], product_sku, channel[2],
                                             channel[1], datetime.now(), dimensions,
                                             float(prod['mrp']), weight, master_sku, subcategory_id, master_product_id)
                     cur.execute(insert_product_query, product_insert_tuple)
@@ -959,25 +963,26 @@ def fetch_bikayi_orders(cur, channel):
                 select_products_query_temp = """SELECT id from products where master_sku=%s and client_prefix=%s;"""
                 cur.execute(select_products_query_temp, prod_tuple)
                 try:
-                    product_id = cur.fetchone()[0]
-                    master_product_id = cur.fetchone()[1]
+                    qry_obj = cur.fetchone()
+                    product_id = qry_obj[0]
+                    master_product_id = qry_obj[1]
                 except Exception:
                     dimensions = None
                     weight = None
                     subcategory_id = None
                     master_sku = str(prod['id'])
-                    if master_sku:
+                    if master_sku and not master_product_id:
                         cur.execute(select_master_products_query, (master_sku, channel[1]))
                         try:
                             master_product_id = cur.fetchone()[0]
                         except Exception:
                             master_product_insert_tuple = (prod['name'], product_sku, True, channel[1], datetime.now(), dimensions,
-                                                    float(prod['price']), weight, subcategory_id)
+                                                    float(prod['unitPrice']), weight, subcategory_id)
                             cur.execute(insert_master_product_query, master_product_insert_tuple)
                             master_product_id = cur.fetchone()[0]
                     if not master_sku:
                         master_sku = product_sku
-                    product_insert_tuple = (prod['name'], product_sku, True, channel[2],
+                    product_insert_tuple = (prod['name'], product_sku, channel[2],
                                             channel[1], datetime.now(), dimensions, prod['unitPrice'],
                                             weight, master_sku, subcategory_id, master_product_id)
                     cur.execute(insert_product_query, product_insert_tuple)

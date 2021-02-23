@@ -36,7 +36,7 @@ PRODUCT_UPLOAD_HEADERS = ["Name", "SKU", "Price", "WeightKG", "LengthCM", "Bread
 PRODUCT_UPLOAD_HEADERS_CHANNEL = ["Name", "ChannelProductId", "SKU", "Price", "MasterSKU", "ChannelName", "ImageURL"]
 BULKMAP_SKU_HEADERS = ["ChannelName", "ChannelProdID", "ChannelSKU", "MasterSKU"]
 BULK_COMBO_HEADERS = ["ParentSKU", "ChildSKU", "Quantity"]
-INV_INBOUND_HEADERS = ["SKU", "Quantity"]
+INV_INBOUND_HEADERS = ["SKU", "Quantity", "Shelf"]
 INV_RECONCILIATION_HEADERS = ["SKU", "Quantity", "Type", "Remark"]
 
 
@@ -183,7 +183,7 @@ def upload_master_products(resp):
     else:
         client_prefix=request.args.get('client_prefix')
 
-    data_xlsx = pd.read_csv(myfile)
+    data_xlsx = pd.read_csv(myfile, dtype = str)
     failed_skus = list()
 
     si = io.StringIO()
@@ -252,7 +252,7 @@ def upload_channel_products(resp):
     else:
         client_prefix=request.args.get('client_prefix')
 
-    data_xlsx = pd.read_csv(myfile)
+    data_xlsx = pd.read_csv(myfile, dtype = str)
     failed_skus = list()
 
     si = io.StringIO()
@@ -274,7 +274,8 @@ def upload_channel_products(resp):
                 return
 
             prod_obj = Products(name=str(row_data.Name),
-                                               sku=str(row_data.SKU),
+                                               sku=str(row_data.ChannelProductId),
+                                               master_sku=str(row_data.SKU),
                                                product_image=str(row_data.ImageURL) if row_data.ImageURL == row_data.ImageURL else None,
                                                client_prefix=client_prefix,
                                                price=float(row_data.Price),
@@ -319,7 +320,7 @@ def bulk_map_sku(resp):
     else:
         client_prefix=request.args.get('client_prefix')
 
-    data_xlsx = pd.read_csv(myfile)
+    data_xlsx = pd.read_csv(myfile, dtype = str)
     failed_skus = list()
 
     si = io.StringIO()
@@ -340,7 +341,7 @@ def bulk_map_sku(resp):
                 cw.writerow(list(row_data.values) + ["MasterSKU not found"])
                 return
 
-            channel_prod = db.session.query(Products).filter(Products.sku==str(row_data.ChannelProdID).rstrip(), Products.master_sku==str(row_data.ChannelSKU), Products.client_prefix==client_prefix).first()
+            channel_prod = db.session.query(Products).filter(Products.sku==str(row_data.ChannelProdID).rstrip(), Products.client_prefix==client_prefix).first()
             if not channel_prod:
                 failed_skus.append(str(row_data.SKU).rstrip())
                 cw.writerow(list(row_data.values)+["Channel prod not found"])
@@ -403,7 +404,7 @@ def bulk_inbound(resp):
 
         db.session.add(wro_obj)
 
-    data_xlsx = pd.read_csv(myfile)
+    data_xlsx = pd.read_csv(myfile, dtype = str)
     failed_skus = list()
 
     si = io.StringIO()
@@ -415,11 +416,11 @@ def bulk_inbound(resp):
         try:
             if wro_id:
                 prod_wro_obj = db.session.query(ProductsWRO)\
-                    .join(MasterProducts, MasterProducts.id==ProductsWRO.master_product_id).filter(MasterProducts.sku==row_data.SKU, ProductsWRO.wro_id==int(wro_id)).first()
+                    .join(MasterProducts, MasterProducts.id==ProductsWRO.master_product_id).filter(MasterProducts.sku==str(row_data.SKU), ProductsWRO.wro_id==int(wro_id)).first()
                 prod_wro_obj.received_quantity = int(row_data.Quantity)
                 prod_obj = prod_wro_obj.product
             else:
-                prod_obj = db.session.query(MasterProducts).filter(MasterProducts.sku==row_data.SKU, MasterProducts.client_prefix==client_prefix).first()
+                prod_obj = db.session.query(MasterProducts).filter(MasterProducts.sku==str(row_data.SKU), MasterProducts.client_prefix==client_prefix).first()
                 if not prod_obj:
                     failed_skus.append(str(row_data.SKU).rstrip())
                     cw.writerow(list(row_data.values) + ["SKU not found"])
@@ -508,7 +509,7 @@ def bulk_reconciliation(resp):
 
     warehouse_prefix = auth_data['warehouse_prefix']
     client_prefix = request.args.get('client_prefix')
-    data_xlsx = pd.read_csv(myfile)
+    data_xlsx = pd.read_csv(myfile, dtype = str)
     failed_skus = list()
 
     si = io.StringIO()
@@ -648,7 +649,7 @@ def bulk_add_combos(resp):
     else:
         client_prefix=request.args.get('client_prefix')
 
-    data_xlsx = pd.read_csv(myfile)
+    data_xlsx = pd.read_csv(myfile, dtype = str)
     failed_skus = list()
 
     si = io.StringIO()
@@ -736,7 +737,6 @@ def map_products(resp):
         auth_data = resp.get('data')
         channel_id = request.args.get('channel_id', None)
         master_id = request.args.get('master_id', None)
-        map = request.args.get('map', 1)
         client_prefix = auth_data.get('client_prefix')
 
         if not channel_id:
@@ -763,7 +763,8 @@ def map_products(resp):
             return jsonify({"success": False}), 400
 
         master_prod = master_prod.first()
-        db.session.query(OPAssociation).filter(OPAssociation.product_id == channel_prod.id,
+        if master_prod:
+            db.session.query(OPAssociation).filter(OPAssociation.product_id == channel_prod.id,
                                                OPAssociation.master_product_id == None).update({OPAssociation.master_product_id: master_prod.id})
 
         channel_prod.master_product = master_prod
@@ -2144,17 +2145,15 @@ class AddSKU(Resource):
             client = data.get('client')
             hsn = data.get('hsn')
             tax_rate = data.get('tax_rate')
-            warehouse_list= data.get('warehouse_list', [])
             if auth_data['user_group'] != 'super-admin':
                 client = auth_data['client_prefix']
 
-            prod_obj_x = db.session.query(Products).filter(Products.client_prefix==client, Products.master_sku==sku).first()
+            prod_obj_x = db.session.query(MasterProducts).filter(MasterProducts.client_prefix==client, MasterProducts.sku==sku).first()
             if prod_obj_x:
                 return {"success": False, "msg": "SKU already exists"}, 400
 
-            prod_obj_x = Products(name=product_name,
+            prod_obj_x = MasterProducts(name=product_name,
                                   sku=sku,
-                                  master_sku=sku,
                                   dimensions=dimensions,
                                   weight=weight,
                                   price=price,
@@ -2162,24 +2161,10 @@ class AddSKU(Resource):
                                   hsn_code=hsn,
                                   tax_rate=float(tax_rate) if tax_rate else None,
                                   active=True,
-                                  channel_id=4,
                                   date_created=datetime.now()
                                   )
 
-            for wh_obj in warehouse_list:
-                prod_quan_obj = ProductQuantity(product=prod_obj_x,
-                                                total_quantity=int(wh_obj['quantity']),
-                                                approved_quantity=int(wh_obj['quantity']),
-                                                available_quantity=int(wh_obj['quantity']),
-                                                inline_quantity=0,
-                                                rto_quantity=0,
-                                                current_quantity=int(wh_obj['quantity']),
-                                                warehouse_prefix=wh_obj['warehouse'],
-                                                status="APPROVED",
-                                                date_created=datetime.now()
-                                                )
-                db.session.add(prod_quan_obj)
-
+            db.session.add(prod_obj_x)
             db.session.commit()
             return {"success": True, "msg": "Successfully added"}, 201
 

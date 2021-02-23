@@ -94,17 +94,17 @@ select_remittance_amount_query = """select * from
                                         order by remittance_date DESC, remittance_total DESC"""
 
 fetch_inventory_quantity_query = """select yy.*, zz.combo_prods, zz.combo_prods_quan from
-                                    (select product_id, status, warehouse_prefix, sum(quantity) from 
+                                    (select master_product_id, status, warehouse_prefix, sum(quantity) from 
                                     (select * from op_association aa
                                     left join orders bb on aa.order_id=bb.id
                                     left join client_pickups cc on bb.pickup_data_id=cc.id
                                     left join pickup_points dd on cc.pickup_id=dd.id     
                                     where status not in ('CANCELED', 'NOT PICKED', 'NOT SHIPPED', 'NEW - FAILED', 'NEW - SHIPPED')) xx
-                                    group by product_id, status, warehouse_prefix
-                                    order by product_id, status, warehouse_prefix) yy
+                                    group by master_product_id, status, warehouse_prefix
+                                    order by master_product_id, status, warehouse_prefix) yy
                                     left join (select combo_id, array_agg(combo_prod_id) as combo_prods, 
                                     array_agg(quantity) as combo_prods_quan from products_combos group by combo_id) zz
-                                    on yy.product_id=zz.combo_id"""
+                                    on yy.master_product_id=zz.combo_id"""
 
 update_inventory_quantity_query = """UPDATE products_quantity SET available_quantity=COALESCE(approved_quantity, 0)+%s,
 									current_quantity=COALESCE(approved_quantity, 0)+%s, inline_quantity=%s, rto_quantity=%s

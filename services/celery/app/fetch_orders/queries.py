@@ -46,12 +46,11 @@ update_product_quantity_query = """UPDATE products_quantity
                                         inline_quantity=COALESCE(inline_quantity, 0)+%s
                                     WHERE product_id=%s;"""
 
-insert_product_query = """INSERT INTO products (name, sku, active, channel_id, client_prefix, date_created, 
-                          dimensions, price, weight, master_sku, subcategory_id, master_product_id) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id;"""
+insert_product_query = """INSERT INTO products (name, sku, channel_id, client_prefix, date_created, 
+                          dimensions, price, weight, master_sku, subcategory_id, master_product_id) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id;"""
 
 insert_master_product_query = """INSERT INTO master_products (name, sku, active, client_prefix, date_created, 
                           dimensions, price, weight, subcategory_id) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id;"""
-
 
 insert_product_quantity_query = """INSERT INTO products_quantity (product_id,total_quantity,approved_quantity,
                                     available_quantity,warehouse_prefix,status,date_created)
@@ -82,7 +81,7 @@ fetch_inventory_quantity_query = """select yy.*, zz.combo_prods, zz.combo_prods_
                                     order by master_product_id, status, warehouse_prefix) yy
                                     left join (select combo_id, array_agg(combo_prod_id) as combo_prods, 
                                     array_agg(quantity) as combo_prods_quan from products_combos group by combo_id) zz
-                                    on yy.product_id=zz.combo_id"""
+                                    on yy.master_product_id=zz.combo_id"""
 
 update_inventory_quantity_query = """UPDATE products_quantity SET available_quantity=COALESCE(approved_quantity, 0)+%s,
 									current_quantity=COALESCE(approved_quantity, 0)+%s, inline_quantity=%s, rto_quantity=%s

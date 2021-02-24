@@ -578,7 +578,7 @@ def bulk_reconciliation(resp):
                         left join client_pickups cc on bb.pickup_data_id=cc.id
                         left join pickup_points dd on cc.pickup_id=dd.id
                         left join products ee on aa.product_id=ee.id
-                        where status in ('DELIVERED','DISPATCHED','IN TRANSIT','ON HOLD','PENDING','LOST')
+                        where status in ('DELIVERED','DISPATCHED','IN TRANSIT','DAMAGED','SHORTAGE','SHIPPED','PENDING','LOST')
                         and dd.warehouse_prefix='__WAREHOUSE__'
                         and ee.master_sku='__SKU__';""".replace('__WAREHOUSE__', warehouse_prefix).replace('__SKU__', sku))
                 shipped_quantity_obj = cur.fetchone()
@@ -1979,16 +1979,23 @@ class UpdateInventory(Resource):
             if not auth_data:
                 return {"success": False, "msg": "Auth Failed"}, 404
 
-            if auth_data['user_group']!='warehouse':
-                return {"success": False, "msg": "Invalid user type"}, 400
-
-            warehouse = auth_data['warehouse_prefix']
+            warehouse = auth_data.get('warehouse_prefix')
             client_prefix = request.args.get('client_prefix')
+            if auth_data['user_group'] == 'client':
+                client_prefix = auth_data['client_prefix']
+
             sku_list = data.get("sku_list")
             failed_list = list()
             current_quantity = list()
             for sku_obj in sku_list:
                 try:
+                    if auth_data['user_group']!='warehouse':
+                        warehouse = sku_obj.get('warehouse')
+                        if not warehouse:
+                            sku_obj['error'] = "Warehouse not provided."
+                            failed_list.append(sku_obj)
+                            continue
+
                     sku = sku_obj.get('sku')
                     if not sku:
                         sku_obj['error'] = "SKU not provided."

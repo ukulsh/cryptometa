@@ -76,7 +76,8 @@ fetch_inventory_quantity_query = """select yy.*, zz.combo_prods, zz.combo_prods_
                                     left join orders bb on aa.order_id=bb.id
                                     left join client_pickups cc on bb.pickup_data_id=cc.id
                                     left join pickup_points dd on cc.pickup_id=dd.id     
-                                    where status not in ('CANCELED', 'NOT PICKED', 'NOT SHIPPED', 'NEW - FAILED', 'NEW - SHIPPED')) xx
+                                    where status not in ('CANCELED', 'NOT PICKED', 'NOT SHIPPED', 'CLOSED')
+                                    and (easyecom_loc_code is null or easyecom_loc_code='')) xx
                                     group by master_product_id, status, warehouse_prefix
                                     order by master_product_id, status, warehouse_prefix) yy
                                     left join (select combo_id, array_agg(combo_prod_id) as combo_prods, 
@@ -139,3 +140,14 @@ select_thirdwatch_check_orders_query = """select cc.ip_address, cc.session_id, c
                                         and ii.thirdwatch=true
                                         and aa.order_date>'__ORDER_TIME__'
                                         and aa.status='NEW' """
+
+update_easyecom_inventory_query = """update products_quantity
+                                    set available_quantity=%s,
+                                    inline_quantity=%s,
+                                    current_quantity=%s
+                                    WHERE warehouse_prefix=%s
+                                    and product_id in (select id from master_products where sku=%s and client_prefix=%s);"""
+
+insert_easyecom_inventory_query = """INSERT into products_quantity (product_id, available_quantity, warehouse_prefix, status, current_quantity, inline_quantity, total_quantity) 
+                                    select aa.id, %s, %s, 'APPROVED', %s, %s, %s from master_products aa 
+                                    where client_prefix=%s and sku=%s"""

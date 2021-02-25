@@ -1383,7 +1383,8 @@ easyecom_wareiq_channel_map = {"Amazon.in": 2,
                            "Shopify": 1,
                            "FlipkartSmart": 3,
                                "Flipkart":3,
-                               "Offline":4
+                               "Offline":4,
+                               "Shopify1":1
                                }
 
 easyecom_wareiq_courier_map = {"eKart": 7}

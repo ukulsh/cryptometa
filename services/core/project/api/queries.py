@@ -446,7 +446,7 @@ select_orders_list_query = """select distinct on (aa.order_date, aa.id) aa.chann
                              left join shipping_address dd on aa.delivery_address_id=dd.id
                              left join (select order_id, status_time as delivered_time from order_status where status in ('Delivered','RTO','DTO')) ee
                              on aa.id=ee.order_id
-                             left join (select order_id, status_time as pickup_time from order_status where status='Picked') ff
+                             left join (select order_id, status_time as pickup_time from order_status where status in ('Picked', 'Picked RVP')) ff
                              on aa.id=ff.order_id
                              left join (select order_id, status_time as manifest_time from order_status where status='Received') qq
                              on aa.id=qq.order_id

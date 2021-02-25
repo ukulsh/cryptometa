@@ -1117,7 +1117,7 @@ def download_packlist_util(orders_qs, auth_data):
                             'quantity'] += prod.quantity * new_prod.quantity
             else:
                 sku = prod.master_product.sku
-                if prod.product_id not in orders_dict[order.client_prefix][order.channel_order_id]:
+                if prod.master_product_id not in orders_dict[order.client_prefix][order.channel_order_id]:
                     orders_dict[order.client_prefix][order.channel_order_id][prod.master_product_id] = {"sku": sku,
                                                                                                  "name": prod.master_product.name,
                                                                                                  "quantity": prod.quantity}

@@ -100,6 +100,7 @@ def calculate_costs():
 @celery_app.task(name='sync_all_inventory')
 def sync_all_inventory():
     update_available_quantity()
+    update_available_quantity_from_easyecom()
     update_available_quantity_on_channel()
     return 'successfully completed sync_all_inventory'
 

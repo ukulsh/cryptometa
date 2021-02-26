@@ -22,6 +22,7 @@ from reportlab.graphics import renderPDF
 from .models import ClientMapping, OrdersInvoice
 from project import db
 
+
 def authenticate(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
@@ -396,7 +397,7 @@ def generate_picklist(canvas, products, order_count):
     canvas.setFont('Helvetica-Bold', 12)
     canvas.drawString(2.75 * inch, y_axis * inch, "Generated at: " + time_now)
     y_axis -= 0.3
-    x_axis = (0.25, 2.55, 6.20, 7.10, 8.0)
+    x_axis = (0.25, 2.05, 5.20, 6.30, 7.10, 8.0)
     for client, prod_dict in products.items():
         try:
             prod_dict = sorted(prod_dict.items(),key=lambda x: x[1]['quantity'],reverse=True)
@@ -410,19 +411,20 @@ def generate_picklist(canvas, products, order_count):
             canvas.drawString(x_axis[0] * inch, y_axis * inch, "Orders Selected: " + str(order_count[client]))
             y_axis -= 0.20
 
-            canvas.line(x_axis[0] * inch, y_axis * inch, x_axis[4] * inch, y_axis * inch)
+            canvas.line(x_axis[0] * inch, y_axis * inch, x_axis[5] * inch, y_axis * inch)
 
             canvas.drawString((x_axis[0]+0.1) * inch, (y_axis - 0.20)* inch, "SKU")
             canvas.drawString((x_axis[1]+0.1) * inch, (y_axis - 0.20)* inch, "Description")
-            canvas.drawString((x_axis[2]+0.1) * inch, (y_axis- 0.20) * inch, "Quantity")
-            canvas.drawString((x_axis[3]+0.1) * inch, (y_axis - 0.20) * inch, "Picked?")
+            canvas.drawString((x_axis[2]+0.1) * inch, (y_axis - 0.20)* inch, "Shelf")
+            canvas.drawString((x_axis[3]+0.05) * inch, (y_axis- 0.20) * inch, "Quantity")
+            canvas.drawString((x_axis[4]+0.1) * inch, (y_axis - 0.20) * inch, "Picked?")
 
             new_y_axis = y_axis - 0.30
 
             for x in x_axis:
                 canvas.line(x * inch, new_y_axis * inch, x * inch, y_axis * inch)
 
-            canvas.line(x_axis[0] * inch, new_y_axis * inch, x_axis[4] * inch, new_y_axis * inch)
+            canvas.line(x_axis[0] * inch, new_y_axis * inch, x_axis[5] * inch, new_y_axis * inch)
 
             y_axis = new_y_axis
             canvas.setFont('Helvetica', 10)
@@ -433,10 +435,12 @@ def generate_picklist(canvas, products, order_count):
                     canvas.showPage()
                     y_axis = 11.1
 
-                canvas.drawString((x_axis[0] + 0.1) * inch, (y_axis - 0.20) * inch, str(prod_info['sku']))
-                canvas.drawString((x_axis[2] + 0.3) * inch, (y_axis - 0.20) * inch, str(prod_info['quantity']))
-
                 canvas.setFont('Helvetica', 8)
+                canvas.drawString((x_axis[0] + 0.1) * inch, (y_axis - 0.20) * inch, str(prod_info['sku']))
+                canvas.drawString((x_axis[2] + 0.1) * inch, (y_axis - 0.20) * inch, str(prod_info['shelf']))
+                canvas.drawString((x_axis[3] + 0.3) * inch, (y_axis - 0.20) * inch, str(prod_info['quantity']))
+
+                canvas.setFont('Helvetica', 7)
                 prod_name = split_string(str(prod_info['name']), 60)
                 old_y_axis = y_axis
                 y_axis += 0.13
@@ -451,7 +455,7 @@ def generate_picklist(canvas, products, order_count):
                 for x in x_axis:
                     canvas.line(x * inch, new_y_axis * inch, x * inch, old_y_axis * inch)
 
-                canvas.line(x_axis[0] * inch, new_y_axis * inch, x_axis[4] * inch, new_y_axis * inch)
+                canvas.line(x_axis[0] * inch, new_y_axis * inch, x_axis[5] * inch, new_y_axis * inch)
                 y_axis = new_y_axis
 
             y_axis -= 0.5

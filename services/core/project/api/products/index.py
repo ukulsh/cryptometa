@@ -193,10 +193,28 @@ def upload_master_products(resp):
     def process_row(row, failed_skus):
         row_data = row[1]
         try:
-            order_exists = db.session.query(MasterProducts).filter(MasterProducts.sku==str(row_data.SKU).rstrip(), MasterProducts.client_prefix==client_prefix).first()
-            if order_exists:
-                failed_skus.append(str(row_data.SKU).rstrip())
-                cw.writerow(list(row_data.values)+["SKU already exists."])
+            dimensions = None
+            if row_data.LengthCM == row_data.LengthCM and row_data.BreadthCM == row_data.BreadthCM and row_data.HeightCM == row_data.HeightCM:
+                dimensions = {"length": float(row_data.LengthCM), "breadth": float(row_data.BreadthCM),
+                              "height": float(row_data.HeightCM)}
+            prod_obj = db.session.query(MasterProducts).filter(MasterProducts.sku==str(row_data.SKU).rstrip(), MasterProducts.client_prefix==client_prefix).first()
+            if prod_obj:
+                if row_data.Name==row_data.Name:
+                    prod_obj.name=str(row_data.Name)
+                if row_data.ImageURL==row_data.ImageURL:
+                    prod_obj.product_image=str(row_data.ImageURL)
+                if row_data.Price==row_data.Price:
+                    prod_obj.price=float(row_data.Price)
+                if row_data.WeightKG==row_data.WeightKG:
+                    prod_obj.weight=float(row_data.WeightKG)
+                if dimensions:
+                    prod_obj.dimensions=dimensions
+                if row_data.HSN==row_data.HSN:
+                    prod_obj.hsn_code=float(row_data.HSN)
+                if row_data.TaxRate==row_data.TaxRate:
+                    prod_obj.tax_rate=float(row_data.TaxRate)
+                prod_obj.date_updated=datetime.utcnow()+timedelta(hours=5.5)
+                db.session.commit()
                 return
 
             dimensions = None
@@ -1889,6 +1907,18 @@ class WROList(Resource):
 @products_blueprint.route('/products/v1/wro_labels', methods=['GET'])
 @authenticate_restful
 def download_wro_labels(resp):
+    auth_data = resp.get('data')
+    wro_id = request.args.get('wro_id', None)
+    if not wro_id:
+        return jsonify({"success": False, "error": "Invalid WRO id"}), 400
+
+    wro_obj = db.session.query(WarehouseRO).filter(WarehouseRO.id==int(wro_id)).first()
+    if not wro_obj:
+        return jsonify({"success": False, "error": "Invalid WRO id"}), 400
+
+    file_pref = auth_data['client_prefix'] if auth_data['client_prefix'] else auth_data['warehouse_prefix']
+    file_name = "packlist_" + str(file_pref) + "_" + str(datetime.now().strftime("%d_%b_%Y_%H_%M_%S")) + ".pdf"
+
     return jsonify({
         'status': 'success',
         'url': "https://wareiqshiplabels.s3.us-east-2.amazonaws.com/shiplabels_87STORE_02_Oct_2020_13_41_35.pdf",

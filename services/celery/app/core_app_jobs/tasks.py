@@ -829,19 +829,19 @@ def update_available_quantity():
                                                               "rto_quantity": 0}}
         elif prod_status[2] not in quantity_dict[prod_status[0]]:
             quantity_dict[prod_status[0]][prod_status[2]] = {"available_quantity": 0,
-                                                              "current_quantity": 0,
-                                                              "inline_quantity": 0,
-                                                              "rto_quantity": 0}
+                                                             "current_quantity": 0,
+                                                             "inline_quantity": 0,
+                                                             "rto_quantity": 0}
 
-        if prod_status[1] in ('DELIVERED','DISPATCHED','IN TRANSIT','ON HOLD','PENDING'):
+        if prod_status[1] in ('DELIVERED', 'DISPATCHED', 'IN TRANSIT', 'PENDING', 'DAMAGED', 'LOST', 'SHORTAGE', 'SHIPPED'):
             quantity_dict[prod_status[0]][prod_status[2]]['current_quantity'] -= prod_status[3]
             quantity_dict[prod_status[0]][prod_status[2]]['available_quantity'] -= prod_status[3]
-        elif prod_status[1] in ('NEW','PICKUP REQUESTED','READY TO SHIP', 'PENDING PAYMENT'):
+        elif prod_status[1] in ('NEW', 'PICKUP REQUESTED', 'READY TO SHIP'):
             quantity_dict[prod_status[0]][prod_status[2]]['inline_quantity'] += prod_status[3]
             quantity_dict[prod_status[0]][prod_status[2]]['available_quantity'] -= prod_status[3]
         elif prod_status[1] in ('RTO', 'DTO'):
             quantity_dict[prod_status[0]][prod_status[2]]['rto_quantity'] += prod_status[3]
-            if prod_status[1]=="DTO":
+            if prod_status[1] == "DTO":
                 quantity_dict[prod_status[0]][prod_status[2]]['current_quantity'] += prod_status[3]
                 quantity_dict[prod_status[0]][prod_status[2]]['available_quantity'] += prod_status[3]
 
@@ -858,29 +858,85 @@ def update_available_quantity():
             for idx, new_prod_id in enumerate(item_list['prod_ids']):
                 mul_fac = item_list['prod_quan'][idx]
                 if new_prod_id not in quantity_dict:
-                    quantity_dict[new_prod_id] = {warehouse: {'available_quantity': quan_values['available_quantity']*mul_fac,
-                                                              'current_quantity': quan_values['current_quantity']*mul_fac,
-                                                              'inline_quantity': quan_values['inline_quantity']*mul_fac,
-                                                              'rto_quantity': quan_values['rto_quantity']*mul_fac}}
+                    quantity_dict[new_prod_id] = {
+                        warehouse: {'available_quantity': quan_values['available_quantity'] * mul_fac,
+                                    'current_quantity': quan_values['current_quantity'] * mul_fac,
+                                    'inline_quantity': quan_values['inline_quantity'] * mul_fac,
+                                    'rto_quantity': quan_values['rto_quantity'] * mul_fac}}
                 elif warehouse not in quantity_dict[new_prod_id]:
-                    quantity_dict[new_prod_id][warehouse] = {'available_quantity': quan_values['available_quantity']*mul_fac,
-                                                              'current_quantity': quan_values['current_quantity']*mul_fac,
-                                                              'inline_quantity': quan_values['inline_quantity']*mul_fac,
-                                                              'rto_quantity': quan_values['rto_quantity']*mul_fac}
+                    quantity_dict[new_prod_id][warehouse] = {
+                        'available_quantity': quan_values['available_quantity'] * mul_fac,
+                        'current_quantity': quan_values['current_quantity'] * mul_fac,
+                        'inline_quantity': quan_values['inline_quantity'] * mul_fac,
+                        'rto_quantity': quan_values['rto_quantity'] * mul_fac}
 
                 else:
-                    quantity_dict[new_prod_id][warehouse]['available_quantity'] += quan_values['available_quantity']*mul_fac
-                    quantity_dict[new_prod_id][warehouse]['current_quantity'] += quan_values['current_quantity']*mul_fac
-                    quantity_dict[new_prod_id][warehouse]['inline_quantity'] += quan_values['inline_quantity']*mul_fac
-                    quantity_dict[new_prod_id][warehouse]['rto_quantity'] += quan_values['rto_quantity']*mul_fac
+                    quantity_dict[new_prod_id][warehouse]['available_quantity'] += quan_values[
+                                                                                       'available_quantity'] * mul_fac
+                    quantity_dict[new_prod_id][warehouse]['current_quantity'] += quan_values[
+                                                                                     'current_quantity'] * mul_fac
+                    quantity_dict[new_prod_id][warehouse]['inline_quantity'] += quan_values['inline_quantity'] * mul_fac
+                    quantity_dict[new_prod_id][warehouse]['rto_quantity'] += quan_values['rto_quantity'] * mul_fac
+
+    cur.execute("""update products_quantity set available_quantity=approved_quantity, current_quantity=approved_quantity, 
+                    inline_quantity=0, rto_quantity=0;""")
+    conn.commit()
 
     for prod_id, wh_dict in quantity_dict.items():
         for warehouse, quan_values in wh_dict.items():
-            update_tuple = (quan_values['available_quantity'], quan_values['current_quantity'], quan_values['inline_quantity'],
-                            quan_values['rto_quantity'], prod_id, warehouse)
+            update_tuple = (
+            quan_values['available_quantity'], quan_values['current_quantity'], quan_values['inline_quantity'],
+            quan_values['rto_quantity'], prod_id, warehouse)
             cur.execute(update_inventory_quantity_query, update_tuple)
 
     conn.commit()
+
+
+def update_available_quantity_from_easyecom():
+    cur = conn.cursor()
+    cur.execute("select client_prefix, api_key from client_channel where channel_id=7;")
+    all_clients = cur.fetchall()
+
+    for client in all_clients:
+        try:
+            cur.execute("select array_agg(sku) from master_products where client_prefix='%s';"%client[0])
+            all_skus = cur.fetchone()[0]
+            chunks = [all_skus[x:x + 20] for x in range(0, len(all_skus), 20)]
+            for chunk in chunks:
+                req_url = "https://api.easyecom.io/wms/V2/getInventoryDetails?api_token=%s&includeLocations=1&sku=%s"%(client[1], ",".join(chunk))
+                req = requests.get(req_url)
+                req_data = req.json()
+
+                inventory_dict = dict()
+
+                for req in req_data['data']['inventoryData']:
+                    if req['companyName'] not in inventory_dict:
+                        inventory_dict[req['companyName']] = [(req['sku'], req['availableInventory'], req['reservedInventory'])]
+                    else:
+                        inventory_dict[req['companyName']].append((req['sku'], req['availableInventory'], req['reservedInventory']))
+
+                for ee_loc, val_list in inventory_dict.items():
+                    cur.execute("""select bb.warehouse_prefix from client_pickups aa
+                                                            left join pickup_points bb on aa.pickup_id=bb.id
+                                                            where aa.easyecom_loc_code='%s'""" % ee_loc)
+                    try:
+                        warehouse_prefix = cur.fetchone()[0]
+                    except Exception:
+                        continue
+
+                    for val_tuple in val_list:
+                        cur.execute("""select * from products_quantity aa
+                        left join master_products bb on aa.product_id=bb.id
+                        where aa.warehouse_prefix='%s' and bb.sku='%s'"""%(warehouse_prefix, val_tuple[0]))
+
+                        if cur.fetchall():
+                            cur.execute(update_easyecom_inventory_query, (val_tuple[1], val_tuple[2], val_tuple[1]+val_tuple[2], warehouse_prefix, val_tuple[0], client[0]))
+                        else:
+                            cur.execute(insert_easyecom_inventory_query, (val_tuple[1], warehouse_prefix, val_tuple[1]+val_tuple[2], val_tuple[2], val_tuple[1], client[0], val_tuple[0]))
+
+                    conn.commit()
+        except Exception as e:
+            logger.error("Couldn't update inventory for: "+str(client[0])+"\nError: "+str(e.args))
 
 
 def update_available_quantity_on_channel():

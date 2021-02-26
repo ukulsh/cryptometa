@@ -1035,21 +1035,33 @@ def download_picklist_util(orders_qs, auth_data):
             order_count[order.client_prefix] += 1
             pass
         for prod in order.products:
+            current_wh = order.pickup_data.pickup.warehouse_prefix
             if prod.master_product.combo:
                 for new_prod in prod.master_product.combo:
                     if new_prod.combo_prod_id not in products_dict[order.client_prefix]:
                         sku = new_prod.combo_prod.sku
+                        shelf = ""
+                        for prod_quan in prod.master_product.quantity:
+                            if prod_quan.warehouse_prefix == current_wh and prod_quan.wh_loc:
+                                shelf = prod_quan.wh_loc
+                                break
                         products_dict[order.client_prefix][new_prod.combo_prod_id] = {"sku": sku,
                                                                                       "name": new_prod.combo_prod.name,
-                                                                                      "quantity": prod.quantity * new_prod.quantity}
+                                                                                      "quantity": prod.quantity * new_prod.quantity,
+                                                                                      "shelf": shelf}
                     else:
                         products_dict[order.client_prefix][new_prod.combo_prod_id][
                             'quantity'] += prod.quantity * new_prod.quantity
             else:
                 if prod.master_product_id not in products_dict[order.client_prefix]:
                     sku = prod.master_product.sku
+                    shelf = ""
+                    for prod_quan in prod.master_product.quantity:
+                        if prod_quan.warehouse_prefix==current_wh and prod_quan.wh_loc:
+                            shelf = prod_quan.wh_loc
+                            break
                     products_dict[order.client_prefix][prod.master_product_id] = {"sku": sku, "name": prod.master_product.name,
-                                                                           "quantity": prod.quantity}
+                                                                           "quantity": prod.quantity, "shelf": shelf}
                 else:
                     products_dict[order.client_prefix][prod.master_product_id]['quantity'] += prod.quantity
 
@@ -1513,10 +1525,10 @@ class OrderDetails(Resource):
                 resp_obj['product_details'] = list()
                 for prod in order.products:
                     resp_obj['product_details'].append(
-                        {"name": prod.master_product.name,
-                         "sku": prod.master_product.sku,
+                        {"name": prod.master_product.name if prod.master_product else prod.product.name,
+                         "sku": prod.master_product.sku if prod.master_product else prod.product.master_sku,
                          "quantity": prod.quantity,
-                         "id": prod.master_product.id,
+                         "id": prod.master_product.id if prod.master_product else None,
                          "total": prod.amount}
                     )
 

@@ -112,7 +112,7 @@ def track_delhivery_orders(courier, cur):
                             and "picked" in str(each_scan['ScanDetail']['Instructions']).lower():
                         to_record_status = "Picked"
                     elif each_scan['ScanDetail']['Scan'] == "In Transit" \
-                            and "Pick Up Completed" in each_scan['ScanDetail']['Instructions']:
+                            and each_scan['ScanDetail']['StatusCode']=='EOD-77':
                         to_record_status = "Picked RVP"
                     elif each_scan['ScanDetail']['Scan'] == "In Transit" \
                             and each_scan['ScanDetail']['ScanType'] == "UD":
@@ -121,11 +121,11 @@ def track_delhivery_orders(courier, cur):
                             and each_scan['ScanDetail']['ScanType'] == "PU":
                         to_record_status = "In Transit"
                     elif each_scan['ScanDetail']['Scan'] == "Dispatched" \
-                            and each_scan['ScanDetail']['Instructions'] == "Out for delivery":
-                        to_record_status = "Out for delivery"
-                    elif each_scan['ScanDetail']['Scan'] == "Dispatched" \
                             and each_scan['ScanDetail']['ScanType'] == "PU":
                         to_record_status = "Dispatched for DTO"
+                    elif each_scan['ScanDetail']['Scan'] == "Dispatched" \
+                            and each_scan['ScanDetail']['Instructions'] == "Out for delivery":
+                        to_record_status = "Out for delivery"
                     elif each_scan['ScanDetail']['Scan'] == "Delivered":
                         to_record_status = "Delivered"
                     elif each_scan['ScanDetail']['Scan'] == "Pending" \

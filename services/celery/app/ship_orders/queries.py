@@ -39,11 +39,11 @@ get_orders_to_ship_query = """select aa.id,aa.channel_order_id,aa.order_date,aa.
                                 left join 
                                 (select order_id, array_agg(dimensions) as dimensions, array_agg(weight) as weights, 
                                 array_agg(quantity) as quan, array_agg(pp.name) as products_name, 
-                                array_agg(pp.inactive_reason ORDER BY pp.weight DESC) as ship_courier,
+                                array_agg(1) as ship_courier,
                                 array_agg(qq.name ORDER BY pp.weight DESC) as subcategories
                                  from op_association opa 
-                                 left join products pp
-                                 on opa.product_id = pp.id
+                                 left join master_products pp
+                                 on opa.master_product_id = pp.id
                                  left join products_subcategories qq
                                  on pp.subcategory_id=qq.id
                                  where client_prefix=%s

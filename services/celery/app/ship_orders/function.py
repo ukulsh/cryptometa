@@ -2088,7 +2088,7 @@ def ship_selfshp_orders(cur, courier, courier_name, order_ids, order_id_tuple, b
 
         last_invoice_no = pickup_point[22] if pickup_point[22] else 0
 
-        if not pickup_point[21]:
+        if not pickup_point[21] and not force_ship:
             continue
 
         for order in all_new_orders:

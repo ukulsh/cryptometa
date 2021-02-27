@@ -100,6 +100,7 @@ def calculate_costs():
 @celery_app.task(name='sync_all_inventory')
 def sync_all_inventory():
     update_available_quantity()
+    update_available_quantity_from_easyecom()
     update_available_quantity_on_channel()
     return 'successfully completed sync_all_inventory'
 
@@ -210,8 +211,10 @@ def sync_channel_prods(client_prefix):
 
 
 @app.route('/scans/v1/sync/products', methods = ['GET'])
-def sync_channel_products():
-    client_prefix=request.args.get('tab')
+@authenticate_restful
+def sync_channel_products(resp):
+    auth_data = resp.get('data')
+    client_prefix=auth_data['client_prefix']
     sync_channel_prods.apply_async(queue='consume_scans', args=(client_prefix, ))
     return jsonify({"msg": "Task received"}), 200
 

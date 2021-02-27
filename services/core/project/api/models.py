@@ -19,12 +19,12 @@ class Products(db.Model):
     product_image = db.Column(db.String, nullable=True)
     price = db.Column(db.FLOAT, nullable=True)
     client_prefix = db.Column(db.String, nullable=True)
-    active = db.Column(db.BOOLEAN, nullable=True, default=True)
-    inactive_reason = db.Column(db.String, nullable=True, default="")
     channel_id = db.Column(db.Integer, db.ForeignKey('master_channels.id'))
     channel = db.relationship("MasterChannels", backref=db.backref("products", uselist=True))
     subcategory_id = db.Column(db.Integer, db.ForeignKey('products_subcategories.id'))
     subcategory = db.relationship("ProductsSubCategories", backref=db.backref("products"))
+    master_product_id = db.Column(db.Integer, db.ForeignKey('master_products.id'))
+    master_product = db.relationship("MasterProducts", backref=db.backref("products", uselist=True))
     hsn_code = db.Column(db.String, nullable=True)
     date_created = db.Column(db.DateTime, default=datetime.now)
     date_updated = db.Column(db.DateTime, onupdate=datetime.now)
@@ -37,19 +37,40 @@ class Products(db.Model):
         }
 
 
+class MasterProducts(db.Model):
+    __tablename__ = "master_products"
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    name = db.Column(db.String, nullable=False)
+    sku = db.Column(db.String, nullable=False)
+    dimensions = db.Column(JSON)
+    weight = db.Column(db.FLOAT, nullable=True)
+    product_image = db.Column(db.String, nullable=True)
+    price = db.Column(db.FLOAT, nullable=True)
+    client_prefix = db.Column(db.String, nullable=True)
+    active = db.Column(db.BOOLEAN, nullable=True, default=True)
+    subcategory_id = db.Column(db.Integer, db.ForeignKey('products_subcategories.id'))
+    subcategory = db.relationship("ProductsSubCategories", backref=db.backref("master_products"))
+    hsn_code = db.Column(db.String, nullable=True)
+    tax_rate = db.Column(db.FLOAT, nullable=True)
+    date_created = db.Column(db.DateTime, default=datetime.now)
+    date_updated = db.Column(db.DateTime, onupdate=datetime.now)
+
+
 class ProductQuantity(db.Model):
     __tablename__ = "products_quantity"
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    product_id = db.Column(db.Integer, db.ForeignKey('products.id'))
-    product = db.relationship("Products", backref=db.backref("quantity", uselist=True))
+    product_id = db.Column(db.Integer, db.ForeignKey('master_products.id'))
+    product = db.relationship("MasterProducts", backref=db.backref("quantity", uselist=True))
     total_quantity = db.Column(db.Integer, nullable=False)
     approved_quantity = db.Column(db.Integer, nullable=True)
     available_quantity = db.Column(db.Integer, nullable=True)
     inline_quantity = db.Column(db.Integer, nullable=True)
     rto_quantity = db.Column(db.Integer, nullable=True)
     current_quantity = db.Column(db.Integer, nullable=True)
+    exception_quantity = db.Column(db.Integer, nullable=True)
     warehouse_prefix = db.Column(db.String, nullable=False)
     status = db.Column(db.String, nullable=False)
+    wh_loc = db.Column(db.String, nullable=True)
     sync_easyecom = db.Column(db.BOOLEAN, default=False, nullable=True)
     date_created = db.Column(db.DateTime, default=datetime.now)
     date_updated = db.Column(db.DateTime, onupdate=datetime.now)
@@ -72,10 +93,10 @@ class KeywordWeights(db.Model):
 class ProductsCombos(db.Model):
     __tablename__ = "products_combos"
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    combo_id = db.Column(db.Integer, db.ForeignKey('products.id'))
-    combo = db.relationship("Products", backref=db.backref("combo", uselist=True), foreign_keys=[combo_id])
-    combo_prod_id = db.Column(db.Integer, db.ForeignKey('products.id'))
-    combo_prod = db.relationship("Products", backref=db.backref("combo_prod", uselist=True), foreign_keys=[combo_prod_id])
+    combo_id = db.Column(db.Integer, db.ForeignKey('master_products.id'))
+    combo = db.relationship("MasterProducts", backref=db.backref("combo", uselist=True), foreign_keys=[combo_id])
+    combo_prod_id = db.Column(db.Integer, db.ForeignKey('master_products.id'))
+    combo_prod = db.relationship("MasterProducts", backref=db.backref("combo_prod", uselist=True), foreign_keys=[combo_prod_id])
     quantity = db.Column(db.Integer, nullable=False, default=1)
     date_created = db.Column(db.DateTime, default=datetime.now)
     date_updated = db.Column(db.DateTime, onupdate=datetime.now)
@@ -102,8 +123,8 @@ class ProductsSubCategories(db.Model):
 class InventoryUpdate(db.Model):
     __tablename__ = "inventory_update"
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    product_id = db.Column(db.Integer, db.ForeignKey('products.id'))
-    product = db.relationship("Products", backref=db.backref("inventory_update", uselist=True))
+    product_id = db.Column(db.Integer, db.ForeignKey('master_products.id'))
+    product = db.relationship("MasterProducts", backref=db.backref("inventory_update", uselist=True))
     warehouse_prefix = db.Column(db.String, nullable=False)
     user = db.Column(db.String, nullable=False)
     remark = db.Column(db.String, nullable=True)
@@ -221,12 +242,14 @@ class OPAssociation(db.Model):
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     order_id = db.Column('order_id', db.Integer, db.ForeignKey('orders.id'), index=True)
     product_id = db.Column('product_id', db.Integer, db.ForeignKey('products.id'))
+    master_product_id = db.Column('master_product_id', db.Integer, db.ForeignKey('master_products.id'))
     quantity = db.Column(db.Integer)
     amount = db.Column(db.FLOAT, nullable=True)
     channel_item_id = db.Column(db.String, nullable=True)
     tax_lines = db.Column(JSON)
     order = db.relationship("Orders")
     product = db.relationship("Products")
+    master_product = db.relationship("MasterProducts")
 
 
 class Orders(db.Model):
@@ -1052,3 +1075,28 @@ class IVRHistory(db.Model):
     to_no = db.Column(db.String, nullable=True)
     date_created = db.Column(db.DateTime, default=datetime.now)
     date_updated = db.Column(db.DateTime, onupdate=datetime.now)
+
+
+class WarehouseRO(db.Model):
+    __tablename__ = "warehouse_ro"
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    warehouse_prefix = db.Column(db.String, nullable=False)
+    client_prefix = db.Column(db.String, nullable=False)
+    created_by = db.Column(db.String, nullable=True)
+    no_of_boxes = db.Column(db.Integer, nullable=True)
+    tracking_details = db.Column(db.String, nullable=True)
+    edd = db.Column(db.DateTime)
+    status = db.Column(db.String, nullable=False, default='awaiting')
+    date_created = db.Column(db.DateTime, default=datetime.now)
+    date_updated = db.Column(db.DateTime, onupdate=datetime.now)
+
+
+class ProductsWRO(db.Model):
+    __tablename__ = "products_wro"
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    wro_id = db.Column('wro_id', db.Integer, db.ForeignKey('warehouse_ro.id'), index=True)
+    master_product_id = db.Column('master_product_id', db.Integer, db.ForeignKey('master_products.id'))
+    ro_quantity = db.Column(db.Integer)
+    received_quantity = db.Column(db.Integer)
+    wro = db.relationship("WarehouseRO")
+    product = db.relationship("MasterProducts")

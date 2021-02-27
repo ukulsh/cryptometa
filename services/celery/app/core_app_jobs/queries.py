@@ -12,7 +12,7 @@ get_order_details_query = """select aa.id, bb.awb, aa.status, aa.client_prefix, 
                                     left join (select order_id, array_agg(channel_item_id) as item_list, array_agg(quantity) as sku_quan_list from
                                       		  (select kk.order_id, kk.channel_item_id, kk.quantity
                                               from op_association kk
-                                              left join products ll on kk.product_id=ll.id) nn
+                                              left join master_products ll on kk.master_product_id=ll.id) nn
                                               group by order_id) mm
                                     on aa.id=mm.order_id
                                     left join client_channel cc
@@ -94,18 +94,30 @@ select_remittance_amount_query = """select * from
                                         order by remittance_date DESC, remittance_total DESC"""
 
 fetch_inventory_quantity_query = """select yy.*, zz.combo_prods, zz.combo_prods_quan from
-                                    (select product_id, status, warehouse_prefix, sum(quantity) from 
+                                    (select master_product_id, status, warehouse_prefix, sum(quantity) from 
                                     (select * from op_association aa
                                     left join orders bb on aa.order_id=bb.id
                                     left join client_pickups cc on bb.pickup_data_id=cc.id
                                     left join pickup_points dd on cc.pickup_id=dd.id     
-                                    where status not in ('CANCELED', 'NOT PICKED', 'NOT SHIPPED', 'NEW - FAILED', 'NEW - SHIPPED')) xx
-                                    group by product_id, status, warehouse_prefix
-                                    order by product_id, status, warehouse_prefix) yy
+                                    where status not in ('CANCELED', 'NOT PICKED', 'NOT SHIPPED', 'CLOSED')
+                                    and (easyecom_loc_code is null or easyecom_loc_code='')) xx
+                                    group by master_product_id, status, warehouse_prefix
+                                    order by master_product_id, status, warehouse_prefix) yy
                                     left join (select combo_id, array_agg(combo_prod_id) as combo_prods, 
                                     array_agg(quantity) as combo_prods_quan from products_combos group by combo_id) zz
-                                    on yy.product_id=zz.combo_id"""
+                                    on yy.master_product_id=zz.combo_id"""
 
 update_inventory_quantity_query = """UPDATE products_quantity SET available_quantity=COALESCE(approved_quantity, 0)+%s,
 									current_quantity=COALESCE(approved_quantity, 0)+%s, inline_quantity=%s, rto_quantity=%s
                                     WHERE product_id=%s and warehouse_prefix=%s;"""
+
+update_easyecom_inventory_query = """update products_quantity
+                                    set available_quantity=%s,
+                                    inline_quantity=%s,
+                                    current_quantity=%s
+                                    WHERE warehouse_prefix=%s
+                                    and product_id in (select id from master_products where sku=%s and client_prefix=%s);"""
+
+insert_easyecom_inventory_query = """INSERT into products_quantity (product_id, available_quantity, warehouse_prefix, status, current_quantity, inline_quantity, total_quantity) 
+                                    select aa.id, %s, %s, 'APPROVED', %s, %s, %s from master_products aa 
+                                    where client_prefix=%s and sku=%s"""

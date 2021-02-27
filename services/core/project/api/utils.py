@@ -22,6 +22,7 @@ from reportlab.graphics import renderPDF
 from .models import ClientMapping, OrdersInvoice
 from project import db
 
+
 def authenticate(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
@@ -100,42 +101,6 @@ def ensure_authenticated(token):
         return data
     else:
         return False
-
-
-def get_products_sort_func(Products, ProductsQuantity, sort, sort_by):
-    if sort_by == 'product_name':
-        x = Products.name
-    elif sort_by == 'price':
-        x = Products.price
-    elif sort_by == 'master_sku':
-        x = Products.master_sku
-    elif sort_by == 'total_quantity':
-        x = ProductsQuantity.approved_quantity
-    elif sort_by == 'weight':
-        x = Products.weight
-    else:
-        x = ProductsQuantity.available_quantity
-
-    if sort.lower() == 'desc':
-        x = x.desc().nullslast
-    else:
-        x = x.asc
-    return x
-
-
-def get_orders_sort_func(Orders, sort, sort_by):
-    if sort_by == 'order_id':
-        x = Orders.channel_order_id
-    elif sort_by == 'status':
-        x = Orders.status
-    else:
-        x = Orders.order_date
-
-    if sort.lower() == 'asc':
-        x = x.asc
-    else:
-        x = x.desc
-    return x
 
 
 def create_shiplabel_blank_page(canvas):
@@ -252,7 +217,7 @@ def fill_shiplabel_data(c, order, offset, client_name=None):
         try:
             products_string = ""
             for prod in order.products:
-                products_string += prod.product.name + " (" + str(prod.quantity) + ") + "
+                products_string += prod.master_product.name + " (" + str(prod.quantity) + ") + "
             products_string = products_string.rstrip(" + ")
             if order.payments[0].shipping_charges:
                 products_string += " + Shipping"
@@ -387,7 +352,7 @@ def fill_shiplabel_data_thermal(c, order, client_name=None):
         try:
             products_string = ""
             for prod in order.products:
-                products_string += prod.product.name + " (" + str(prod.quantity) + ") + "
+                products_string += prod.master_product.name + " (" + str(prod.quantity) + ") + "
             products_string = products_string.rstrip(" + ")
             if order.payments[0].shipping_charges:
                 products_string += " + Shipping"
@@ -432,7 +397,7 @@ def generate_picklist(canvas, products, order_count):
     canvas.setFont('Helvetica-Bold', 12)
     canvas.drawString(2.75 * inch, y_axis * inch, "Generated at: " + time_now)
     y_axis -= 0.3
-    x_axis = (0.25, 2.55, 6.20, 7.10, 8.0)
+    x_axis = (0.25, 2.05, 5.20, 6.30, 7.10, 8.0)
     for client, prod_dict in products.items():
         try:
             prod_dict = sorted(prod_dict.items(),key=lambda x: x[1]['quantity'],reverse=True)
@@ -446,19 +411,20 @@ def generate_picklist(canvas, products, order_count):
             canvas.drawString(x_axis[0] * inch, y_axis * inch, "Orders Selected: " + str(order_count[client]))
             y_axis -= 0.20
 
-            canvas.line(x_axis[0] * inch, y_axis * inch, x_axis[4] * inch, y_axis * inch)
+            canvas.line(x_axis[0] * inch, y_axis * inch, x_axis[5] * inch, y_axis * inch)
 
             canvas.drawString((x_axis[0]+0.1) * inch, (y_axis - 0.20)* inch, "SKU")
             canvas.drawString((x_axis[1]+0.1) * inch, (y_axis - 0.20)* inch, "Description")
-            canvas.drawString((x_axis[2]+0.1) * inch, (y_axis- 0.20) * inch, "Quantity")
-            canvas.drawString((x_axis[3]+0.1) * inch, (y_axis - 0.20) * inch, "Picked?")
+            canvas.drawString((x_axis[2]+0.1) * inch, (y_axis - 0.20)* inch, "Shelf")
+            canvas.drawString((x_axis[3]+0.05) * inch, (y_axis- 0.20) * inch, "Quantity")
+            canvas.drawString((x_axis[4]+0.1) * inch, (y_axis - 0.20) * inch, "Picked?")
 
             new_y_axis = y_axis - 0.30
 
             for x in x_axis:
                 canvas.line(x * inch, new_y_axis * inch, x * inch, y_axis * inch)
 
-            canvas.line(x_axis[0] * inch, new_y_axis * inch, x_axis[4] * inch, new_y_axis * inch)
+            canvas.line(x_axis[0] * inch, new_y_axis * inch, x_axis[5] * inch, new_y_axis * inch)
 
             y_axis = new_y_axis
             canvas.setFont('Helvetica', 10)
@@ -469,10 +435,12 @@ def generate_picklist(canvas, products, order_count):
                     canvas.showPage()
                     y_axis = 11.1
 
-                canvas.drawString((x_axis[0] + 0.1) * inch, (y_axis - 0.20) * inch, str(prod_info['sku']))
-                canvas.drawString((x_axis[2] + 0.3) * inch, (y_axis - 0.20) * inch, str(prod_info['quantity']))
-
                 canvas.setFont('Helvetica', 8)
+                canvas.drawString((x_axis[0] + 0.1) * inch, (y_axis - 0.20) * inch, str(prod_info['sku']))
+                canvas.drawString((x_axis[2] + 0.1) * inch, (y_axis - 0.20) * inch, str(prod_info['shelf']))
+                canvas.drawString((x_axis[3] + 0.3) * inch, (y_axis - 0.20) * inch, str(prod_info['quantity']))
+
+                canvas.setFont('Helvetica', 7)
                 prod_name = split_string(str(prod_info['name']), 60)
                 old_y_axis = y_axis
                 y_axis += 0.13
@@ -487,7 +455,7 @@ def generate_picklist(canvas, products, order_count):
                 for x in x_axis:
                     canvas.line(x * inch, new_y_axis * inch, x * inch, old_y_axis * inch)
 
-                canvas.line(x_axis[0] * inch, new_y_axis * inch, x_axis[4] * inch, new_y_axis * inch)
+                canvas.line(x_axis[0] * inch, new_y_axis * inch, x_axis[5] * inch, new_y_axis * inch)
                 y_axis = new_y_axis
 
             y_axis -= 0.5
@@ -546,13 +514,21 @@ def generate_packlist(canvas, orders, order_count):
                     canvas.showPage()
                     y_axis = 11.1
                 canvas.setFont('Helvetica', 10)
-                canvas.drawString((x_axis[0] + 0.1) * inch, (y_axis - 0.20) * inch, str(order_id))
+                order_id_str = [str(order_id)[i:i+12] for i in range(0, len(str(order_id)), 12)]
+                y_axis_order = y_axis
+                for addr in order_id_str:
+                    canvas.drawString((x_axis[0] + 0.1) * inch, (y_axis_order - 0.20) * inch, addr)
+                    y_axis_order -= 0.13
+
+                y_axis_order -= 0.13
+
                 for prod_info in prod_dict:
                     prod_info = prod_info[1]
                     if y_axis < 1:
                         canvas.drawString((x_axis[0] + 0.2) * inch, 0.6 * inch, "Packed By:")
                         canvas.showPage()
                         y_axis = 11.1
+                        y_axis_order = 11.1
 
                     canvas.drawString((x_axis[1] + 0.1) * inch, (y_axis - 0.20) * inch, str(prod_info['sku']))
                     canvas.drawString((x_axis[3] + 0.3) * inch, (y_axis - 0.20) * inch, str(prod_info['quantity']))
@@ -568,6 +544,9 @@ def generate_packlist(canvas, orders, order_count):
                     canvas.setFont('Helvetica', 10)
 
                     new_y_axis = y_axis - 0.30
+
+                    if y_axis_order < new_y_axis:
+                        new_y_axis = y_axis_order
 
                     for x in x_axis:
                         canvas.line(x * inch, new_y_axis * inch, x * inch, old_y_axis * inch)
@@ -713,16 +692,16 @@ def fill_invoice_data(c, order, client_name):
     for prod in order.products:
         try:
             c.setFont('Helvetica-Bold', 7)
-            product_name = str(s_no) + ". " + prod.product.name
+            product_name = str(s_no) + ". " + prod.master_product.name
             product_name = split_string(product_name, 40)
             for addr in product_name:
                 c.drawString(-0.75 * inch, y_axis * inch, addr)
                 y_axis -= 0.15
             c.setFont('Helvetica', 7)
-            if prod.product.master_sku:
-                c.drawString(0.45 * inch, y_axis* inch, "SKU: " + prod.product.master_sku)
-            if prod.product.hsn_code:
-                c.drawString(-0.65 * inch, y_axis* inch, "HSN: " + prod.product.hsn_code)
+            if prod.master_product.sku:
+                c.drawString(0.45 * inch, y_axis* inch, "SKU: " + prod.master_product.sku)
+            if prod.master_product.hsn_code:
+                c.drawString(-0.65 * inch, y_axis* inch, "HSN: " + prod.master_product.hsn_code)
 
             c.drawString(2.02 * inch, (y_axis + 0.08) * inch, str(prod.quantity))
 

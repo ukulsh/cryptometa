@@ -855,30 +855,30 @@ def get_products_filters(resp):
         all_vendors = db.session.query(MultiVendor).filter(MultiVendor.client_prefix == client_prefix).first()
         all_vendors = all_vendors.vendor_list
     warehouse_qs = db.session.query(ProductQuantity.warehouse_prefix, func.count(ProductQuantity.warehouse_prefix)) \
-        .join(Products, Products.id == ProductQuantity.product_id)
+        .join(MasterProducts, MasterProducts.id == ProductQuantity.product_id)
     if auth_data['user_group'] == 'client':
-        warehouse_qs = warehouse_qs.filter(Products.client_prefix == client_prefix)
+        warehouse_qs = warehouse_qs.filter(MasterProducts.client_prefix == client_prefix)
     if auth_data['user_group'] == 'warehouse':
         warehouse_qs = warehouse_qs.filter(ProductQuantity.warehouse_prefix == auth_data.get('warehouse_prefix'))
     if all_vendors:
-        warehouse_qs = warehouse_qs.filter(Products.client_prefix.in_(all_vendors))
+        warehouse_qs = warehouse_qs.filter(MasterProducts.client_prefix.in_(all_vendors))
     if current_tab == 'active':
-        warehouse_qs = warehouse_qs.filter(Products.active == True)
+        warehouse_qs = warehouse_qs.filter(MasterProducts.active == True)
     elif current_tab == 'inactive':
-        warehouse_qs = warehouse_qs.filter(Products.active == False)
+        warehouse_qs = warehouse_qs.filter(MasterProducts.active == False)
     warehouse_qs = warehouse_qs.group_by(ProductQuantity.warehouse_prefix)
     response['filters']['warehouse'] = [{x[0]: x[1]} for x in warehouse_qs]
     if auth_data['user_group'] in ('super-admin', 'warehouse'):
-        client_qs = db.session.query(Products.client_prefix, func.count(Products.client_prefix)).join(ProductQuantity,
-                                                                                                      ProductQuantity.product_id == Products.id).group_by(
-            Products.client_prefix)
+        client_qs = db.session.query(MasterProducts.client_prefix, func.count(MasterProducts.client_prefix)).join(ProductQuantity,
+                                                                                                      ProductQuantity.product_id == MasterProducts.id).group_by(
+            MasterProducts.client_prefix)
         if auth_data['user_group'] == 'warehouse':
             client_qs = client_qs.filter(ProductQuantity.warehouse_prefix == auth_data.get('warehouse_prefix'))
         response['filters']['client'] = [{x[0]: x[1]} for x in client_qs]
     if all_vendors:
-        client_qs = db.session.query(Products.client_prefix, func.count(Products.client_prefix)).join(ProductQuantity,
-                                                                                                      ProductQuantity.product_id == Products.id).filter(
-            Products.client_prefix.in_(all_vendors)).group_by(Products.client_prefix)
+        client_qs = db.session.query(MasterProducts.client_prefix, func.count(MasterProducts.client_prefix)).join(ProductQuantity,
+                                                                                                      ProductQuantity.product_id == MasterProducts.id).filter(
+            MasterProducts.client_prefix.in_(all_vendors)).group_by(MasterProducts.client_prefix)
         response['filters']['client'] = [{x[0]: x[1]} for x in client_qs]
 
     return jsonify(response), 200

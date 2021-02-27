@@ -514,13 +514,21 @@ def generate_packlist(canvas, orders, order_count):
                     canvas.showPage()
                     y_axis = 11.1
                 canvas.setFont('Helvetica', 10)
-                canvas.drawString((x_axis[0] + 0.1) * inch, (y_axis - 0.20) * inch, str(order_id))
+                order_id_str = [str(order_id)[i:i+12] for i in range(0, len(str(order_id)), 12)]
+                y_axis_order = y_axis
+                for addr in order_id_str:
+                    canvas.drawString((x_axis[0] + 0.1) * inch, (y_axis_order - 0.20) * inch, addr)
+                    y_axis_order -= 0.13
+
+                y_axis_order -= 0.13
+
                 for prod_info in prod_dict:
                     prod_info = prod_info[1]
                     if y_axis < 1:
                         canvas.drawString((x_axis[0] + 0.2) * inch, 0.6 * inch, "Packed By:")
                         canvas.showPage()
                         y_axis = 11.1
+                        y_axis_order = 11.1
 
                     canvas.drawString((x_axis[1] + 0.1) * inch, (y_axis - 0.20) * inch, str(prod_info['sku']))
                     canvas.drawString((x_axis[3] + 0.3) * inch, (y_axis - 0.20) * inch, str(prod_info['quantity']))
@@ -536,6 +544,9 @@ def generate_packlist(canvas, orders, order_count):
                     canvas.setFont('Helvetica', 10)
 
                     new_y_axis = y_axis - 0.30
+
+                    if y_axis_order < new_y_axis:
+                        new_y_axis = y_axis_order
 
                     for x in x_axis:
                         canvas.line(x * inch, new_y_axis * inch, x * inch, old_y_axis * inch)

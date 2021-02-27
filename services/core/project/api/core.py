@@ -407,20 +407,24 @@ def thirdwatch_webhook():
         order_data = webhook_body['payload']
         order = db.session.query(Orders).filter(Orders.client_prefix == client.client_prefix,
                                                 Orders.client_channel_id == str(order_data['order_id'])).first()
-        if not order:
-            return jsonify({"success": False, "msg": "Order not found"}), 400
 
         if event.lower()=='score':
             thirdwatch_obj = ThirdwatchData(order=order,
-                                             flag=webhook_body['flag'],
-                                             order_timestamp=webhook_body['order_timestamp'],
-                                             score=webhook_body['score'],
-                                             tags=webhook_body['tags'],
-                                             reasons=webhook_body['reasons']
+                                             flag=order_data['flag'],
+                                             order_timestamp=order_data['order_timestamp'],
+                                             score=order_data['score'],
+                                             tags=order_data['tags'],
+                                             reasons=order_data['reasons'],
+                                             channel_order_id=str(order_data['order_id']),
+                                             client_prefix=client.client_prefix,
                                              )
 
             db.session.add(thirdwatch_obj)
             db.session.commit()
+            return jsonify({"success": True}), 200
+
+        if not order:
+            return jsonify({"success": False, "msg": "Order not found"}), 400
 
         if event.lower()=='action':
             if order_data['action_type'] == "declined" and order.status in ('NEW', 'READY TO SHIP', 'PICKUP REQUESTED'):
@@ -433,7 +437,7 @@ def thirdwatch_webhook():
         return jsonify({"success": False}), 400
 
 
-@core_blueprint.route('/core/v1/thirdwatch/postbackPartner', methods=['POST'])
+@core_blueprint.route('/core/v1/thirdwatch/postbackMerchant', methods=['POST'])
 def thirdwatch_webhook_partner():
     try:
         webhook_body = json.loads(request.data)

@@ -336,6 +336,8 @@ class ThirdwatchData(db.Model):
     score = db.Column(db.FLOAT, nullable=True)
     tags = db.Column(ARRAY(db.String(100)))
     reasons = db.Column(JSON)
+    client_prefix = db.Column(db.String, nullable=True)
+    channel_order_id = db.Column(db.String, nullable=True)
     date_created = db.Column(db.DateTime, default=datetime.now)
 
 

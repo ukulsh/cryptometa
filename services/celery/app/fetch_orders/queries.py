@@ -109,7 +109,7 @@ select_thirdwatch_check_orders_query = """select cc.ip_address, cc.session_id, c
                                         ee.cod_verified, aa.id, aa.order_date, bb.amount, bb.payment_mode, 
                                         hh.sku, hh.prod_name, hh.prod_amount,  hh.quantity, hh.master_sku, dd.phone, dd.address_one, 
                                         dd.address_two, dd.city, dd.state, dd.pincode, dd.country, ii.client_name, cc.payment_id, 
-                                        cc.payment_gateway, cc.payment_method, ii.thirdwatch_cod_only from orders aa
+                                        cc.payment_gateway, cc.payment_method, ii.thirdwatch_cod_only, aa.channel_order_id, aa.client_prefix from orders aa
                                         left join orders_payments bb on aa.id=bb.order_id
                                         left join orders_extra_details cc on aa.id=cc.order_id
                                         left join shipping_address dd on dd.id=aa.delivery_address_id     

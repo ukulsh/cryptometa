@@ -1192,6 +1192,18 @@ def update_thirdwatch_data(cur):
     all_orders=cur.fetchall()
     for order in all_orders:
         try:
+            thirdwatch_id = None
+            cur.execute("SELECT id from thirdwatch_data where client_prefix='%s' and channel_order_id='%s';"%(order[34], order[33]))
+            try:
+                thirdwatch_id = cur.fetchone()[0]
+            except Exception:
+                pass
+
+            if thirdwatch_id:
+                cur.execute("update thirdwatch_data set order_id=%s where id=%s;" % (order[12], thirdwatch_id))
+                conn.commit()
+                continue
+
             if order[32] and order[15].lower()!='cod':
                 continue
             items = list()

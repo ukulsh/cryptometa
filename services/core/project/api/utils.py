@@ -21,6 +21,7 @@ from reportlab.graphics import renderPDF
 
 from .models import ClientMapping, OrdersInvoice
 from project import db
+from woocommerce import API
 
 
 def authenticate(f):
@@ -1022,3 +1023,63 @@ def check_client_order_ids(order_ids, auth_data, cur):
         order_tuple_str = str(tuple(order_ids))
 
     return order_tuple_str
+
+
+def cancel_order_on_couriers(order):
+    if order.shipments and order.shipments[0].awb:
+        if order.shipments[0].courier.id in (1, 2, 8, 11, 12):  # Cancel on delhievry #todo: cancel on other platforms too
+            cancel_body = json.dumps({"waybill": order.shipments[0].awb, "cancellation": "true"})
+            headers = {"Authorization": "Token " + order.shipments[0].courier.api_key,
+                       "Content-Type": "application/json"}
+            req_can = requests.post("https://track.delhivery.com/api/p/edit", headers=headers, data=cancel_body)
+        if order.shipments[0].courier.id in (5, 13):  # Cancel on Xpressbees
+            cancel_body = json.dumps({"AWBNumber": order.shipments[0].awb, "XBkey": order.shipments[0].courier.api_key,
+                                      "RTOReason": "Cancelled by seller"})
+            headers = {"Authorization": "Basic " + order.shipments[0].courier.api_key,
+                       "Content-Type": "application/json"}
+            req_can = requests.post("http://xbclientapi.xbees.in/POSTShipmentService.svc/RTONotifyShipment",
+                                    headers=headers, data=cancel_body)
+
+
+def cancel_order_on_channels(order):
+    if order.client_channel and order.client_channel.mark_canceled and order.order_id_channel_unique:
+        if order.client_channel.channel_id == 6: # cancel on magento
+            cancel_header = {'Content-Type': 'application/json',
+                             'Authorization': 'Bearer ' + order.client_channel.api_key}
+            cancel_data = {
+                "entity": {
+                    "entity_id": int(order.order_id_channel_unique),
+                    "status": "canceled"
+                }
+            }
+            cancel_url = order.client_channel.shop_url + "/rest/V1/orders/%s/cancel" % str(order.order_id_channel_unique)
+            req_ful = requests.post(cancel_url, data=json.dumps(cancel_data),
+                                    headers=cancel_header, verify=False)
+        if order.client_channel.channel_id == 1: # cancel on shopify
+            get_cancel_url = "https://%s:%s@%s/admin/api/2021-01/orders/%s/cancel.json" % (
+                order.client_channel.api_key, order.client_channel.api_password,
+                order.client_channel.shop_url, order.order_id_channel_unique)
+
+            tra_header = {'Content-Type': 'application/json'}
+            cancel_data = {}
+            req_ful = requests.post(get_cancel_url, data=json.dumps(cancel_data),
+                                    headers=tra_header)
+        if order.client_channel.channel_id == 5: # cancel on woocommerce
+            wcapi = API(
+                url=order.client_channel.shop_url,
+                consumer_key=order.client_channel.api_key,
+                consumer_secret=order.client_channel.api_password,
+                version="wc/v3"
+            )
+            status_mark = "cancelled"
+            r = wcapi.post('orders/%s' % str(order[5]), data={"status": status_mark})
+
+        if order.client_channel.channel_id == 7: # cancel on Easyecom
+            cancel_order_url = "%s/orders/cancelOrder?api_token=%s" % (order.client_channel.shop_url, order.client_channel.api_key)
+            ful_header = {'Content-Type': 'application/json'}
+            fulfil_data = {
+                "api_token": order.client_channel.api_key,
+                "reference_code": order.channel_order_id
+            }
+            req_ful = requests.post(cancel_order_url, data=json.dumps(fulfil_data),
+                                    headers=ful_header)

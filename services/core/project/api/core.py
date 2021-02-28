@@ -28,7 +28,7 @@ from project.api.models import Products, ProductQuantity, InventoryUpdate, Wareh
     ClientMapping, IVRHistory, ClientRecharges, CODRemittance, ThirdwatchData, ClientChannel
 from project.api.utils import authenticate_restful, fill_shiplabel_data_thermal, create_shiplabel_blank_page, \
     fill_shiplabel_data, create_shiplabel_blank_page_thermal, create_invoice_blank_page, fill_invoice_data, \
-    generate_picklist, generate_packlist
+    generate_picklist, generate_packlist, cancel_order_on_channels
 
 
 core_blueprint = Blueprint('core', __name__)
@@ -142,6 +142,7 @@ def verification_passthru(type):
                 cod_ver = db.session.query(CodVerification).filter(CodVerification.order_id==order_id).first()
                 if digits=="0" and cod_ver.order.status=='NEW':
                     cod_ver.order.status='CANCELED'
+                    cancel_order_on_channels(cod_ver.order)
             elif type=='delivery':
                 cod_ver = db.session.query(DeliveryCheck).filter(DeliveryCheck.order_id==order_id).first()
             elif type=='ndr':

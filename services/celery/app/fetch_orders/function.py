@@ -1193,14 +1193,13 @@ def update_thirdwatch_data(cur):
     for order in all_orders:
         try:
             thirdwatch_id = None
-            cur.execute("SELECT id from thirdwatch_data where client_prefix='%s' and channel_order_id='%s';"%(order[34], order[33]))
             try:
+                cur.execute("update thirdwatch_data set order_id=%s where client_prefix='%s' and channel_order_id='%s' returning id;" % (order[12], order[34], order[33]))
                 thirdwatch_id = cur.fetchone()[0]
             except Exception:
                 pass
 
             if thirdwatch_id:
-                cur.execute("update thirdwatch_data set order_id=%s where id=%s;" % (order[12], thirdwatch_id))
                 conn.commit()
                 continue
 

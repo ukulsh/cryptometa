@@ -121,5 +121,4 @@ select_thirdwatch_check_orders_query = """select cc.ip_address, cc.session_id, c
                                         left join thirdwatch_data jj on jj.order_id=aa.id
                                         where jj.order_id is null
                                         and ii.thirdwatch=true
-                                        and aa.order_date>'__ORDER_TIME__'
-                                        and aa.status='NEW' """
+                                        and aa.order_date>'__ORDER_TIME__'"""

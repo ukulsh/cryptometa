@@ -29,7 +29,7 @@ from project.api.utils import authenticate_restful, fill_shiplabel_data_thermal,
     create_shiplabel_blank_page, fill_shiplabel_data, create_shiplabel_blank_page_thermal, \
     create_invoice_blank_page, fill_invoice_data, generate_picklist, generate_packlist, \
     tracking_get_xpressbees_details, tracking_get_delhivery_details, tracking_get_bluedart_details, \
-    tracking_get_ecomxp_details, check_client_order_ids
+    tracking_get_ecomxp_details, check_client_order_ids, cancel_order_on_couriers, cancel_order_on_channels
 from project.api.generate_manifest import fill_manifest_data
 from project.api.utilities.db_utils import DbConnection
 from .orders_utils import *
@@ -1162,21 +1162,7 @@ def cancel_order_channel(resp, order_id):
 
     for order in orders_qs:
         order.status = 'CANCELED'
-        if order.shipments and order.shipments[0].awb:
-            if order.shipments[0].courier.id in (
-            1, 2, 8, 11, 12):  # Cancel on delhievry #todo: cancel on other platforms too
-                cancel_body = json.dumps({"waybill": order.shipments[0].awb, "cancellation": "true"})
-                headers = {"Authorization": "Token " + order.shipments[0].courier.api_key,
-                           "Content-Type": "application/json"}
-                req_can = requests.post("https://track.delhivery.com/api/p/edit", headers=headers, data=cancel_body)
-            if order.shipments[0].courier.id in (5, 13):  # Cancel on Xpressbees
-                cancel_body = json.dumps(
-                    {"AWBNumber": order.shipments[0].awb, "XBkey": order.shipments[0].courier.api_key,
-                     "RTOReason": "Cancelled by seller"})
-                headers = {"Authorization": "Basic " + order.shipments[0].courier.api_key,
-                           "Content-Type": "application/json"}
-                req_can = requests.post("http://xbclientapi.xbees.in/POSTShipmentService.svc/RTONotifyShipment",
-                                        headers=headers, data=cancel_body)
+        cancel_order_on_couriers(order)
         if order.orders_invoice:
             for invoice_obj in order.orders_invoice:
                 invoice_obj.cancelled=True
@@ -1632,31 +1618,9 @@ class OrderDetails(Resource):
                     order.exotel_data[0].verification_time = datetime.utcnow() + timedelta(hours=5.5)
                 if data.get('cod_verification') == False:
                     order.status = 'CANCELED'
-                    if order.shipments and order.shipments[0].awb:
-                        if order.shipments[0].courier.id in (1,2,8,11,12):  #Cancel on delhievry #todo: cancel on other platforms too
-                            cancel_body = json.dumps({"waybill": order.shipments[0].awb, "cancellation": "true"})
-                            headers = {"Authorization": "Token " + order.shipments[0].courier.api_key,
-                                        "Content-Type": "application/json"}
-                            req_can = requests.post("https://track.delhivery.com/api/p/edit", headers=headers, data=cancel_body)
-                        if order.shipments[0].courier.id in (5,13):  #Cancel on Xpressbees
-                            cancel_body = json.dumps({"AWBNumber": order.shipments[0].awb, "XBkey": order.shipments[0].courier.api_key, "RTOReason": "Cancelled by seller"})
-                            headers = {"Authorization": "Basic " + order.shipments[0].courier.api_key,
-                                        "Content-Type": "application/json"}
-                            req_can = requests.post("http://xbclientapi.xbees.in/POSTShipmentService.svc/RTONotifyShipment", headers=headers, data=cancel_body)
+                    cancel_order_on_couriers(order)
                     db.session.query(OrderStatus).filter(OrderStatus.order_id == int(order_id)).delete()
-                    if order.client_channel and order.client_channel.channel_id == 6 and order.order_id_channel_unique: #cancel on magento
-                        cancel_header = {'Content-Type': 'application/json',
-                                      'Authorization': 'Bearer ' + order.client_channel.api_key}
-                        cancel_data = {
-                                      "entity": {
-                                        "entity_id": int(order.order_id_channel_unique),
-                                        "status": "canceled"
-                                      }
-                                    }
-                        cancel_url = order.client_channel.shop_url + "/rest/V1/orders/%s/cancel"%str(order.order_id_channel_unique)
-                        req_ful = requests.post(cancel_url, data=json.dumps(cancel_data),
-                                                headers=cancel_header, verify=False)
-
+                    cancel_order_on_channels(order)
                     if order.orders_invoice: #cancel invoice
                         for invoice_obj in order.orders_invoice:
                             invoice_obj.cancelled = True

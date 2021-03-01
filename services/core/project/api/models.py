@@ -329,7 +329,7 @@ class OrdersExtraDetails(db.Model):
 class ThirdwatchData(db.Model):
     __tablename__ = "thirdwatch_data"
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    order_id = db.Column(db.Integer, db.ForeignKey('orders.id'), unique=True, index=True)
+    order_id = db.Column(db.Integer, db.ForeignKey('orders.id'), unique=True)
     order = db.relationship("Orders", backref=db.backref("thirdwatch_data", uselist=True))
     flag = db.Column(db.String, nullable=True)
     order_timestamp = db.Column(db.String, nullable=True)
@@ -402,6 +402,9 @@ class NDRShipments(db.Model):
     reason = db.relationship("NDRReasons", backref=db.backref("ndr_shipments"))
     current_status = db.Column(db.String, nullable=True)
     ndr_remark = db.Column(db.String, nullable=True)
+    updated_add = db.Column(db.String, nullable=True)
+    updated_phone = db.Column(db.String, nullable=True)
+    defer_dd = db.Column(db.DateTime, default=datetime.now)
     request_time = db.Column(db.DateTime, default=datetime.now)
     date_created = db.Column(db.DateTime, default=datetime.now)
     date_updated = db.Column(db.DateTime, onupdate=datetime.now)

@@ -170,6 +170,9 @@ def verification_passthru(type):
             elif type=='delivery':
                 cod_ver.del_verified = cod_verified
             elif type == 'ndr':
+                ndr_obj = db.session.query(NDRShipments).filter(NDRShipments.order_id==cod_ver.order_id).order_by(NDRShipments.date_created.desc()).first()
+                if ndr_obj:
+                    ndr_obj.current_status = "reattempt" if verified_via=='text' or cod_verified==False else "cancelled"
                 if verified_via=='text':
                     cod_ver.ndr_verified = False
                 else:

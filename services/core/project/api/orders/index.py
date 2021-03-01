@@ -22,7 +22,7 @@ from sqlalchemy.dialects.postgresql import insert
 from project import db
 from project.api.models import NDRReasons, MultiVendor, NDRShipments, Orders, ClientPickups, MasterCouriers, \
     PickupPoints, Shipments, Products, ShippingAddress, OPAssociation, OrdersPayments, ClientMapping, WarehouseMapping, \
-    Manifests, OrderStatus, IVRHistory, OrderPickups, BillingAddress, MasterChannels, MasterProducts
+    Manifests, OrderStatus, IVRHistory, OrderPickups, BillingAddress, MasterChannels, MasterProducts, NDRVerification
 from project.api.queries import select_orders_list_query, available_warehouse_product_quantity, \
     fetch_warehouse_to_pick_from, select_pickups_list_query, get_selected_product_details
 from project.api.utils import authenticate_restful, fill_shiplabel_data_thermal, \
@@ -114,7 +114,7 @@ class OrderList(Resource):
             elif type == "return":
                 query_to_run = query_to_run.replace("__TAB_STATUS_FILTER__", "AND (aa.status_type='RT' or (aa.status_type='DL' and aa.status='RTO'))")
             elif type == "ndr":
-                query_to_run = query_to_run.replace("__TAB_STATUS_FILTER__", "AND (rr.id is not null AND aa.status='PENDING' AND aa.status_type!='RT')")
+                query_to_run = query_to_run.replace("__TAB_STATUS_FILTER__", "AND (rr.ndr_id is not null AND aa.status='PENDING' AND aa.status_type!='RT')")
             elif type == 'all':
                 pass
             else:
@@ -194,9 +194,17 @@ class OrderList(Resource):
                     resp_obj['ndr_verification'] = {"confirmed": order[31], "via": order[32]}
 
                 if type=='ndr':
-                    resp_obj['ndr_reason'] = order[36]
+                    resp_obj['ndr_reason'] = order[36][0]
+                    resp_obj['attempt_count'] = len(order[35])
+                    attempt_list = list()
+                    for idx, reason_id in enumerate(order[35]):
+                        att_obj = {"attempt_date": order[37][idx].strftime("%d %b %Y, %H:%M:%S"),
+                                   "reason":  order[36][idx]}
+                        attempt_list.append(att_obj)
+                    resp_obj['attempt_list'] = attempt_list
+                    resp_obj['ndr_id'] = order[46]
                     ndr_action = None
-                    if order[35] in (1,3,9,11) and order[30]:
+                    if order[35][0] in (1,3,9,11) and order[30]:
                         if order[31] == True and order[32] in ('call','text'):
                             ndr_action = "Cancellation confirmed by customer"
                         elif order[31] == True and order[32] == 'manual':
@@ -205,7 +213,7 @@ class OrderList(Resource):
                             ndr_action = "Re-attempt requested by seller"
                         elif order[31] == False and order[32] in ('call','text'):
                             ndr_action = "Re-attempt requested by customer"
-                        elif order[3]=='PENDING':
+                        elif order[3] == 'PENDING':
                             ndr_action = 'take_action'
 
                     resp_obj['ndr_action'] = ndr_action
@@ -691,6 +699,63 @@ def download_shiplabels(resp):
         'status': 'success',
         'url': shiplabel_url,
         "failed_ids": failed_ids
+    }), 200
+
+
+@orders_blueprint.route('/orders/v1/updateNdr', methods=['POST'])
+@authenticate_restful
+def update_ndr(resp):
+    data = json.loads(request.data)
+    auth_data = resp.get('data')
+    if not auth_data:
+        return jsonify({"success": False, "msg": "Auth Failed"}), 400
+
+    if auth_data['user_group'] not in ('super-admin','client','multi-vendor'):
+        return jsonify({"success": False, "msg": "Invalid User"}), 400
+
+    all_vendors = None
+    if auth_data['user_group'] == 'multi-vendor':
+        all_vendors = db.session.query(MultiVendor).filter(MultiVendor.client_prefix == auth_data.get('client_prefix')).first()
+        all_vendors = all_vendors.vendor_list
+
+    ndr_id = data['ndr_id']
+    ndr_obj = db.session.query(NDRShipments).join(Orders, Orders.id==NDRShipments.order_id).filter(NDRShipments.id==int(ndr_id))
+
+    if auth_data['user_group'] == 'client':
+        ndr_obj = ndr_obj.filter(Orders.client_prefix==auth_data.get('client_prefix'))
+    elif all_vendors:
+        ndr_obj = ndr_obj.filter(Orders.client_prefix.in_(all_vendors))
+
+    ndr_obj = ndr_obj.first()
+
+    if not ndr_obj:
+        return jsonify({"success": False, "msg": "NDR not found"}), 400
+
+    defer_dd = data.get('defer_dd')
+    updated_add = data.get('updated_add')
+    updated_phone = data.get('updated_phone')
+    reattempt = data.get('reattempt')
+
+    if updated_phone:
+        updated_phone = updated_phone.replace(" ", "")
+        updated_phone = "0" + updated_phone[-10:]
+
+    ndr_obj.defer_dd = defer_dd
+    ndr_obj.updated_add = updated_add
+    ndr_obj.updated_phone = updated_phone
+    ndr_obj.current_status = "reattempt" if reattempt else "cancelled"
+
+    ndr_ver = db.session.query(NDRVerification).filter(NDRVerification.order_id==ndr_obj.order_id).first()
+    if ndr_ver:
+        ndr_ver.ndr_verified = False if reattempt else True
+        ndr_ver.verified_via = 'manual'
+        ndr_ver.verification_time = datetime.utcnow() + timedelta(hours=5.5)
+
+    db.session.commit()
+
+    return jsonify({
+        'status': 'success',
+        'msg': "Updated",
     }), 200
 
 

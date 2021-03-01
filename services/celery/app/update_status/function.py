@@ -737,15 +737,13 @@ def track_xpressbees_orders(courier, cur):
                 status_update_tuple = (new_status, status_type, status_detail, orders_dict[current_awb][0])
                 cur.execute(order_status_update_query, status_update_tuple)
 
-                if ret_order['ShipmentSummary'][0]['StatusCode'] == 'UD' \
-                        and ret_order['ShipmentSummary'][0]['Status'] in \
-                        ("Customer Refused To Accept", "Customer Refused to Pay COD Amount",
-                         "Add Incomplete/Incorrect & Mobile Not Reachable",
-                         "Customer Not Available & Mobile Not Reachable"):
+                if ret_order['ShipmentSummary'][0]['StatusCode'] == 'UD':
                     try:  # NDR check text
                         ndr_reason = None
-                        if ret_order['ShipmentSummary'][0]['Status'] in Xpressbees_ndr_reasons:
-                            ndr_reason = Xpressbees_ndr_reasons[ret_order['ShipmentSummary'][0]['Status']]
+                        if ret_order['ShipmentSummary'][0]['Status'].lower() in Xpressbees_ndr_reasons:
+                            ndr_reason = Xpressbees_ndr_reasons[ret_order['ShipmentSummary'][0]['Status'].lower()]
+                        else:
+                            ndr_reason = 14
                         sms_to_key, sms_body_key, customer_phone, sms_body_key_data = verification_text(
                             orders_dict[current_awb], exotel_idx, cur, ndr=True,
                             ndr_reason=ndr_reason)
@@ -1308,14 +1306,16 @@ def verification_text(current_order, exotel_idx, cur, ndr=None, ndr_reason=None)
             "INSERT INTO delivery_check (order_id, verification_link, date_created) VALUES (%s,%s,%s);",
             insert_cod_ver_tuple)
     else:
-        cur.execute("SELECT * from ndr_shipments WHERE shipment_id=%s" % str(current_order[10]))
+        date_today = (datetime.utcnow()+timedelta(hours=5.5)).strftime('%Y-%m-%d')
+        cur.execute("SELECT * from ndr_shipments WHERE shipment_id=%s and date_created::date='%s';" % (str(current_order[10]), date_today))
         if not cur.fetchone():
             ndr_ship_tuple = (
                 current_order[0], current_order[10], ndr_reason, "required", datetime.utcnow() + timedelta(hours=5.5))
             cur.execute(
                 "INSERT INTO ndr_shipments (order_id, shipment_id, reason_id, current_status, date_created) VALUES (%s,%s,%s,%s,%s);",
                 ndr_ship_tuple)
-            if ndr_reason in (1, 3, 9, 11):
+            cur.execute("SELECT * FROM ndr_verification where order_id=%s;"%str(current_order[0]))
+            if not cur.fetchone():
                 cur.execute(
                     "INSERT INTO ndr_verification (order_id, verification_link, date_created) VALUES (%s,%s,%s);",
                     insert_cod_ver_tuple)
@@ -1411,11 +1411,15 @@ xpressbees_status_mapping = {"DRC": ("READY TO SHIP", "UD", ""),
                              "UD": ("PENDING", "UD", "")
                              }
 
-Xpressbees_ndr_reasons = {"Customer Refused To Accept": 3,
-                          "Customer Refused to Pay COD Amount": 9,
-                          "Add Incomplete/Incorrect & Mobile Not Reachable": 1,
-                          "Customer Not Available & Mobile Not Reachable": 1,
-                          "ODA (Out Of Delivery Area)": 8}
+Xpressbees_ndr_reasons = {"customer refused to accept": 3,
+                          "consignee refused to accept": 3,
+                          "customer refused to pay cod amount": 9,
+                          "add incomplete/incorrect & mobile not reachable": 1,
+                          "add incomplete/incorrect": 2,
+                          "customer not available & mobile not reachable": 1,
+                          "customer not available": 1,
+                          "consignee not available": 1,
+                          "oda (out of delivery area)": 8}
 
 
 bluedart_status_mapping = {'S': {'002':('DISPATCHED','UD','SHIPMENT OUTSCAN',),

@@ -580,8 +580,9 @@ def create_invoice_blank_page(canvas):
     canvas.setFont('Helvetica-Bold', 9)
     canvas.drawString(-0.75 * inch, 6.5 * inch, "Product(s)")
     canvas.drawString(2.00 * inch, 6.5 * inch, "Qty")
-    canvas.drawString(2.40 * inch, 6.5 * inch, "Taxable value")
-    canvas.drawString(3.80 * inch, 6.5 * inch, "Tax Description")
+    canvas.drawString(2.40 * inch, 6.5 * inch, "MRP")
+    canvas.drawString(3.00 * inch, 6.5 * inch, "Taxable value")
+    canvas.drawString(4.10 * inch, 6.5 * inch, "Tax Description")
     canvas.drawString(6.20 * inch, 6.5 * inch, "Total")
     canvas.drawString(-0.75 * inch, 8.8 * inch, "SOLD BY:")
     canvas.drawString(-0.75 * inch, 7.1 * inch, "GSTIN:")
@@ -599,8 +600,8 @@ def create_invoice_blank_page(canvas):
 
 def fill_invoice_data(c, order, client_name):
     c.setFont('Helvetica', 20)
-    if client_name and client_name.client_name:
-        c.drawString(-0.80 * inch,10.10 * inch, client_name.client_name)
+    if client_name:
+        c.drawString(-0.80 * inch,10.10 * inch, client_name.legal_name if client_name.legal_name else str(client_name.client_name))
 
     c.setFont('Helvetica', 8)
     order_date = order.order_date.strftime("%d/%m/%Y")
@@ -712,7 +713,8 @@ def fill_invoice_data(c, order, client_name):
                 taxable_val = prod.amount
 
                 taxable_val = taxable_val / (1 + total_tax)
-                c.drawString(2.42 * inch, (y_axis + 0.08) * inch, str(round(taxable_val, 2)))
+                c.drawString(3.02 * inch, (y_axis + 0.08) * inch, str(round(taxable_val, 2)))
+                c.drawString(2.42 * inch, (y_axis + 0.08) * inch, str(round(prod.master_product.price, 2)) if prod.master_product.price else "")
 
                 if order.delivery_address.state and order.pickup_data.pickup.state and "punjab" in order.delivery_address.state.lower() and "punjab" in order.pickup_data.pickup.state.lower():
                     des_str = "SGST(9.0%): _a_ | CGST(9.0%): _b_".replace('_a_', str(round(taxable_val*0.09, 2))).replace('_b_',str(round(taxable_val*0.09, 2)))
@@ -721,7 +723,7 @@ def fill_invoice_data(c, order, client_name):
 
                 des_str = des_str.rstrip('| ')
 
-                c.drawString(3.82 * inch, (y_axis + 0.08) * inch, des_str)
+                c.drawString(4.12 * inch, (y_axis + 0.08) * inch, des_str)
 
                 c.drawString(6.22 * inch, (y_axis + 0.08) * inch, str(round(prod.amount, 2)))
 
@@ -731,7 +733,8 @@ def fill_invoice_data(c, order, client_name):
                 taxable_val = prod.amount
 
                 taxable_val = taxable_val / (1 + total_tax)
-                c.drawString(2.42 * inch, (y_axis + 0.08) * inch, str(round(taxable_val, 2)))
+                c.drawString(3.02 * inch, (y_axis + 0.08) * inch, str(round(taxable_val, 2)))
+                c.drawString(2.42 * inch, (y_axis + 0.08) * inch, str(round(prod.master_product.price, 2)) if prod.master_product.price else "")
 
                 if order.delivery_address.state and order.pickup_data.pickup.state and "delhi" in order.delivery_address.state.lower() and "delhi" in order.pickup_data.pickup.state.lower():
                     des_str = "SGST(9.0%): _a_ | CGST(9.0%): _b_".replace('_a_', str(round(taxable_val*0.09, 2))).replace('_b_',str(round(taxable_val*0.09, 2)))
@@ -740,7 +743,7 @@ def fill_invoice_data(c, order, client_name):
 
                 des_str = des_str.rstrip('| ')
 
-                c.drawString(3.82 * inch, (y_axis + 0.08) * inch, des_str)
+                c.drawString(4.12 * inch, (y_axis + 0.08) * inch, des_str)
 
                 c.drawString(6.22 * inch, (y_axis + 0.08) * inch, str(round(prod.amount, 2)))
 
@@ -753,20 +756,22 @@ def fill_invoice_data(c, order, client_name):
                 taxable_val = prod.amount
 
                 taxable_val = taxable_val/(1+total_tax)
-                c.drawString(2.42 * inch, (y_axis + 0.08) * inch, str(round(taxable_val, 2)))
+                c.drawString(3.02 * inch, (y_axis + 0.08) * inch, str(round(taxable_val, 2)))
+                c.drawString(2.42 * inch, (y_axis + 0.08) * inch, str(round(prod.master_product.price, 2)) if prod.master_product.price else "")
 
                 for tax_lines in prod.tax_lines:
                     des_str += tax_lines['title'] + "(_a_%): _b_".replace('_a_', str(round(tax_lines['rate']*100, 1))).replace('_b_', str(round(tax_lines['rate']*taxable_val, 2))) + " | "
 
                 des_str = des_str.rstrip('| ')
 
-                c.drawString(3.82 * inch, (y_axis + 0.08) * inch, des_str)
+                c.drawString(4.12 * inch, (y_axis + 0.08) * inch, des_str)
 
                 c.drawString(6.22 * inch, (y_axis + 0.08) * inch, str(round(prod.amount, 2)))
 
             else:
                 taxable_val = prod.amount
-                c.drawString(2.42 * inch, (y_axis + 0.08) * inch, str(round(taxable_val, 2)))
+                c.drawString(3.02 * inch, (y_axis + 0.08) * inch, str(round(taxable_val, 2)))
+                c.drawString(2.42 * inch, (y_axis + 0.08) * inch, str(round(prod.master_product.price, 2)) if prod.master_product.price else "")
                 c.drawString(6.22 * inch, (y_axis + 0.08) * inch, str(round(prod.amount, 2)))
 
             prod_total_value += prod.amount

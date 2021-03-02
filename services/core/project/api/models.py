@@ -985,6 +985,7 @@ class ClientMapping(db.Model):
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     client_prefix = db.Column(db.String, nullable=False)
     client_name = db.Column(db.String, nullable=False)
+    legal_name = db.Column(db.String, nullable=True)
     client_logo = db.Column(db.String, nullable=True)
     theme_color = db.Column(db.String, nullable=True)
     api_token = db.Column(db.String, nullable=True)

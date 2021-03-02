@@ -85,7 +85,11 @@ def filter_query(filters, query_to_run, auth_data):
             flag_tuple = "('" + filters['thirdwatch_flag'][0] + "')"
         else:
             flag_tuple = str(tuple(filters['thirdwatch_flag']))
-        query_to_run = query_to_run.replace("__TYPE_FILTER__", "AND lower(uu.flag) in %s" % flag_tuple)
+        query_to_run = query_to_run.replace("__THIRDWATCH_FLAG_FILTER__", "AND lower(uu.flag) in %s" % flag_tuple)
+
+    if 'thirdwatch_tags' in filters:
+        flag_tuple = str(filters['thirdwatch_tags'])
+        query_to_run = query_to_run.replace("__THIRDWATCH_TAGS_FILTER__", "AND uu.tags @> ARRAY%s::varchar[]" % flag_tuple)
 
     if 'pickup_time' in filters:
         filter_date_start = filters['pickup_time'][0][0:19].replace('T', ' ')

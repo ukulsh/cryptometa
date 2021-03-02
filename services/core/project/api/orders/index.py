@@ -203,8 +203,8 @@ class OrderList(Resource):
                         attempt_list.append(att_obj)
                     resp_obj['attempt_list'] = attempt_list
                     resp_obj['ndr_id'] = order[46]
-                    ndr_action = None
-                    if order[35][0] in (1,3,9,11) and order[30]:
+                    ndr_action = 'take_action'
+                    if order[30]:
                         if order[31] == True and order[32] in ('call','text'):
                             ndr_action = "Cancellation confirmed by customer"
                         elif order[31] == True and order[32] == 'manual':
@@ -213,8 +213,6 @@ class OrderList(Resource):
                             ndr_action = "Re-attempt requested by seller"
                         elif order[31] == False and order[32] in ('call','text'):
                             ndr_action = "Re-attempt requested by customer"
-                        elif order[3] == 'PENDING':
-                            ndr_action = 'take_action'
 
                     resp_obj['ndr_action'] = ndr_action
 
@@ -236,7 +234,7 @@ class OrderList(Resource):
                 if order[3] in ('NEW','CANCELED','PENDING PAYMENT','READY TO SHIP','PICKUP REQUESTED','NOT PICKED') or not order[5]:
                     resp_obj['status_change'] = True
                 if thirdwatch:
-                    resp_obj['thirdwatch'] = {"score": order[41], "flag":order[40], "reasons": order[42]}
+                    resp_obj['thirdwatch'] = {"score": order[41], "flag":order[40], "reasons": order[42], "tags":order[47]}
                 response_data.append(resp_obj)
 
             response['data'] = response_data

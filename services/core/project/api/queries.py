@@ -336,23 +336,11 @@ product_count_query = """select product_id, status, sum(quantity) from
                         __WAREHOUSE_FILTER__ ) xx
                         group by product_id, status"""
 
-available_warehouse_product_quantity = """select pp.*, qq.pincode from
-                                        (select ll.warehouse_prefix, ll.product_id, mm.sku, approved_quantity-COALESCE(xx.unavailable, 0) as available_count, 
-                                         null as courier_id, mm.weight from products_quantity ll left join
-                                        (select dd.warehouse_prefix, master_product_id, sum(quantity) as unavailable from op_association aa
-                                        left join orders bb on aa.order_id=bb.id
-                                        left join client_pickups cc on bb.pickup_data_id=cc.id
-                                        left join pickup_points dd on cc.pickup_id=dd.id
-                                        where bb.status in
-                                        ('DELIVERED','DISPATCHED','IN TRANSIT','ON HOLD','PENDING','NEW','NOT PICKED','PICKUP REQUESTED','READY TO SHIP')
-                                        and aa.master_product_id in 
-                                        (select id from master_products where sku in __SKU_STR__ and client_prefix='__CLIENT_PREFIX__') 
-                                         group by dd.warehouse_prefix, master_product_id) as xx
-                                        on ll.product_id=xx.master_product_id and ll.warehouse_prefix=xx.warehouse_prefix
-                                        left join master_products mm on ll.product_id=mm.id
-                                        where ll.product_id in 
-                                        (select id from master_products where sku in __SKU_STR__ and client_prefix='__CLIENT_PREFIX__')) pp
-                                        left join pickup_points qq on pp.warehouse_prefix=qq.warehouse_prefix"""
+available_warehouse_product_quantity = """select aa.warehouse_prefix, aa.product_id, bb.sku, aa.available_quantity as available_count,  null as courier_id, 
+                                         bb.weight, cc.pincode from products_quantity aa 
+                                         left join master_products bb on aa.product_id=bb.id 
+                                         left join pickup_points cc on aa.warehouse_prefix=cc.warehouse_prefix
+                                         where bb.sku in __SKU_STR__ and client_prefix='__CLIENT_PREFIX__';"""
 
 fetch_warehouse_to_pick_from = """with temp_table (warehouse, pincode) as (VALUES __WAREHOUSE_PINCODES__)
                                     select warehouse, tat, zone_value from
@@ -438,7 +426,7 @@ select_orders_list_query = """select distinct on (aa.order_date, aa.id) aa.chann
                               bb.weight, bb.dimensions, bb.volumetric_weight,bb.remark, aa.customer_name, aa.customer_phone, aa.customer_email, dd.address_one, 
                               dd.address_two, dd.city, dd.state, dd.country, dd.pincode, ee.delivered_time, ff.pickup_time, gg.payment_mode, gg.amount, ii.warehouse_prefix,
                              mm.id,  mm.cod_verified, mm.verified_via, nn.id,  nn.ndr_verified, nn.verified_via, vv.logo_url, qq.manifest_time, rr.reason_id, 
-                             rr.reason, rr.ndr_date, aa.client_prefix, bb.pdd, uu.flag, uu.score, uu.reasons, gg.shipping_charges, ww.invoice_no, ww.date_created, rr.ndr_id
+                             rr.reason, rr.ndr_date, aa.client_prefix, bb.pdd, uu.flag, uu.score, uu.reasons, gg.shipping_charges, ww.invoice_no, ww.date_created, rr.ndr_id, uu.tags
                              from orders aa
                              left join shipments bb
                              on aa.id=bb.order_id
@@ -458,13 +446,14 @@ select_orders_list_query = """select distinct on (aa.order_date, aa.id) aa.chann
                              left join thirdwatch_data uu on uu.order_id=aa.id
                              left join master_channels vv on vv.id=aa.master_channel_id
                              left join orders_invoice ww on ww.order_id=aa.id
-                             left join (select ss.order_id, max(ss.id) as ndr_id, array_agg(tt.id order by tt.id desc) as reason_id, array_agg(tt.reason order by tt.id desc) as reason, array_agg(ss.date_created order by tt.id desc) as ndr_date from ndr_shipments ss left join ndr_reasons tt on ss.reason_id=tt.id 
+                             left join (select ss.order_id, max(ss.id) as ndr_id, array_agg(tt.id order by ss.id desc) as reason_id, array_agg(tt.reason order by ss.id desc) as reason, array_agg(ss.date_created order by ss.id desc) as ndr_date from ndr_shipments ss left join ndr_reasons tt on ss.reason_id=tt.id 
                              group by order_id) rr
                              on aa.id=rr.order_id
-                             __THIRDWATCH_SCORE_FILTER__
-                             __THIRDWATCH_FLAG_FILTER__
                              __SEARCH_KEY_FILTER__
                              __SEARCH_KEY_FILTER_ON_CUSTOMER__
+                             __THIRDWATCH_SCORE_FILTER__
+                             __THIRDWATCH_FLAG_FILTER__
+                             __THIRDWATCH_TAGS_FILTER__
                              __ORDER_DATE_FILTER__
                              __MANIFEST_DATE_FILTER__
                              __PICKUP_TIME_FILTER__

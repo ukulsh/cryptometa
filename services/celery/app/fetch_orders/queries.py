@@ -71,24 +71,11 @@ get_orders_to_assign_pickups = """select aa.id, aa.client_prefix, bb.pincode, xx
                                 and aa.date_created>%s"""
 
 
-available_warehouse_product_quantity = """select pp.*, qq.pincode from
-                                        (select ll.warehouse_prefix, ll.product_id, mm.sku, approved_quantity-COALESCE(xx.unavailable, 0) as available_count, 
-                                         null as courier_id, mm.weight from products_quantity ll left join
-                                        (select dd.warehouse_prefix, master_product_id, sum(quantity) as unavailable from op_association aa
-                                        left join orders bb on aa.order_id=bb.id
-                                        left join client_pickups cc on bb.pickup_data_id=cc.id
-                                        left join pickup_points dd on cc.pickup_id=dd.id
-                                        where bb.status in
-                                        ('DELIVERED','DISPATCHED','IN TRANSIT','ON HOLD','PENDING','NEW','NOT PICKED','PICKUP REQUESTED','READY TO SHIP')
-                                        and cc.active=true
-                                        and aa.master_product_id in 
-                                        (select id from master_products where sku in __SKU_STR__ and client_prefix='__CLIENT_PREFIX__') 
-                                         group by dd.warehouse_prefix, master_product_id) as xx
-                                        on ll.product_id=xx.master_product_id and ll.warehouse_prefix=xx.warehouse_prefix
-                                        left join master_products mm on ll.product_id=mm.id
-                                        where ll.product_id in 
-                                        (select id from master_products where sku in __SKU_STR__ and client_prefix='__CLIENT_PREFIX__')) pp
-                                        left join pickup_points qq on pp.warehouse_prefix=qq.warehouse_prefix"""
+available_warehouse_product_quantity = """select aa.warehouse_prefix, aa.product_id, bb.sku, aa.available_quantity as available_count,  null as courier_id, 
+                                         bb.weight, cc.pincode from products_quantity aa 
+                                         left join master_products bb on aa.product_id=bb.id 
+                                         left join pickup_points cc on aa.warehouse_prefix=cc.warehouse_prefix
+                                         where bb.sku in __SKU_STR__ and client_prefix='__CLIENT_PREFIX__';"""
 
 fetch_warehouse_to_pick_from = """with temp_table (warehouse, pincode) as (VALUES __WAREHOUSE_PINCODES__)
                                     select warehouse, tat, zone_value from

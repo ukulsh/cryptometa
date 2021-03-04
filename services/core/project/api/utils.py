@@ -598,6 +598,60 @@ def create_invoice_blank_page(canvas):
     canvas.setLineWidth(0.8)
 
 
+def create_wro_label_blank_page(canvas):
+    canvas.translate(inch, inch)
+    canvas.drawImage("wareiq.jpg", -0.3 * inch, 7.8 * inch, width=200, height=200)
+    canvas.rect(-0.6*inch, -0.6*inch, 7.45*inch, 10.95*inch, stroke=1, fill=0)
+
+
+def fill_wro_label_data(c, wro_obj, page_no, total_pages):
+    c.setFont('Helvetica-Bold', 13)
+    wro_id = str(wro_obj[0].id)
+    awb_barcode = code128.Code128(wro_id, barHeight=0.8 * inch, barWidth=0.8 * mm)
+    awb_barcode.drawOn(c, 3.8 * inch, 8.85 * inch)
+    c.drawString(3.5 * inch, 8.55 * inch, "Warehouse Receiving Order #"+wro_id)
+
+    wro_page = wro_id + " " + str(page_no)
+    awb_barcode = code128.Code128(wro_page, barHeight=0.8 * inch, barWidth=0.7 * mm)
+    awb_barcode.drawOn(c, 1.75 * inch, 5.5 * inch)
+    c.drawString(2.9 * inch, 5.3 * inch, wro_page)
+
+    c.setFont('Helvetica-Bold', 10)
+    c.drawString(0 * inch, 8.05 * inch, "Created Date:")
+    c.drawString(0 * inch, 7.85 * inch, "Created By:")
+    c.drawString(0 * inch, 7.65 * inch, "Estimated Arrival:")
+
+    c.drawString(3.5 * inch, 8.05 * inch, "Destination:")
+    c.drawString(3.5 * inch, 7.00 * inch, "Phone:")
+    c.drawString(3.5 * inch, 6.80 * inch, "Email:")
+
+    c.drawString(0 * inch, 6.80 * inch, "Box "+str(page_no)+" of "+str(total_pages))
+
+    c.setFont('Helvetica', 10)
+    full_address = wro_obj[1].address
+    if wro_obj[1].address_two:
+        full_address += " " + wro_obj[1].address_two
+    full_address = split_string(full_address, 35)
+    y_axis = 7.90
+    for addr in full_address:
+        c.drawString(3.5 * inch, y_axis * inch, addr)
+        y_axis -= 0.15
+
+    try:
+        c.drawString(3.5 * inch, y_axis * inch, str(wro_obj[1].city) + ", " + str(wro_obj[1].state))
+        c.drawString(3.5 * inch, (y_axis-0.15) * inch,
+                     str(wro_obj[1].country) + ", PIN: " + str(wro_obj[1].pincode))
+    except Exception:
+        pass
+
+    c.drawString(4.0 * inch, 7.00 * inch, str(wro_obj[1].phone))
+    c.drawString(4.0 * inch, 6.80 * inch, "support@wareiq.com")
+
+    c.drawString(1.3 * inch, 8.05 * inch, wro_obj[0].date_created.strftime('%Y-%m-%d') if wro_obj[0].date_created else "")
+    c.drawString(1.3 * inch, 7.85 * inch, wro_obj[0].created_by if wro_obj[0].created_by else "")
+    c.drawString(1.3 * inch, 7.65 * inch, wro_obj[0].edd.strftime('%Y-%m-%d') if wro_obj[0].edd else "")
+
+
 def fill_invoice_data(c, order, client_name):
     c.setFont('Helvetica', 20)
     if client_name:

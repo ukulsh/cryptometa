@@ -2,19 +2,22 @@ import csv
 import io
 import json
 import math
-import re
+import re, boto3, os
 from datetime import datetime, timedelta
 import pandas as pd
 from flask import Blueprint, request, jsonify, make_response
 from flask_restful import Api, Resource
 from psycopg2.extras import RealDictCursor
 from sqlalchemy import func, or_
+from reportlab.lib.pagesizes import landscape, A4
+from reportlab.lib.units import inch
+from reportlab.pdfgen import canvas
 from project import db
 from project.api.models import Products, ProductQuantity, MultiVendor, InventoryUpdate, MasterProducts, MasterChannels, \
     ProductsCombos, WarehouseRO, ProductsWRO, PickupPoints, OPAssociation
 from project.api.queries import select_product_list_query, select_product_list_channel_query, select_combo_list_query, \
     select_wro_list_query, select_inventory_history_query
-from project.api.utils import authenticate_restful
+from project.api.utils import authenticate_restful, fill_wro_label_data, create_wro_label_blank_page
 from project.api.utilities.db_utils import DbConnection
 
 products_blueprint = Blueprint('products', __name__)
@@ -38,6 +41,11 @@ BULKMAP_SKU_HEADERS = ["ChannelName", "ChannelProdID", "ChannelSKU", "MasterSKU"
 BULK_COMBO_HEADERS = ["ParentSKU", "ChildSKU", "Quantity"]
 INV_INBOUND_HEADERS = ["SKU", "Quantity", "Shelf"]
 INV_RECONCILIATION_HEADERS = ["SKU", "Quantity", "Type", "Remark"]
+
+session = boto3.Session(
+    aws_access_key_id='AKIAWRT2R3KC3YZUBFXY',
+    aws_secret_access_key='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',
+)
 
 
 @products_blueprint.route('/products/v1/details', methods=['GET'])
@@ -1907,21 +1915,33 @@ class WROList(Resource):
 @products_blueprint.route('/products/v1/wro_labels', methods=['GET'])
 @authenticate_restful
 def download_wro_labels(resp):
-    auth_data = resp.get('data')
     wro_id = request.args.get('wro_id', None)
     if not wro_id:
         return jsonify({"success": False, "error": "Invalid WRO id"}), 400
 
-    wro_obj = db.session.query(WarehouseRO).filter(WarehouseRO.id==int(wro_id)).first()
+    wro_obj = db.session.query(WarehouseRO, PickupPoints).join(PickupPoints, PickupPoints.warehouse_prefix==WarehouseRO.warehouse_prefix).filter(WarehouseRO.id==int(wro_id)).first()
     if not wro_obj:
         return jsonify({"success": False, "error": "Invalid WRO id"}), 400
 
-    file_pref = auth_data['client_prefix'] if auth_data['client_prefix'] else auth_data['warehouse_prefix']
-    file_name = "packlist_" + str(file_pref) + "_" + str(datetime.now().strftime("%d_%b_%Y_%H_%M_%S")) + ".pdf"
+    file_name = "wro_" +str(wro_id)+ ".pdf"
+    c = canvas.Canvas(file_name, pagesize=A4)
+
+    itr_range = wro_obj[0].no_of_boxes if wro_obj[0].no_of_boxes else 1
+    for page_no in range(1, itr_range+1):
+        create_wro_label_blank_page(c)
+        fill_wro_label_data(c, wro_obj, page_no, itr_range)
+        c.showPage()
+
+    c.save()
+    s3 = session.resource('s3')
+    bucket = s3.Bucket("wareiqshiplabels")
+    bucket.upload_file(file_name, file_name, ExtraArgs={'ACL': 'public-read'})
+    shiplabel_url = "https://wareiqshiplabels.s3.us-east-2.amazonaws.com/" + file_name
+    os.remove(file_name)
 
     return jsonify({
         'status': 'success',
-        'url': "https://wareiqshiplabels.s3.us-east-2.amazonaws.com/shiplabels_87STORE_02_Oct_2020_13_41_35.pdf",
+        'url': shiplabel_url,
         "failed_ids": []
     }), 200
 

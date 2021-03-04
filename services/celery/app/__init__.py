@@ -72,6 +72,11 @@ app.config['CELERYBEAT_SCHEDULE'] = {
                     'schedule': crontab(minute='*/60'),
                     'options': {'queue': 'sync_all_inventory'}
                 },
+    'run-ndr-reattempt': {
+                        'task': 'ndr_push_reattempts',
+                        'schedule': crontab(hour=18, minute=00),
+                        'options': {'queue': 'update_status'}
+                    },
 }
 
 app.config['CELERY_TIMEZONE'] = 'UTC'
@@ -89,6 +94,12 @@ def cod_remittance_entry():
 def cod_remittance_queue():
     queue_cod_remittance_razorpay()
     return 'successfully completed cod remittance queue'
+
+
+@celery_app.task(name='ndr_push_reattempts')
+def ndr_push_reattempts():
+    ndr_push_reattempts_util()
+    return 'successfully completed ndr_push_reattempts'
 
 
 @celery_app.task(name='calculate_costs')

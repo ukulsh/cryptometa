@@ -980,3 +980,71 @@ def update_available_quantity_on_channel():
                 "sourceItems": source_items}
             r = requests.post(magento_url, headers=headers, data=json.dumps(body))
 
+
+def ndr_push_reattempts_util():
+    cur = conn.cursor()
+    time_after = (datetime.utcnow() - timedelta(days=2, hours=5.5)).strftime('%Y-%m-%d')
+    cur.execute("""select bb.awb, cc.courier_name, cc.api_url, cc.api_key, cc.api_password, aa.defer_dd, aa.updated_add, aa.updated_phone, ee.pincode from ndr_shipments aa
+                    left join shipments bb on aa.shipment_id=bb.id
+                    left join master_couriers cc on bb.courier_id=cc.id
+                    left join orders dd on dd.id=aa.order_id
+                    left join shipping_address ee on ee.id=dd.delivery_address_id
+                    where aa.date_created>%s
+                    and dd.status='PENDING'
+                    and aa.current_status='reattempt'""", (time_after,))
+
+    all_orders = cur.fetchall()
+    for order in all_orders:
+        try:
+            if order[1].startswith('Delhivery'):  # Delhivery
+                delhivery_data = list()
+                if order[5]:
+                    delhivery_data.append({
+                                            "waybill": order[0],
+                                            "act": "DEFER_DLV",
+                                            "action_data": {
+                                                "deferred_date": order[5].strftime('%Y-%m-%d')
+                                            }
+                                        })
+                if order[6] or order[7]:
+                    app_obj = { "waybill": order[0],
+                                "act": "EDIT_DETAILS",
+                                "action_data": {}}
+                    if order[6]:
+                        app_obj['action_data']['add']=order[6]
+                    if order[7]:
+                        app_obj['action_data']['phone']=order[7]
+
+                    delhivery_data.append(app_obj)
+
+                delhivery_data.append({ "waybill": order[0],
+                                        "act": "RE-ATTEMPT"})
+
+                delhivery_url = order[2] + "api/p/update"
+                headers = {"Authorization": "Token " + order[3],
+                           "Content-Type": "application/json"}
+                delivery_shipments_body = json.dumps({"data": delhivery_data})
+
+                req = requests.post(delhivery_url, headers=headers, data=delivery_shipments_body)
+
+            if order[1].startswith('Xpressbees'):  # Xpressbees
+                headers = {"Content-Type": "application/json",
+                           "XBKey": order[3]}
+                body = {"ShippingID": order[0]}
+                if order[5]:
+                    body['DeferredDeliveryDate'] = order[5].strftime('%Y-%m-%d %X')
+                else:
+                    body['DeferredDeliveryDate'] = (datetime.utcnow()+timedelta(days=2)).strftime('%Y-%m-%d %X')
+
+                if order[6]:
+                    body['AlternateCustomerAddress'] = order[6]
+                if order[7]:
+                    body['AlternateCustomerMobileNumber'] = order[7]
+                if order[6] or order[7]:
+                    body['CustomerPincode'] = order[8]
+
+                xpress_url = order[2]+"POSTShipmentService.svc/UpdateNDRDeferredDeliveryDate"
+                req = requests.post(xpress_url, headers=headers, data=json.dumps(body))
+        except Exception as e:
+            logger.error("NDR push failed for: " + order[0])
+

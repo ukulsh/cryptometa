@@ -212,9 +212,8 @@ def track_delhivery_orders(courier, cur):
 
                 exotel_sms_data[sms_to_key] = customer_phone
 
-                exotel_sms_data[
-                    sms_body_key] = "Delivered: Your order from %s with order id %s was delivered today." % (
-                    client_name, str(orders_dict[current_awb][12]))
+                exotel_sms_data[sms_body_key] = "Delivered: Your %s order via Delhivery - https://webapp.wareiq.com/tracking/%s . Powered by WareIQ" % (
+                    client_name, current_awb)
 
                 exotel_idx += 1
 
@@ -442,9 +441,8 @@ def track_shadowfax_orders(courier, cur):
 
                 exotel_sms_data[sms_to_key] = customer_phone
 
-                exotel_sms_data[
-                    sms_body_key] = "Delivered: Your order from %s with order id %s was delivered today." % (
-                    client_name, str(orders_dict[current_awb][12]))
+                exotel_sms_data[sms_body_key] = "Delivered: Your %s order via Shadowfax - https://webapp.wareiq.com/tracking/%s . Powered by WareIQ" % (
+                    client_name, current_awb)
 
                 exotel_idx += 1
 
@@ -680,9 +678,8 @@ def track_xpressbees_orders(courier, cur):
 
                 exotel_sms_data[sms_to_key] = customer_phone
 
-                exotel_sms_data[
-                    sms_body_key] = "Delivered: Your order from %s with order id %s was delivered today." % (
-                    client_name, str(orders_dict[current_awb][12]))
+                exotel_sms_data[sms_body_key] = "Delivered: Your %s order via Xpressbees - https://webapp.wareiq.com/tracking/%s . Powered by WareIQ" % (
+                    client_name, current_awb)
 
                 exotel_idx += 1
 
@@ -952,9 +949,8 @@ def track_bluedart_orders(courier, cur):
 
                 exotel_sms_data[sms_to_key] = customer_phone
 
-                exotel_sms_data[
-                    sms_body_key] = "Delivered: Your order from %s with order id %s was delivered today." % (
-                    client_name, str(orders_dict[current_awb][12]))
+                exotel_sms_data[sms_body_key] = "Delivered: Your %s order via Bluedart - https://webapp.wareiq.com/tracking/%s . Powered by WareIQ" % (
+                    client_name, current_awb)
 
                 exotel_idx += 1
 
@@ -1197,9 +1193,8 @@ def track_ecomxp_orders(courier, cur):
 
                 exotel_sms_data[sms_to_key] = customer_phone
 
-                exotel_sms_data[
-                    sms_body_key] = "Delivered: Your order from %s with order id %s was delivered today." % (
-                    client_name, str(orders_dict[current_awb][12]))
+                exotel_sms_data[sms_body_key] = "Delivered: Your %s order via Ecom Express - https://webapp.wareiq.com/tracking/%s . Powered by WareIQ" % (
+                    client_name, current_awb)
 
                 exotel_idx += 1
 

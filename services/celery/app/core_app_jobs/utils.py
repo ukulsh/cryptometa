@@ -473,7 +473,8 @@ def exotel_send_delivered_sms(order):
 
         exotel_sms_data[sms_to_key] = customer_phone
 
-        exotel_sms_data[sms_body_key] = "Delivered: Your order from %s with order id %s was delivered today." % (client_name, str(order[12]))
+        exotel_sms_data[sms_body_key] = "Delivered: Your %s order via Ecom Express - https://webapp.wareiq.com/tracking/%s . Powered by WareIQ" % (
+                    client_name, order[1])
         logger.info("Sending delivered message to:" + str(customer_phone))
         lad = requests.post(
             'https://ff2064142bc89ac5e6c52a6398063872f95f759249509009:783fa09c0ba1110309f606c7411889192335bab2e908a079@api.exotel.com/v1/Accounts/wareiq1/Sms/bulksend',

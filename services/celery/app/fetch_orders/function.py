@@ -31,30 +31,35 @@ def fetch_orders():
             try:
                 fetch_shopify_orders(cur, channel)
             except Exception as e:
+                conn.rollback()
                 logger.error("Couldn't fetch orders: " + str(channel[1]) + "\nError: " + str(e.args))
 
         elif channel[11] == "WooCommerce":
             try:
                 fetch_woocommerce_orders(cur, channel)
             except Exception as e:
+                conn.rollback()
                 logger.error("Couldn't fetch orders: " + str(channel[1]) + "\nError: " + str(e.args))
 
         elif channel[11] == "Magento 2":
             try:
                 fetch_magento_orders(cur, channel)
             except Exception as e:
+                conn.rollback()
                 logger.error("Couldn't fetch orders: " + str(channel[1]) + "\nError: " + str(e.args))
 
         elif channel[11] == "EasyEcom":
             try:
                 fetch_easyecom_orders(cur, channel)
             except Exception as e:
+                conn.rollback()
                 logger.error("Couldn't fetch orders: " + str(channel[1]) + "\nError: " + str(e.args))
 
         elif channel[11] == "Bikayi":
             try:
                 fetch_bikayi_orders(cur, channel)
             except Exception as e:
+                conn.rollback()
                 logger.error("Couldn't fetch orders: " + str(channel[1]) + "\nError: " + str(e.args))
 
     assign_pickup_points_for_unassigned(cur, cur_2)
@@ -1083,6 +1088,9 @@ def assign_pickup_points_for_unassigned(cur, cur_2):
             if courier_id in (8, 11, 12):
                 courier_id = 1
 
+            if not warehouse_pincode_str:
+                continue
+
             try:
                 cur_2.execute(
                     fetch_warehouse_to_pick_from.replace('__WAREHOUSE_PINCODES__', warehouse_pincode_str).replace(
@@ -1111,10 +1119,12 @@ def assign_pickup_points_for_unassigned(cur, cur_2):
                 continue
 
             cur.execute("""UPDATE orders SET pickup_data_id = %s WHERE id=%s""", (pickup_id[0], order[0]))
+            conn.commit()
 
         except Exception as e:
             if order[6]:
                 assign_default_wh(cur, order)
+            conn.rollback()
             logger.error("couldn't assign pickup for order " + str(order[0]) + "\nError: " + str(e))
 
     conn.commit()
@@ -1269,7 +1279,8 @@ def update_thirdwatch_data(cur):
 
             req = requests.post("https://api.razorpay.com/v1/thirdwatch/orders", headers=headers, data=json.dumps(thirdwatch_data)).json()
         except Exception as e:
-            logger.error("Couldn't check thirdwatch for: "+str(order[12]))
+            logger.error("Couldn't check thirdwatch for: "+str(order[12])+"\nError: "+str(e.args[0]),)
+            conn.rollback()
 
 
 easyecom_wareiq_channel_map = {"Amazon.in": 2,

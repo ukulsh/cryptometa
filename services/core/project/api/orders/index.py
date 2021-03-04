@@ -321,10 +321,10 @@ def get_orders_filters(resp):
         return jsonify(response), 200
 
     status_qs = db.session.query(Orders.status, func.count(Orders.status)).join(ClientPickups,
-                        Orders.pickup_data_id==ClientPickups.id).join(PickupPoints, PickupPoints.id==ClientPickups.pickup_id).group_by(Orders.status)
+                        Orders.pickup_data_id==ClientPickups.id, isouter=True).join(PickupPoints, PickupPoints.id==ClientPickups.pickup_id, isouter=True).group_by(Orders.status)
     courier_qs = db.session.query(MasterCouriers.courier_name, func.count(MasterCouriers.courier_name)) \
         .join(Shipments, MasterCouriers.id == Shipments.courier_id).join(Orders, Orders.id == Shipments.order_id) \
-        .join(ClientPickups,Orders.pickup_data_id == ClientPickups.id).join(PickupPoints, PickupPoints.id == ClientPickups.pickup_id).group_by(MasterCouriers.courier_name)
+        .join(ClientPickups,Orders.pickup_data_id == ClientPickups.id, isouter=True).join(PickupPoints, PickupPoints.id == ClientPickups.pickup_id, isouter=True).group_by(MasterCouriers.courier_name)
     pickup_point_qs = db.session.query(PickupPoints.warehouse_prefix, func.count(PickupPoints.warehouse_prefix)) \
         .join(ClientPickups, PickupPoints.id == ClientPickups.pickup_id).join(Orders, ClientPickups.id == Orders.pickup_data_id).group_by(PickupPoints.warehouse_prefix)
     channel_qs = db.session.query(MasterChannels.channel_name, func.count(MasterChannels.channel_name))\

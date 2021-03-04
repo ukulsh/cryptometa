@@ -120,53 +120,60 @@ def fetch_shopify_orders(cur, channel):
             customer_name = order['customer']['first_name']
             if customer_name and order['customer']['last_name']:
                 customer_name += " " + order['customer']['last_name']
-            if not customer_name:
+            if not customer_name and 'shipping_address' in order:
                 customer_name = order['shipping_address']['first_name']
 
             if not customer_name and order['customer']['last_name']:
                 customer_name = order['customer']['last_name']
 
-            customer_phone = order['customer']['phone'] if order['customer']['phone'] else \
-                order['shipping_address']['phone']
+            customer_phone = order['customer']['phone']
+            if not customer_phone and 'shipping_address' in order:
+                customer_phone = order['shipping_address']['phone']
+            if not customer_phone and 'default_address' in order['customer']:
+                customer_phone = order['customer']['default_address']['phone']
+
             customer_phone = ''.join(e for e in str(customer_phone) if e.isalnum())
             customer_phone = "0" + customer_phone[-10:]
 
-            shopping_address_1 = order['shipping_address']['company'] + " " + order['shipping_address']['address1'] if order['shipping_address']['company'] else order['shipping_address']['address1']
-            shipping_tuple = (order['shipping_address']['first_name'],
-                              order['shipping_address']['last_name'],
-                              shopping_address_1,
-                              order['shipping_address']['address2'],
-                              order['shipping_address']['city'],
-                              order['shipping_address']['zip'],
-                              order['shipping_address']['province'],
-                              order['shipping_address']['country'],
-                              order['shipping_address']['phone'] if order['shipping_address']['phone'] else customer_phone,
-                              order['shipping_address']['latitude'],
-                              order['shipping_address']['longitude'],
-                              order['shipping_address']['country_code']
-                              )
+            shipping_address_id, billing_address_id = None, None
+            if 'shipping_address' in order:
+                shopping_address_1 = order['shipping_address']['company'] + " " + order['shipping_address']['address1'] if order['shipping_address']['company'] else order['shipping_address']['address1']
+                shipping_tuple = (order['shipping_address']['first_name'],
+                                  order['shipping_address']['last_name'],
+                                  shopping_address_1,
+                                  order['shipping_address']['address2'],
+                                  order['shipping_address']['city'],
+                                  order['shipping_address']['zip'],
+                                  order['shipping_address']['province'],
+                                  order['shipping_address']['country'],
+                                  order['shipping_address']['phone'] if order['shipping_address']['phone'] else customer_phone,
+                                  order['shipping_address']['latitude'],
+                                  order['shipping_address']['longitude'],
+                                  order['shipping_address']['country_code']
+                                  )
 
-            billing_address_key = "billing_address" if "billing_address" in order else "shipping_address"
-            billing_address_1 = order[billing_address_key]['company'] + " " + order[billing_address_key]['address1'] if order[billing_address_key]['company'] else order[billing_address_key]['address1']
-            billing_tuple = (order[billing_address_key]['first_name'],
-                              order[billing_address_key]['last_name'],
-                              billing_address_1,
-                              order[billing_address_key]['address2'],
-                              order[billing_address_key]['city'],
-                              order[billing_address_key]['zip'],
-                              order[billing_address_key]['province'],
-                              order[billing_address_key]['country'],
-                              order[billing_address_key]['phone'],
-                              order[billing_address_key]['latitude'],
-                              order[billing_address_key]['longitude'],
-                              order[billing_address_key]['country_code']
-                              )
+                cur.execute(insert_shipping_address_query, shipping_tuple)
+                shipping_address_id = cur.fetchone()[0]
 
-            cur.execute(insert_shipping_address_query, shipping_tuple)
-            shipping_address_id = cur.fetchone()[0]
+            if 'billing_address' in order:
+                billing_address_key = "billing_address" if "billing_address" in order else "shipping_address"
+                billing_address_1 = order[billing_address_key]['company'] + " " + order[billing_address_key]['address1'] if order[billing_address_key]['company'] else order[billing_address_key]['address1']
+                billing_tuple = (order[billing_address_key]['first_name'],
+                                  order[billing_address_key]['last_name'],
+                                  billing_address_1,
+                                  order[billing_address_key]['address2'],
+                                  order[billing_address_key]['city'],
+                                  order[billing_address_key]['zip'],
+                                  order[billing_address_key]['province'],
+                                  order[billing_address_key]['country'],
+                                  order[billing_address_key]['phone'],
+                                  order[billing_address_key]['latitude'],
+                                  order[billing_address_key]['longitude'],
+                                  order[billing_address_key]['country_code']
+                                  )
 
-            cur.execute(insert_billing_address_query, billing_tuple)
-            billing_address_id = cur.fetchone()[0]
+                cur.execute(insert_billing_address_query, billing_tuple)
+                billing_address_id = cur.fetchone()[0]
 
             channel_order_id = str(order['order_number'])
             if channel[16]:
@@ -254,6 +261,35 @@ def fetch_shopify_orders(cur, channel):
                         tax_lines.append({'title': tax_line['title'], 'rate': tax_line['rate']})
                 except Exception as e:
                     logger.error("Couldn't fetch tex for: " + str(order_id))
+
+                if master_product_id in (57599, 57620) and channel[1] == 'HEALTHI':
+                    orders_tuple = (
+                        channel_order_id, order['created_at'], customer_name, order['customer']['email'],
+                        customer_phone if customer_phone else "", shipping_address_id, billing_address_id,
+                        datetime.now(), "NEW", channel[1], channel[0], str(order['id']), pickup_data_id, 1)
+
+                    cur.execute(insert_orders_data_query, orders_tuple)
+                    temp_order_id = cur.fetchone()[0]
+
+                    total_amount = float(order['total_price'])
+                    shipping_amount = float(order['total_shipping_price_set']['shop_money']['amount'])
+                    subtotal_amount = total_amount - shipping_amount
+
+                    if order['financial_status'] == 'paid':
+                        financial_status = 'prepaid'
+                    elif order['financial_status'] == 'pending':
+                        financial_status = 'COD'
+                    else:
+                        financial_status = order['financial_status']
+
+                    payments_tuple = (
+                        financial_status, total_amount, subtotal_amount,
+                        shipping_amount, order["currency"], temp_order_id)
+
+                    cur.execute(insert_payments_data_query, payments_tuple)
+                    op_tuple = (product_id, temp_order_id, prod['quantity'], float(prod['quantity'] * float(prod['price'])), None, json.dumps(tax_lines), master_product_id)
+                    cur.execute(insert_op_association_query, op_tuple)
+                    continue
 
                 op_tuple = (product_id, order_id, prod['quantity'], float(prod['quantity'] * float(prod['price'])), None, json.dumps(tax_lines), master_product_id)
                 cur.execute(insert_op_association_query, op_tuple)

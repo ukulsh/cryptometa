@@ -217,11 +217,24 @@ def track_delhivery_orders(courier, cur):
 
                 exotel_idx += 1
 
+            if new_status == 'DTO':
+                sms_to_key = "Messages[%s][To]" % str(exotel_idx)
+                sms_body_key = "Messages[%s][Body]" % str(exotel_idx)
+                exotel_sms_data[sms_to_key] = customer_phone
+                exotel_sms_data[sms_body_key] = "Delivered: Your %s order via Delhivery to seller - https://webapp.wareiq.com/tracking/%s . Powered by WareIQ" % (client_name, current_awb)
+                exotel_idx += 1
+
+            if orders_dict[current_awb][2] in ('SCHEDULED', 'DISPATCHED') and new_status == 'IN TRANSIT' and orders_dict[current_awb][13].lower() == 'pickup':
+                sms_to_key = "Messages[%s][To]" % str(exotel_idx)
+                sms_body_key = "Messages[%s][Body]" % str(exotel_idx)
+                exotel_sms_data[sms_to_key] = customer_phone
+                exotel_sms_data[sms_body_key] = "Picked: Your %s order via Delhivery - https://webapp.wareiq.com/tracking/%s . Powered by WareIQ" % (client_name, current_awb)
+                exotel_idx += 1
+
             if new_status == 'RTO':
                 update_rto_on_channels(orders_dict[current_awb])
 
-            if orders_dict[current_awb][2] in (
-                    'READY TO SHIP', 'PICKUP REQUESTED', 'NOT PICKED') and new_status == 'IN TRANSIT':
+            if orders_dict[current_awb][2] in ('READY TO SHIP', 'PICKUP REQUESTED', 'NOT PICKED') and new_status == 'IN TRANSIT':
                 pickup_count += 1
                 if orders_dict[current_awb][11] not in pickup_dict:
                     pickup_dict[orders_dict[current_awb][11]] = 1

@@ -904,37 +904,40 @@ def update_available_quantity_from_easyecom():
             chunks = [all_skus[x:x + 20] for x in range(0, len(all_skus), 20)]
             for chunk in chunks:
                 req_url = "https://api.easyecom.io/wms/V2/getInventoryDetails?api_token=%s&includeLocations=1&sku=%s"%(client[1], ",".join(chunk))
-                req = requests.get(req_url)
-                req_data = req.json()
+                while req_url:
+                    req = requests.get(req_url)
+                    req_data = req.json()
 
-                inventory_dict = dict()
+                    inventory_dict = dict()
 
-                for req in req_data['data']['inventoryData']:
-                    if req['companyName'] not in inventory_dict:
-                        inventory_dict[req['companyName']] = [(req['sku'], req['availableInventory'], req['reservedInventory'])]
-                    else:
-                        inventory_dict[req['companyName']].append((req['sku'], req['availableInventory'], req['reservedInventory']))
-
-                for ee_loc, val_list in inventory_dict.items():
-                    cur.execute("""select bb.warehouse_prefix from client_pickups aa
-                                                            left join pickup_points bb on aa.pickup_id=bb.id
-                                                            where aa.easyecom_loc_code='%s'""" % ee_loc)
-                    try:
-                        warehouse_prefix = cur.fetchone()[0]
-                    except Exception:
-                        continue
-
-                    for val_tuple in val_list:
-                        cur.execute("""select * from products_quantity aa
-                        left join master_products bb on aa.product_id=bb.id
-                        where aa.warehouse_prefix='%s' and bb.sku='%s'"""%(warehouse_prefix, val_tuple[0]))
-
-                        if cur.fetchall():
-                            cur.execute(update_easyecom_inventory_query, (val_tuple[1], val_tuple[2], val_tuple[1]+val_tuple[2], warehouse_prefix, val_tuple[0], client[0]))
+                    for req in req_data['data']['inventoryData']:
+                        if req['companyName'] not in inventory_dict:
+                            inventory_dict[req['companyName']] = [(req['sku'], req['availableInventory'], req['reservedInventory'])]
                         else:
-                            cur.execute(insert_easyecom_inventory_query, (val_tuple[1], warehouse_prefix, val_tuple[1]+val_tuple[2], val_tuple[2], val_tuple[1], client[0], val_tuple[0]))
+                            inventory_dict[req['companyName']].append((req['sku'], req['availableInventory'], req['reservedInventory']))
 
-                    conn.commit()
+                    for ee_loc, val_list in inventory_dict.items():
+                        cur.execute("""select bb.warehouse_prefix from client_pickups aa
+                                                                left join pickup_points bb on aa.pickup_id=bb.id
+                                                                where aa.easyecom_loc_code='%s'""" % ee_loc)
+                        try:
+                            warehouse_prefix = cur.fetchone()[0]
+                        except Exception:
+                            continue
+
+                        for val_tuple in val_list:
+                            cur.execute("""select * from products_quantity aa
+                            left join master_products bb on aa.product_id=bb.id
+                            where aa.warehouse_prefix='%s' and bb.sku='%s'"""%(warehouse_prefix, val_tuple[0]))
+
+                            if cur.fetchall():
+                                cur.execute(update_easyecom_inventory_query, (val_tuple[1], val_tuple[2], val_tuple[1]+val_tuple[2], warehouse_prefix, val_tuple[0], client[0]))
+                            else:
+                                cur.execute(insert_easyecom_inventory_query, (val_tuple[1], warehouse_prefix, val_tuple[1]+val_tuple[2], val_tuple[2], val_tuple[1], client[0], val_tuple[0]))
+
+                        conn.commit()
+
+                    req_url = "https://api.easyecom.io"+req_data['data']['nextUrl'] if req_data['data']['nextUrl'] else None
         except Exception as e:
             logger.error("Couldn't update inventory for: "+str(client[0])+"\nError: "+str(e.args))
 

@@ -144,6 +144,8 @@ def process_order_price_reconciliation(order_data):
     previous_charge_data = {}
 
     for iterator in all_deduction_data:
+        if iterator[2] is None and iterator[4] is None and iterator[6] is None:
+            continue
         if iterator[12] in group_by_awb:
             if group_by_awb[iterator[12]][20] < iterator[20]:
                 group_by_awb[iterator[12]] = iterator

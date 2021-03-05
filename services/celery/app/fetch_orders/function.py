@@ -213,7 +213,10 @@ def fetch_shopify_orders(cur, channel):
             except Exception as e:
                 pass
 
+            total_prods = len(order['line_items'])
+            prod_no = 0
             for prod in order['line_items']:
+                prod_no += 1
                 product_sku = str(prod['variant_id']) if prod['variant_id'] else str(prod['id'])
                 prod_tuple = (product_sku, channel[1])
                 cur.execute(select_products_query, prod_tuple)
@@ -232,7 +235,7 @@ def fetch_shopify_orders(cur, channel):
                         try:
                             master_product_id = cur.fetchone()[0]
                         except Exception:
-                            master_product_insert_tuple = (prod['name'], product_sku, True, channel[1], datetime.now(), dimensions,
+                            master_product_insert_tuple = (prod['name'], master_sku, True, channel[1], datetime.now(), dimensions,
                                                     float(prod['price']), weight, subcategory_id)
                             cur.execute(insert_master_product_query, master_product_insert_tuple)
                             master_product_id = cur.fetchone()[0]
@@ -262,9 +265,8 @@ def fetch_shopify_orders(cur, channel):
                 except Exception as e:
                     logger.error("Couldn't fetch tex for: " + str(order_id))
 
-                if master_product_id in (57599, 57620) and channel[1] == 'HEALTHI':
-                    orders_tuple = (
-                        channel_order_id, order['created_at'], customer_name, order['customer']['email'],
+                if master_product_id in (57599, 57620) and channel[1] == 'HEALTHI' and prod_no<total_prods:
+                    orders_tuple = (channel_order_id, order['created_at'], customer_name, order['customer']['email'],
                         customer_phone if customer_phone else "", shipping_address_id, billing_address_id,
                         datetime.now(), "NEW", channel[1], channel[0], str(order['id']), pickup_data_id, 1)
 
@@ -471,7 +473,7 @@ def fetch_woocommerce_orders(cur, channel):
                         try:
                             master_product_id = cur.fetchone()[0]
                         except Exception:
-                            master_product_insert_tuple = (prod['name'], product_sku, True, channel[1], datetime.now(), dimensions,
+                            master_product_insert_tuple = (prod['name'], master_sku, True, channel[1], datetime.now(), dimensions,
                                                     float(prod['price']), weight, subcategory_id)
                             cur.execute(insert_master_product_query, master_product_insert_tuple)
                             master_product_id = cur.fetchone()[0]
@@ -678,7 +680,7 @@ def fetch_magento_orders(cur, channel):
                         try:
                             master_product_id = cur.fetchone()[0]
                         except Exception:
-                            master_product_insert_tuple = (prod['name'], product_sku, True, channel[1], datetime.now(), dimensions,
+                            master_product_insert_tuple = (prod['name'], master_sku, True, channel[1], datetime.now(), dimensions,
                                                     float(prod['original_price']), weight, subcategory_id)
                             cur.execute(insert_master_product_query, master_product_insert_tuple)
                             master_product_id = cur.fetchone()[0]
@@ -861,7 +863,7 @@ def fetch_easyecom_orders(cur, channel):
                         try:
                             master_product_id = cur.fetchone()[0]
                         except Exception:
-                            master_product_insert_tuple = (prod['productName'], product_sku, True, channel[1], datetime.now(), dimensions,
+                            master_product_insert_tuple = (prod['productName'], master_sku, True, channel[1], datetime.now(), dimensions,
                                                     float(prod['mrp']), weight, subcategory_id)
                             cur.execute(insert_master_product_query, master_product_insert_tuple)
                             master_product_id = cur.fetchone()[0]
@@ -976,7 +978,7 @@ def fetch_bikayi_orders(cur, channel):
 
             insert_status = "NEW"
 
-            order_time = datetime.fromtimestamp(order['date']/1000)
+            order_time = datetime.fromtimestamp(order['date'])
             channel_order_id = str(order['orderId'])
             if channel[16]:
                 channel_order_id = str(channel[16]) + channel_order_id
@@ -1016,7 +1018,7 @@ def fetch_bikayi_orders(cur, channel):
                         try:
                             master_product_id = cur.fetchone()[0]
                         except Exception:
-                            master_product_insert_tuple = (prod['name'], product_sku, True, channel[1], datetime.now(), dimensions,
+                            master_product_insert_tuple = (prod['name'], master_sku, True, channel[1], datetime.now(), dimensions,
                                                     float(prod['unitPrice']), weight, subcategory_id)
                             cur.execute(insert_master_product_query, master_product_insert_tuple)
                             master_product_id = cur.fetchone()[0]

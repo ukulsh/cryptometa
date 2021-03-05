@@ -89,7 +89,8 @@ select_remittance_amount_query = """select * from
                                         and yy.delivered_date BETWEEN xx.order_start AND xx.order_end
                                         group by xx.unique_id, xx.client_prefix, xx.remittance_id, xx.date, xx.status, xx.transaction_id) zz
                                         WHERE remittance_total is not null
-                                        and remittance_date='__REMITTANCE_DATE__'
+                                        and remittance_date<='__REMITTANCE_DATE__'
+                                        and remittance_date>'2021-01-01'
                                         and status='processing'
                                         order by remittance_date DESC, remittance_total DESC"""
 

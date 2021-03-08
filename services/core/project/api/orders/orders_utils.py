@@ -1,6 +1,6 @@
 import re
-import csv
-import io
+import csv, boto3, os
+import io, random, string
 from datetime import datetime, timedelta
 from flask import make_response
 
@@ -12,6 +12,11 @@ ORDERS_DOWNLOAD_HEADERS = ["Order ID", "Customer Name", "Customer Email", "Custo
                            "SGST", "IGST","Order Type", "OrderAmount", "Manifest Time", "Pickup Date", "Delivered Date", "COD Verfication",
                            "COD Verified Via", "NDR Verfication", "NDR Verified Via", "PDD", "ShippingCharges", "InvoiceNo", "InvoiceDate", "OrderDiscount"]
 cur = conn.cursor()
+
+session = boto3.Session(
+    aws_access_key_id='AKIAWRT2R3KC3YZUBFXY',
+    aws_secret_access_key='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',
+)
 
 
 def filter_query(filters, query_to_run, auth_data):
@@ -145,8 +150,9 @@ def download_flag_func(query_to_run, get_selected_product_details, auth_data, fi
         product_detail_data = cur.fetchall()
         for it in product_detail_data:
             product_detail_by_order_id[it[0]] = [it[1], it[2], it[3], it[4], it[5], it[6], it[7]]
-    si = io.StringIO()
-    cw = csv.writer(si)
+
+    filename = str(client_prefix)+"_EXPORT_orders_"+ ''.join(random.choices(string.ascii_letters + string.digits, k=8)) + ".csv"
+    cw = csv.writer(open(filename, 'w'))
     cw.writerow(ORDERS_DOWNLOAD_HEADERS)
     for order in orders_qs_data:
         try:
@@ -222,11 +228,12 @@ def download_flag_func(query_to_run, get_selected_product_details, auth_data, fi
         except Exception as e:
             pass
 
-    output = make_response(si.getvalue())
-    filename = str(client_prefix) + "_EXPORT.csv"
-    output.headers["Content-Disposition"] = "attachment; filename=" + filename
-    output.headers["Content-type"] = "text/csv"
-    return output
+    s3 = session.resource('s3')
+    bucket = s3.Bucket("wareiqfiles")
+    bucket.upload_file(filename, "downloads/"+filename, ExtraArgs={'ACL': 'public-read'})
+    invoice_url = "https://wareiqfiles.s3.amazonaws.com/downloads/" + filename
+    os.remove(filename)
+    return {"url": invoice_url, "success": True}
 
 
 def user_group_filter(query_to_run, auth_data):

@@ -76,3 +76,15 @@ update_orders_status_query = """UPDATE orders SET status='READY TO SHIP' WHERE i
 delete_failed_shipments_query = """DELETE FROM 	order_status where shipment_id in 
                                     (select id  from shipments where remark like 'Crashing while saving package%' or remark like 'COD%');
                                     delete  from shipments where remark like 'Crashing while saving package%' or remark like 'COD%';"""
+
+update_same_state_query = """update shipments aa
+                                set same_state=true
+                                from orders bb 
+                                left join shipping_address cc on bb.delivery_address_id=cc.id
+                                left join client_pickups dd on dd.id=bb.pickup_data_id
+                                left join pickup_points ee on dd.pickup_id=ee.id
+                                left join pincode_mapping ff on ee.pincode::varchar=ff.pincode
+                                left join pincode_mapping gg on cc.pincode=gg.pincode
+                                where bb.id=aa.order_id
+                                and aa.same_state is null 
+                                and ff.state=gg.state"""

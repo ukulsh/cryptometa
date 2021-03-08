@@ -73,6 +73,10 @@ def ship_orders(courier_name=None, order_ids=None, force_ship=None):
         # elif courier[10].startswith('FedEx'):
         #     ship_fedex_orders(cur, courier, courier_name, order_ids, order_id_tuple, force_ship=force_ship)
 
+    if not order_ids:
+        cur.execute(update_same_state_query)
+        conn.commit()
+
     cur.close()
 
 

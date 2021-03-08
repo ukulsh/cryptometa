@@ -381,6 +381,7 @@ class Shipments(db.Model):
     tracking_link = db.Column(db.TEXT, nullable=True)
     remark = db.Column(db.Text, nullable=True)
     zone = db.Column(db.String, nullable=True)
+    same_state = db.Column(db.BOOLEAN, nullable=True, default=None)
     __table_args__ = (UniqueConstraint('order_id', name='order_id_unique'),
                       )
 
@@ -1106,3 +1107,12 @@ class ProductsWRO(db.Model):
     received_quantity = db.Column(db.Integer)
     wro = db.relationship("WarehouseRO")
     product = db.relationship("MasterProducts")
+
+
+class PincodeMapping(db.Model):
+    __tablename__ = "pincode_mapping"
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    pincode = db.Column(db.String, nullable=False)
+    city = db.Column(db.String, nullable=True)
+    district = db.Column(db.String, nullable=True)
+    state = db.Column(db.String, nullable=True)

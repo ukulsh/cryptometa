@@ -582,3 +582,40 @@ select_wallet_remittance_orders_query = """select yy.* from
                                         and yy.delivered_date BETWEEN xx.order_start AND xx.order_end
                                          where xx.unique_id=__REMITTANCE_ID__
                                          order by delivered_date"""
+
+select_state_performance_query = """select state, order_count, ROUND((order_count*100 / SUM(order_count) OVER ()), 1) AS perc_total, 
+                                    ROUND(shipping_cost::numeric/nullif(ship_cost_count, 0), 2) as avg_ship_cost,
+                                    ROUND(transit_days::numeric/nullif(delivered_count, 0), 1) as avg_tras_days, 
+                                    ROUND(rto_count*100::numeric/nullif(order_count, 0), 1) as rto_perc, 
+                                    ROUND(revenue::numeric/nullif(delivered_count, 0), 2) as avg_revenue from 
+                                    (select cc.state, count(*) as order_count, sum(case when aa.status='DELIVERED' then forward_charge+rto_charge else 0 end) as shipping_cost, 
+                                    sum(dd.status_time::date-ee.status_time::date) as transit_days, sum(case when aa.status='DELIVERED' then 1 else 0 end) as delivered_count,
+                                    sum(case when aa.status='RTO' then 1 else 0 end) as rto_count, sum(case when aa.status='DELIVERED' then ii.amount else 0 end) as revenue,
+                                    sum(case when gg.forward_charge is not null and aa.status='DELIVERED' then 1 else 0 end) as ship_cost_count
+                                    from orders aa
+                                    left join shipping_address bb on aa.delivery_address_id=bb.id
+                                    left join pincode_mapping cc on bb.pincode=cc.pincode
+                                    left join shipments hh on hh.order_id=aa.id
+                                    left join (select * from order_status where status in ('Delivered')) dd on dd.order_id=aa.id
+                                    left join (select * from order_status where status in ('Picked')) ee on ee.order_id=aa.id
+                                    left join (select * from order_status where status in ('RTO')) ff on ff.order_id=aa.id
+                                    left join client_deductions gg on gg.shipment_id=hh.id
+                                    left join orders_payments ii on aa.id=ii.order_id
+                                    where aa.status in ('DELIVERED','RTO')
+                                    and hh.courier_id!=19
+                                    and aa.order_date>'%s' and aa.order_date<'%s'
+                                    __CLIENT_FILTER__
+                                    and cc.state is not null
+                                    group by cc.state
+                                    order by order_count DESC) xx"""
+
+select_top_selling_state_query = """select cc.state, count(*) as order_count ,ROUND((count(*)*100 / SUM(count(*)) OVER ()), 1)::numeric AS order_perc
+                                    from orders aa
+                                    left join shipping_address bb on aa.delivery_address_id=bb.id
+                                    left join pincode_mapping cc on bb.pincode=cc.pincode
+                                    where aa.status = 'DELIVERED'
+                                    and aa.order_date>'%s' and aa.order_date<'%s'
+                                    and cc.state is not null
+                                    __CLIENT_FILTER__
+                                    group by cc.state
+                                    order by order_count DESC"""

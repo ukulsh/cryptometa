@@ -152,81 +152,82 @@ def download_flag_func(query_to_run, get_selected_product_details, auth_data, fi
             product_detail_by_order_id[it[0]] = [it[1], it[2], it[3], it[4], it[5], it[6], it[7]]
 
     filename = str(client_prefix)+"_EXPORT_orders_"+ ''.join(random.choices(string.ascii_letters + string.digits, k=8)) + ".csv"
-    cw = csv.writer(open(filename, 'w'))
-    cw.writerow(ORDERS_DOWNLOAD_HEADERS)
-    for order in orders_qs_data:
-        try:
-            product_data = product_detail_by_order_id[order[1]] if order[1] in product_detail_by_order_id else []
-            if product_data and product_data[0]:
-                for idx, val in enumerate(product_data[0]):
-                    order_disc = "N/A"
-                    try:
-                        order_disc = sum(product_data[5])-order[25]
-                        if order[43]:
-                            order_disc+=order[43]
-                    except Exception:
-                        pass
-                    new_row = list()
-                    new_row.append(str(order[0]))
-                    new_row.append(str(order[13]))
-                    new_row.append(str(order[15]))
-                    new_row.append(str(order[14]))
-                    new_row.append(order[2].strftime("%Y-%m-%d %H:%M:%S") if order[2] else "N/A")
-                    new_row.append(str(order[7]))
-                    new_row.append(str(order[9]) if not hide_weights else "")
-                    new_row.append(str(order[5]))
-                    new_row.append(order[8].strftime("%Y-%m-%d") if order[8] else "N/A")
-                    new_row.append(str(order[3]))
-                    new_row.append(str(order[16]))
-                    new_row.append(str(order[17]))
-                    new_row.append(str(order[18]))
-                    new_row.append(str(order[19]))
-                    new_row.append(str(order[20]))
-                    new_row.append(str(order[21]))
-                    new_row.append(order[26])
-                    new_row.append(str(val))
-                    new_row.append(str(product_data[1][idx]))
-                    new_row.append(str(product_data[2][idx]))
-                    new_row.append(str(product_data[5][idx]))
-                    new_row.append(str(product_data[5][idx]*product_data[6][idx]/2) if product_data[5][idx] and product_data[6][idx] and order[48] else "")
-                    new_row.append(str(product_data[5][idx]*product_data[6][idx]/2) if product_data[5][idx] and product_data[6][idx] and order[48] else "")
-                    new_row.append(str(product_data[5][idx]*product_data[6][idx]) if product_data[5][idx] and product_data[6][idx] and not order[48] else "")
-                    new_row.append(str(order[24]))
-                    new_row.append(order[25])
-                    new_row.append(order[34].strftime("%Y-%m-%d %H:%M:%S") if order[34] else "N/A")
-                    new_row.append(order[23].strftime("%Y-%m-%d %H:%M:%S") if order[23] else "N/A")
-                    new_row.append(order[22].strftime("%Y-%m-%d %H:%M:%S") if order[22] else "N/A")
-                    if order[27] and order[28] is not None:
-                        new_row.append("Confirmed" if order[28] else "Cancelled")
-                        new_row.append(str(order[29]))
-                    else:
-                        new_row.append("N/A")
-                        new_row.append("N/A")
-                    if order[30] and order[31] is not None:
-                        new_row.append("Cancelled" if order[31] else "Re-attempt")
-                        new_row.append(str(order[32]))
-                    else:
-                        new_row.append("N/A")
-                        new_row.append("N/A")
-                    new_row.append(order[39].strftime("%Y-%m-%d %H:%M:%S") if order[39] else "N/A")
-                    new_row.append(str(order[43]) if order[43] else "0")
-                    new_row.append(str(order[44]) if order[44] else "N/A")
-                    new_row.append(order[45].strftime("%Y-%m-%d %H:%M:%S") if order[45] else "N/A")
-                    new_row.append(str(order_disc))
-                    not_shipped = None
-                    if not product_data[4][idx]:
-                        not_shipped = "Weight/dimensions not entered for product(s)"
-                    elif order[12] == "Pincode not serviceable":
-                        not_shipped = "Pincode not serviceable"
-                    elif not order[26]:
-                        not_shipped = "Pickup point not assigned"
-                    if not_shipped:
-                        new_row.append(not_shipped)
-                    if auth_data.get('user_group') == 'super-admin':
-                        new_row.append(order[38])
-                    cw.writerow(new_row)
-        except Exception as e:
-            pass
+    with open(filename, 'w') as mycsvfile:
+        cw = csv.writer(mycsvfile)
+        cw.writerow(ORDERS_DOWNLOAD_HEADERS)
+        for order in orders_qs_data:
+            try:
+                product_data = product_detail_by_order_id[order[1]] if order[1] in product_detail_by_order_id else []
+                if product_data and product_data[0]:
+                    for idx, val in enumerate(product_data[0]):
+                        order_disc = "N/A"
+                        try:
+                            order_disc = sum(product_data[5])-order[25]
+                            if order[43]:
+                                order_disc+=order[43]
+                        except Exception:
+                            pass
+                        new_row = list()
+                        new_row.append(str(order[0]))
+                        new_row.append(str(order[13]))
+                        new_row.append(str(order[15]))
+                        new_row.append(str(order[14]))
+                        new_row.append(order[2].strftime("%Y-%m-%d %H:%M:%S") if order[2] else "N/A")
+                        new_row.append(str(order[7]))
+                        new_row.append(str(order[9]) if not hide_weights else "")
+                        new_row.append(str(order[5]))
+                        new_row.append(order[8].strftime("%Y-%m-%d") if order[8] else "N/A")
+                        new_row.append(str(order[3]))
+                        new_row.append(str(order[16]))
+                        new_row.append(str(order[17]))
+                        new_row.append(str(order[18]))
+                        new_row.append(str(order[19]))
+                        new_row.append(str(order[20]))
+                        new_row.append(str(order[21]))
+                        new_row.append(order[26])
+                        new_row.append(str(val))
+                        new_row.append(str(product_data[1][idx]))
+                        new_row.append(str(product_data[2][idx]))
+                        new_row.append(str(product_data[5][idx]))
+                        new_row.append(str(product_data[5][idx]*product_data[6][idx]/2) if product_data[5][idx] and product_data[6][idx] and order[48] else "")
+                        new_row.append(str(product_data[5][idx]*product_data[6][idx]/2) if product_data[5][idx] and product_data[6][idx] and order[48] else "")
+                        new_row.append(str(product_data[5][idx]*product_data[6][idx]) if product_data[5][idx] and product_data[6][idx] and not order[48] else "")
+                        new_row.append(str(order[24]))
+                        new_row.append(order[25])
+                        new_row.append(order[34].strftime("%Y-%m-%d %H:%M:%S") if order[34] else "N/A")
+                        new_row.append(order[23].strftime("%Y-%m-%d %H:%M:%S") if order[23] else "N/A")
+                        new_row.append(order[22].strftime("%Y-%m-%d %H:%M:%S") if order[22] else "N/A")
+                        if order[27] and order[28] is not None:
+                            new_row.append("Confirmed" if order[28] else "Cancelled")
+                            new_row.append(str(order[29]))
+                        else:
+                            new_row.append("N/A")
+                            new_row.append("N/A")
+                        if order[30] and order[31] is not None:
+                            new_row.append("Cancelled" if order[31] else "Re-attempt")
+                            new_row.append(str(order[32]))
+                        else:
+                            new_row.append("N/A")
+                            new_row.append("N/A")
+                        new_row.append(order[39].strftime("%Y-%m-%d %H:%M:%S") if order[39] else "N/A")
+                        new_row.append(str(order[43]) if order[43] else "0")
+                        new_row.append(str(order[44]) if order[44] else "N/A")
+                        new_row.append(order[45].strftime("%Y-%m-%d %H:%M:%S") if order[45] else "N/A")
+                        new_row.append(str(order_disc))
+                        not_shipped = None
+                        if not product_data[4][idx]:
+                            not_shipped = "Weight/dimensions not entered for product(s)"
+                        elif order[12] == "Pincode not serviceable":
+                            not_shipped = "Pincode not serviceable"
+                        elif not order[26]:
+                            not_shipped = "Pickup point not assigned"
+                        if not_shipped:
+                            new_row.append(not_shipped)
+                        if auth_data.get('user_group') == 'super-admin':
+                            new_row.append(order[38])
+                        cw.writerow(new_row)
+            except Exception as e:
+                pass
 
     s3 = session.resource('s3')
     bucket = s3.Bucket("wareiqfiles")

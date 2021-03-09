@@ -22,10 +22,13 @@ conn = DbConnection.get_db_connection_instance()
 conn_2 = DbConnection.get_pincode_db_connection_instance()
 
 
-def fetch_orders():
+def fetch_orders(client_prefix=None):
     cur = conn.cursor()
     cur_2 = conn_2.cursor()
-    cur.execute(fetch_client_channels_query)
+    if not client_prefix:
+        cur.execute(fetch_client_channels_query)
+    else:
+        cur.execute(fetch_client_channels_query+" AND aa.client_prefix='%s'"%client_prefix)
     for channel in cur.fetchall():
         if channel[11] == "Shopify":
             try:
@@ -62,8 +65,9 @@ def fetch_orders():
                 conn.rollback()
                 logger.error("Couldn't fetch orders: " + str(channel[1]) + "\nError: " + str(e.args))
 
-    assign_pickup_points_for_unassigned(cur, cur_2)
-    update_thirdwatch_data(cur)
+    if not client_prefix:
+        assign_pickup_points_for_unassigned(cur, cur_2)
+        update_thirdwatch_data(cur)
 
     cur.close()
 

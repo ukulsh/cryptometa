@@ -15,6 +15,7 @@ class BaseConfig:
     BCRYPT_LOG_ROUNDS = 13
     TOKEN_EXPIRATION_DAYS = 30    # new
     TOKEN_EXPIRATION_SECONDS = 0  # new
+    CELERY_SERVICE_URL = os.environ.get('CELERY_SERVICE_URL')  # new
 
 
 class StagingConfig(BaseConfig):

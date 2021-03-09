@@ -221,12 +221,27 @@ def sync_channel_prods(client_prefix):
     return msg
 
 
+@celery_app.task(name='sync_channel_orders')
+def sync_channel_ords(client_prefix):
+    fetch_orders(client_prefix)
+    return "received fetch orders"
+
+
 @app.route('/scans/v1/sync/products', methods = ['GET'])
 @authenticate_restful
 def sync_channel_products(resp):
     auth_data = resp.get('data')
     client_prefix=auth_data['client_prefix']
     sync_channel_prods.apply_async(queue='consume_scans', args=(client_prefix, ))
+    return jsonify({"msg": "Task received"}), 200
+
+
+@app.route('/scans/v1/sync/orders', methods = ['GET'])
+@authenticate_restful
+def sync_channel_orders(resp):
+    auth_data = resp.get('data')
+    client_prefix=auth_data['client_prefix']
+    sync_channel_ords.apply_async(queue='consume_scans', args=(client_prefix, ))
     return jsonify({"msg": "Task received"}), 200
 
 

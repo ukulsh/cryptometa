@@ -473,8 +473,8 @@ select_orders_list_query = """select distinct on (aa.order_date, aa.id) aa.chann
                              order by order_date DESC, aa.id DESC
                              __PAGINATION__"""
 
-get_selected_product_details = """select ll.order_id, ll.product_names, ll.skus, ll.quantity, ll.weights, ll.dimensions, ll.prod_price, ll.tax_rate  from (SELECT order_id, array_agg(name) as product_names, array_agg(sku) as skus, 
-                                        array_agg(quantity) as quantity, array_agg(weight) as weights, array_agg(dimensions) as dimensions, array_agg(jj.amount) as prod_price, array_agg(tax_rate) as tax_rate from op_association jj 
+get_selected_product_details = """select ll.order_id, ll.product_names, ll.skus, ll.quantity, ll.weights, ll.dimensions, ll.prod_price, ll.tax_rate, ll.mrp  from (SELECT order_id, array_agg(name) as product_names, array_agg(sku) as skus, 
+                                        array_agg(quantity) as quantity, array_agg(weight) as weights, array_agg(dimensions) as dimensions, array_agg(jj.amount) as prod_price, array_agg(tax_rate) as tax_rate, array_agg(kk.price) as mrp from op_association jj 
                                        left join master_products kk on jj.master_product_id=kk.id
                                        group by order_id) ll where ll.order_id in (__FILTERED_ORDER_ID__)"""
 
@@ -607,6 +607,39 @@ select_state_performance_query = """select state, order_count, ROUND((order_coun
                                     __CLIENT_FILTER__
                                     and cc.state is not null
                                     group by cc.state
+                                    order by order_count DESC) xx"""
+
+select_courier_performance_query = """select courier_name, order_count, ROUND((order_count*100 / SUM(order_count) OVER ()), 1) AS perc_total, 
+                                    ROUND(shipping_cost::numeric/nullif(ship_cost_count, 0), 2) as avg_ship_cost,
+                                    ROUND(transit_days::numeric/nullif(delivered_count, 0), 1) as avg_tras_days, 
+                                    ROUND(rto_count*100::numeric/nullif(order_count, 0), 1) as rto_perc, 
+                                    ROUND(delivered_count*100::numeric/nullif(order_count, 0), 1) as delivered_perc,
+                                    ROUND(del_within_sla*100::numeric/nullif(pdd_count, 0), 1) as del_sla_perc, 
+                                    ROUND(ndr_count*100::numeric/nullif(order_count, 0), 1) as ndr_perc from 
+                                    (select jj.courier_name, count(*) as order_count, sum(case when aa.status='DELIVERED' then forward_charge+rto_charge else 0 end) as shipping_cost, 
+                                    sum(dd.status_time::date-ee.status_time::date) as transit_days, sum(case when aa.status='DELIVERED' then 1 else 0 end) as delivered_count,
+                                    sum(case when aa.status='RTO' then 1 else 0 end) as rto_count, sum(case when aa.status='DELIVERED' then ii.amount else 0 end) as revenue,
+                                    sum(case when gg.forward_charge is not null and aa.status='DELIVERED' then 1 else 0 end) as ship_cost_count,
+                                    sum(case when dd.status_time <=hh.pdd + interval '1' day and hh.pdd is not null and aa.status='DELIVERED' then 1 else 0 end) as del_within_sla,
+                                    sum(case when hh.pdd is not null and aa.status='DELIVERED' then 1 else 0 end) as pdd_count,
+                                    sum(case when kk.order_id is not null then 1 else 0 end) as ndr_count
+                                    from orders aa
+                                    left join shipping_address bb on aa.delivery_address_id=bb.id
+                                    left join pincode_mapping cc on bb.pincode=cc.pincode
+                                    left join shipments hh on hh.order_id=aa.id
+                                    left join master_couriers jj on hh.courier_id=jj.id
+                                    left join (select order_id, count(*) from ndr_shipments group by order_id) kk on kk.order_id=aa.id
+                                    left join (select * from order_status where status in ('Delivered')) dd on dd.order_id=aa.id
+                                    left join (select * from order_status where status in ('Picked')) ee on ee.order_id=aa.id
+                                    left join (select * from order_status where status in ('RTO')) ff on ff.order_id=aa.id
+                                    left join client_deductions gg on gg.shipment_id=hh.id
+                                    left join orders_payments ii on aa.id=ii.order_id
+                                    where aa.status in ('DELIVERED','RTO')
+                                    and hh.courier_id!=19
+                                    and aa.order_date>'%s' and aa.order_date<'%s'
+                                    and jj.courier_name is not null
+                                    __CLIENT_FILTER__
+                                    group by jj.courier_name
                                     order by order_count DESC) xx"""
 
 select_top_selling_state_query = """select cc.state, count(*) as order_count ,ROUND((count(*)*100 / SUM(count(*)) OVER ()), 1)::numeric AS order_perc

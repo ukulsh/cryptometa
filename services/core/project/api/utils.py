@@ -767,7 +767,7 @@ def fill_invoice_data(c, order, client_name):
                 for tax_lines in prod.tax_lines:
                     total_tax += tax_lines['rate']
 
-                taxable_val = prod.amount if prod.amount else prod.master_product.price
+                taxable_val = prod.amount if prod.amount is not None else prod.master_product.price*prod.quantity
 
                 taxable_val = taxable_val/(1+total_tax)
                 c.drawString(3.02 * inch, (y_axis + 0.08) * inch, str(round(taxable_val, 2)))
@@ -780,12 +780,12 @@ def fill_invoice_data(c, order, client_name):
 
                 c.drawString(4.12 * inch, (y_axis + 0.08) * inch, des_str)
 
-                c.drawString(6.22 * inch, (y_axis + 0.08) * inch, str(round(prod.amount, 2)) if prod.amount else str(round(prod.master_product.price, 2)))
+                c.drawString(6.22 * inch, (y_axis + 0.08) * inch, str(round(prod.amount, 2)) if prod.amount is not None else str(round(prod.master_product.price*prod.quantity, 2)))
 
             elif order.shipments and (prod.amount or prod.master_product.price):
                 total_tax = 0.18
 
-                taxable_val = prod.amount if prod.amount else prod.master_product.price
+                taxable_val = prod.amount if prod.amount is not None else prod.master_product.price*prod.quantity
 
                 taxable_val = taxable_val / (1 + total_tax)
                 c.drawString(3.02 * inch, (y_axis + 0.08) * inch, str(round(taxable_val, 2)))
@@ -800,15 +800,15 @@ def fill_invoice_data(c, order, client_name):
 
                 c.drawString(4.12 * inch, (y_axis + 0.08) * inch, des_str)
 
-                c.drawString(6.22 * inch, (y_axis + 0.08) * inch, str(round(prod.amount, 2)) if prod.amount else str(round(prod.master_product.price, 2)))
+                c.drawString(6.22 * inch, (y_axis + 0.08) * inch, str(round(prod.amount, 2)) if prod.amount is not None else str(round(prod.master_product.price*prod.quantity, 2)))
 
             else:
-                taxable_val = prod.amount
+                taxable_val = prod.amount if prod.amount is not None else prod.master_product.price*prod.quantity
                 c.drawString(3.02 * inch, (y_axis + 0.08) * inch, str(round(taxable_val, 2)))
                 c.drawString(2.42 * inch, (y_axis + 0.08) * inch, str(round(prod.master_product.price, 2)) if prod.master_product.price else "")
-                c.drawString(6.22 * inch, (y_axis + 0.08) * inch, str(round(prod.amount, 2)))
+                c.drawString(6.22 * inch, (y_axis + 0.08) * inch, str(round(prod.amount, 2)) if prod.amount is not None else str(round(prod.master_product.price*prod.quantity, 2)))
 
-            prod_total_value += prod.amount if prod.amount else prod.master_product.price
+            prod_total_value += prod.amount if prod.amount is not None else prod.master_product.price*prod.quantity
         except Exception:
             pass
 

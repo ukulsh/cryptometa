@@ -6,7 +6,7 @@ from project import db
 from project.api.models import MultiVendor, Orders, OrdersPayments, CodVerification, NDRVerification
 from project.api.utils import authenticate_restful
 from project.api.utilities.db_utils import DbConnection
-from project.api.queries import select_state_performance_query, select_top_selling_state_query
+from project.api.queries import select_state_performance_query, select_top_selling_state_query, select_courier_performance_query
 
 shipping_blueprint = Blueprint('analytics', __name__)
 api = Api(shipping_blueprint)
@@ -74,6 +74,78 @@ def get_state_performance(resp):
             st_obj['avg_tras_days'] = float(state[4]) if state[4] else None
             st_obj['rto_perc'] = float(state[5]) if state[5] else None
             st_obj['rev_per_order'] = float(state[6]) if state[6] else None
+            data.append(st_obj)
+
+        response['data'] = data
+        response['success'] = True
+
+        return jsonify(response), 200
+    except Exception as e:
+        conn.rollback()
+        return jsonify(response), 400
+
+
+@shipping_blueprint.route('/analytics/v1/shipping/courierPerformance', methods=['GET'])
+@authenticate_restful
+def get_courier_performance(resp):
+    response = {"success": False}
+    cur = conn.cursor()
+    try:
+        auth_data = resp.get('data')
+        if not auth_data:
+            return jsonify({"msg": "Authentication Failed"}), 400
+
+        if auth_data['user_group'] == 'warehouse':
+            response['data'] = {}
+            return jsonify(response), 200
+
+        from_date = request.args.get('from')
+        to_date = request.args.get('to')
+
+        if not from_date:
+            from_date = datetime.utcnow() + timedelta(hours=5.5) - timedelta(days=30)
+            from_date = from_date.strftime('%Y-%m-%d')
+
+        if to_date:
+            to_date = datetime.strptime(to_date, '%Y-%m-%d')
+            to_date = to_date+timedelta(days=1)
+            to_date = to_date.strftime('%Y-%m-%d')
+        else:
+            to_date = datetime.utcnow() + timedelta(hours=5.5) + timedelta(days=1)
+            to_date = to_date.strftime('%Y-%m-%d')
+
+        client_prefix = auth_data.get('client_prefix')
+
+        query_to_run = select_courier_performance_query%(from_date, to_date)
+
+        all_vendors = None
+        if auth_data['user_group'] == 'multi-vendor':
+            all_vendors = db.session.query(MultiVendor).filter(MultiVendor.client_prefix == client_prefix).first()
+            all_vendors = all_vendors.vendor_list
+
+        if auth_data['user_group'] == 'client':
+            query_to_run = query_to_run.replace("__CLIENT_FILTER__",
+                                                    "AND aa.client_prefix='%s'" % auth_data['client_prefix'])
+        elif all_vendors:
+            query_to_run = query_to_run.replace("__CLIENT_FILTER__",
+                                                    "AND aa.client_prefix in %s" % str(tuple(all_vendors)))
+        else:
+            query_to_run = query_to_run.replace("__CLIENT_FILTER__", "")
+
+        cur.execute(query_to_run)
+        state_qs = cur.fetchall()
+        data = list()
+        for state in state_qs:
+            st_obj = dict()
+            st_obj['courier'] = state[0]
+            st_obj['total_orders'] = state[1]
+            st_obj['order_perc'] = float(state[2]) if state[2] else None
+            st_obj['avg_ship_cost'] = float(state[3]) if state[3] else None
+            st_obj['avg_tras_days'] = float(state[4]) if state[4] else None
+            st_obj['rto_perc'] = float(state[5]) if state[5] else None
+            st_obj['delivered_perc'] = float(state[6]) if state[6] else None
+            st_obj['del_within_sla'] = float(state[7]) if state[7] else None
+            st_obj['ndr_perc'] = float(state[8]) if state[8] else None
             data.append(st_obj)
 
         response['data'] = data

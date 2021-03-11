@@ -54,7 +54,7 @@ def filter_query(filters, query_to_run, auth_data):
             reason_tuple = "('" + filters['ndr_reason'][0] + "')"
         else:
             reason_tuple = str(tuple(filters['ndr_reason']))
-        query_to_run = query_to_run.replace("__NDR_REASON_FILTER__", "AND rr.reason in %s" % reason_tuple)
+        query_to_run = query_to_run.replace("__NDR_REASON_FILTER__", "AND rr.reason[1] in %s" % reason_tuple)
 
     if 'ndr_type' in filters:
         if 'Action Requested' in filters['ndr_type'] and 'Action Required' in filters['ndr_type']:
@@ -90,7 +90,7 @@ def filter_query(filters, query_to_run, auth_data):
             flag_tuple = "('" + filters['thirdwatch_flag'][0] + "')"
         else:
             flag_tuple = str(tuple(filters['thirdwatch_flag']))
-        query_to_run = query_to_run.replace("__THIRDWATCH_FLAG_FILTER__", "AND lower(uu.flag) in %s" % flag_tuple)
+        query_to_run = query_to_run.replace("__THIRDWATCH_FLAG_FILTER__", "AND uu.flag in %s" % flag_tuple)
 
     if 'thirdwatch_tags' in filters:
         flag_tuple = str(filters['thirdwatch_tags'])
@@ -149,7 +149,7 @@ def download_flag_func(query_to_run, get_selected_product_details, auth_data, fi
         cur.execute(update_product_details_query)
         product_detail_data = cur.fetchall()
         for it in product_detail_data:
-            product_detail_by_order_id[it[0]] = [it[1], it[2], it[3], it[4], it[5], it[6], it[7]]
+            product_detail_by_order_id[it[0]] = [it[1], it[2], it[3], it[4], it[5], it[6], it[7], it[8]]
 
     filename = str(client_prefix)+"_EXPORT_orders_"+ ''.join(random.choices(string.ascii_letters + string.digits, k=8)) + ".csv"
     with open(filename, 'w') as mycsvfile:
@@ -188,10 +188,21 @@ def download_flag_func(query_to_run, get_selected_product_details, auth_data, fi
                         new_row.append(str(val))
                         new_row.append(str(product_data[1][idx]))
                         new_row.append(str(product_data[2][idx]))
-                        new_row.append(str(product_data[5][idx]))
-                        new_row.append(str(product_data[5][idx]*product_data[6][idx]/2) if product_data[5][idx] and product_data[6][idx] and order[48] else "")
-                        new_row.append(str(product_data[5][idx]*product_data[6][idx]/2) if product_data[5][idx] and product_data[6][idx] and order[48] else "")
-                        new_row.append(str(product_data[5][idx]*product_data[6][idx]) if product_data[5][idx] and product_data[6][idx] and not order[48] else "")
+                        prod_amount = product_data[5][idx] if product_data[5][idx] is not None else product_data[7][idx]
+                        cgst, sgst, igst = "","",""
+                        try:
+                            taxable_amount = prod_amount/(1+product_data[6][idx])
+                            if prod_amount and product_data[6][idx] and order[48]:
+                                cgst = taxable_amount*product_data[6][idx]/2
+                                sgst = cgst
+                            elif prod_amount and product_data[6][idx] and not order[48]:
+                                igst = taxable_amount*product_data[6][idx]
+                        except Exception:
+                            pass
+                        new_row.append(str(prod_amount))
+                        new_row.append(str(cgst))
+                        new_row.append(str(sgst))
+                        new_row.append(str(igst))
                         new_row.append(str(order[24]))
                         new_row.append(order[25])
                         new_row.append(order[34].strftime("%Y-%m-%d %H:%M:%S") if order[34] else "N/A")

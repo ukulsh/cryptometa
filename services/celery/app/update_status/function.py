@@ -198,6 +198,7 @@ def track_delhivery_orders(courier, cur):
                 edd = datetime.strptime(edd, '%Y-%m-%dT%H:%M:%S')
                 if datetime.utcnow().hour < 4:
                     cur.execute("UPDATE shipments SET edd=%s WHERE awb=%s", (edd, current_awb))
+                    cur.execute("UPDATE shipments SET pdd=%s WHERE awb=%s and pdd is null", (edd, current_awb))
 
             client_name = orders_dict[current_awb][20]
             customer_phone = orders_dict[current_awb][4].replace(" ", "")
@@ -440,6 +441,7 @@ def track_shadowfax_orders(courier, cur):
                 edd = datetime.strptime(edd, '%Y-%m-%dT%H:%M:%SZ')
                 if datetime.utcnow().hour < 4:
                     cur.execute("UPDATE shipments SET edd=%s WHERE awb=%s", (edd, current_awb))
+                    cur.execute("UPDATE shipments SET pdd=%s WHERE awb=%s and pdd is null", (edd, current_awb))
 
             client_name = orders_dict[current_awb][20]
             customer_phone = orders_dict[current_awb][4].replace(" ", "")
@@ -677,6 +679,7 @@ def track_xpressbees_orders(courier, cur):
                                         '%m/%d/%Y %I:%M:%S %p')
                 if datetime.utcnow().hour < 4:
                     cur.execute("UPDATE shipments SET edd=%s WHERE awb=%s", (edd, current_awb))
+                    cur.execute("UPDATE shipments SET pdd=%s WHERE awb=%s and pdd is null", (edd, current_awb))
 
             client_name = orders_dict[current_awb][20]
             customer_phone = orders_dict[current_awb][4].replace(" ", "")
@@ -752,6 +755,12 @@ def track_xpressbees_orders(courier, cur):
                         ndr_reason = None
                         if ret_order['ShipmentSummary'][0]['Status'].lower() in Xpressbees_ndr_reasons:
                             ndr_reason = Xpressbees_ndr_reasons[ret_order['ShipmentSummary'][0]['Status'].lower()]
+                        elif "future delivery" in ret_order['ShipmentSummary'][0]['Status'].lower():
+                            ndr_reason = 4
+                        elif "open delivery" in ret_order['ShipmentSummary'][0]['Status'].lower():
+                            ndr_reason = 10
+                        elif "address incomplete" in ret_order['ShipmentSummary'][0]['Status'].lower():
+                            ndr_reason = 2
                         else:
                             ndr_reason = 14
                         sms_to_key, sms_body_key, customer_phone, sms_body_key_data = verification_text(
@@ -948,6 +957,7 @@ def track_bluedart_orders(courier, cur):
                 edd = datetime.strptime(edd, '%d %B %Y')
                 if datetime.utcnow().hour < 4:
                     cur.execute("UPDATE shipments SET edd=%s WHERE awb=%s", (edd, current_awb))
+                    cur.execute("UPDATE shipments SET pdd=%s WHERE awb=%s and pdd is null", (edd, current_awb))
 
             client_name = orders_dict[current_awb][20]
             customer_phone = orders_dict[current_awb][4].replace(" ", "")
@@ -1192,6 +1202,7 @@ def track_ecomxp_orders(courier, cur):
                 edd = datetime.strptime(edd, '%d-%b-%Y')
                 if datetime.utcnow().hour < 4:
                     cur.execute("UPDATE shipments SET edd=%s WHERE awb=%s", (edd, current_awb))
+                    cur.execute("UPDATE shipments SET pdd=%s WHERE awb=%s and pdd is null", (edd, current_awb))
 
             client_name = orders_dict[current_awb][20]
             customer_phone = orders_dict[current_awb][4].replace(" ", "")

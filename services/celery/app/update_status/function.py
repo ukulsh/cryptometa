@@ -1333,11 +1333,12 @@ def verification_text(current_order, exotel_idx, cur, ndr=None, ndr_reason=None)
             cur.execute(
                 "INSERT INTO ndr_shipments (order_id, shipment_id, reason_id, current_status, date_created) VALUES (%s,%s,%s,%s,%s);",
                 ndr_ship_tuple)
-            cur.execute("SELECT * FROM ndr_verification where order_id=%s;"%str(current_order[0]))
-            if not cur.fetchone():
-                cur.execute(
-                    "INSERT INTO ndr_verification (order_id, verification_link, date_created) VALUES (%s,%s,%s);",
-                    insert_cod_ver_tuple)
+            if current_order[37] != False:
+                cur.execute("SELECT * FROM ndr_verification where order_id=%s;"%str(current_order[0]))
+                if not cur.fetchone():
+                    cur.execute(
+                        "INSERT INTO ndr_verification (order_id, verification_link, date_created) VALUES (%s,%s,%s);",
+                        insert_cod_ver_tuple)
 
     client_name = current_order[20]
     customer_phone = current_order[4].replace(" ", "")
@@ -1351,7 +1352,7 @@ def verification_text(current_order, exotel_idx, cur, ndr=None, ndr_reason=None)
                             " Please click on the link (%s) to report any issue. We'll call you back shortly." % (
                                 client_name, str(current_order[12]),
                                 del_confirmation_link)
-    elif ndr_reason in (1, 3, 9, 11):
+    elif ndr_reason in (1, 3, 9, 11) and current_order[37] != False:
         sms_body_key_data = "Dear Customer, Delivery for your order from %s with order id %s was attempted today." \
                             " Please click on the link (%s) if you wish a re-attempt." % (
                                 client_name, str(current_order[12]),
@@ -1934,6 +1935,8 @@ def shopify_cancel(order):
 
     tra_header = {'Content-Type': 'application/json'}
     cancel_data = {"restock": False}
+    if order[3] in ("BEHIR", "SHAHIKITCHEN", "SUKHILIFE", "SUCCESSCRAFT", "NEWYOURCHOICE"):
+        cancel_data = {"restock": True}
     req_ful = requests.post(get_cancel_url, data=json.dumps(cancel_data),
                             headers=tra_header)
 

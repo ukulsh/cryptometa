@@ -400,58 +400,231 @@ def get_orders_filters(resp):
     return jsonify(response), 200
 
 
-class AddOrder(Resource):
+# class AddOrder(Resource):
+#
+#     method_decorators = [authenticate_restful]
+#
+#     def post(self, resp):
+#         try:
+#             data = json.loads(request.data)
+#             auth_data = resp.get('data')
+#             if not auth_data:
+#                 return {"success": False, "msg": "Auth Failed"}, 404
+#
+#             order_exists = db.session.query(Orders).filter(Orders.channel_order_id==str(data.get('order_id')).rstrip(), Orders.client_prefix==auth_data.get('client_prefix')).first()
+#             if order_exists:
+#                 return {"success": False, "msg": "Order ID already exists", "unique_id":order_exists.id}, 400
+#
+#             delivery_address = ShippingAddress(first_name=data.get('full_name'),
+#                                                address_one=data.get('address1'),
+#                                                address_two=data.get('address2'),
+#                                                city=data.get('city'),
+#                                                pincode=str(data.get('pincode')),
+#                                                state=data.get('state'),
+#                                                country=data.get('country'),
+#                                                phone=str(data.get('customer_phone'))
+#                                                )
+#
+#             bill_obj = None
+#             if data.get('billing_address'):
+#                 bill_obj = BillingAddress(first_name=data['billing_address'].get('first_name'),
+#                                 last_name=data['billing_address'].get('last_name'),
+#                                 address_one=data['billing_address'].get('address1'),
+#                                 address_two=data['billing_address'].get('address2'),
+#                                 city=data['billing_address'].get('city'),
+#                                 pincode=str(data['billing_address'].get('pincode')),
+#                                 state=data['billing_address'].get('state'),
+#                                 country=data['billing_address'].get('country'),
+#                                 phone=str(data['billing_address'].get('phone') if data['billing_address'].get('phone') else str(data.get('customer_phone'))
+#                                 ),)
+#                 db.session.add(bill_obj)
+#
+#             pickup_filter = data.get('warehouse')
+#             pickup_data = None
+#             if pickup_filter:
+#                 pickup_data = db.session.query(ClientPickups).join(PickupPoints, ClientPickups.pickup_id==PickupPoints.id).filter(PickupPoints.warehouse_prefix==pickup_filter)
+#                 if auth_data.get('user_group') == 'client':
+#                     pickup_data = pickup_data.filter(ClientPickups.client_prefix==auth_data.get('client_prefix'))
+#                 pickup_data = pickup_data.first()
+#
+#             chargeable_weight = data.get('weight')
+#             if chargeable_weight:
+#                 chargeable_weight = float(chargeable_weight)
+#             new_order = Orders(channel_order_id=str(data.get('order_id')).rstrip(),
+#                            order_date=datetime.utcnow()+timedelta(hours=5.5),
+#                            customer_name=data.get('full_name'),
+#                            customer_email=data.get('customer_email'),
+#                            customer_phone=data.get('customer_phone'),
+#                            delivery_address=delivery_address,
+#                            billing_address=bill_obj,
+#                            status="NEW",
+#                            client_prefix=auth_data.get('client_prefix'),
+#                            pickup_data=pickup_data,
+#                            chargeable_weight=chargeable_weight,
+#                            order_id_channel_unique=str(data.get('order_id')).rstrip(),
+#                            master_channel_id=9
+#                            )
+#
+#             if data.get('products'):
+#                 for prod in data.get('products'):
+#                     if 'sku' in prod:
+#                         prod_obj = db.session.query(MasterProducts).filter(MasterProducts.sku == prod['sku'], MasterProducts.client_prefix==auth_data.get('client_prefix')).first()
+#                         if not prod_obj:
+#                             dimensions = {"length": float(prod.get('length')) if prod.get('length') else None,
+#                                           "breadth": float(prod.get('breadth')) if prod.get('breadth') else None,
+#                                           "height": float(prod.get('height')) if prod.get('height') else None}
+#                             prod_obj = MasterProducts(sku=str(prod['sku']),
+#                                                 name=str(prod.get('name') if prod.get('name') else prod.get('sku')),
+#                                                 client_prefix=auth_data.get('client_prefix'),
+#                                                 dimensions=dimensions,
+#                                                 weight=float(prod.get('weight')) if prod.get('weight') else None,
+#                                                 price=float(prod.get('price')) if prod.get('price') else None,
+#                                                 )
+#                             db.session.add(prod_obj)
+#
+#                     else:
+#                         prod_obj = db.session.query(MasterProducts).filter(MasterProducts.id == int(prod['id'])).first()
+#
+#                     if prod_obj:
+#                         tax_lines = prod.get('tax_lines')
+#                         amount = prod.get('amount')
+#                         op_association = OPAssociation(order=new_order, master_product=prod_obj, quantity=prod['quantity'], amount=amount, tax_lines=tax_lines)
+#                         new_order.products.append(op_association)
+#
+#             if data.get('shipping_charges'):
+#                 total_amount=float(data['total'])+float(data['shipping_charges'])
+#                 shipping_charges = float(data['shipping_charges'])
+#             else:
+#                 total_amount = float(data['total'])
+#                 shipping_charges = 0
+#
+#             payment = OrdersPayments(
+#                 payment_mode=data['payment_method'],
+#                 subtotal=float(data['total']),
+#                 amount=total_amount,
+#                 shipping_charges=shipping_charges,
+#                 currency='INR',
+#                 order=new_order
+#             )
+#
+#             db.session.add(new_order)
+#             try:
+#                 db.session.commit()
+#             except Exception:
+#                 return {"status": "Failed", "msg": "Duplicate order_id"}, 400
+#             return {'status': 'success', 'msg': "successfully added", "order_id": new_order.channel_order_id, "unique_id": new_order.id}, 200
+#
+#         except Exception as e:
+#             if e.args[0].startswith("(psycopg2.IntegrityError) duplicate key value"):
+#                 return {"status": "Failed", "msg": "Duplicate order_id"}, 400
+#             return {"status":"Failed", "msg":""}, 400
+#
+#     def get(self, resp):
+#         auth_data = resp.get('data')
+#         search_key = request.args.get('search', "")
+#         if not auth_data:
+#             return {"success": False, "msg": "Auth Failed"}, 404
+#
+#         cur = conn.cursor()
+#         query_to_execute = """SELECT id, name, sku FROM master_products
+#                               WHERE (name ilike '%__SEARCH_KEY__%'
+#                               OR sku ilike '%__SEARCH_KEY__%')
+#                               __CLIENT_FILTER__
+#                               ORDER BY sku
+#                               LIMIT 10
+#                               """.replace('__SEARCH_KEY__', search_key)
+#         if auth_data['user_group'] != 'super-admin':
+#             query_to_execute = query_to_execute.replace('__CLIENT_FILTER__', "AND client_prefix='%s'"%auth_data['client_prefix'])
+#         else:
+#             query_to_execute = query_to_execute.replace('__CLIENT_FILTER__', "")
+#
+#         search_tup = tuple()
+#         try:
+#             cur.execute(query_to_execute)
+#             search_tup = cur.fetchall()
+#         except Exception as e:
+#             conn.rollback()
+#
+#         search_list = list()
+#         for search_obj in search_tup:
+#             search_dict = dict()
+#             search_dict['id'] = search_obj[0]
+#             search_dict['name'] = search_obj[1]
+#             search_dict['master_sku'] = search_obj[2]
+#             search_list.append(search_dict)
+#
+#         response = {"search_list": search_list}
+#
+#         if search_key != "":
+#             return response, 200
+#         payment_modes = ['prepaid','COD']
+#         warehouses = [r.warehouse_prefix for r in db.session.query(PickupPoints.warehouse_prefix)
+#             .join(ClientPickups, ClientPickups.pickup_id==PickupPoints.id)
+#             .filter(ClientPickups.client_prefix==auth_data.get('client_prefix'))
+#             .order_by(PickupPoints.warehouse_prefix)]
+#
+#         response['payment_modes'] = payment_modes
+#         response['warehouses'] = warehouses
+#         return response, 200
+#
+#
+# api.add_resource(AddOrder, '/orders/add')
 
-    method_decorators = [authenticate_restful]
 
-    def post(self, resp):
-        try:
-            data = json.loads(request.data)
-            auth_data = resp.get('data')
-            if not auth_data:
-                return {"success": False, "msg": "Auth Failed"}, 404
+@orders_blueprint.route('/orders/add', methods=['POST'])
+@authenticate_restful
+def add_order_post(resp):
+    try:
+        data = json.loads(request.data)
+        auth_data = resp.get('data')
+        if not auth_data:
+            return jsonify({"success": False, "msg": "Auth Failed"}), 404
 
-            order_exists = db.session.query(Orders).filter(Orders.channel_order_id==str(data.get('order_id')).rstrip(), Orders.client_prefix==auth_data.get('client_prefix')).first()
-            if order_exists:
-                return {"success": False, "msg": "Order ID already exists", "unique_id":order_exists.id}, 400
+        order_exists = db.session.query(Orders).filter(Orders.channel_order_id == str(data.get('order_id')).rstrip(),
+                                                       Orders.client_prefix == auth_data.get('client_prefix')).first()
+        if order_exists:
+            return jsonify({"success": False, "msg": "Order ID already exists", "unique_id": order_exists.id}), 400
 
-            delivery_address = ShippingAddress(first_name=data.get('full_name'),
-                                               address_one=data.get('address1'),
-                                               address_two=data.get('address2'),
-                                               city=data.get('city'),
-                                               pincode=str(data.get('pincode')),
-                                               state=data.get('state'),
-                                               country=data.get('country'),
-                                               phone=str(data.get('customer_phone'))
-                                               )
+        delivery_address = ShippingAddress(first_name=data.get('full_name'),
+                                           address_one=data.get('address1'),
+                                           address_two=data.get('address2'),
+                                           city=data.get('city'),
+                                           pincode=str(data.get('pincode')),
+                                           state=data.get('state'),
+                                           country=data.get('country'),
+                                           phone=str(data.get('customer_phone'))
+                                           )
 
-            bill_obj = None
-            if data.get('billing_address'):
-                bill_obj = BillingAddress(first_name=data['billing_address'].get('first_name'),
-                                last_name=data['billing_address'].get('last_name'),
-                                address_one=data['billing_address'].get('address1'),
-                                address_two=data['billing_address'].get('address2'),
-                                city=data['billing_address'].get('city'),
-                                pincode=str(data['billing_address'].get('pincode')),
-                                state=data['billing_address'].get('state'),
-                                country=data['billing_address'].get('country'),
-                                phone=str(data['billing_address'].get('phone') if data['billing_address'].get('phone') else str(data.get('customer_phone'))
-                                ),)
-                db.session.add(bill_obj)
+        bill_obj = None
+        if data.get('billing_address'):
+            bill_obj = BillingAddress(first_name=data['billing_address'].get('first_name'),
+                                      last_name=data['billing_address'].get('last_name'),
+                                      address_one=data['billing_address'].get('address1'),
+                                      address_two=data['billing_address'].get('address2'),
+                                      city=data['billing_address'].get('city'),
+                                      pincode=str(data['billing_address'].get('pincode')),
+                                      state=data['billing_address'].get('state'),
+                                      country=data['billing_address'].get('country'),
+                                      phone=str(data['billing_address'].get('phone') if data['billing_address'].get(
+                                          'phone') else str(data.get('customer_phone'))
+                                                ), )
+            db.session.add(bill_obj)
 
-            pickup_filter = data.get('warehouse')
-            pickup_data = None
-            if pickup_filter:
-                pickup_data = db.session.query(ClientPickups).join(PickupPoints, ClientPickups.pickup_id==PickupPoints.id).filter(PickupPoints.warehouse_prefix==pickup_filter)
-                if auth_data.get('user_group') == 'client':
-                    pickup_data = pickup_data.filter(ClientPickups.client_prefix==auth_data.get('client_prefix'))
-                pickup_data = pickup_data.first()
+        pickup_filter = data.get('warehouse')
+        pickup_data = None
+        if pickup_filter:
+            pickup_data = db.session.query(ClientPickups).join(PickupPoints,
+                                                               ClientPickups.pickup_id == PickupPoints.id).filter(
+                PickupPoints.warehouse_prefix == pickup_filter)
+            if auth_data.get('user_group') == 'client':
+                pickup_data = pickup_data.filter(ClientPickups.client_prefix == auth_data.get('client_prefix'))
+            pickup_data = pickup_data.first()
 
-            chargeable_weight = data.get('weight')
-            if chargeable_weight:
-                chargeable_weight = float(chargeable_weight)
-            new_order = Orders(channel_order_id=str(data.get('order_id')).rstrip(),
-                           order_date=datetime.utcnow()+timedelta(hours=5.5),
+        chargeable_weight = data.get('weight')
+        if chargeable_weight:
+            chargeable_weight = float(chargeable_weight)
+        new_order = Orders(channel_order_id=str(data.get('order_id')).rstrip(),
+                           order_date=datetime.utcnow() + timedelta(hours=5.5),
                            customer_name=data.get('full_name'),
                            customer_email=data.get('customer_email'),
                            customer_phone=data.get('customer_phone'),
@@ -465,110 +638,115 @@ class AddOrder(Resource):
                            master_channel_id=9
                            )
 
-            if data.get('products'):
-                for prod in data.get('products'):
-                    if 'sku' in prod:
-                        prod_obj = db.session.query(MasterProducts).filter(MasterProducts.sku == prod['sku'], MasterProducts.client_prefix==auth_data.get('client_prefix')).first()
-                        if not prod_obj:
-                            dimensions = {"length": float(prod.get('length')) if prod.get('length') else None,
-                                          "breadth": float(prod.get('breadth')) if prod.get('breadth') else None,
-                                          "height": float(prod.get('height')) if prod.get('height') else None}
-                            prod_obj = MasterProducts(sku=str(prod['sku']),
-                                                name=str(prod.get('name') if prod.get('name') else prod.get('sku')),
-                                                client_prefix=auth_data.get('client_prefix'),
-                                                dimensions=dimensions,
-                                                weight=float(prod.get('weight')) if prod.get('weight') else None,
-                                                price=float(prod.get('price')) if prod.get('price') else None,
-                                                )
-                            db.session.add(prod_obj)
+        if data.get('products'):
+            for prod in data.get('products'):
+                if 'sku' in prod:
+                    prod_obj = db.session.query(MasterProducts).filter(MasterProducts.sku == prod['sku'],
+                                                                       MasterProducts.client_prefix == auth_data.get(
+                                                                           'client_prefix')).first()
+                    if not prod_obj:
+                        dimensions = {"length": float(prod.get('length')) if prod.get('length') else None,
+                                      "breadth": float(prod.get('breadth')) if prod.get('breadth') else None,
+                                      "height": float(prod.get('height')) if prod.get('height') else None}
+                        prod_obj = MasterProducts(sku=str(prod['sku']),
+                                                  name=str(prod.get('name') if prod.get('name') else prod.get('sku')),
+                                                  client_prefix=auth_data.get('client_prefix'),
+                                                  dimensions=dimensions,
+                                                  weight=float(prod.get('weight')) if prod.get('weight') else None,
+                                                  price=float(prod.get('price')) if prod.get('price') else None,
+                                                  )
+                        db.session.add(prod_obj)
 
-                    else:
-                        prod_obj = db.session.query(MasterProducts).filter(MasterProducts.id == int(prod['id'])).first()
+                else:
+                    prod_obj = db.session.query(MasterProducts).filter(MasterProducts.id == int(prod['id'])).first()
 
-                    if prod_obj:
-                        tax_lines = prod.get('tax_lines')
-                        amount = prod.get('amount')
-                        op_association = OPAssociation(order=new_order, master_product=prod_obj, quantity=prod['quantity'], amount=amount, tax_lines=tax_lines)
-                        new_order.products.append(op_association)
+                if prod_obj:
+                    tax_lines = prod.get('tax_lines')
+                    amount = prod.get('amount')
+                    op_association = OPAssociation(order=new_order, master_product=prod_obj, quantity=prod['quantity'],
+                                                   amount=amount, tax_lines=tax_lines)
+                    new_order.products.append(op_association)
 
-            if data.get('shipping_charges'):
-                total_amount=float(data['total'])+float(data['shipping_charges'])
-                shipping_charges = float(data['shipping_charges'])
-            else:
-                total_amount = float(data['total'])
-                shipping_charges = 0
-
-            payment = OrdersPayments(
-                payment_mode=data['payment_method'],
-                subtotal=float(data['total']),
-                amount=total_amount,
-                shipping_charges=shipping_charges,
-                currency='INR',
-                order=new_order
-            )
-
-            db.session.add(new_order)
-            try:
-                db.session.commit()
-            except Exception:
-                return {"status": "Failed", "msg": "Duplicate order_id"}, 400
-            return {'status': 'success', 'msg': "successfully added", "order_id": new_order.channel_order_id, "unique_id": new_order.id}, 200
-
-        except Exception as e:
-            if e.args[0].startswith("(psycopg2.IntegrityError) duplicate key value"):
-                return {"status": "Failed", "msg": "Duplicate order_id"}, 400
-            return {"status":"Failed", "msg":""}, 400
-
-    def get(self, resp):
-        auth_data = resp.get('data')
-        search_key = request.args.get('search', "")
-        if not auth_data:
-            return {"success": False, "msg": "Auth Failed"}, 404
-
-        cur = conn.cursor()
-        query_to_execute = """SELECT id, name, sku FROM master_products
-                              WHERE (name ilike '%__SEARCH_KEY__%'
-                              OR sku ilike '%__SEARCH_KEY__%')
-                              __CLIENT_FILTER__
-                              ORDER BY sku
-                              LIMIT 10 
-                              """.replace('__SEARCH_KEY__', search_key)
-        if auth_data['user_group'] != 'super-admin':
-            query_to_execute = query_to_execute.replace('__CLIENT_FILTER__', "AND client_prefix='%s'"%auth_data['client_prefix'])
+        if data.get('shipping_charges'):
+            total_amount = float(data['total']) + float(data['shipping_charges'])
+            shipping_charges = float(data['shipping_charges'])
         else:
-            query_to_execute = query_to_execute.replace('__CLIENT_FILTER__', "")
+            total_amount = float(data['total'])
+            shipping_charges = 0
 
-        search_tup = tuple()
+        payment = OrdersPayments(
+            payment_mode=data['payment_method'],
+            subtotal=float(data['total']),
+            amount=total_amount,
+            shipping_charges=shipping_charges,
+            currency='INR',
+            order=new_order
+        )
+
+        db.session.add(new_order)
         try:
-            cur.execute(query_to_execute)
-            search_tup = cur.fetchall()
-        except Exception as e:
-            conn.rollback()
+            db.session.commit()
+        except Exception:
+            return jsonify({"status": "Failed", "msg": "Duplicate order_id"}), 400
+        return jsonify({'status': 'success', 'msg': "successfully added", "order_id": new_order.channel_order_id,
+                "unique_id": new_order.id}), 200
 
-        search_list = list()
-        for search_obj in search_tup:
-            search_dict = dict()
-            search_dict['id'] = search_obj[0]
-            search_dict['name'] = search_obj[1]
-            search_dict['master_sku'] = search_obj[2]
-            search_list.append(search_dict)
-
-        response = {"search_list": search_list}
-
-        if search_key != "":
-            return response, 200
-        payment_modes = ['prepaid','COD']
-        warehouses = [r.warehouse_prefix for r in db.session.query(PickupPoints.warehouse_prefix)
-            .join(ClientPickups, ClientPickups.pickup_id==PickupPoints.id)
-            .filter(ClientPickups.client_prefix==auth_data.get('client_prefix'))
-            .order_by(PickupPoints.warehouse_prefix)]
-
-        response['payment_modes'] = payment_modes
-        response['warehouses'] = warehouses
-        return response, 200
+    except Exception as e:
+        if e.args[0].startswith("(psycopg2.IntegrityError) duplicate key value"):
+            return jsonify({"status": "Failed", "msg": "Duplicate order_id"}), 400
+        return jsonify({"status": "Failed", "msg": ""}), 400
 
 
-api.add_resource(AddOrder, '/orders/add')
+@orders_blueprint.route('/orders/add', methods=['GET'])
+@authenticate_restful
+def add_order_get(resp):
+    auth_data = resp.get('data')
+    search_key = request.args.get('search', "")
+    if not auth_data:
+        return jsonify({"success": False, "msg": "Auth Failed"}), 404
+
+    cur = conn.cursor()
+    query_to_execute = """SELECT id, name, sku FROM master_products
+                                  WHERE (name ilike '%__SEARCH_KEY__%'
+                                  OR sku ilike '%__SEARCH_KEY__%')
+                                  __CLIENT_FILTER__
+                                  ORDER BY sku
+                                  LIMIT 10 
+                                  """.replace('__SEARCH_KEY__', search_key)
+    if auth_data['user_group'] != 'super-admin':
+        query_to_execute = query_to_execute.replace('__CLIENT_FILTER__',
+                                                    "AND client_prefix='%s'" % auth_data['client_prefix'])
+    else:
+        query_to_execute = query_to_execute.replace('__CLIENT_FILTER__', "")
+
+    search_tup = tuple()
+    try:
+        cur.execute(query_to_execute)
+        search_tup = cur.fetchall()
+    except Exception as e:
+        conn.rollback()
+
+    search_list = list()
+    for search_obj in search_tup:
+        search_dict = dict()
+        search_dict['id'] = search_obj[0]
+        search_dict['name'] = search_obj[1]
+        search_dict['master_sku'] = search_obj[2]
+        search_list.append(search_dict)
+
+    response = {"search_list": search_list}
+
+    if search_key != "":
+        return jsonify(response), 200
+    payment_modes = ['prepaid', 'COD']
+    warehouses = [r.warehouse_prefix for r in db.session.query(PickupPoints.warehouse_prefix)
+        .join(ClientPickups, ClientPickups.pickup_id == PickupPoints.id)
+        .filter(ClientPickups.client_prefix == auth_data.get('client_prefix'))
+        .order_by(PickupPoints.warehouse_prefix)]
+
+    response['payment_modes'] = payment_modes
+    response['warehouses'] = warehouses
+    return jsonify(response), 200
 
 
 @orders_blueprint.route('/orders/v1/upload', methods=['POST'])

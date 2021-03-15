@@ -691,3 +691,41 @@ select_top_selling_state_query = """select cc.state, count(*) as order_count ,RO
                                     __CLIENT_FILTER__
                                     group by cc.state
                                     order by order_count DESC"""
+
+select_transit_delays_query = """select * from (select aa.id, aa.channel_order_id, aa.status, bb.awb, cc.courier_name, dd.status_time as shipped_date,
+                                  bb.pdd, (now()::date-bb.pdd::date) as delayed_by_days, bb.zone, ee.status_time as last_scan_time, 
+                                  aa.customer_name, aa.customer_phone, aa.customer_email from orders aa
+                                  left join shipments bb on aa.id=bb.order_id
+                                  left join master_couriers cc on bb.courier_id=cc.id
+                                  left join orders_payments gg on gg.order_id=aa.id
+                                  left join (select * from order_status where status='Picked') dd on aa.id=dd.order_id
+                                  left join (select order_id, max(status_time) as status_time from order_status group by order_id) ee on aa.id=ee.order_id
+                                  left join (select * from order_status where status='Returned') ff on aa.id=ff.order_id
+                                  where bb.pdd is not null
+                                  and aa.status in ('IN TRANSIT', 'DISPATCHED', 'PENDING')
+                                  and aa.status_type not in ('RT', 'DL')
+                                  __MODE_FILTER__
+                                  __CLIENT_FILTER__
+                                  and ff.id is null) xx
+                                  where delayed_by_days>0
+                                  order by __ORDER_BY__ __ORDER_TYPE__
+                                  __PAGINATION__"""
+
+
+select_rto_delays_query = """select * from (select aa.id, aa.channel_order_id, aa.status, bb.awb, cc.courier_name, ff.status_time as return_mark_date,
+               				 (now()::date-ff.status_time::date)-10 as delayed_by_days, bb.zone, ee.status_time as last_scan_time, 
+                              aa.customer_name, aa.customer_phone, aa.customer_email from orders aa
+                              left join shipments bb on aa.id=bb.order_id
+                              left join master_couriers cc on bb.courier_id=cc.id
+                              left join orders_payments gg on gg.order_id=aa.id
+                              left join (select order_id, max(status_time) as status_time from order_status group by order_id) ee on aa.id=ee.order_id
+                              left join (select * from order_status where status='Returned') ff on aa.id=ff.order_id
+                              where ff.id is not null
+                              and aa.status not in ('RTO', 'DELIVERED', 'DTO', 'DAMAGED', 'LOST', 'SHORTAGE', 'NOT SHIPPED', 'DISPATCHED')
+                              __MODE_FILTER__
+                              __CLIENT_FILTER__            
+                              ) xx
+                              where delayed_by_days>10
+                              order by __ORDER_BY__ __ORDER_TYPE__
+                              __PAGINATION__"""
+

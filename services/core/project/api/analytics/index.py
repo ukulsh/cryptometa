@@ -1,4 +1,4 @@
-import boto3, os, random, string, csv
+import boto3, os, random, string, csv, json
 from datetime import datetime, timedelta
 from sqlalchemy import or_, func
 from flask import Blueprint, request, jsonify
@@ -8,10 +8,10 @@ from project.api.models import MultiVendor, Orders, OrdersPayments, CodVerificat
 from project.api.utils import authenticate_restful
 from project.api.utilities.db_utils import DbConnection
 from project.api.queries import select_state_performance_query, select_top_selling_state_query, \
-    select_courier_performance_query, select_zone_performance_query
+    select_courier_performance_query, select_zone_performance_query, select_transit_delays_query, select_rto_delays_query
 
-shipping_blueprint = Blueprint('analytics', __name__)
-api = Api(shipping_blueprint)
+analytics_blueprint = Blueprint('analytics', __name__)
+api = Api(analytics_blueprint)
 
 conn = DbConnection.get_db_connection_instance()
 conn_2 = DbConnection.get_pincode_db_connection_instance()
@@ -24,9 +24,13 @@ session = boto3.Session(
 STATE_DOWNLOAD_HEADERS = ["State", "TotalOrders", "OrderPerc", "AvgShipCost", "AvgTransitDays", "RTOPerc", "CODPerc", "AvgRevenue", "MostFrequentZone"]
 COURIER_DOWNLOAD_HEADERS = ["Courier", "TotalOrders", "OrderPerc", "AvgShipCost", "AvgTransitDays", "RTOPerc", "DeliveredPerc", "DeliveredWithinSLA", "NDRPerc"]
 ZONE_DOWNLOAD_HEADERS = ["Zone", "TotalOrders", "OrderPerc", "AvgShipCost", "AvgTransitDays", "RTOPerc", "DeliveredPerc", "DeliveredWithinSLA", "NDRPerc"]
+TRANSIT_DELAY_DOWNLOAD_HEADERS = ["OrderID", "Status", "AWB", "Courier", "ShippedDate", "PromisedDeliveryDate", "DelayedByDays",
+                                  "Zone", "LastScan", "CustomerName", "CustomerPhone", "CustomerEmail"]
+RTO_DELAY_DOWNLOAD_HEADERS = ["OrderID", "Status", "AWB", "Courier", "ReturnMarkDate", "DelayedByDays",
+                                  "Zone", "LastScan", "CustomerName", "CustomerPhone", "CustomerEmail"]
 
 
-@shipping_blueprint.route('/analytics/v1/shipping/statePerformance', methods=['GET'])
+@analytics_blueprint.route('/analytics/v1/shipping/statePerformance', methods=['GET'])
 @authenticate_restful
 def get_state_performance(resp):
     response = {"success": False}
@@ -133,7 +137,7 @@ def get_state_performance(resp):
         return jsonify(response), 400
 
 
-@shipping_blueprint.route('/analytics/v1/shipping/courierPerformance', methods=['GET'])
+@analytics_blueprint.route('/analytics/v1/shipping/courierPerformance', methods=['GET'])
 @authenticate_restful
 def get_courier_performance(resp):
     response = {"success": False}
@@ -190,7 +194,7 @@ def get_courier_performance(resp):
         if zone:
             zone = str(zone).split(",")
             if len(zone) == 1:
-                zone = "("+zone[0]+")"
+                zone = "('"+zone[0]+"')"
             else:
                 zone = "('"+"','".join(zone)+"')"
             query_to_run = query_to_run.replace('__ZONE_FILTER__', "and hh.zone in %s"%zone)
@@ -251,7 +255,7 @@ def get_courier_performance(resp):
         return jsonify(response), 400
 
 
-@shipping_blueprint.route('/analytics/v1/shipping/zonePerformance', methods=['GET'])
+@analytics_blueprint.route('/analytics/v1/shipping/zonePerformance', methods=['GET'])
 @authenticate_restful
 def get_zone_performance(resp):
     response = {"success": False}
@@ -351,7 +355,8 @@ def get_zone_performance(resp):
         conn.rollback()
         return jsonify(response), 400
 
-@shipping_blueprint.route('/analytics/v1/shipping/topStates', methods=['GET'])
+
+@analytics_blueprint.route('/analytics/v1/shipping/topStates', methods=['GET'])
 @authenticate_restful
 def get_top_states(resp):
     response = {"success": False}
@@ -406,6 +411,220 @@ def get_top_states(resp):
             st_obj['state'] = state[0]
             st_obj['total_orders'] = state[1]
             st_obj['order_perc'] = float(state[2]) if state[2] else None
+            data.append(st_obj)
+
+        response['data'] = data
+        response['success'] = True
+
+        return jsonify(response), 200
+    except Exception as e:
+        conn.rollback()
+        return jsonify(response), 400
+
+
+@analytics_blueprint.route('/analytics/v1/undelivered/transitDelays', methods=['POST'])
+@authenticate_restful
+def get_transit_delays(resp):
+    response = {"success": False}
+    cur = conn.cursor()
+    try:
+        data = json.loads(request.data)
+        auth_data = resp.get('data')
+        if not auth_data:
+            return jsonify({"msg": "Authentication Failed"}), 400
+
+        if auth_data['user_group'] == 'warehouse':
+            response['data'] = {}
+            return jsonify(response), 200
+
+        page = data.get('page', 1)
+        per_page = data.get('per_page', 10)
+        order_by = data.get('sort_by', "delayed_by_days")
+        order_type = data.get('sort', "desc")
+        filters = data.get('filters', {})
+        download_flag = request.args.get("download", None)
+
+        client_prefix = auth_data.get('client_prefix')
+
+        query_to_run = select_transit_delays_query
+
+        all_vendors = None
+        if auth_data['user_group'] == 'multi-vendor':
+            all_vendors = db.session.query(MultiVendor).filter(MultiVendor.client_prefix == client_prefix).first()
+            all_vendors = all_vendors.vendor_list
+
+        if auth_data['user_group'] == 'client':
+            query_to_run = query_to_run.replace("__CLIENT_FILTER__",
+                                                    "AND aa.client_prefix='%s'" % auth_data['client_prefix'])
+        elif all_vendors:
+            query_to_run = query_to_run.replace("__CLIENT_FILTER__",
+                                                    "AND aa.client_prefix in %s" % str(tuple(all_vendors)))
+        else:
+            query_to_run = query_to_run.replace("__CLIENT_FILTER__", "")
+
+        if 'mode' in filters:
+            query_to_run = query_to_run.replace('__MODE_FILTER__', "and gg.payment_mode ilike '%s'"%str(filters['mode']).lower())
+        else:
+            query_to_run = query_to_run.replace('__MODE_FILTER__', "")
+
+        query_to_run = query_to_run.replace("__ORDER_BY__", order_by)
+        query_to_run = query_to_run.replace("__ORDER_TYPE__", order_type)
+
+        if download_flag:
+            cur.execute(query_to_run.replace('__PAGINATION__', ""))
+            order_qs = cur.fetchall()
+            filename = str(client_prefix) + "_EXPORT_transit_delays_" + ''.join(
+                random.choices(string.ascii_letters + string.digits, k=8)) + ".csv"
+            with open(filename, 'w') as mycsvfile:
+                cw = csv.writer(mycsvfile)
+                cw.writerow(TRANSIT_DELAY_DOWNLOAD_HEADERS)
+                for order in order_qs:
+                    try:
+                        new_row = list()
+                        new_row.append(str(order[1]))
+                        new_row.append(str(order[2]))
+                        new_row.append(str(order[3]))
+                        new_row.append(str(order[4]))
+                        new_row.append(order[5].strftime("%Y-%m-%d %H:%M:%S") if order[5] else "N/A")
+                        new_row.append(order[6].strftime("%Y-%m-%d") if order[6] else "N/A")
+                        new_row.append(str(order[7]))
+                        new_row.append(str(order[8]))
+                        new_row.append(order[9].strftime("%Y-%m-%d %H:%M:%S") if order[9] else "N/A")
+                        new_row.append(str(order[10]))
+                        new_row.append(str(order[11]))
+                        new_row.append(str(order[12]))
+                        cw.writerow(new_row)
+                    except Exception as e:
+                        pass
+
+            s3 = session.resource('s3')
+            bucket = s3.Bucket("wareiqfiles")
+            bucket.upload_file(filename, "downloads/" + filename, ExtraArgs={'ACL': 'public-read'})
+            state_url = "https://wareiqfiles.s3.amazonaws.com/downloads/" + filename
+            os.remove(filename)
+            return jsonify({"url": state_url, "success":True}), 200
+
+        query_to_run = query_to_run.replace('__PAGINATION__', "OFFSET %s LIMIT %s" % (str((page-1)*per_page), str(per_page)))
+        cur.execute(query_to_run)
+        order_qs = cur.fetchall()
+        data = list()
+        for order in order_qs:
+            st_obj = dict()
+            st_obj['unique_id'] = order[0]
+            st_obj['order_id'] = order[1]
+            st_obj['status'] = order[2]
+            st_obj['shipping'] = {"courier": order[4], "awb":order[3], "zone": order[8]}
+            st_obj['shipped_date'] = order[5].strftime("%Y-%m-%d %H:%M:%S") if order[5] else "N/A"
+            st_obj['pdd'] = order[6].strftime("%Y-%m-%d") if order[6] else "N/A"
+            st_obj['delayed_by_days'] = order[7]
+            st_obj['last_scan_time'] = order[9].strftime("%Y-%m-%d %H:%M:%S") if order[9] else "N/A"
+            st_obj['customer'] = {"name": order[10], "phone": order[11], "email": order[12]}
+            data.append(st_obj)
+
+        response['data'] = data
+        response['success'] = True
+
+        return jsonify(response), 200
+    except Exception as e:
+        conn.rollback()
+        return jsonify(response), 400
+
+
+@analytics_blueprint.route('/analytics/v1/undelivered/rtoDelays', methods=['POST'])
+@authenticate_restful
+def get_rto_delays(resp):
+    response = {"success": False}
+    cur = conn.cursor()
+    try:
+        data = json.loads(request.data)
+        auth_data = resp.get('data')
+        if not auth_data:
+            return jsonify({"msg": "Authentication Failed"}), 400
+
+        if auth_data['user_group'] == 'warehouse':
+            response['data'] = {}
+            return jsonify(response), 200
+
+        page = data.get('page', 1)
+        per_page = data.get('per_page', 10)
+        order_by = data.get('sort_by', "delayed_by_days")
+        order_type = data.get('sort', "desc")
+        filters = data.get('filters', {})
+        download_flag = request.args.get("download", None)
+
+        client_prefix = auth_data.get('client_prefix')
+
+        query_to_run = select_rto_delays_query
+
+        all_vendors = None
+        if auth_data['user_group'] == 'multi-vendor':
+            all_vendors = db.session.query(MultiVendor).filter(MultiVendor.client_prefix == client_prefix).first()
+            all_vendors = all_vendors.vendor_list
+
+        if auth_data['user_group'] == 'client':
+            query_to_run = query_to_run.replace("__CLIENT_FILTER__",
+                                                    "AND aa.client_prefix='%s'" % auth_data['client_prefix'])
+        elif all_vendors:
+            query_to_run = query_to_run.replace("__CLIENT_FILTER__",
+                                                    "AND aa.client_prefix in %s" % str(tuple(all_vendors)))
+        else:
+            query_to_run = query_to_run.replace("__CLIENT_FILTER__", "")
+
+        if 'mode' in filters:
+            query_to_run = query_to_run.replace('__MODE_FILTER__', "and gg.payment_mode ilike '%s'"%str(filters['mode']).lower())
+        else:
+            query_to_run = query_to_run.replace('__MODE_FILTER__', "")
+
+        query_to_run = query_to_run.replace("__ORDER_BY__", order_by)
+        query_to_run = query_to_run.replace("__ORDER_TYPE__", order_type)
+
+        if download_flag:
+            cur.execute(query_to_run.replace('__PAGINATION__', ""))
+            order_qs = cur.fetchall()
+            filename = str(client_prefix) + "_EXPORT_rto_delays_" + ''.join(
+                random.choices(string.ascii_letters + string.digits, k=8)) + ".csv"
+            with open(filename, 'w') as mycsvfile:
+                cw = csv.writer(mycsvfile)
+                cw.writerow(RTO_DELAY_DOWNLOAD_HEADERS)
+                for order in order_qs:
+                    try:
+                        new_row = list()
+                        new_row.append(str(order[1]))
+                        new_row.append(str(order[2]))
+                        new_row.append(str(order[3]))
+                        new_row.append(str(order[4]))
+                        new_row.append(order[5].strftime("%Y-%m-%d %H:%M:%S") if order[5] else "N/A")
+                        new_row.append(str(order[6]))
+                        new_row.append(str(order[7]))
+                        new_row.append(order[8].strftime("%Y-%m-%d %H:%M:%S") if order[8] else "N/A")
+                        new_row.append(str(order[9]))
+                        new_row.append(str(order[10]))
+                        new_row.append(str(order[11]))
+                        cw.writerow(new_row)
+                    except Exception as e:
+                        pass
+
+            s3 = session.resource('s3')
+            bucket = s3.Bucket("wareiqfiles")
+            bucket.upload_file(filename, "downloads/" + filename, ExtraArgs={'ACL': 'public-read'})
+            state_url = "https://wareiqfiles.s3.amazonaws.com/downloads/" + filename
+            os.remove(filename)
+            return jsonify({"url": state_url, "success":True}), 200
+
+        query_to_run = query_to_run.replace('__PAGINATION__', "OFFSET %s LIMIT %s" % (str((page-1)*per_page), str(per_page)))
+        cur.execute(query_to_run)
+        order_qs = cur.fetchall()
+        data = list()
+        for order in order_qs:
+            st_obj = dict()
+            st_obj['unique_id'] = order[0]
+            st_obj['order_id'] = order[1]
+            st_obj['status'] = order[2]
+            st_obj['shipping'] = {"courier": order[4], "awb":order[3], "zone": order[7]}
+            st_obj['return_mark_date'] = order[5].strftime("%Y-%m-%d %H:%M:%S") if order[5] else "N/A"
+            st_obj['delayed_by_days'] = order[6]
+            st_obj['last_scan_time'] = order[8].strftime("%Y-%m-%d %H:%M:%S") if order[8] else "N/A"
+            st_obj['customer'] = {"name": order[9], "phone": order[10], "email": order[11]}
             data.append(st_obj)
 
         response['data'] = data

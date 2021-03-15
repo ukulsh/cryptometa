@@ -185,6 +185,10 @@ def track_delhivery_orders(courier, cur):
                 continue
 
             new_status = new_status.upper()
+
+            if orders_dict[current_awb][2]=='CANCELED' and new_status!='IN TRANSIT':
+                continue
+
             status_type = ret_order['Shipment']['Status']['StatusType']
             if new_status == 'NOT PICKED':
                 new_status = "PICKUP REQUESTED"
@@ -436,6 +440,10 @@ def track_shadowfax_orders(courier, cur):
             if new_status_temp == "READY TO SHIP" and orders_dict[current_awb][2] == new_status:
                 continue
             new_status = new_status_temp
+
+            if orders_dict[current_awb][2]=='CANCELED' and new_status!='IN TRANSIT':
+                continue
+
             edd = ret_order['promised_delivery_date']
             if edd:
                 edd = datetime.strptime(edd, '%Y-%m-%dT%H:%M:%SZ')
@@ -669,6 +677,9 @@ def track_xpressbees_orders(courier, cur):
             if new_status_temp == "READY TO SHIP" and orders_dict[current_awb][2] == new_status:
                 continue
             new_status = new_status_temp
+
+            if orders_dict[current_awb][2]=='CANCELED' and new_status!='IN TRANSIT':
+                continue
 
             edd = ret_order['ShipmentSummary'][0].get('ExpectedDeliveryDate')
             if edd:
@@ -951,6 +962,9 @@ def track_bluedart_orders(courier, cur):
             status_detail = None
             status_code = scan_code
 
+            if orders_dict[current_awb][2]=='CANCELED' and new_status!='IN TRANSIT':
+                continue
+
             edd = ret_order['ExpectedDeliveryDate'] if 'ExpectedDeliveryDate' in ret_order else None
             if edd:
                 edd = datetime.strptime(edd, '%d %B %Y')
@@ -1121,6 +1135,9 @@ def track_ecomxp_orders(courier, cur):
             status_type = ecom_express_status_mapping[scan_code][1]
             status_detail = None
             status_code = scan_code
+
+            if orders_dict[current_awb][2]=='CANCELED' and new_status!='IN TRANSIT':
+                continue
 
             try:
                 order_status_tuple = (orders_dict[current_awb][0], orders_dict[current_awb][10], courier[0])

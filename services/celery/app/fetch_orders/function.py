@@ -1051,7 +1051,7 @@ def fetch_bikayi_orders(cur, channel):
 
 
 def assign_pickup_points_for_unassigned(cur, cur_2):
-    time_after = datetime.utcnow() - timedelta(days=20)
+    time_after = datetime.utcnow() - timedelta(days=5)
     cur.execute(get_orders_to_assign_pickups, (time_after,))
     all_orders = cur.fetchall()
     for order in all_orders:

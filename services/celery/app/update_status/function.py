@@ -659,16 +659,13 @@ def track_xpressbees_orders(courier, cur):
                     "Open status failed for id: " + str(orders_dict[current_awb][0]) + "\nErr: " + str(
                         e.args[0]))
 
+            status_detail = None
             try:
                 status_type = xpressbees_status_mapping[new_status][1]
                 new_status_temp = xpressbees_status_mapping[new_status][0]
-                status_detail = None
-                if new_status_temp == "PENDING":
-                    status_detail = ret_order['ShipmentSummary'][0]['Status']
             except KeyError:
                 new_status_temp = new_status_temp.upper()
                 status_type = None
-                status_detail = None
             if new_status_temp == "READY TO SHIP" and orders_dict[current_awb][2] == new_status:
                 continue
             new_status = new_status_temp
@@ -761,6 +758,8 @@ def track_xpressbees_orders(courier, cur):
                             ndr_reason = 10
                         elif "address incomplete" in ret_order['ShipmentSummary'][0]['Status'].lower():
                             ndr_reason = 2
+                        elif "amount not ready" in ret_order['ShipmentSummary'][0]['Status'].lower():
+                            ndr_reason = 15
                         else:
                             ndr_reason = 14
                         sms_to_key, sms_body_key, customer_phone, sms_body_key_data = verification_text(

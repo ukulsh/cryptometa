@@ -42,6 +42,7 @@ def get_state_performance(resp):
 
         from_date = request.args.get('from')
         to_date = request.args.get('to')
+        mode = request.args.get('mode')
 
         if not from_date:
             from_date = datetime.utcnow() + timedelta(hours=5.5) - timedelta(days=30)
@@ -72,6 +73,11 @@ def get_state_performance(resp):
                                                     "AND aa.client_prefix in %s" % str(tuple(all_vendors)))
         else:
             query_to_run = query_to_run.replace("__CLIENT_FILTER__", "")
+
+        if mode:
+            query_to_run = query_to_run.replace('__MODE_FILTER__', "and ii.payment_mode ilike '%s'"%str(mode).lower())
+        else:
+            query_to_run = query_to_run.replace('__MODE_FILTER__', "")
 
         cur.execute(query_to_run)
         state_qs = cur.fetchall()
@@ -143,6 +149,8 @@ def get_courier_performance(resp):
 
         from_date = request.args.get('from')
         to_date = request.args.get('to')
+        mode = request.args.get('mode')
+        zone = request.args.get('zone')
 
         if not from_date:
             from_date = datetime.utcnow() + timedelta(hours=5.5) - timedelta(days=30)
@@ -173,6 +181,21 @@ def get_courier_performance(resp):
                                                     "AND aa.client_prefix in %s" % str(tuple(all_vendors)))
         else:
             query_to_run = query_to_run.replace("__CLIENT_FILTER__", "")
+
+        if mode:
+            query_to_run = query_to_run.replace('__MODE_FILTER__', "and ii.payment_mode ilike '%s'"%str(mode).lower())
+        else:
+            query_to_run = query_to_run.replace('__MODE_FILTER__', "")
+
+        if zone:
+            zone = str(zone).split(",")
+            if len(zone) == 1:
+                zone = "("+zone[0]+")"
+            else:
+                zone = "('"+"','".join(zone)+"')"
+            query_to_run = query_to_run.replace('__ZONE_FILTER__', "and hh.zone in %s"%zone)
+        else:
+            query_to_run = query_to_run.replace('__ZONE_FILTER__',"")
 
         cur.execute(query_to_run)
         state_qs = cur.fetchall()

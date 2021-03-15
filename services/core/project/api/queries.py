@@ -608,6 +608,7 @@ select_state_performance_query = """select state, order_count, ROUND((order_coun
                                     and hh.courier_id!=19
                                     and aa.order_date>'%s' and aa.order_date<'%s'
                                     __CLIENT_FILTER__
+                                    __MODE_FILTER__
                                     and cc.state is not null
                                     group by cc.state
                                     order by order_count DESC) xx"""
@@ -642,6 +643,8 @@ select_courier_performance_query = """select courier_name, order_count, ROUND((o
                                     and aa.order_date>'%s' and aa.order_date<'%s'
                                     and jj.courier_name is not null
                                     __CLIENT_FILTER__
+                                    __MODE_FILTER__
+                                    __ZONE_FILTER__
                                     group by jj.courier_name
                                     order by order_count DESC) xx"""
 

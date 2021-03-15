@@ -635,7 +635,8 @@ def add_order_post(resp):
                            pickup_data=pickup_data,
                            chargeable_weight=chargeable_weight,
                            order_id_channel_unique=str(data.get('order_id')).rstrip(),
-                           master_channel_id=9
+                           master_channel_id=9,
+                           status_detail=str(data)
                            )
 
         if data.get('products'):

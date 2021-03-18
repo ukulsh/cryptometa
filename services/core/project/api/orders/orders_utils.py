@@ -8,9 +8,9 @@ from project.api.utilities.db_utils import DbConnection
 conn = DbConnection.get_db_connection_instance()
 ORDERS_DOWNLOAD_HEADERS = ["Order ID", "Customer Name", "Customer Email", "Customer Phone", "Order Date",
                            "Courier", "Weight", "awb", "Expected Delivery Date", "Status", "Address_one", "Address_two",
-                           "City", "State", "Country", "Pincode", "Pickup Point", "Product", "SKU", "Quantity", "ProductAmount", "CGST",
-                           "SGST", "IGST","Order Type", "OrderAmount", "Manifest Time", "Pickup Date", "Delivered Date", "COD Verfication",
-                           "COD Verified Via", "NDR Verfication", "NDR Verified Via", "PDD", "ShippingCharges", "InvoiceNo", "InvoiceDate", "OrderDiscount"]
+                           "City", "State", "Country", "Pincode", "Pickup Point", "Product", "SKU", "Quantity", "Order Type", "OrderAmount", "Manifest Time", "Pickup Date", "Delivered Date", "COD Verfication",
+                           "COD Verified Via", "NDR Verfication", "NDR Verified Via", "PDD", "ShippingCharges", "InvoiceNo", "InvoiceDate", "OrderDiscount", "ProductAmount", "CGST",
+                           "SGST", "IGST"]
 cur = conn.cursor()
 
 session = boto3.Session(
@@ -188,21 +188,6 @@ def download_flag_func(query_to_run, get_selected_product_details, auth_data, fi
                         new_row.append(str(val))
                         new_row.append(str(product_data[1][idx]))
                         new_row.append(str(product_data[2][idx]))
-                        prod_amount = product_data[5][idx] if product_data[5][idx] is not None else product_data[7][idx]
-                        cgst, sgst, igst = "","",""
-                        try:
-                            taxable_amount = prod_amount/(1+product_data[6][idx])
-                            if prod_amount and product_data[6][idx] and order[48]:
-                                cgst = taxable_amount*product_data[6][idx]/2
-                                sgst = cgst
-                            elif prod_amount and product_data[6][idx] and not order[48]:
-                                igst = taxable_amount*product_data[6][idx]
-                        except Exception:
-                            pass
-                        new_row.append(str(prod_amount))
-                        new_row.append(str(cgst))
-                        new_row.append(str(sgst))
-                        new_row.append(str(igst))
                         new_row.append(str(order[24]))
                         new_row.append(order[25])
                         new_row.append(order[34].strftime("%Y-%m-%d %H:%M:%S") if order[34] else "N/A")
@@ -225,6 +210,21 @@ def download_flag_func(query_to_run, get_selected_product_details, auth_data, fi
                         new_row.append(str(order[44]) if order[44] else "N/A")
                         new_row.append(order[45].strftime("%Y-%m-%d %H:%M:%S") if order[45] else "N/A")
                         new_row.append(str(order_disc))
+                        prod_amount = product_data[5][idx] if product_data[5][idx] is not None else product_data[7][idx]
+                        cgst, sgst, igst = "", "", ""
+                        try:
+                            taxable_amount = prod_amount / (1 + product_data[6][idx])
+                            if prod_amount and product_data[6][idx] and order[48]:
+                                cgst = taxable_amount * product_data[6][idx] / 2
+                                sgst = cgst
+                            elif prod_amount and product_data[6][idx] and not order[48]:
+                                igst = taxable_amount * product_data[6][idx]
+                        except Exception:
+                            pass
+                        new_row.append(str(prod_amount))
+                        new_row.append(str(cgst))
+                        new_row.append(str(sgst))
+                        new_row.append(str(igst))
                         not_shipped = None
                         if not product_data[4][idx]:
                             not_shipped = "Weight/dimensions not entered for product(s)"

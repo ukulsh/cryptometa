@@ -729,3 +729,30 @@ select_rto_delays_query = """select * from (select aa.id, aa.channel_order_id, a
                               order by __ORDER_BY__ __ORDER_TYPE__
                               __PAGINATION__"""
 
+select_ndr_reason_query = """select bb.reason, count(*) as total_count, sum(case when aa.current_status='reattempt' then 1 else 0 end) as reattempt_requested, 
+                            sum(case when aa.current_status='cancelled' then 1 else 0 end) as cancellation_confirmed, 
+                            sum(case when cc.status='DISPATCHED' then 1 else 0 end) as current_out_for_delivery
+                            from (select distinct on (order_id) order_id, reason_id, current_status from ndr_shipments
+                            order by order_id DESC, id DESC) aa
+                            left join ndr_reasons bb on aa.reason_id=bb.id
+                            left join orders cc on aa.order_id=cc.id
+                            where cc.status in ('PENDING', 'DISPATCHED')
+                            and (cc.status_type='UD' or cc.status_type is null)
+                            __CLIENT_FILTER__ 
+                            group by bb.reason
+                            order by total_count DESC"""
+
+select_ndr_reason_orders_query = """select cc.channel_order_id, cc.status, dd.awb, ee.courier_name, aa.current_status, ff.verified_via, attempt_count, bb.reason from
+                                    (select distinct on (order_id) order_id, reason_id, current_status from ndr_shipments
+                                    order by order_id DESC, id DESC) aa
+                                    left join (select order_id, count(*) as attempt_count from ndr_shipments group by order_id) gg on gg.order_id=aa.order_id
+                                    left join ndr_reasons bb on aa.reason_id=bb.id
+                                    left join orders cc on aa.order_id=cc.id
+                                    left join shipments dd on aa.order_id=dd.order_id
+                                    left join master_couriers ee on dd.courier_id=ee.id
+                                    left join ndr_verification ff on aa.order_id=ff.order_id
+                                    where cc.status in ('PENDING', 'DISPATCHED')
+                                    and (cc.status_type='UD' or cc.status_type is null)
+                                    __CLIENT_FILTER__
+                                    order by cc.order_date"""
+

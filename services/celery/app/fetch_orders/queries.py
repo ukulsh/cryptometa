@@ -71,7 +71,7 @@ get_orders_to_assign_pickups = """select aa.id, aa.client_prefix, bb.pincode, xx
                                 and aa.date_created>%s"""
 
 
-available_warehouse_product_quantity = """select aa.warehouse_prefix, aa.product_id, bb.sku, COALESCE(aa.current_quantity-ff.inline_quantity, 0) as available_count,  null as courier_id, 
+available_warehouse_product_quantity = """select aa.warehouse_prefix, aa.product_id, bb.sku, COALESCE(aa.current_quantity-COALESCE(ff.inline_quantity, 0), 0) as available_count,  null as courier_id, 
                                          bb.weight, cc.pincode from products_quantity aa 
                                          left join master_products bb on aa.product_id=bb.id 
                                          left join pickup_points cc on aa.warehouse_prefix=cc.warehouse_prefix

@@ -43,7 +43,7 @@ def get_dashboard(resp):
 
     qs_data = db.session.query(func.date_trunc('day', Orders.order_date).label('date'), func.count(Orders.id), func.sum(OrdersPayments.amount))\
         .join(OrdersPayments, Orders.id==OrdersPayments.order_id)\
-        .filter(Orders.order_date >= from_date, Orders.order_date <= to_date)
+        .filter(Orders.order_date >= from_date, Orders.order_date <= to_date).filter(Orders.status.in_(['DELIVERED','DISPATCHED','NEW','IN TRANSIT','PENDING','PICKUP REQUESTED','READY TO SHIP','SHIPPED']))
     if auth_data['user_group'] == 'client':
         qs_data = qs_data.filter(Orders.client_prefix == client_prefix)
     if auth_data['user_group'] == 'multi-vendor':

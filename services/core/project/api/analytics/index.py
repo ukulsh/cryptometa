@@ -1,4 +1,4 @@
-import boto3, os, random, string, csv, json
+import boto3, os, random, string, csv, json, math
 from datetime import datetime, timedelta
 from sqlalchemy import or_, func
 from flask import Blueprint, request, jsonify
@@ -8,7 +8,8 @@ from project.api.models import MultiVendor, Orders, OrdersPayments, CodVerificat
 from project.api.utils import authenticate_restful
 from project.api.utilities.db_utils import DbConnection
 from project.api.queries import select_state_performance_query, select_top_selling_state_query, \
-    select_courier_performance_query, select_zone_performance_query, select_transit_delays_query, select_rto_delays_query
+    select_courier_performance_query, select_zone_performance_query, select_transit_delays_query, \
+    select_rto_delays_query, select_ndr_reason_query, select_ndr_reason_orders_query
 
 analytics_blueprint = Blueprint('analytics', __name__)
 api = Api(analytics_blueprint)
@@ -28,6 +29,8 @@ TRANSIT_DELAY_DOWNLOAD_HEADERS = ["OrderID", "Status", "AWB", "Courier", "Shippe
                                   "Zone", "LastScan", "CustomerName", "CustomerPhone", "CustomerEmail"]
 RTO_DELAY_DOWNLOAD_HEADERS = ["OrderID", "Status", "AWB", "Courier", "ReturnMarkDate", "DelayedByDays",
                                   "Zone", "LastScan", "CustomerName", "CustomerPhone", "CustomerEmail"]
+
+NDR_ORDERS_DOWNLOAD_HEADERS = ["OrderID", "Status", "AWB", "Courier", "Action", "ActionBy", "AttemptCount", "LatestReason"]
 
 
 @analytics_blueprint.route('/analytics/v1/shipping/statePerformance', methods=['GET'])
@@ -425,7 +428,7 @@ def get_top_states(resp):
 @analytics_blueprint.route('/analytics/v1/undelivered/transitDelays', methods=['POST'])
 @authenticate_restful
 def get_transit_delays(resp):
-    response = {"success": False}
+    response = {"success": False, "data":[], "meta":{}}
     cur = conn.cursor()
     try:
         data = json.loads(request.data)
@@ -504,6 +507,9 @@ def get_transit_delays(resp):
             os.remove(filename)
             return jsonify({"url": state_url, "success":True}), 200
 
+        count_query = "select count(*) from (" + query_to_run.replace('__PAGINATION__', "") + ") xx"
+        cur.execute(count_query)
+        total_count = cur.fetchone()[0]
         query_to_run = query_to_run.replace('__PAGINATION__', "OFFSET %s LIMIT %s" % (str((page-1)*per_page), str(per_page)))
         cur.execute(query_to_run)
         order_qs = cur.fetchall()
@@ -523,6 +529,11 @@ def get_transit_delays(resp):
 
         response['data'] = data
         response['success'] = True
+        total_pages = math.ceil(total_count / per_page)
+        response['meta']['pagination'] = {'total': total_count,
+                                          'per_page': per_page,
+                                          'current_page': page,
+                                          'total_pages': total_pages}
 
         return jsonify(response), 200
     except Exception as e:
@@ -533,7 +544,7 @@ def get_transit_delays(resp):
 @analytics_blueprint.route('/analytics/v1/undelivered/rtoDelays', methods=['POST'])
 @authenticate_restful
 def get_rto_delays(resp):
-    response = {"success": False}
+    response = {"success": False, "data":[], "meta":{}}
     cur = conn.cursor()
     try:
         data = json.loads(request.data)
@@ -611,6 +622,10 @@ def get_rto_delays(resp):
             os.remove(filename)
             return jsonify({"url": state_url, "success":True}), 200
 
+        count_query = "select count(*) from (" + query_to_run.replace('__PAGINATION__', "") + ") xx"
+        cur.execute(count_query)
+        total_count = cur.fetchone()[0]
+
         query_to_run = query_to_run.replace('__PAGINATION__', "OFFSET %s LIMIT %s" % (str((page-1)*per_page), str(per_page)))
         cur.execute(query_to_run)
         order_qs = cur.fetchall()
@@ -629,7 +644,103 @@ def get_rto_delays(resp):
 
         response['data'] = data
         response['success'] = True
+        total_pages = math.ceil(total_count / per_page)
+        response['meta']['pagination'] = {'total': total_count,
+                                          'per_page': per_page,
+                                          'current_page': page,
+                                          'total_pages': total_pages}
 
+        return jsonify(response), 200
+    except Exception as e:
+        conn.rollback()
+        return jsonify(response), 400
+
+
+@analytics_blueprint.route('/analytics/v1/undelivered/ndrReasons', methods=['GET'])
+@authenticate_restful
+def get_ndr_reasons(resp):
+    response = {"success": False, "data":[], "meta":{}}
+    cur = conn.cursor()
+    try:
+        auth_data = resp.get('data')
+        if not auth_data:
+            return jsonify({"msg": "Authentication Failed"}), 400
+
+        if auth_data['user_group'] == 'warehouse':
+            response['data'] = {}
+            return jsonify(response), 200
+
+        download_flag = request.args.get("download", None)
+
+        client_prefix = auth_data.get('client_prefix')
+        if not download_flag:
+            query_to_run = select_ndr_reason_query
+        else:
+            query_to_run = select_ndr_reason_orders_query
+
+        all_vendors = None
+        if auth_data['user_group'] == 'multi-vendor':
+            all_vendors = db.session.query(MultiVendor).filter(MultiVendor.client_prefix == client_prefix).first()
+            all_vendors = all_vendors.vendor_list
+
+        if auth_data['user_group'] == 'client':
+            query_to_run = query_to_run.replace("__CLIENT_FILTER__",
+                                                "AND aa.client_prefix='%s'" % auth_data['client_prefix'])
+        elif all_vendors:
+            query_to_run = query_to_run.replace("__CLIENT_FILTER__",
+                                                "AND aa.client_prefix in %s" % str(tuple(all_vendors)))
+        else:
+            query_to_run = query_to_run.replace("__CLIENT_FILTER__", "")
+
+        if download_flag:
+            cur.execute(query_to_run)
+            order_qs = cur.fetchall()
+            filename = str(client_prefix) + "_EXPORT_ndr_reasons_" + ''.join(
+                random.choices(string.ascii_letters + string.digits, k=8)) + ".csv"
+            with open(filename, 'w') as mycsvfile:
+                cw = csv.writer(mycsvfile)
+                cw.writerow(NDR_ORDERS_DOWNLOAD_HEADERS)
+                for order in order_qs:
+                    try:
+                        new_row = list()
+                        new_row.append(str(order[0]))
+                        new_row.append(str(order[1]))
+                        new_row.append(str(order[2]))
+                        new_row.append(str(order[3]))
+                        new_row.append(str(order[4]))
+                        if order[4]=='reattempt' and order[5] in ('text', 'call'):
+                            new_row.append("customer")
+                        elif order[4]=='reattempt' and order[5]=='manual':
+                            new_row.append("seller")
+                        else:
+                            new_row.append("")
+                        new_row.append(str(order[6]))
+                        new_row.append(str(order[7]))
+                        cw.writerow(new_row)
+                    except Exception as e:
+                        pass
+
+            s3 = session.resource('s3')
+            bucket = s3.Bucket("wareiqfiles")
+            bucket.upload_file(filename, "downloads/" + filename, ExtraArgs={'ACL': 'public-read'})
+            state_url = "https://wareiqfiles.s3.amazonaws.com/downloads/" + filename
+            os.remove(filename)
+            return jsonify({"url": state_url, "success":True}), 200
+
+        cur.execute(query_to_run)
+        order_qs = cur.fetchall()
+        data = list()
+        for order in order_qs:
+            st_obj = dict()
+            st_obj['reason'] = order[0]
+            st_obj['total_count'] = order[1]
+            st_obj['reattempt_requested'] = order[2]
+            st_obj['cancellation_confirmed'] = order[3]
+            st_obj['current_out_for_delivery'] = order[4]
+            data.append(st_obj)
+
+        response['data'] = data
+        response['success'] = True
         return jsonify(response), 200
     except Exception as e:
         conn.rollback()

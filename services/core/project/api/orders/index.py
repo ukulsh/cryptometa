@@ -22,7 +22,7 @@ from sqlalchemy.dialects.postgresql import insert
 from project import db
 from project.api.models import NDRReasons, MultiVendor, NDRShipments, Orders, ClientPickups, MasterCouriers, \
     PickupPoints, Shipments, Products, ShippingAddress, OPAssociation, OrdersPayments, ClientMapping, WarehouseMapping, \
-    Manifests, OrderStatus, IVRHistory, OrderPickups, BillingAddress, MasterChannels, MasterProducts, NDRVerification
+    Manifests, OrderStatus, IVRHistory, OrderPickups, BillingAddress, MasterChannels, MasterProducts, NDRVerification, OrderScans
 from project.api.queries import select_orders_list_query, available_warehouse_product_quantity, \
     fetch_warehouse_to_pick_from, select_pickups_list_query, get_selected_product_details
 from project.api.utils import authenticate_restful, fill_shiplabel_data_thermal, \
@@ -866,7 +866,7 @@ def download_shiplabels(resp):
 
     if auth_data['user_group'] == 'client':
         orders_qs = orders_qs.filter(Orders.client_prefix==auth_data.get('client_prefix'))
-    orders_qs = orders_qs.order_by(Orders.id).all()
+    orders_qs = orders_qs.order_by(Orders.order_date, Orders.id).all()
     if not orders_qs:
         return jsonify({"success": False, "msg": "No valid order ID"}), 404
 
@@ -1197,7 +1197,7 @@ def download_invoice(resp):
 
     if auth_data['user_group'] == 'client':
         orders_qs = orders_qs.filter(Orders.client_prefix==auth_data.get('client_prefix'))
-    orders_qs = orders_qs.order_by(Orders.channel_order_id).all()
+    orders_qs = orders_qs.order_by(Orders.order_date, Orders.id).all()
     if not orders_qs:
         return jsonify({"success": False, "msg": "No valid order ID"}), 404
 
@@ -1885,6 +1885,7 @@ class OrderDetails(Resource):
                     order.pickup_data = client_pickup
                     order.status = 'NEW'
                     db.session.query(OrderStatus).filter(OrderStatus.order_id == int(order_id)).delete()
+                    db.session.query(OrderScans).filter(OrderScans.order_id == int(order_id)).delete()
                     db.session.query(Shipments).filter(Shipments.order_id == int(order_id)).delete()
                     if order.shipments and order.shipments[0].awb:
                         if order.shipments[0].courier.id in (1,2,8,11,12):  #Cancel on delhievry #todo: cancel on other platforms too

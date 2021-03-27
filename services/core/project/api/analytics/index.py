@@ -30,7 +30,8 @@ TRANSIT_DELAY_DOWNLOAD_HEADERS = ["OrderID", "Status", "AWB", "Courier", "Shippe
 RTO_DELAY_DOWNLOAD_HEADERS = ["OrderID", "Status", "AWB", "Courier", "ReturnMarkDate", "DelayedByDays",
                                   "Zone", "LastScan", "CustomerName", "CustomerPhone", "CustomerEmail"]
 
-NDR_ORDERS_DOWNLOAD_HEADERS = ["OrderID", "Status", "AWB", "Courier", "Action", "ActionBy", "AttemptCount", "LatestReason"]
+NDR_ORDERS_DOWNLOAD_HEADERS = ["OrderID", "Status", "AWB", "Courier", "Action", "ActionBy", "AttemptCount", "LatestReason",
+                               "DeferredDeliveryDate", "UpdatedAddress", "UpdatedPhone"]
 
 
 @analytics_blueprint.route('/analytics/v1/shipping/statePerformance', methods=['GET'])
@@ -685,10 +686,10 @@ def get_ndr_reasons(resp):
 
         if auth_data['user_group'] == 'client':
             query_to_run = query_to_run.replace("__CLIENT_FILTER__",
-                                                "AND aa.client_prefix='%s'" % auth_data['client_prefix'])
+                                                "AND cc.client_prefix='%s'" % auth_data['client_prefix'])
         elif all_vendors:
             query_to_run = query_to_run.replace("__CLIENT_FILTER__",
-                                                "AND aa.client_prefix in %s" % str(tuple(all_vendors)))
+                                                "AND cc.client_prefix in %s" % str(tuple(all_vendors)))
         else:
             query_to_run = query_to_run.replace("__CLIENT_FILTER__", "")
 
@@ -708,14 +709,17 @@ def get_ndr_reasons(resp):
                         new_row.append(str(order[2]))
                         new_row.append(str(order[3]))
                         new_row.append(str(order[4]))
-                        if order[4]=='reattempt' and order[5] in ('text', 'call'):
+                        if order[4] in ('reattempt', 'cancelled') and order[5] in ('text', 'call'):
                             new_row.append("customer")
-                        elif order[4]=='reattempt' and order[5]=='manual':
+                        elif order[4] in ('reattempt', 'cancelled') and order[5]=='manual':
                             new_row.append("seller")
                         else:
                             new_row.append("")
                         new_row.append(str(order[6]))
                         new_row.append(str(order[7]))
+                        new_row.append(order[8].strftime('%-d %b') if order[8] else "")
+                        new_row.append(order[9] if order[9] else "")
+                        new_row.append(order[10] if order[10] else "")
                         cw.writerow(new_row)
                     except Exception as e:
                         pass

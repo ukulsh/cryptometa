@@ -151,13 +151,13 @@ def bulkship_orders(resp):
 
 @app.route('/scans/v1/dev', methods = ['GET'])
 def celery_dev():
-    calculate_costs.apply_async(queue='calculate_costs')
+    orders_fetch.apply_async(queue='calculate_costs', args=("WAREIQ", 30))
     return jsonify({"msg": "Task received"}), 200
 
 
 @celery_app.task(name='fetch_orders')
-def orders_fetch():
-    fetch_orders()
+def orders_fetch(client_prefix=None, sync_all=None):
+    fetch_orders(client_prefix, sync_all)
     return 'successfully completed fetch_orders'
 
 
@@ -223,7 +223,7 @@ def sync_channel_prods(client_prefix):
 
 @celery_app.task(name='sync_channel_orders')
 def sync_channel_ords(client_prefix):
-    fetch_orders(client_prefix)
+    fetch_orders(client_prefix=client_prefix)
     return "received fetch orders"
 
 

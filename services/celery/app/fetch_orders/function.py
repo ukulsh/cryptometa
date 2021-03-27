@@ -22,7 +22,7 @@ conn = DbConnection.get_db_connection_instance()
 conn_2 = DbConnection.get_pincode_db_connection_instance()
 
 
-def fetch_orders(client_prefix=None):
+def fetch_orders(client_prefix=None, sync_all=None):
     cur = conn.cursor()
     cur_2 = conn_2.cursor()
     if not client_prefix:
@@ -68,6 +68,8 @@ def fetch_orders(client_prefix=None):
     if not client_prefix:
         assign_pickup_points_for_unassigned(cur, cur_2)
         update_thirdwatch_data(cur)
+    elif sync_all:
+        assign_pickup_points_for_unassigned(cur, cur_2, days=30)
 
     cur.close()
 
@@ -729,7 +731,7 @@ def fetch_easyecom_orders(cur, channel):
         created_after = datetime.utcnow() - timedelta(days=30)
         created_after = created_after.strftime("%Y-%m-%d %X")
 
-    fetch_status="1,2,3"
+    fetch_status="2,3"
     if channel[15]:
         fetch_status = ','.join(str(x) for x in channel[15])
     easyecom_orders_url = "%s/orders/getAllOrders?api_token=%s&created_after=%s&status_id=%s" % (channel[5], channel[3], created_after, fetch_status)
@@ -1050,8 +1052,8 @@ def fetch_bikayi_orders(cur, channel):
     conn.commit()
 
 
-def assign_pickup_points_for_unassigned(cur, cur_2):
-    time_after = datetime.utcnow() - timedelta(days=5)
+def assign_pickup_points_for_unassigned(cur, cur_2, days=5):
+    time_after = datetime.utcnow() - timedelta(days=days)
     cur.execute(get_orders_to_assign_pickups, (time_after,))
     all_orders = cur.fetchall()
     for order in all_orders:

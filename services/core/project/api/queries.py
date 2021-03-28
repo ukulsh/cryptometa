@@ -422,7 +422,7 @@ select_inventory_history_query = """select bb.sku, aa.warehouse_prefix, aa.user,
                                     __PAGINATION__"""
 
 select_orders_list_query = """select distinct on (aa.order_date, aa.id) aa.channel_order_id as order_id, aa.id as unique_id, aa.order_date, aa.status, 
-                              aa.status_detail, bb.awb, CONCAT('http://webapp.wareiq.com/tracking/', bb.awb) as tracking_link, cc.courier_name, bb.edd, 
+                              aa.status_detail, bb.awb, CONCAT('https://webapp.wareiq.com/tracking/', bb.awb) as tracking_link, cc.courier_name, bb.edd, 
                               bb.weight, bb.dimensions, bb.volumetric_weight,bb.remark, aa.customer_name, aa.customer_phone, aa.customer_email, dd.address_one, 
                               dd.address_two, dd.city, dd.state, dd.country, dd.pincode, ee.delivered_time, ff.pickup_time, gg.payment_mode, gg.amount, ii.warehouse_prefix,
                              mm.id,  mm.cod_verified, mm.verified_via, nn.id,  nn.ndr_verified, nn.verified_via, vv.logo_url, qq.manifest_time, rr.reason_id, 

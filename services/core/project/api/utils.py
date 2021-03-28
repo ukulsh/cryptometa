@@ -5,7 +5,7 @@ import json, xmltodict
 from functools import wraps
 from datetime import datetime, timedelta
 
-import requests
+import requests, random, string
 from reportlab.lib.units import inch
 from reportlab.graphics.barcode import code39, code128, code93
 from reportlab.graphics.shapes import Drawing
@@ -868,7 +868,8 @@ def invoice_order(order):
                                     pickup_data=order.pickup_data,
                                     invoice_no_text=inv_text,
                                     invoice_no=inv_no,
-                                    date_created=datetime.utcnow()+timedelta(hours=5.5))
+                                    date_created=datetime.utcnow()+timedelta(hours=5.5),
+                                    qr_url="https://track.wareiq.com/orders/v1/invoice/%s?uid=%s"%(str(order.id), ''.join(random.choices(string.ascii_lowercase+string.ascii_uppercase + string.digits, k=6))))
         order.pickup_data.invoice_last = inv_no
         db.session.add(invoice_obj)
         db.session.commit()

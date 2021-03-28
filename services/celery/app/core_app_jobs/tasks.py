@@ -912,9 +912,11 @@ def update_available_quantity_from_easyecom():
 
                     for req in req_data['data']['inventoryData']:
                         if req['companyName'] not in inventory_dict:
-                            inventory_dict[req['companyName']] = [(req['sku'], req['availableInventory'], req['reservedInventory'])]
+                            inventory_dict[req['companyName']] = [(req['sku'], int(req['availableInventory']) if req['availableInventory'] else 0,
+                                                                   int(req['reservedInventory']) if req['reservedInventory'] else 0)]
                         else:
-                            inventory_dict[req['companyName']].append((req['sku'], req['availableInventory'], req['reservedInventory']))
+                            inventory_dict[req['companyName']].append((req['sku'], int(req['availableInventory']) if req['availableInventory'] else 0,
+                                                                   int(req['reservedInventory']) if req['reservedInventory'] else 0))
 
                     for ee_loc, val_list in inventory_dict.items():
                         cur.execute("""select bb.warehouse_prefix from client_pickups aa

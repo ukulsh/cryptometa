@@ -11,7 +11,7 @@ import pandas as pd
 import requests
 
 from flask_cors import cross_origin
-from flask import Blueprint, request, jsonify, make_response, current_app
+from flask import Blueprint, request, jsonify, make_response, current_app, render_template_string
 from flask_restful import Api, Resource
 from reportlab.lib.pagesizes import landscape, A4
 from reportlab.lib.units import inch
@@ -22,7 +22,8 @@ from sqlalchemy.dialects.postgresql import insert
 from project import db
 from project.api.models import NDRReasons, MultiVendor, NDRShipments, Orders, ClientPickups, MasterCouriers, \
     PickupPoints, Shipments, Products, ShippingAddress, OPAssociation, OrdersPayments, ClientMapping, WarehouseMapping, \
-    Manifests, OrderStatus, IVRHistory, OrderPickups, BillingAddress, MasterChannels, MasterProducts, NDRVerification, OrderScans
+    Manifests, OrderStatus, IVRHistory, OrderPickups, BillingAddress, MasterChannels, MasterProducts, NDRVerification, \
+    OrderScans, OrdersInvoice
 from project.api.queries import select_orders_list_query, available_warehouse_product_quantity, \
     fetch_warehouse_to_pick_from, select_pickups_list_query, get_selected_product_details
 from project.api.utils import authenticate_restful, fill_shiplabel_data_thermal, \
@@ -33,6 +34,7 @@ from project.api.utils import authenticate_restful, fill_shiplabel_data_thermal,
 from project.api.generate_manifest import fill_manifest_data
 from project.api.utilities.db_utils import DbConnection
 from .orders_utils import *
+from .constants import *
 
 orders_blueprint = Blueprint('orders', __name__)
 api = Api(orders_blueprint)
@@ -2197,6 +2199,77 @@ def track_order(awb):
         return_response = jsonify({"success": True, "data": response})
 
         return return_response, 200
+    except Exception as e:
+        return jsonify({"success": False, "msg": str(e.args[0])}), 404
+
+
+@orders_blueprint.route('/orders/v1/invoice/<unique_id>', methods=['GET'])
+@cross_origin()
+def get_invoice_details(unique_id):
+    try:
+        order_qs = db.session.query(OrdersInvoice).filter(OrdersInvoice.qr_url==request.url).first()
+        if not order_qs:
+            return jsonify({"success": False, "msg": "Invalid URL"}), 400
+
+        cl_map = db.session.query(ClientMapping).filter(ClientMapping.client_prefix==order_qs.order.client_prefix).first()
+        if not cl_map:
+            return jsonify({"success": False, "msg": "Invalid URL"}), 400
+
+        gstin = order_qs.pickup_data.gstin if order_qs.pickup_data.gstin else ""
+        cgst = 0
+        sgst = 0
+        igst = 0
+        total_amount = order_qs.order.payments[0].amount
+        client_logo = cl_map.client_logo if cl_map.client_logo else ""
+        client_name = cl_map.legal_name if cl_map.legal_name else cl_map.client_name
+        invoice_no = order_qs.invoice_no_text if order_qs.invoice_no_text else ""
+        invoice_date = order_qs.date_created.strftime("%d %b %Y, %H:%M:%S") if order_qs.date_created else ""
+
+        for prod in order_qs.order.products:
+            try:
+                if prod.tax_lines:
+                    total_tax = 0
+                    for tax_lines in prod.tax_lines:
+                        total_tax += tax_lines['rate']
+
+                    taxable_val = prod.amount if prod.amount is not None else prod.master_product.price * prod.quantity
+
+                    taxable_val = taxable_val / (1 + total_tax)
+                    for tax_lines in prod.tax_lines:
+                        gst = round(tax_lines['rate'] * taxable_val, 2)
+                        if tax_lines['title'].lower()=='cgst':
+                            cgst += gst
+                        elif tax_lines['title'].lower()=='sgst':
+                            sgst += gst
+                        else:
+                            igst += gst
+
+                elif order_qs.order.shipments and (prod.amount or prod.master_product.price):
+                    total_tax = prod.master_product.tax_rate if prod.master_product.tax_rate else 0.18
+
+                    taxable_val = prod.amount if prod.amount is not None else prod.master_product.price * prod.quantity
+
+                    taxable_val = taxable_val / (1 + total_tax)
+                    if order_qs.order.shipments[0].same_state:
+                        cgst += round(taxable_val * total_tax/2, 2)
+                        sgst += round(taxable_val * total_tax/2, 2)
+                    else:
+                        igst += round(taxable_val * total_tax, 2)
+
+            except Exception:
+                pass
+
+        content = {"client_name": client_name,
+                   "client_logo": client_logo,
+                   "client_gstin": gstin,
+                   "invoice_no": invoice_no,
+                   "invoice_date": invoice_date,
+                   "invoice_cgst": cgst,
+                   "invoice_sgst": sgst,
+                   "invoice_igst": igst,
+                   "invoice_amount": total_amount}
+
+        return render_template_string(bill_template, **content), 200
     except Exception as e:
         return jsonify({"success": False, "msg": str(e.args[0])}), 404
 

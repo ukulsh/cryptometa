@@ -293,6 +293,7 @@ class OrdersInvoice(db.Model):
     invoice_no_text = db.Column(db.String, nullable=False)
     invoice_no = db.Column(db.Integer, nullable=False)
     cancelled = db.Column(db.BOOLEAN, nullable=True)
+    qr_url = db.Column(db.String, nullable=True)
     date_created = db.Column(db.DateTime, default=datetime.now)
     date_updated = db.Column(db.DateTime, onupdate=datetime.now)
 

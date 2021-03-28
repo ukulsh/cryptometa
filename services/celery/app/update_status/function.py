@@ -1896,6 +1896,7 @@ def shopify_fulfillment(order, cur):
     }
     req_ful = requests.post(create_fulfillment_url, data=json.dumps(fulfil_data),
                             headers=ful_header)
+    fulfillment_id = None
     try:
         fulfillment_id = str(req_ful.json()['fulfillment']['id'])
     except KeyError:

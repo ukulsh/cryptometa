@@ -1,5 +1,5 @@
 import psycopg2, requests, os, json, pytz
-import logging
+import logging, random, string
 from datetime import datetime, timedelta
 from requests_oauthlib.oauth1_session import OAuth1Session
 from zeep import Client
@@ -2657,8 +2657,10 @@ def invoice_order(cur, last_inv_no, inv_prefix, order_id, pickup_data_id):
         if inv_prefix:
             inv_text = inv_prefix + "-" + inv_text
 
-        cur.execute("""INSERT INTO orders_invoice (order_id, pickup_data_id, invoice_no_text, invoice_no, date_created) 
-                        VALUES (%s, %s, %s, %s, %s);""", (order_id, pickup_data_id, inv_text, inv_no, datetime.utcnow()+timedelta(hours=5.5)))
+        qr_url="https://track.wareiq.com/orders/v1/invoice/%s?uid=%s"%(str(order_id), ''.join(random.choices(string.ascii_lowercase+string.ascii_uppercase + string.digits, k=6)))
+
+        cur.execute("""INSERT INTO orders_invoice (order_id, pickup_data_id, invoice_no_text, invoice_no, date_created, qr_url) 
+                        VALUES (%s, %s, %s, %s, %s, %s);""", (order_id, pickup_data_id, inv_text, inv_no, datetime.utcnow()+timedelta(hours=5.5), qr_url))
         return inv_no
     except Exception as e:
         return last_inv_no

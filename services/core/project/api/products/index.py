@@ -232,7 +232,7 @@ def upload_master_products(resp):
                                                sku=str(row_data.SKU),
                                                product_image=str(row_data.ImageURL) if row_data.ImageURL == row_data.ImageURL else None,
                                                client_prefix=client_prefix,
-                                               price=float(row_data.Price),
+                                               price=float(row_data.Price) if row_data.Price == row_data.Price else None,
                                                weight=float(row_data.WeightKG) if row_data.WeightKG==row_data.WeightKG else None,
                                                dimensions=dimensions,
                                                active=True,

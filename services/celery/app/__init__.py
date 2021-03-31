@@ -241,7 +241,7 @@ def sync_channel_products(resp):
 def sync_channel_orders(resp):
     auth_data = resp.get('data')
     client_prefix=auth_data['client_prefix']
-    sync_channel_ords.apply_async(queue='consume_scans', args=(client_prefix, ))
+    sync_channel_ords.apply_async(queue='calculate_costs', args=(client_prefix, ))
     return jsonify({"msg": "Task received"}), 200
 
 

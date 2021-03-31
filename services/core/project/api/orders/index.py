@@ -1743,12 +1743,12 @@ class OrderDetails(Resource):
                 resp_obj['customer_details'] = {"name": order.customer_name,
                                                 "email": order.customer_email,
                                                 "phone": order.customer_phone,
-                                                "address_one": order.delivery_address.address_one,
-                                                "address_two": order.delivery_address.address_two,
-                                                "city": order.delivery_address.city,
-                                                "country": order.delivery_address.country,
-                                                "state": order.delivery_address.state,
-                                                "pincode": order.delivery_address.pincode}
+                                                "address_one": order.delivery_address.address_one if order.delivery_address else "",
+                                                "address_two": order.delivery_address.address_two if order.delivery_address else "",
+                                                "city": order.delivery_address.city if order.delivery_address else "",
+                                                "country": order.delivery_address.country if order.delivery_address else "",
+                                                "state": order.delivery_address.state if order.delivery_address else "",
+                                                "pincode": order.delivery_address.pincode if order.delivery_address else ""}
                 resp_obj['order_date'] = order.order_date.strftime("%d %b %Y, %I:%M %p")
                 resp_obj['payment'] = {"mode": order.payments[0].payment_mode,
                                        "amount": order.payments[0].amount}
@@ -2207,7 +2207,8 @@ def track_order(awb):
 @cross_origin()
 def get_invoice_details(unique_id):
     try:
-        order_qs = db.session.query(OrdersInvoice).filter(OrdersInvoice.qr_url==request.url).first()
+        url = "https://track.wareiq.com/orders/v1/invoice/%s?uid=%s"%(str(unique_id), request.args.get('uid'))
+        order_qs = db.session.query(OrdersInvoice).filter(OrdersInvoice.qr_url==url, OrdersInvoice.order_id==int(unique_id)).first()
         if not order_qs:
             return jsonify({"success": False, "msg": "Invalid URL"}), 400
 

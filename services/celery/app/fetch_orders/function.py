@@ -32,35 +32,35 @@ def fetch_orders(client_prefix=None, sync_all=None):
     for channel in cur.fetchall():
         if channel[11] == "Shopify":
             try:
-                fetch_shopify_orders(cur, channel)
+                fetch_shopify_orders(cur, channel, manual=True if client_prefix else None)
             except Exception as e:
                 conn.rollback()
                 logger.error("Couldn't fetch orders: " + str(channel[1]) + "\nError: " + str(e.args))
 
         elif channel[11] == "WooCommerce":
             try:
-                fetch_woocommerce_orders(cur, channel)
+                fetch_woocommerce_orders(cur, channel, manual=True if client_prefix else None)
             except Exception as e:
                 conn.rollback()
                 logger.error("Couldn't fetch orders: " + str(channel[1]) + "\nError: " + str(e.args))
 
         elif channel[11] == "Magento 2":
             try:
-                fetch_magento_orders(cur, channel)
+                fetch_magento_orders(cur, channel, manual=True if client_prefix else None)
             except Exception as e:
                 conn.rollback()
                 logger.error("Couldn't fetch orders: " + str(channel[1]) + "\nError: " + str(e.args))
 
         elif channel[11] == "EasyEcom":
             try:
-                fetch_easyecom_orders(cur, channel)
+                fetch_easyecom_orders(cur, channel, manual=True if client_prefix else None)
             except Exception as e:
                 conn.rollback()
                 logger.error("Couldn't fetch orders: " + str(channel[1]) + "\nError: " + str(e.args))
 
         elif channel[11] == "Bikayi":
             try:
-                fetch_bikayi_orders(cur, channel)
+                fetch_bikayi_orders(cur, channel, manual=True if client_prefix else None)
             except Exception as e:
                 conn.rollback()
                 logger.error("Couldn't fetch orders: " + str(channel[1]) + "\nError: " + str(e.args))
@@ -74,10 +74,10 @@ def fetch_orders(client_prefix=None, sync_all=None):
     cur.close()
 
 
-def fetch_shopify_orders(cur, channel):
+def fetch_shopify_orders(cur, channel, manual=None):
 
     time_now = datetime.utcnow()
-    if channel[7] and not (time_now.hour == 21 and 0<time_now.minute<30):
+    if channel[7] and not (time_now.hour == 21 and 0<time_now.minute<30) and not manual:
         updated_after = (channel[7] - timedelta(hours=5.5)).strftime("%Y-%m-%dT%X")
     else:
         updated_after = datetime.utcnow() - timedelta(days=30)
@@ -315,8 +315,8 @@ def fetch_shopify_orders(cur, channel):
     conn.commit()
 
 
-def fetch_woocommerce_orders(cur, channel):
-    if channel[7]:
+def fetch_woocommerce_orders(cur, channel, manual=None):
+    if channel[7] and not manual:
         time_after = channel[7] - timedelta(days=10)
         time_after_ids = channel[7] - timedelta(days=2)
     else:
@@ -524,10 +524,10 @@ def fetch_woocommerce_orders(cur, channel):
     conn.commit()
 
 
-def fetch_magento_orders(cur, channel):
+def fetch_magento_orders(cur, channel, manual=None):
 
     time_now = datetime.utcnow()
-    if channel[7] and not (time_now.hour == 21 and 0<time_now.minute<30):
+    if channel[7] and not (time_now.hour == 21 and 0<time_now.minute<30) and not manual:
         updated_after = channel[7].strftime("%Y-%m-%d %X")
     else:
         updated_after = datetime.utcnow() - timedelta(days=30)
@@ -722,10 +722,10 @@ def fetch_magento_orders(cur, channel):
     conn.commit()
 
 
-def fetch_easyecom_orders(cur, channel):
+def fetch_easyecom_orders(cur, channel, manual=None):
 
     time_now = datetime.utcnow()
-    if channel[7] and not (time_now.hour == 21 and 0<time_now.minute<30):
+    if channel[7] and not (time_now.hour == 21 and 0<time_now.minute<30) and not manual:
         created_after = channel[7].strftime("%Y-%m-%d %X")
     else:
         created_after = datetime.utcnow() - timedelta(days=30)
@@ -905,10 +905,10 @@ def fetch_easyecom_orders(cur, channel):
     conn.commit()
 
 
-def fetch_bikayi_orders(cur, channel):
+def fetch_bikayi_orders(cur, channel, manual=None):
 
     time_now = datetime.utcnow()
-    if channel[7] and not (time_now.hour == 21 and 0<time_now.minute<30):
+    if channel[7] and not (time_now.hour == 21 and 0<time_now.minute<30) and not manual:
         updated_after = channel[7].strftime("%s")
     else:
         updated_after = datetime.utcnow() - timedelta(days=30)

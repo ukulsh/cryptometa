@@ -11,7 +11,7 @@ from reportlab.graphics.barcode import code39, code128, code93
 from reportlab.graphics.shapes import Drawing
 from flask import request, jsonify, current_app
 
-from reportlab.graphics.barcode import code39, code128, code93
+from reportlab.graphics.barcode import code39, code128, code93, qr
 from reportlab.graphics.barcode import eanbc, qr, usps
 from reportlab.graphics.shapes import Drawing
 from reportlab.lib.pagesizes import letter
@@ -160,10 +160,17 @@ def fill_shiplabel_data(c, order, offset, client_name=None):
     awb_barcode.drawOn(c, (offset-temp_param)*inch, 5.90*inch)
 
     try:
-        order_id_string = order.channel_order_id
-        order_id_barcode = code128.Code128(order_id_string, barHeight=0.6*inch, barWidth=0.3*mm)
-        order_id_barcode.drawOn(c, (offset+0.2)*inch, -0.6*inch)
-        c.drawString((offset+0.65) * inch, -0.75*inch, order_id_string)
+        if order.orders_invoice:
+            qr_url = order.orders_invoice[-1].qr_url
+            qr_code = qr.QrCodeWidget(qr_url)
+            bounds = qr_code.getBounds()
+            width = bounds[2] - bounds[0]
+            height = bounds[3] - bounds[1]
+            d = Drawing(60, 60, transform=[60. / width, 0, 0, 60. / height, 0, 0])
+            d.add(qr_code)
+            d.drawOn(c, (offset+1.2) * inch, -0.80*inch)
+            order_id_string = order.channel_order_id
+            c.drawString((offset - 0.5) * inch, -0.60 * inch, order_id_string)
     except Exception:
         pass
 
@@ -293,10 +300,17 @@ def fill_shiplabel_data_thermal(c, order, client_name=None):
     awb_barcode.drawOn(c, (0.15-temp_param)*inch, 3.75*inch)
 
     try:
-        order_id_string = order.channel_order_id
-        order_id_barcode = code128.Code128(order_id_string, barHeight=0.6*inch, barWidth=0.3*mm)
-        order_id_barcode.drawOn(c, 1.5*inch, 1.5*inch)
-        c.drawString(1.85 * inch, 1.35*inch, order_id_string)
+        if order.orders_invoice:
+            qr_url = order.orders_invoice[-1].qr_url
+            qr_code = qr.QrCodeWidget(qr_url)
+            bounds = qr_code.getBounds()
+            width = bounds[2] - bounds[0]
+            height = bounds[3] - bounds[1]
+            d = Drawing(60, 60, transform=[60. / width, 0, 0, 60. / height, 0, 0])
+            d.add(qr_code)
+            d.drawOn(c, 1.8 * inch, 1.4 * inch)
+            order_id_string = order.channel_order_id
+            c.drawString(1.75 * inch, 1.25*inch, order_id_string)
     except Exception:
         pass
 
@@ -586,8 +600,8 @@ def create_invoice_blank_page(canvas):
     canvas.drawString(6.20 * inch, 6.5 * inch, "Total")
     canvas.drawString(-0.75 * inch, 8.8 * inch, "SOLD BY:")
     canvas.drawString(-0.75 * inch, 7.1 * inch, "GSTIN:")
-    canvas.drawString(2.2 * inch, 8.5 * inch, "Billing Address:")
-    canvas.drawString(5.0 * inch, 8.5 * inch, "Shipping Address:")
+    canvas.drawString(1.0 * inch, 8.5 * inch, "Billing Address:")
+    canvas.drawString(3.0 * inch, 8.5 * inch, "Shipping Address:")
     canvas.setFont('Helvetica', 8)
     canvas.drawString(2.5 * inch, 9.7 * inch, "INVOICE DATE:")
     canvas.drawString(4.7 * inch, 9.7 * inch, "INVOICE NO.")
@@ -696,7 +710,7 @@ def fill_invoice_data(c, order, client_name):
         str_full_address.append(order.delivery_address.country+", PIN: "+order.delivery_address.pincode)
         y_axis = 8.3
         for addr in str_full_address:
-            c.drawString(5.0 * inch, y_axis * inch, addr)
+            c.drawString(3.0 * inch, y_axis * inch, addr)
             y_axis -= 0.15
 
     except Exception:
@@ -718,7 +732,7 @@ def fill_invoice_data(c, order, client_name):
         str_full_address.append(billing_address.country+", PIN: "+billing_address.pincode)
         y_axis = 8.3
         for addr in str_full_address:
-            c.drawString(2.2 * inch, y_axis * inch, addr)
+            c.drawString(1.0 * inch, y_axis * inch, addr)
             y_axis -= 0.15
 
     except Exception:
@@ -741,6 +755,16 @@ def fill_invoice_data(c, order, client_name):
 
     except Exception:
         pass
+
+    if order.orders_invoice:
+        qr_url = order.orders_invoice[-1].qr_url
+        qr_code = qr.QrCodeWidget(qr_url)
+        bounds = qr_code.getBounds()
+        width = bounds[2] - bounds[0]
+        height = bounds[3] - bounds[1]
+        d = Drawing(60, 60, transform=[60. / width, 0, 0, 60. / height, 0, 0])
+        d.add(qr_code)
+        d.drawOn(c, 5.2 * inch, 7.8 * inch)
 
     y_axis = 6.1
     s_no = 1

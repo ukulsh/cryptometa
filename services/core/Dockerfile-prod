@@ -17,5 +17,5 @@ RUN pip install -r requirements.txt
 COPY . /usr/src/app
 
 # run server
-CMD gunicorn --workers=8 --threads=2 -b 0.0.0.0:5000 manage:app
+CMD gunicorn --workers=8 --threads=2 --timeout=15 -b 0.0.0.0:5000 manage:app
 

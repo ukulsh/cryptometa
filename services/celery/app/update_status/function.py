@@ -1,4 +1,4 @@
-import psycopg2, requests, os, json
+import psycopg2, requests, os, json, hmac, hashlib, base64
 import logging, xmltodict
 from datetime import datetime, timedelta
 from .queries import *
@@ -265,7 +265,7 @@ def track_delhivery_orders(courier, cur):
 
                 tracking_link_wareiq = "http://webapp.wareiq.com/tracking/" + str(orders_dict[current_awb][1])
 
-                exotel_sms_data[sms_body_key] = "Shipped: Your %s order via Delhivery. Track here: %s . Thanks!" % (
+                exotel_sms_data[sms_body_key] = "Shipped: Your %s order via Delhivery . Track here: %s . Powered by WareIQ." % (
                 client_name, tracking_link_wareiq)
 
                 exotel_idx += 1
@@ -495,14 +495,14 @@ def track_shadowfax_orders(courier, cur):
                     cur.execute("UPDATE shipments SET pdd=%s WHERE awb=%s", (edd, current_awb))
                     edd = edd.strftime('%-d %b')
 
-                    sms_to_key = "Messages[%s][To]" % str(exotel_idx)
-                    sms_body_key = "Messages[%s][Body]" % str(exotel_idx)
+                sms_to_key = "Messages[%s][To]" % str(exotel_idx)
+                sms_body_key = "Messages[%s][Body]" % str(exotel_idx)
 
-                    exotel_sms_data[sms_to_key] = customer_phone
-                    exotel_sms_data[
-                        sms_body_key] = "Dear Customer, your %s order has been shipped via Shadowfax with AWB number %s. It is expected to arrive by %s. Thank you for ordering." % (
-                        client_name, orders_dict[current_awb][1], edd)
-                    exotel_idx += 1
+                exotel_sms_data[sms_to_key] = customer_phone
+                exotel_sms_data[
+                    sms_body_key] = "Shipped: Your %s order via Shadowfax . Track here: %s . Powered by WareIQ." % (
+                    client_name, orders_dict[current_awb][1])
+                exotel_idx += 1
 
             if orders_dict[current_awb][2] != new_status:
                 status_update_tuple = (new_status, status_type, status_detail, orders_dict[current_awb][0])
@@ -693,6 +693,9 @@ def track_xpressbees_orders(courier, cur):
             customer_phone = orders_dict[current_awb][4].replace(" ", "")
             customer_phone = "0" + customer_phone[-10:]
 
+            if orders_dict[current_awb][2]=='PICKUP REQUESTED' and new_status=='READY TO SHIP':
+                continue
+
             if new_status == 'DELIVERED':
 
                 update_delivered_on_channels(orders_dict[current_awb])
@@ -726,15 +729,11 @@ def track_xpressbees_orders(courier, cur):
                         "https://cutt.ly/api/api.php?key=f445d0bb52699d2f870e1832a1f77ef3f9078&short=%s" % tracking_link_wareiq)
                     short_url_track = short_url.json()['url']['shortLink']
                     """
-                    exotel_sms_data[
-                        sms_body_key] = "Dear Customer, your %s order has been shipped via Xpressbees with AWB number %s. It is expected to arrive by %s. Thank you!" % (
-                        client_name, str(orders_dict[current_awb][1]), edd)
-                else:
-                    exotel_sms_data[
-                        sms_body_key] = "Dear Customer, your %s order has been shipped via Xpressbees with AWB number %s. Thank you!" % (
-                        client_name, str(orders_dict[current_awb][1]))
-                exotel_idx += 1
                 if order_picked_check:
+                    exotel_sms_data[
+                        sms_body_key] = "Shipped: Your %s order via Xpressbees . Track here: %s . Powered by WareIQ." % (
+                        client_name, str(orders_dict[current_awb][1]))
+                    exotel_idx += 1
                     pickup_count += 1
                     if orders_dict[current_awb][11] not in pickup_dict:
                         pickup_dict[orders_dict[current_awb][11]] = 1
@@ -1019,7 +1018,7 @@ def track_bluedart_orders(courier, cur):
 
                 tracking_link_wareiq = "http://webapp.wareiq.com/tracking/" + str(orders_dict[current_awb][1])
 
-                exotel_sms_data[sms_body_key] = "Shipped: Your %s order via Bluedart. Track here: %s . Thanks!" % (
+                exotel_sms_data[sms_body_key] = "Shipped: Your %s order via Bluedart . Track here: %s . Powered by WareIQ." % (
                     client_name, tracking_link_wareiq)
 
                 exotel_idx += 1
@@ -1268,7 +1267,7 @@ def track_ecomxp_orders(courier, cur):
 
                 tracking_link_wareiq = "http://webapp.wareiq.com/tracking/" + str(orders_dict[current_awb][1])
 
-                exotel_sms_data[sms_body_key] = "Shipped: Your %s order via Ecom Express. Track here: %s . Thanks!" % (
+                exotel_sms_data[sms_body_key] = "Shipped: Your %s order via Ecom Express . Track here: %s . Powered by WareIQ." % (
                     client_name, tracking_link_wareiq)
 
                 exotel_idx += 1
@@ -1369,10 +1368,8 @@ def verification_text(current_order, exotel_idx, cur, ndr=None, ndr_reason=None)
                                 client_name, str(current_order[12]),
                                 del_confirmation_link)
     elif ndr_reason in (1, 3, 9, 11) and current_order[37] != False:
-        sms_body_key_data = "Dear Customer, Delivery for your order from %s with order id %s was attempted today." \
-                            " Please click on the link (%s) if you wish a re-attempt." % (
-                                client_name, str(current_order[12]),
-                                del_confirmation_link)
+        sms_body_key_data = "Dear Customer, your order from %s was attempted today but could not be delivered. Click on the link (%s) to re-attempt." % (
+                                client_name, del_confirmation_link)
     else:
         sms_body_key_data = None
 
@@ -2131,6 +2128,12 @@ def update_picked_on_channels(order, cur):
             except Exception as e:
                 logger.error("Couldn't update Magento for: " + str(order[0])
                              + "\nError: " + str(e.args))
+        elif order[14] == 8:  # Bikayi fulfilment
+            try:
+                update_bikayi_status(order, "IN TRANSIT")
+            except Exception as e:
+                logger.error("Couldn't update Bikayi for: " + str(order[0])
+                             + "\nError: " + str(e.args))
         elif order[3] == 'LOTUSBOTANICALS':
             lotus_botanicals_shipped(order)
         elif order[3] == 'LOTUSORGANICS':
@@ -2209,7 +2212,7 @@ def update_rto_on_channels(order):
 
         elif order[3] == 'LOTUSORGANICS':
             try:
-                lotus_organics_update(order, "Cancelled")
+                lotus_organics_update(order, "RTO")
             except Exception as e:
                 pass
 
@@ -2231,6 +2234,29 @@ def update_easyecom_status(order, status_id):
     }
     req_ful = requests.post(create_fulfillment_url, data=json.dumps(fulfil_data),
                             headers=ful_header)
+
+
+def update_bikayi_status(order, status):
+    bikayi_update_url = """https://asia-south1-bikai-d5ee5.cloudfunctions.net/platformPartnerFunctions-updateOrder"""
+    key = "3f638d4ff80defb82109951b9638fae3fe0ff8a2d6dc20ed8c493783"
+    secret = "6e130520777eb175c300aefdfc1270a4f9a57f2309451311ad3fdcfb"
+    timestamp = (datetime.utcnow()+timedelta(hours=5.5)).strftime("%s")
+    req_body = {"appId": "WAREIQ",
+                "merchantId": order[3].split("_")[1],
+                "timestamp": timestamp,
+                "orderId": str(order[12]),
+                "status": status,
+                "trackingLink":"https://webapp.wareiq.com/tracking/"+order[1],
+                "notes": status,
+                "wayBill": order[1]
+                }
+    signature = hmac.new(bytes(secret.encode()),
+                         (key.encode() + "|".encode() + base64.b64encode(
+                             json.dumps(req_body).replace(" ", "").encode())),
+                         hashlib.sha256).hexdigest()
+    headers = {"Content-Type": "application/json",
+               "authorization": signature}
+    data = requests.post(bikayi_update_url, headers=headers, data=json.dumps(req_body)).json()
 
 
 def ecom_express_convert_xml_dict(elem):

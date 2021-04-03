@@ -160,6 +160,10 @@ def fill_shiplabel_data(c, order, offset, client_name=None):
     awb_barcode.drawOn(c, (offset-temp_param)*inch, 5.90*inch)
 
     try:
+        order_id_string = order.channel_order_id
+        order_id_barcode = code128.Code128(order_id_string, barHeight=0.6 * inch, barWidth=0.3 * mm)
+        order_id_barcode.drawOn(c, (offset+0.2) * inch, -0.6 * inch)
+        c.drawString((offset+0.4) * inch, -0.75 * inch, order_id_string)
         if order.orders_invoice:
             qr_url = order.orders_invoice[-1].qr_url
             qr_code = qr.QrCodeWidget(qr_url)
@@ -168,9 +172,7 @@ def fill_shiplabel_data(c, order, offset, client_name=None):
             height = bounds[3] - bounds[1]
             d = Drawing(60, 60, transform=[60. / width, 0, 0, 60. / height, 0, 0])
             d.add(qr_code)
-            d.drawOn(c, (offset+1.2) * inch, -0.80*inch)
-            order_id_string = order.channel_order_id
-            c.drawString((offset - 0.5) * inch, -0.60 * inch, order_id_string)
+            d.drawOn(c, (offset-0.8) * inch, -0.80*inch)
     except Exception:
         pass
 
@@ -300,6 +302,8 @@ def fill_shiplabel_data_thermal(c, order, client_name=None):
     awb_barcode.drawOn(c, (0.15-temp_param)*inch, 3.75*inch)
 
     try:
+        order_id_string = order.channel_order_id
+        c.drawString(1.75 * inch, 1.25 * inch, order_id_string)
         if order.orders_invoice:
             qr_url = order.orders_invoice[-1].qr_url
             qr_code = qr.QrCodeWidget(qr_url)
@@ -309,8 +313,6 @@ def fill_shiplabel_data_thermal(c, order, client_name=None):
             d = Drawing(60, 60, transform=[60. / width, 0, 0, 60. / height, 0, 0])
             d.add(qr_code)
             d.drawOn(c, 1.8 * inch, 1.4 * inch)
-            order_id_string = order.channel_order_id
-            c.drawString(1.75 * inch, 1.25*inch, order_id_string)
     except Exception:
         pass
 
@@ -756,15 +758,18 @@ def fill_invoice_data(c, order, client_name):
     except Exception:
         pass
 
-    if order.orders_invoice:
-        qr_url = order.orders_invoice[-1].qr_url
-        qr_code = qr.QrCodeWidget(qr_url)
-        bounds = qr_code.getBounds()
-        width = bounds[2] - bounds[0]
-        height = bounds[3] - bounds[1]
-        d = Drawing(60, 60, transform=[60. / width, 0, 0, 60. / height, 0, 0])
-        d.add(qr_code)
-        d.drawOn(c, 5.2 * inch, 7.8 * inch)
+    try:
+        if order.orders_invoice:
+            qr_url = order.orders_invoice[-1].qr_url
+            qr_code = qr.QrCodeWidget(qr_url)
+            bounds = qr_code.getBounds()
+            width = bounds[2] - bounds[0]
+            height = bounds[3] - bounds[1]
+            d = Drawing(60, 60, transform=[60. / width, 0, 0, 60. / height, 0, 0])
+            d.add(qr_code)
+            d.drawOn(c, 5.2 * inch, 7.8 * inch)
+    except Exception:
+        pass
 
     y_axis = 6.1
     s_no = 1
@@ -1147,3 +1152,16 @@ def cancel_order_on_channels(order):
             }
             req_ful = requests.post(cancel_order_url, data=json.dumps(fulfil_data),
                                     headers=ful_header)
+
+        if order.client_prefix=='LOTUSORGANICS':
+            url = "https://www.lotus-organics.com/api/v1/order/wareiq/update"
+            headers = {"Content-Type": "application/json",
+                       "x-api-key": "901192e41675e1b908d26a7e95c77ddc"}
+            data = {
+                "id": int(order.channel_order_id),
+                "ware_iq_id": order.id,
+                "awb_number": "",
+                "status_information": "Cancelled"
+            }
+
+            req = requests.put(url, headers=headers, data=json.dumps(data))

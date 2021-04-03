@@ -1336,7 +1336,7 @@ def download_packlist(resp):
 
     if auth_data['user_group'] == 'client':
         orders_qs = orders_qs.filter(Orders.client_prefix==auth_data.get('client_prefix'))
-    orders_qs = orders_qs.order_by(Orders.id).all()
+    orders_qs = orders_qs.order_by(Orders.order_date, Orders.id).all()
     if not orders_qs:
         return jsonify({"success": False, "msg": "No valid order ID"}), 404
 
@@ -1430,7 +1430,7 @@ def download_manifests(resp):
 
     if auth_data['user_group'] == 'client':
         orders_qs = orders_qs.filter(Orders.client_prefix==auth_data.get('client_prefix'))
-    orders_qs = orders_qs.order_by(Orders.id).all()
+    orders_qs = orders_qs.order_by(Orders.order_date, Orders.id).all()
     if not orders_qs:
         return jsonify({"success": False, "msg": "No valid order ID"}), 404
 

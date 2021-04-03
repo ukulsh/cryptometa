@@ -920,13 +920,24 @@ def fetch_bikayi_orders(cur, channel, manual=None):
     req_body = {"appId": "WAREIQ",
                 "merchantId": channel[3],
                 "timestamp": updated_after}
-    signature = hmac.new(bytes(secret.encode()),
-                         (key.encode() + "|".encode() + base64.b64encode(
-                             json.dumps(req_body).replace(" ", "").encode())),
-                         hashlib.sha256).hexdigest()
-    headers = {"Content-Type": "application/json",
-               "authorization": signature}
-    data = requests.post(bikayi_orders_url, headers=headers, data=json.dumps(req_body)).json()
+
+    headers = {"Content-Type": "application/json"}
+
+    count = 10
+    data = {'orders':[]}
+    while count==10:
+        try:
+            headers['authorization'] = hmac.new(bytes(secret.encode()),
+                                                (key.encode() + "|".encode() + base64.b64encode(
+                                                    json.dumps(req_body).replace(" ", "").encode())),
+                                                hashlib.sha256).hexdigest()
+            req_data = requests.post(bikayi_orders_url, headers=headers, data=json.dumps(req_body)).json()
+            data['orders'] += req_data['orders']
+            req_body['timestamp'] = req_data['orders'][-1]['date']
+            count = len(req_data['orders'])
+        except Exception:
+            count=0
+            pass
     last_synced_time = datetime.utcnow()+timedelta(hours=5.5)
     if 'orders' not in data or not data['orders']:
         return None

@@ -384,7 +384,7 @@ def consume_x_payout():
         remit_obj = db.session.query(CODRemittance).filter(CODRemittance.payout_id==payout_id).first()
         if not remit_obj:
             logger.error("remit obj not found: "+str(payout_id))
-            return jsonify({"success": False}), 400
+            return jsonify({"success": False}), 200
 
         remit_obj.status=status
         remit_obj.mode=mode
@@ -394,7 +394,7 @@ def consume_x_payout():
 
     except Exception as e:
         logger.error("Exception occured: " + str(e.args))
-        return jsonify({"success": False}), 400
+        return jsonify({"success": False}), 200
 
     return jsonify({"success":True}), 200
 
@@ -585,6 +585,60 @@ def freshdesk_url_new(auth_data):
 
 @core_blueprint.route('/core/dev', methods=['POST'])
 def ping_dev():
+    # cur = conn.cursor()
+    # myfile = request.files['myfile']
+    # data_xlsx = pd.read_excel(myfile)
+    # iter_rw = data_xlsx.iterrows()
+    # for row in iter_rw:
+    #     order_id = str(row[1].OrderID)
+    #     try:
+    #         cur.execute("""select id from orders where channel_order_id='%s' and client_prefix='HEALTHI'
+    #                         and status in ('READY TO SHIP', 'PICKUP REQUESTED', 'NEW', 'NOT SHIPPED') and pickup_data_id=1215"""%order_id)
+    #         unique_id = cur.fetchone()[0]
+    #         awb = None
+    #         cur.execute("SELECT awb from shipments where order_id=%s"%str(unique_id))
+    #         try:
+    #             awb = cur.fetchone()[0]
+    #         except Exception:
+    #             pass
+    #
+    #         if awb:
+    #             cur.execute("UPDATE orders set status='READY TO SHIP' where id=%s"%str(unique_id))
+    #         else:
+    #             cur.execute("UPDATE orders set status='NEW' where id=%s"%str(unique_id))
+    #
+    #         conn.commit()
+    #         cur.execute("""select master_product_id from op_association aa
+    #                     left join master_products bb on aa.master_product_id=bb.id
+    #                     where aa.order_id=__ORDER_ID__
+    #                     and bb.sku ilike 'Hl.Kal%'""".replace('__ORDER_ID__', str(unique_id)))
+    #
+    #         ava_prod_ids = cur.fetchall()
+    #         cur.execute("""select master_product_id from op_association aa
+    #                                     left join master_products bb on aa.master_product_id=bb.id
+    #                                     where aa.order_id=__ORDER_ID__
+    #                                     and bb.sku not ilike 'Hl.Kal%'""".replace('__ORDER_ID__', str(unique_id)))
+    #         unava_prod_ids = cur.fetchall()
+    #         if ava_prod_ids and unava_prod_ids:
+    #             cur.execute("""INSERT INTO orders (channel_order_id, order_date, customer_name, customer_email, customer_phone,
+    #                     date_created, status, client_prefix,client_channel_id, delivery_address_id, order_id_channel_unique, status_type, status_detail, pickup_data_id, billing_address_id, chargeable_weight, master_channel_id)
+    #                     select channel_order_id, order_date, customer_name, customer_email, customer_phone,
+    #                     date_created, 'NOT SHIPPED', client_prefix,client_channel_id, delivery_address_id, order_id_channel_unique, status_type, status_detail, null, billing_address_id, chargeable_weight, master_channel_id
+    #                     from orders where id=%s returning id""" % str(unique_id))
+    #
+    #             new_unique_id = cur.fetchone()[0]
+    #
+    #             cur.execute("""INSERT INTO orders_payments (payment_mode, amount, currency, order_id, shipping_charges, subtotal)
+    #                 SELECT payment_mode, amount, currency, %s, shipping_charges, subtotal FROM orders_payments where order_id=%s"""%(str(new_unique_id), str(unique_id)))
+    #
+    #             cur.execute("""update op_association set order_id=%s where order_id=%s and master_product_id not in %s"""%(str(new_unique_id), str(unique_id), """(select master_product_id from op_association aa
+    #                                             left join master_products bb on aa.master_product_id=bb.id
+    #                                             where aa.order_id=__ORDER_ID__
+    #                                             and bb.sku ilike 'Hl.Kal%')""".replace('__ORDER_ID__', str(unique_id))))
+    #         conn.commit()
+    #     except Exception as e:
+    #         conn.rollback()
+    #         print(str(row[1].OrderID)+": "+str(e.args[0]))
  #    cur = conn.cursor()
  #    cur.execute("""select id from orders where status in ('NEW') and id in
  #  (select order_id from

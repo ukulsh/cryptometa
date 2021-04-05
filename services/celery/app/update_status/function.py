@@ -263,7 +263,7 @@ def track_delhivery_orders(courier, cur):
 
                 exotel_sms_data[sms_to_key] = customer_phone
 
-                tracking_link_wareiq = "http://webapp.wareiq.com/tracking/" + str(orders_dict[current_awb][1])
+                tracking_link_wareiq = "https://webapp.wareiq.com/tracking/" + str(orders_dict[current_awb][1])
 
                 exotel_sms_data[sms_body_key] = "Shipped: Your %s order via Delhivery . Track here: %s . Powered by WareIQ." % (
                 client_name, tracking_link_wareiq)
@@ -500,7 +500,7 @@ def track_shadowfax_orders(courier, cur):
 
                 exotel_sms_data[sms_to_key] = customer_phone
                 exotel_sms_data[
-                    sms_body_key] = "Shipped: Your %s order via Shadowfax . Track here: %s . Powered by WareIQ." % (
+                    sms_body_key] = "Shipped: Your %s order via Shadowfax . Track here: https://webapp.wareiq.com/tracking/%s . Powered by WareIQ." % (
                     client_name, orders_dict[current_awb][1])
                 exotel_idx += 1
 
@@ -731,7 +731,7 @@ def track_xpressbees_orders(courier, cur):
                     """
                 if order_picked_check:
                     exotel_sms_data[
-                        sms_body_key] = "Shipped: Your %s order via Xpressbees . Track here: %s . Powered by WareIQ." % (
+                        sms_body_key] = "Shipped: Your %s order via Xpressbees . Track here: https://webapp.wareiq.com/tracking/%s . Powered by WareIQ." % (
                         client_name, str(orders_dict[current_awb][1]))
                     exotel_idx += 1
                     pickup_count += 1
@@ -1016,7 +1016,7 @@ def track_bluedart_orders(courier, cur):
 
                 exotel_sms_data[sms_to_key] = customer_phone
 
-                tracking_link_wareiq = "http://webapp.wareiq.com/tracking/" + str(orders_dict[current_awb][1])
+                tracking_link_wareiq = "https://webapp.wareiq.com/tracking/" + str(orders_dict[current_awb][1])
 
                 exotel_sms_data[sms_body_key] = "Shipped: Your %s order via Bluedart . Track here: %s . Powered by WareIQ." % (
                     client_name, tracking_link_wareiq)
@@ -1265,7 +1265,7 @@ def track_ecomxp_orders(courier, cur):
 
                 exotel_sms_data[sms_to_key] = customer_phone
 
-                tracking_link_wareiq = "http://webapp.wareiq.com/tracking/" + str(orders_dict[current_awb][1])
+                tracking_link_wareiq = "https://webapp.wareiq.com/tracking/" + str(orders_dict[current_awb][1])
 
                 exotel_sms_data[sms_body_key] = "Shipped: Your %s order via Ecom Express . Track here: %s . Powered by WareIQ." % (
                     client_name, tracking_link_wareiq)
@@ -2184,6 +2184,12 @@ def update_delivered_on_channels(order):
         except Exception as e:
             logger.error("Couldn't update Easyecom for: " + str(order[0])
                          + "\nError: " + str(e.args))
+    elif order[14] == 8:  # Bikayi delivered
+        try:
+            update_bikayi_status(order, "DELIVERED")
+        except Exception as e:
+            logger.error("Couldn't update Bikayi for: " + str(order[0])
+                         + "\nError: " + str(e.args))
 
 
 def update_rto_on_channels(order):
@@ -2221,6 +2227,13 @@ def update_rto_on_channels(order):
                 update_easyecom_status(order, 9)
             except Exception as e:
                 logger.error("Couldn't update Easyecom for: " + str(order[0])
+                             + "\nError: " + str(e.args))
+
+        elif order[14] == 8:  # Bikayi RTO
+            try:
+                update_bikayi_status(order, "RTO")
+            except Exception as e:
+                logger.error("Couldn't update Bikayi for: " + str(order[0])
                              + "\nError: " + str(e.args))
 
 

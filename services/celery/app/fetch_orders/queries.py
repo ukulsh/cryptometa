@@ -82,7 +82,9 @@ available_warehouse_product_quantity = """select aa.warehouse_prefix, aa.product
                                                    where ee.status in ('NEW', 'READY TO SHIP', 'PICKUP REQUESTED')
                                                     and gg.sku in __SKU_STR__ and gg.client_prefix='__CLIENT_PREFIX__'
                                                    group by hh.pickup_id, master_product_id) ff on ff.master_product_id=bb.id and cc.id=ff.pickup_id
-                                         where bb.sku in __SKU_STR__ and client_prefix='__CLIENT_PREFIX__';"""
+                                         left join client_pickups kk on kk.client_prefix=bb.client_prefix and kk.pickup_id=cc.id
+                                         where bb.sku in __SKU_STR__ and bb.client_prefix='__CLIENT_PREFIX__'
+                                         and kk.active=true;"""
 
 fetch_warehouse_to_pick_from = """with temp_table (warehouse, pincode) as (VALUES __WAREHOUSE_PINCODES__)
                                     select warehouse, tat, zone_value from

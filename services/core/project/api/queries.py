@@ -340,7 +340,9 @@ available_warehouse_product_quantity = """select aa.warehouse_prefix, aa.product
                                          bb.weight, cc.pincode from products_quantity aa 
                                          left join master_products bb on aa.product_id=bb.id 
                                          left join pickup_points cc on aa.warehouse_prefix=cc.warehouse_prefix
-                                         where bb.sku in __SKU_STR__ and client_prefix='__CLIENT_PREFIX__';"""
+                                         left join client_pickups kk on kk.client_prefix=bb.client_prefix and kk.pickup_id=cc.id
+                                         where bb.sku in __SKU_STR__ and bb.client_prefix='__CLIENT_PREFIX__'
+                                         and kk.active=true;"""
 
 fetch_warehouse_to_pick_from = """with temp_table (warehouse, pincode) as (VALUES __WAREHOUSE_PINCODES__)
                                     select warehouse, tat, zone_value from

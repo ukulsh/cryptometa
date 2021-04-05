@@ -447,9 +447,9 @@ def exotel_send_shipped_sms(order, courier):
 
         exotel_sms_data[sms_to_key] = customer_phone
 
-        tracking_link_wareiq = "http://webapp.wareiq.com/tracking/" + str(order[1])
+        tracking_link_wareiq = "https://webapp.wareiq.com/tracking/" + str(order[1])
 
-        exotel_sms_data[sms_body_key] = "Shipped: Your %s order via %s. Track here: %s . Thanks!" % (
+        exotel_sms_data[sms_body_key] = "Shipped: Your %s order via %s . Track here: %s . Powered by WareIQ." % (
         client_name, courier, tracking_link_wareiq)
         logger.info("Sending shipped message to:" + str(customer_phone))
         lad = requests.post(

@@ -2107,7 +2107,7 @@ class UpdateInventory(Resource):
                                 left join client_pickups cc on bb.pickup_data_id=cc.id
                                 left join pickup_points dd on cc.pickup_id=dd.id
                                 left join products ee on aa.product_id=ee.id
-                                where status in ('DELIVERED','DISPATCHED','IN TRANSIT','ON HOLD','PENDING','LOST')
+                                where status in ('DELIVERED','DISPATCHED','IN TRANSIT','DAMAGED','SHORTAGE','SHIPPED','PENDING','LOST')
                                 and dd.warehouse_prefix='__WAREHOUSE__'
                                 and ee.master_sku='__SKU__';""".replace('__WAREHOUSE__', warehouse).replace('__SKU__', sku))
                         shipped_quantity_obj = cur.fetchone()

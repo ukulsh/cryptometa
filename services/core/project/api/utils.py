@@ -552,6 +552,8 @@ def generate_packlist(canvas, orders, order_count):
 
                     canvas.setFont('Helvetica', 8)
                     prod_name = split_string(str(prod_info['name']), 50)
+                    if client=='KAMAAYURVEDA':
+                        prod_name.append("MRP: "+ prod_info['price'])
                     old_y_axis = y_axis
                     y_axis += 0.13
                     for addr in prod_name:

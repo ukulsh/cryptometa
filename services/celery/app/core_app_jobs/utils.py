@@ -212,16 +212,18 @@ def magento_complete_order(order):
     status_mark = order[31]
     if not status_mark:
         status_mark = "delivered"
+    if order[3]=='KAMAAYURVEDA': #remove this
+        status_mark='shipped'
     time_now = datetime.utcnow() + timedelta(hours=5.5)
     time_now = time_now.strftime('%Y-%m-%d %H:%M:%S')
     complete_data = {
         "statusHistory": {
-            "comment": "Order Delivered",
+            "comment": "Order Delivered" if order[3]!='KAMAAYURVEDA' else "Shipment Created",
             "created_at": time_now,
             "parent_id": int(order[5]),
             "is_customer_notified": 0,
             "is_visible_on_front": 0,
-            "status": "delivered"
+            "status": status_mark
         }
     }
     req_ful = requests.post(complete_order_url, data=json.dumps(complete_data),

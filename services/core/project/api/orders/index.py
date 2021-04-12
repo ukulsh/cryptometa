@@ -82,7 +82,7 @@ class OrderList(Resource):
             client_prefix = auth_data.get('client_prefix')
             cur.execute("SELECT hide_weights, thirdwatch FROM client_mapping WHERE client_prefix='%s'" % client_prefix)
             try:
-                mapping_data  = cur.fetchone()
+                mapping_data = cur.fetchone()
                 hide_weights = mapping_data[0]
                 thirdwatch = mapping_data[1]
             except Exception:
@@ -1367,7 +1367,8 @@ def download_packlist_util(orders_qs, auth_data):
                     if new_prod.combo_prod_id not in orders_dict[order.client_prefix][order.channel_order_id]:
                         orders_dict[order.client_prefix][order.channel_order_id][new_prod.combo_prod_id] = {"sku": sku,
                                                                                                             "name": new_prod.combo_prod.name,
-                                                                                                            "quantity": prod.quantity * new_prod.quantity}
+                                                                                                            "quantity": prod.quantity * new_prod.quantity,
+                                                                                                            "price": str(prod.amount/prod.quantity) if prod.amount else ""}
                     else:
                         orders_dict[order.client_prefix][order.channel_order_id][new_prod.combo_prod_id][
                             'quantity'] += prod.quantity * new_prod.quantity
@@ -1376,7 +1377,8 @@ def download_packlist_util(orders_qs, auth_data):
                 if prod.master_product_id not in orders_dict[order.client_prefix][order.channel_order_id]:
                     orders_dict[order.client_prefix][order.channel_order_id][prod.master_product_id] = {"sku": sku,
                                                                                                  "name": prod.master_product.name,
-                                                                                                 "quantity": prod.quantity}
+                                                                                                 "quantity": prod.quantity,
+                                                                                                 "price": str(prod.amount/prod.quantity) if prod.amount else ""}
                 else:
                     orders_dict[order.client_prefix][order.channel_order_id][prod.master_product_id][
                         'quantity'] += prod.quantity
@@ -2557,7 +2559,13 @@ class PincodeServiceabilty(Resource):
                                 "NM_CSK_PP03_Nicobar_Yellow & Navy Blue_28",
                                 "NM_CSK_PP03_Nicobar_Yellow & Navy Blue_S3",
                                 "NM_CSK_PP03_Nicobar_Yellow & Navy Blue_20-24",
-                                "NM_CSK_PP03_Nicobar_Yellow & Navy Blue_24-28"]
+                                "NM_CSK_PP03_Nicobar_Yellow & Navy Blue_24-28",
+                                "Lug_NM_CSK_A849_Bruges_Ylw_20_CUSTOMISED",
+                                "Lug_NM_CSK_A849_Bruges_Ylw_24_CUSTOMISED",
+                                "Lug_NM_CSK_A849_Bruges_Ylw_28_CUSTOMISED",
+                                "Lug_NM_CSK_A849BrugesYlw_20-24CUSTOMISD",
+                                "Lug_NM_CSK_A849BrugesYlw_24-28CUSTOMISD",
+                                "Lug_NM_CSK_A849_Bruges_Ylw_S3CUSTOMISED"]
 
             for sku_ob in sku_wise_list:
                 if sku_ob['sku'] in cod_disabled_sku:

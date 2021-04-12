@@ -11,7 +11,7 @@ from .fetch_orders.function import fetch_orders
 from .ship_orders.function import ship_orders
 from .core_app_jobs.tasks import *
 from .core_app_jobs.utils import authenticate_username_password, authenticate_restful
-from app.order_price_reconciliation.index import process_order_price_reconciliation
+from .order_price_reconciliation.index import process_order_price_reconciliation
 
 cors = CORS()
 
@@ -39,7 +39,7 @@ cors.init_app(app)
 app.config['CELERYBEAT_SCHEDULE'] = {
     'run-status-update': {
             'task': 'status_update',
-            'schedule': crontab(minute='50', hour='*/2'),
+            'schedule': crontab(minute='50', hour='*'),
             'options': {'queue': 'update_status'}
         },
     'run-fetch-orders': {
@@ -55,12 +55,12 @@ app.config['CELERYBEAT_SCHEDULE'] = {
     'run-cod-queue': {
                     'task': 'cod_remittance_queue',
                     'schedule': crontab(hour=19, minute=20, day_of_week='thu'),
-                    'options': {'queue': 'update_status'}
+                    'options': {'queue': 'calculate_costs'}
                 },
     'run-cod-entry': {
                     'task': 'cod_remittance_entry',
                     'schedule': crontab(hour=19, minute=55, day_of_week='wed'),
-                    'options': {'queue': 'update_status'}
+                    'options': {'queue': 'calculate_costs'}
                 },
     'run-calculate-costs': {
                 'task': 'calculate_costs',
@@ -75,7 +75,7 @@ app.config['CELERYBEAT_SCHEDULE'] = {
     'run-ndr-reattempt': {
                         'task': 'ndr_push_reattempts',
                         'schedule': crontab(hour=18, minute=00),
-                        'options': {'queue': 'update_status'}
+                        'options': {'queue': 'calculate_costs'}
                     },
 }
 
@@ -241,7 +241,7 @@ def sync_channel_products(resp):
 def sync_channel_orders(resp):
     auth_data = resp.get('data')
     client_prefix=auth_data['client_prefix']
-    sync_channel_ords.apply_async(queue='calculate_costs', args=(client_prefix, ))
+    sync_channel_ords.apply_async(queue='fetch_orders', args=(client_prefix, ))
     return jsonify({"msg": "Task received"}), 200
 
 

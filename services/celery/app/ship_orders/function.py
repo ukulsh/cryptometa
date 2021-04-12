@@ -403,7 +403,7 @@ def ship_delhivery_orders(cur, courier, courier_name, order_ids, order_id_tuple,
 
                     exotel_sms_data[sms_to_key] = customer_phone
                     try:
-                        tracking_link_wareiq = "http://webapp.wareiq.com/tracking/" + str(package['waybill'])
+                        tracking_link_wareiq = "https://webapp.wareiq.com/tracking/" + str(package['waybill'])
                         """
                         short_url = requests.get("https://cutt.ly/api/api.php?key=f445d0bb52699d2f870e1832a1f77ef3f9078&short=%s"%tracking_link_wareiq)
                         short_url_track = short_url.json()['url']['shortLink']
@@ -424,7 +424,7 @@ def ship_delhivery_orders(cur, courier, courier_name, order_ids, order_id_tuple,
                             nasher_body = {
                                 "order_id": package['refnum'],
                                 "awb_number": str(package['waybill']),
-                                "tracking_link": "http://webapp.wareiq.com/tracking/" + str(package['waybill'])}
+                                "tracking_link": "https://webapp.wareiq.com/tracking/" + str(package['waybill'])}
                             req = requests.post(nasher_url, headers=nasher_headers, data=json.dumps(nasher_body))
                         except Exception as e:
                             logger.error("Couldn't update shopify for: " + str(package['refnum'])
@@ -693,7 +693,7 @@ def ship_shadowfax_orders(cur, courier, courier_name, order_ids, order_id_tuple,
 
                     exotel_sms_data[sms_to_key] = customer_phone
                     try:
-                        tracking_link_wareiq = "http://webapp.wareiq.com/tracking/" + str(
+                        tracking_link_wareiq = "https://webapp.wareiq.com/tracking/" + str(
                             return_data_raw['data']['awb_number'])
                         """
                         short_url = requests.get(
@@ -1028,7 +1028,7 @@ def ship_xpressbees_orders(cur, courier, courier_name, order_ids, order_id_tuple
 
                     exotel_sms_data[sms_to_key] = customer_phone
                     try:
-                        tracking_link_wareiq = "http://webapp.wareiq.com/tracking/" + str(
+                        tracking_link_wareiq = "https://webapp.wareiq.com/tracking/" + str(
                             return_data_raw['AddManifestDetails'][0]['AWBNo'])
                         """
                         short_url = requests.get(
@@ -1356,7 +1356,7 @@ def ship_ecom_orders(cur, courier, courier_name, order_ids, order_id_tuple, back
 
                     exotel_sms_data[sms_to_key] = customer_phone
                     try:
-                        tracking_link_wareiq = "http://webapp.wareiq.com/tracking/" + str(
+                        tracking_link_wareiq = "https://webapp.wareiq.com/tracking/" + str(
                             return_data_raw['shipments'][0]['awb'])
                         """
                         short_url = requests.get(
@@ -1675,7 +1675,7 @@ def ship_bluedart_orders(cur, courier, courier_name, order_ids, order_id_tuple, 
 
                     exotel_sms_data[sms_to_key] = customer_phone
                     try:
-                        tracking_link_wareiq = "http://webapp.wareiq.com/tracking/" + str(
+                        tracking_link_wareiq = "https://webapp.wareiq.com/tracking/" + str(
                             req['AWBNo'])
                         """
                         short_url = requests.get(
@@ -1986,7 +1986,7 @@ def ship_fedex_orders(cur, courier, courier_name, order_ids, order_id_tuple, bac
 
                     exotel_sms_data[sms_to_key] = customer_phone
                     try:
-                        tracking_link_wareiq = "http://webapp.wareiq.com/tracking/" + str(
+                        tracking_link_wareiq = "https://webapp.wareiq.com/tracking/" + str(
                             awb_no)
                         """
                         short_url = requests.get(
@@ -2477,7 +2477,7 @@ def ship_vinculum_orders(cur, courier, courier_name, order_ids, order_id_tuple):
         for order in all_new_orders:
             try:
                 if order[26].lower() == 'cod' and not order[43]:
-                    cod_confirmation_link = "http://track.wareiq.com/core/v1/passthru/cod?CustomField=%s" % str(
+                    cod_confirmation_link = "https://track.wareiq.com/core/v1/passthru/cod?CustomField=%s" % str(
                         order[0])
                     """
                     short_url = requests.get(
@@ -2559,7 +2559,7 @@ def ship_vinculum_orders(cur, courier, courier_name, order_ids, order_id_tuple):
 
                     exotel_sms_data[sms_to_key] = customer_phone
                     try:
-                        tracking_link_wareiq = "http://webapp.wareiq.com/tracking/" + str(return_data['awbno'])
+                        tracking_link_wareiq = "https://webapp.wareiq.com/tracking/" + str(return_data['awbno'])
                         """
                         short_url = requests.get(
                             "https://cutt.ly/api/api.php?key=f445d0bb52699d2f870e1832a1f77ef3f9078&short=%s" % tracking_link_wareiq)

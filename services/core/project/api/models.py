@@ -998,7 +998,7 @@ class ClientMapping(db.Model):
     custom_email_subject = db.Column(db.String, nullable=True)
     unique_parameter = db.Column(db.String, nullable=True)
     cod_ship_unconfirmed = db.Column(db.BOOLEAN, nullable=True, default=True)
-    hide_weights = db.Column(db.BOOLEAN, nullable=True, default=True)
+    hide_weights = db.Column(db.BOOLEAN, nullable=True, default=None)
     order_split = db.Column(db.BOOLEAN, nullable=True, server_default='false', default=False)
     default_warehouse = db.Column(db.String, nullable=True)
     hide_products = db.Column(db.BOOLEAN, nullable=True, default=False)
@@ -1012,8 +1012,8 @@ class ClientMapping(db.Model):
     account_type = db.Column(db.String, nullable=True)
     lock_cod = db.Column(db.BOOLEAN, nullable=True, default=None)
     thirdwatch = db.Column(db.BOOLEAN, nullable=True, default=None)
-    thirdwatch_cod_only = db.Column(db.BOOLEAN, nullable=True, default=True)
-    thirdwatch_activate_time = db.Column(db.DateTime, default=datetime.now)
+    thirdwatch_cod_only = db.Column(db.BOOLEAN, nullable=True, default=None)
+    thirdwatch_activate_time = db.Column(db.DateTime, default=None)
     remittance_cycle = db.Column(db.Integer, nullable=True)
 
     def __init__(self, client_name, client_prefix, account_type, client_logo=None, theme_color=None):
@@ -1022,6 +1022,11 @@ class ClientMapping(db.Model):
         self.account_type = account_type
         self.client_logo = client_logo
         self.theme_color = theme_color
+        self.account_type = "prepaid"
+        self.hide_weights = None
+        self.legal_name = client_name
+        self.thirdwatch_activate_time = None
+        self.thirdwatch_cod_only = None
 
     def to_json(self):
         return {
@@ -1097,6 +1102,22 @@ class WarehouseRO(db.Model):
     status = db.Column(db.String, nullable=False, default='awaiting')
     date_created = db.Column(db.DateTime, default=datetime.now)
     date_updated = db.Column(db.DateTime, onupdate=datetime.now)
+
+
+# class Downloads(db.Model):
+#     __tablename__ = "downloads"
+#     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+#     warehouse_prefix = db.Column(db.String, nullable=True)
+#     client_prefix = db.Column(db.String, nullable=True)
+#     created_by = db.Column(db.String, nullable=False)
+#     type = db.Column(db.String, nullable=False)
+#     title = db.Column(db.String, nullable=True)
+#     download_link = db.Column(db.String, nullable=True)
+#     dl_from = db.Column(db.DateTime)
+#     dl_to = db.Column(db.DateTime)
+#     status = db.Column(db.String, nullable=True)
+#     date_created = db.Column(db.DateTime, default=datetime.now)
+#     date_updated = db.Column(db.DateTime, qonupdate=datetime.now)
 
 
 class ProductsWRO(db.Model):

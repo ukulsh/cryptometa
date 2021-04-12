@@ -839,7 +839,11 @@ def track_bluedart_orders(courier, cur):
         awb_string = awb_string.rstrip(',')
 
         check_status_url = "https://api.bluedart.com/servlet/RoutingServlet?handler=tnt&action=custawbquery&loginid=HYD50082&awb=awb&numbers=%s&format=xml&lickey=eguvjeknglfgmlsi5ko5hn3vvnhoddfs&verno=1.3&scan=1" % awb_string
-        req = requests.get(check_status_url)
+        try:
+            req = requests.get(check_status_url)
+        except ConnectionResetError:
+            sleep(10)
+            req = requests.get(check_status_url)
         try:
             req = xmltodict.parse(req.content)
             if type(req['ShipmentData']['Shipment'])==list:
@@ -860,6 +864,7 @@ def track_bluedart_orders(courier, cur):
             continue
     logger.info("Count of Bluedart packages: " + str(len(req_ship_data)))
     for ret_order in req_ship_data:
+        current_awb = ret_order['@WaybillNo'] if '@WaybillNo' in ret_order else ""
         try:
             if ret_order['StatusType']=='NF':
                 continue

@@ -127,12 +127,12 @@ def login_user_bikayi():
             response_object['status'] = 'success'
             response_object['message'] = 'Successfully logged in.'
             response_object['auth_token'] = auth_token.decode()
-            try:
-                requests.get('{0}/scans/v1/sync/orders'.format(current_app.config['CELERY_SERVICE_URL']),
-                              headers={"Authorization": "Bearer "+auth_token.decode(),
-                                    "Content-Type": "application/json"})
-            except Exception as e:
-                pass
+            # try:
+            #     requests.get('{0}/scans/v1/sync/orders'.format(current_app.config['CELERY_SERVICE_URL']),
+            #                   headers={"Authorization": "Bearer "+auth_token.decode(),
+            #                         "Content-Type": "application/json"})
+            # except Exception as e:
+            #     pass
             return jsonify(response_object), 200
     else:
         response_object['message'] = "Couldn't login."

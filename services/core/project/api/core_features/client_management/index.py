@@ -23,6 +23,9 @@ class ClientManagement(Resource):
         try:
             posted_data = request.get_json()
             client_prefix = posted_data.get('client_prefix')
+            cl_obj = db.session.query(ClientMapping).filter(ClientMapping.client_prefix==client_prefix).first()
+            if cl_obj:
+                return response_object, 201
             client_name = posted_data.get('client_name')
             account_type = posted_data.get('account_type')
             client_logo = posted_data.get('client_logo')

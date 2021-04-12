@@ -1104,20 +1104,21 @@ class WarehouseRO(db.Model):
     date_updated = db.Column(db.DateTime, onupdate=datetime.now)
 
 
-# class Downloads(db.Model):
-#     __tablename__ = "downloads"
-#     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-#     warehouse_prefix = db.Column(db.String, nullable=True)
-#     client_prefix = db.Column(db.String, nullable=True)
-#     created_by = db.Column(db.String, nullable=False)
-#     type = db.Column(db.String, nullable=False)
-#     title = db.Column(db.String, nullable=True)
-#     download_link = db.Column(db.String, nullable=True)
-#     dl_from = db.Column(db.DateTime)
-#     dl_to = db.Column(db.DateTime)
-#     status = db.Column(db.String, nullable=True)
-#     date_created = db.Column(db.DateTime, default=datetime.now)
-#     date_updated = db.Column(db.DateTime, qonupdate=datetime.now)
+class Downloads(db.Model):
+    __tablename__ = "downloads"
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    warehouse_prefix = db.Column(db.String, nullable=True)
+    client_prefix = db.Column(db.String, nullable=True)
+    created_by = db.Column(db.String, nullable=False)
+    type = db.Column(db.String, nullable=False)
+    title = db.Column(db.String, nullable=True)
+    download_link = db.Column(db.String, nullable=True)
+    dl_from = db.Column(db.DateTime)
+    dl_to = db.Column(db.DateTime)
+    file_size = db.Column(db.Integer, nullable=True)
+    status = db.Column(db.String, nullable=True)
+    date_created = db.Column(db.DateTime, default=datetime.now)
+    date_updated = db.Column(db.DateTime, onupdate=datetime.now)
 
 
 class ProductsWRO(db.Model):

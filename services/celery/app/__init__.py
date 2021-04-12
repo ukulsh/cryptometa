@@ -10,6 +10,7 @@ from .update_status.function import update_status
 from .fetch_orders.function import fetch_orders
 from .ship_orders.function import ship_orders
 from .core_app_jobs.tasks import *
+from .download_queues.tasks import *
 from .core_app_jobs.utils import authenticate_username_password, authenticate_restful
 from .order_price_reconciliation.index import process_order_price_reconciliation
 
@@ -209,9 +210,26 @@ def mark_delivered_channel_api():
     return jsonify({"status":"success"}), 200
 
 
+@app.route('/scans/v1/downloadQueue/orders', methods = ['POST'])
+def download_queue_orders_api():
+    data = json.loads(request.data)
+    token = data.get("token")
+    if token!="b4r74rn3r84rn4ru84hr":
+        jsonify({"status": "Unauthorized"}), 302
+    generate_orders_report.apply_async(queue='calculate_costs', args=(data, ))
+    return jsonify({"status":"success"}), 200
+
+
 @celery_app.task(name='mark_delivered_channel')
 def mark_delivered_channel(payload):
     msg = mark_order_delivered_channels(payload)
+    return msg
+
+
+@celery_app.task(name='generate_orders_report')
+def generate_orders_report(data):
+    msg = download_flag_func_orders(data['query_to_run'], data['get_selected_product_details'],
+                                    data['auth_data'], data['ORDERS_DOWNLOAD_HEADERS'], data['hide_weights'], data['report_id'])
     return msg
 
 

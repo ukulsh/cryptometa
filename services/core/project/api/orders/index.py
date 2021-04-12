@@ -42,8 +42,9 @@ api = Api(orders_blueprint)
 
 ORDERS_DOWNLOAD_HEADERS = ["Order ID", "Customer Name", "Customer Email", "Customer Phone", "Order Date",
                            "Courier", "Weight", "awb", "Expected Delivery Date", "Status", "Address_one", "Address_two",
-                           "City", "State", "Country", "Pincode", "Pickup Point", "Product", "SKU", "Quantity", "Order Type",
-                           "Amount", "Manifest Time", "Pickup Date", "Delivered Date", "COD Verfication", "COD Verified Via", "NDR Verfication", "NDR Verified Via","PDD"]
+                           "City", "State", "Country", "Pincode", "Pickup Point", "Product", "SKU", "Quantity", "Order Type", "OrderAmount", "Manifest Time", "Pickup Date", "Delivered Date", "COD Verfication",
+                           "COD Verified Via", "NDR Verfication", "NDR Verified Via", "PDD", "ShippingCharges", "InvoiceNo", "InvoiceDate", "OrderDiscount", "ProductAmount", "CGST",
+                           "SGST", "IGST"]
 
 ORDERS_UPLOAD_HEADERS = ["order_id", "customer_name", "customer_email", "customer_phone", "address_one", "address_two",
                          "city", "state", "country", "pincode", "sku", "sku_quantity", "payment_mode", "subtotal", "shipping_charges", "warehouse", "Error"]
@@ -80,6 +81,7 @@ class OrderList(Resource):
                 return {"success": False, "msg": "Auth Failed"}, 404
 
             client_prefix = auth_data.get('client_prefix')
+            warehouse_prefix = auth_data.get('warehouse_prefix')
             cur.execute("SELECT hide_weights, thirdwatch FROM client_mapping WHERE client_prefix='%s'" % client_prefix)
             try:
                 mapping_data = cur.fetchone()
@@ -125,19 +127,37 @@ class OrderList(Resource):
             if filters:
                 query_to_run = filter_query(filters, query_to_run, auth_data)
 
-            if download_flag:
-                return download_flag_func(query_to_run, get_selected_product_details, auth_data, filters, hide_weights)
-
-            count_query = "select count(*) from ("+query_to_run.replace('__PAGINATION__', "") +") xx"
+            count_query = "select count(*) from (" + query_to_run.replace('__PAGINATION__', "") + ") xx"
             count_query = re.sub(r"""__.+?__""", "", count_query)
             count_query_prefix = '''select count(*) from (select distinct on (aa.order_date, aa.id) aa.channel_order_id as order_id, aa.id as unique_id, aa.order_date'''
             count_query_suffix = 'from orders aa'
             prefix_ind = count_query.find(count_query_prefix)
             suffix_ind = count_query.find(count_query_suffix)
             if prefix_ind == 0 and suffix_ind > 0:
-                count_query = count_query[:prefix_ind+len(count_query_prefix)] + ' ' + count_query[suffix_ind:]
+                count_query = count_query[:prefix_ind + len(count_query_prefix)] + ' ' + count_query[suffix_ind:]
             cur.execute(count_query)
             total_count = cur.fetchone()[0]
+
+            if download_flag:
+                if total_count<1000:
+                    return download_flag_func(query_to_run, get_selected_product_details, auth_data, ORDERS_DOWNLOAD_HEADERS, hide_weights)
+                else:
+                    title = type + " orders download"
+                    cur.execute("""INSERT INTO downloads (warehouse_prefix, client_prefix, created_by, type, title, 
+                                download_link, dl_from, dl_to, status, date_created) VALUES 
+                                (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) returning id;""", (warehouse_prefix, client_prefix, auth_data.get('username'),
+                                                                     "Orders", title, None, None, None, "processing",
+                                                                     datetime.utcnow()+timedelta(hours=5.5)))
+                    report_id = cur.fetchone()[0]
+                    request_data = {"query_to_run": query_to_run, "get_selected_product_details": get_selected_product_details,
+                                    "auth_data": auth_data, "ORDERS_DOWNLOAD_HEADERS": ORDERS_DOWNLOAD_HEADERS, "hide_weights": hide_weights, "token": "b4r74rn3r84rn4ru84hr",
+                                    "report_id": report_id}
+                    conn.commit()
+                    requests.post(
+                        '{0}/scans/v1/downloadQueue/orders'.format(current_app.config['CELERY_SERVICE_URL']),
+                        json=request_data)
+                    return {"success": True, "status": "queued"}, 202
+
             query_to_run = query_to_run.replace('__PAGINATION__', "OFFSET %s LIMIT %s" % (str((page-1)*per_page), str(per_page)))
             query_to_run = re.sub(r"""__.+?__""", "", query_to_run)
             cur.execute(query_to_run)

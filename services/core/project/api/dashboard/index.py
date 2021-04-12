@@ -61,6 +61,7 @@ def get_dashboard(resp):
 
     response['today'] = {"orders": 0, "revenue": 0}
     response['yesterday'] = {"orders": 0, "revenue": 0}
+    response['total'] = {"orders": 0, "revenue": 0}
 
     response['graph_data'] = list()
 
@@ -70,11 +71,18 @@ def get_dashboard(resp):
             response['today'] = {"orders": dat_obj[1], "revenue": dat_obj[2]}
         if date_str==date_yest:
             response['yesterday'] = {"orders": dat_obj[1], "revenue": dat_obj[2]}
+
+        if dat_obj[1]:
+            response['total']['orders'] += dat_obj[1]
+        if dat_obj[2]:
+            response['total']['revenue'] += dat_obj[2]
+
         response['graph_data'].append({"date":datetime.strftime(dat_obj[0], '%d-%m-%Y'),
                                        "orders":dat_obj[1],
                                        "revenue":dat_obj[2]})
 
     return jsonify(response), 200
+
 
 @dashboard_blueprint.route('/dashboard/v1/performance', methods=['GET'])
 @authenticate_restful

@@ -27,8 +27,6 @@ def create_app(script_info=None):
     app_settings = os.getenv('APP_SETTINGS')
     app.config.from_object(app_settings)
     app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL')
-    app.config['CELERY_BACKEND'] = "amqp://ravi:Kad97711@rabbitmq:5672"
-    app.config['CELERY_BROKER_URL'] = "amqp://ravi:Kad97711@rabbitmq:5672"
     # set up extensions
     toolbar.init_app(app)
     cors.init_app(app)
@@ -64,20 +62,3 @@ def create_app(script_info=None):
         return {'app': app, 'db': db}
 
     return app
-
-
-def make_celery(app):
-    celery = Celery(
-        app.import_name,
-        backend=app.config['CELERY_BACKEND'],
-        broker=app.config['CELERY_BROKER_URL']
-    )
-    celery.conf.update(app.config)
-
-    class ContextTask(celery.Task):
-        def __call__(self, *args, **kwargs):
-            with app.app_context():
-                return self.run(*args, **kwargs)
-
-    celery.Task = ContextTask
-    return celery

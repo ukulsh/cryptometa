@@ -264,6 +264,60 @@ def check_balance(resp):
     return jsonify({"type": type, "balance": round(balance, 2) if balance else 0}), 200
 
 
+@core_blueprint.route('/core/v1/downloads', methods=['POST'])
+@authenticate_restful
+def get_downloads(resp):
+    cur = conn.cursor()
+    response = {'status': 'success', 'data': list(), "meta": dict()}
+    auth_data = resp.get('data')
+    data = json.loads(request.data)
+    page = data.get('page', 1)
+    per_page = data.get('per_page', 10)
+
+    query_to_run = """SELECT created_by, type, title, download_link, status, date_created, file_size FROM downloads
+                      __CLWH_FILTER__
+                      __TYPE_FILTER__
+                      order by date_created DESC 
+                      __PAGINATION__"""
+    if auth_data.get('client_prefix'):
+        query_to_run = query_to_run.replace('__CLWH_FILTER__', "WHERE client_prefix = '%s'"%auth_data.get('client_prefix'))
+    else:
+        query_to_run = query_to_run.replace('__CLWH_FILTER__', "WHERE warehouse_prefix = '%s'"%auth_data.get('warehouse_prefix'))
+
+    query_to_run = query_to_run.replace('__TYPE_FILTER__', "AND type in %s" % str(tuple(auth_data.get('tabs'))))
+
+    cur.execute(query_to_run.replace('__PAGINATION__', ""))
+    total_count = cur.rowcount
+    query_to_run = query_to_run.replace('__PAGINATION__', "OFFSET %s LIMIT %s"%(str((page-1)*per_page), str(per_page)))
+    cur.execute(query_to_run)
+    dl_qs = cur.fetchall()
+    data = list()
+    for dl in dl_qs:
+        dl_obj = dict()
+        dl_obj['created_by'] = dl[0]
+        dl_obj['type'] = dl[1]
+        dl_obj['title'] = dl[2]
+        dl_obj['download_link'] = dl[3]
+        dl_obj['status'] = dl[4]
+        dl_obj['date_created'] = dl[5].strftime("%d %b %Y, %I:%M %p") if dl[5] else None
+        file_size = None
+        if dl[6] and dl[6]<100:
+            file_size = str(dl[6]) + " KB"
+        elif dl[6]:
+            file_size = str(round(dl[6]/1024, 2)) + " MB"
+        dl_obj['file_size'] = file_size
+        data.append(dl_obj)
+
+    response['data'] = data
+
+    total_pages = math.ceil(total_count / per_page)
+    response['meta']['pagination'] = {'total': total_count,
+                                      'per_page': per_page,
+                                      'current_page': page,
+                                      'total_pages': total_pages}
+    return jsonify(response), 200
+
+
 @core_blueprint.route('/core/v1/create_payment', methods=['POST'])
 @authenticate_restful
 def create_payment(resp):

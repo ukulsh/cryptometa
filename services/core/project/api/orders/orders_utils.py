@@ -6,11 +6,6 @@ from flask import make_response
 
 from project.api.utilities.db_utils import DbConnection
 conn = DbConnection.get_db_connection_instance()
-ORDERS_DOWNLOAD_HEADERS = ["Order ID", "Customer Name", "Customer Email", "Customer Phone", "Order Date",
-                           "Courier", "Weight", "awb", "Expected Delivery Date", "Status", "Address_one", "Address_two",
-                           "City", "State", "Country", "Pincode", "Pickup Point", "Product", "SKU", "Quantity", "Order Type", "OrderAmount", "Manifest Time", "Pickup Date", "Delivered Date", "COD Verfication",
-                           "COD Verified Via", "NDR Verfication", "NDR Verified Via", "PDD", "ShippingCharges", "InvoiceNo", "InvoiceDate", "OrderDiscount", "ProductAmount", "CGST",
-                           "SGST", "IGST"]
 cur = conn.cursor()
 
 session = boto3.Session(
@@ -130,14 +125,9 @@ def filter_query(filters, query_to_run, auth_data):
     return query_to_run
 
 
-def download_flag_func(query_to_run, get_selected_product_details, auth_data, filters, hide_weights):
+def download_flag_func(query_to_run, get_selected_product_details, auth_data, ORDERS_DOWNLOAD_HEADERS, hide_weights):
 
-    client_prefix = auth_data.get('client_prefix')
-    if not [i for i in ['order_date', 'pickup_time', 'manifest_time', 'delivered_time'] if i in filters]:
-        date_month_ago = datetime.utcnow() + timedelta(hours=5.5) - timedelta(days=31)
-        date_month_ago = date_month_ago.strftime("%Y-%m-%d %H:%M:%S")
-        query_to_run = query_to_run.replace('__ORDER_DATE_FILTER__', "AND order_date > '%s' " % date_month_ago)
-        query_to_run = query_to_run.replace('__PAGINATION__', "")
+    client_prefix = auth_data.get('client_prefix') if auth_data.get('client_prefix') else auth_data.get('warehouse_prefix')
     query_to_run = re.sub(r"""__.+?__""", "", query_to_run)
     cur.execute(query_to_run)
     orders_qs_data = cur.fetchall()
@@ -245,7 +235,7 @@ def download_flag_func(query_to_run, get_selected_product_details, auth_data, fi
     bucket.upload_file(filename, "downloads/"+filename, ExtraArgs={'ACL': 'public-read'})
     invoice_url = "https://wareiqfiles.s3.amazonaws.com/downloads/" + filename
     os.remove(filename)
-    return {"url": invoice_url, "success": True}
+    return {"url": invoice_url, "success": True}, 200
 
 
 def user_group_filter(query_to_run, auth_data):

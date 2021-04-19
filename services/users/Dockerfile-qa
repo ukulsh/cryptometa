@@ -12,6 +12,7 @@ WORKDIR /usr/src/app
 # add and install requirements
 COPY ./requirements.txt /usr/src/app/requirements.txt
 RUN pip install -r requirements.txt
+RUN pip install pycryptodome
 
 # add entrypoint-prod.sh
 COPY ./entrypoint-prod.sh /usr/src/app/entrypoint-prod.sh

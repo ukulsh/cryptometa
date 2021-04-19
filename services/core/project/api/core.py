@@ -279,11 +279,8 @@ def get_downloads(resp):
                       __TYPE_FILTER__
                       order by date_created DESC 
                       __PAGINATION__"""
-    if auth_data.get('client_prefix'):
-        query_to_run = query_to_run.replace('__CLWH_FILTER__', "WHERE client_prefix = '%s'"%auth_data.get('client_prefix'))
-    else:
-        query_to_run = query_to_run.replace('__CLWH_FILTER__', "WHERE warehouse_prefix = '%s'"%auth_data.get('warehouse_prefix'))
 
+    query_to_run = query_to_run.replace('__CLWH_FILTER__', "WHERE created_by = '%s'"%auth_data.get('username'))
     query_to_run = query_to_run.replace('__TYPE_FILTER__', "AND type in %s" % str(tuple(auth_data.get('tabs'))))
 
     cur.execute(query_to_run.replace('__PAGINATION__', ""))

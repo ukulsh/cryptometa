@@ -97,7 +97,7 @@ def cod_verification_text(order, exotel_idx, cur):
     sms_to_key = "Messages[%s][To]" % str(exotel_idx)
     sms_body_key = "Messages[%s][Body]" % str(exotel_idx)
 
-    sms_body_key_data = "Dear Customer, you recently placed an order from %s worth INR %s. Click on the link ( %s ) to confirm." % (
+    sms_body_key_data = "Dear Customer, you recently placed an order from %s worth INR %s . Click on the link ( %s ) to confirm. Powered by WareIQ." % (
                             client_name, str(order[27]), cod_confirmation_link)
 
     return sms_to_key, sms_body_key, customer_phone, sms_body_key_data
@@ -409,7 +409,7 @@ def ship_delhivery_orders(cur, courier, courier_name, order_ids, order_id_tuple,
                         short_url_track = short_url.json()['url']['shortLink']
                         """
                         exotel_sms_data[
-                            sms_body_key] = "Received: Your order from %s . Track here: %s . Powered by WareIQ." % (
+                            sms_body_key] = "Received: Your order from %s . Track here: %s . Powered by WareIQ" % (
                             client_name, tracking_link_wareiq)
                     except Exception:
                         pass
@@ -701,7 +701,7 @@ def ship_shadowfax_orders(cur, courier, courier_name, order_ids, order_id_tuple,
                         short_url_track = short_url.json()['url']['shortLink']
                         """
                         exotel_sms_data[
-                            sms_body_key] = "Received: Your order from %s. Track here: %s . Thanks!" % (
+                            sms_body_key] = "Received: Your order from %s . Track here: %s . Powered by WareIQ" % (
                         client_name, tracking_link_wareiq)
                     except Exception:
                         pass
@@ -1036,7 +1036,7 @@ def ship_xpressbees_orders(cur, courier, courier_name, order_ids, order_id_tuple
                         short_url_track = short_url.json()['url']['shortLink']
                         """
                         exotel_sms_data[
-                            sms_body_key] = "Received: Your order from %s . Track here: %s . Powered by WareIQ." % (
+                            sms_body_key] = "Received: Your order from %s . Track here: %s . Powered by WareIQ" % (
                         client_name, tracking_link_wareiq)
                     except Exception:
                         pass
@@ -1364,7 +1364,7 @@ def ship_ecom_orders(cur, courier, courier_name, order_ids, order_id_tuple, back
                         short_url_track = short_url.json()['url']['shortLink']
                         """
                         exotel_sms_data[
-                            sms_body_key] = "Received: Your order from %s . Track here: %s . Powered by WareIQ." % (
+                            sms_body_key] = "Received: Your order from %s . Track here: %s . Powered by WareIQ" % (
                         client_name, tracking_link_wareiq)
                     except Exception:
                         pass
@@ -1683,7 +1683,7 @@ def ship_bluedart_orders(cur, courier, courier_name, order_ids, order_id_tuple, 
                         short_url_track = short_url.json()['url']['shortLink']
                         """
                         exotel_sms_data[
-                            sms_body_key] = "Received: Your order from %s . Track here: %s . Powered by WareIQ." % (
+                            sms_body_key] = "Received: Your order from %s . Track here: %s . Powered by WareIQ" % (
                         client_name, tracking_link_wareiq)
                     except Exception:
                         pass
@@ -1994,7 +1994,7 @@ def ship_fedex_orders(cur, courier, courier_name, order_ids, order_id_tuple, bac
                         short_url_track = short_url.json()['url']['shortLink']
                         """
                         exotel_sms_data[
-                            sms_body_key] = "Received: Your order from %s . Track here: %s . Powered by WareIQ." % (
+                            sms_body_key] = "Received: Your order from %s . Track here: %s . Powered by WareIQ" % (
                         client_name, tracking_link_wareiq)
                     except Exception:
                         pass
@@ -2377,7 +2377,7 @@ def ship_sdd_orders(cur, courier, courier_name, order_ids, order_id_tuple, backu
                 try:
                     tracking_link_wareiq = return_data_raw['data']['track_url']
                     exotel_sms_data[
-                        sms_body_key] = "Received: Your order from %s . Track here: %s . Powered by WareIQ." % (
+                        sms_body_key] = "Received: Your order from %s . Track here: %s . Powered by WareIQ" % (
                         client_name, tracking_link_wareiq)
                 except Exception:
                     pass

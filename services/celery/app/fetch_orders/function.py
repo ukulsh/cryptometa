@@ -236,6 +236,8 @@ def fetch_shopify_orders(cur, channel, manual=None):
                     weight = None
                     subcategory_id = None
                     master_sku = prod['sku']
+                    if not master_sku:
+                        master_sku = product_sku
                     if master_sku and not master_product_id:
                         cur.execute(select_master_products_query, (master_sku, channel[1]))
                         try:
@@ -245,8 +247,6 @@ def fetch_shopify_orders(cur, channel, manual=None):
                                                     float(prod['price']), weight, subcategory_id)
                             cur.execute(insert_master_product_query, master_product_insert_tuple)
                             master_product_id = cur.fetchone()[0]
-                    if not master_sku:
-                        master_sku = product_sku
                     try:
                         cur.execute("SELECT keywords, warehouse_prefix, dimensions, weight, subcategory_id FROM keyword_weights WHERE client_prefix='%s'"%channel[1])
                         all_weights = cur.fetchall()
@@ -474,6 +474,8 @@ def fetch_woocommerce_orders(cur, channel, manual=None):
                     dimensions = None
                     weight = None
                     subcategory_id = None
+                    if not master_sku:
+                        master_sku = sku_id
                     if master_sku and not master_product_id:
                         cur.execute(select_master_products_query, (master_sku, channel[1]))
                         try:
@@ -484,8 +486,6 @@ def fetch_woocommerce_orders(cur, channel, manual=None):
                             cur.execute(insert_master_product_query, master_product_insert_tuple)
                             master_product_id = cur.fetchone()[0]
 
-                    if not master_sku:
-                        master_sku = sku_id
                     try:
                         cur.execute("SELECT keywords, warehouse_prefix, dimensions, weight, subcategory_id FROM keyword_weights WHERE client_prefix='%s'"%channel[1])
                         all_weights = cur.fetchall()
@@ -681,7 +681,8 @@ def fetch_magento_orders(cur, channel, manual=None):
                     dimensions = None
                     weight = None
                     subcategory_id = None
-                    master_sku = str(prod['sku'])
+                    if not master_sku:
+                        master_sku = product_sku
                     if master_sku and not master_product_id:
                         cur.execute(select_master_products_query, (master_sku, channel[1]))
                         try:
@@ -691,8 +692,6 @@ def fetch_magento_orders(cur, channel, manual=None):
                                                     float(prod['original_price']), weight, subcategory_id)
                             cur.execute(insert_master_product_query, master_product_insert_tuple)
                             master_product_id = cur.fetchone()[0]
-                    if not master_sku:
-                        master_sku = product_sku
 
                     product_insert_tuple = (prod['name'], product_sku, channel[2],
                                             channel[1], datetime.now(), dimensions, float(prod['original_price']),
@@ -806,7 +805,7 @@ def fetch_easyecom_orders(cur, channel, manual=None):
                 channel_order_id = str(channel[16]) + channel_order_id
 
             order_status="NEW"
-            if order['courier'] and order['courier']!='Self Ship':
+            if order['courier']!='Self Ship' or order['payment_mode'] is None:
                 order_status = "NOT SHIPPED"
 
             if order['marketplace'] in easyecom_wareiq_channel_map:
@@ -824,20 +823,6 @@ def fetch_easyecom_orders(cur, channel, manual=None):
 
             total_amount = float(order['total_amount'])
             shipping_amount = 0
-            subtotal_amount = total_amount- shipping_amount
-
-            if str(order['payment_mode']).lower() in ('cod', 'cashondelivery', 'cash on delivery'):
-                financial_status = 'COD'
-            elif order['payment_mode'] is None:
-                financial_status = "Unknown"
-            else:
-                financial_status = 'Prepaid'
-
-            payments_tuple = (
-                financial_status, total_amount, subtotal_amount,
-                shipping_amount, "INR", order_id)
-
-            cur.execute(insert_payments_data_query, payments_tuple)
 
             if order['courier'] and order['courier'] in easyecom_wareiq_courier_map:
                 cur.execute("INSERT INTO shipments (awb, status, order_id, courier_id) VALUES ('%s', 'Success', %s, %s)"%(str(order['awb_number']),
@@ -865,6 +850,8 @@ def fetch_easyecom_orders(cur, channel, manual=None):
                         weight=None
                     subcategory_id = None
                     master_sku = prod['sku']
+                    if not master_sku:
+                        master_sku = product_sku
                     if master_sku and not master_product_id:
                         cur.execute(select_master_products_query, (master_sku, channel[1]))
                         try:
@@ -874,8 +861,7 @@ def fetch_easyecom_orders(cur, channel, manual=None):
                                                     float(prod['mrp']), weight, subcategory_id)
                             cur.execute(insert_master_product_query, master_product_insert_tuple)
                             master_product_id = cur.fetchone()[0]
-                    if not master_sku:
-                        master_sku = product_sku
+
                     product_insert_tuple = (prod['productName'], product_sku, channel[2],
                                             channel[1], datetime.now(), dimensions,
                                             float(prod['mrp']), weight, master_sku, subcategory_id, master_product_id)
@@ -883,14 +869,47 @@ def fetch_easyecom_orders(cur, channel, manual=None):
                     product_id = cur.fetchone()[0]
 
                 tax_lines = list()
+                selling_price = prod['Item_Amount_Excluding_Tax']
                 try:
-                    tax_lines.append({'title': "GST",
-                                      'rate': prod['Item_Amount_IGST']/(prod['Item_Amount_IGST']+prod['Item_Amount_Excluding_Tax'])})
+                    if prod.get('Item_Amount_IGST'):
+                        tax_lines.append({'title': "GST",
+                                          'rate': prod['Item_Amount_IGST']/prod['Item_Amount_Excluding_Tax']})
+                        selling_price += prod['Item_Amount_IGST']
+                    else:
+                        tax_lines.append({'title': "CGST",
+                                          'rate': prod['Item_Amount_CGST']/prod['Item_Amount_Excluding_Tax']})
+                        tax_lines.append({'title': "SGST",
+                                          'rate': prod['Item_Amount_SGST']/prod['Item_Amount_Excluding_Tax']})
+                        selling_price += prod['Item_Amount_CGST']+prod['Item_Amount_SGST']
                 except Exception as e:
                     logger.error("Couldn't fetch tax for: " + str(order_id))
 
-                op_tuple = (product_id, order_id, prod['quantity'], float(prod['quantity'] * float(prod['mrp'])), None, json.dumps(tax_lines), master_product_id)
+                try:
+                    shipping_amount += prod['Shipping_Excluding_Tax']
+                    if prod.get('Shipping_IGST'):
+                        shipping_amount += prod['Shipping_IGST']
+                    elif prod.get('Shipping_CGST') and prod.get('Shipping_SGST'):
+                        shipping_amount += prod.get('Shipping_CGST') + prod.get('Shipping_SGST')
+                except Exception as e:
+                    pass
+
+                op_tuple = (product_id, order_id, prod['quantity'], float(prod['quantity'] * round(float(selling_price), 1)), None, json.dumps(tax_lines), master_product_id)
                 cur.execute(insert_op_association_query, op_tuple)
+
+            subtotal_amount = total_amount - shipping_amount
+
+            if str(order['payment_mode']).lower() in ('cod', 'cashondelivery', 'cash on delivery'):
+                financial_status = 'COD'
+            elif order['payment_mode'] is None:
+                financial_status = "Unknown"
+            else:
+                financial_status = 'Prepaid'
+
+            payments_tuple = (
+                financial_status, total_amount, subtotal_amount,
+                shipping_amount, "INR", order_id)
+
+            cur.execute(insert_payments_data_query, payments_tuple)
 
         except Exception as e:
             logger.error("order fetch failed for" + str(order['order_id']) + "\nError:" + str(e))
@@ -1030,7 +1049,6 @@ def fetch_bikayi_orders(cur, channel, manual=None):
                     dimensions = None
                     weight = None
                     subcategory_id = None
-                    master_sku = str(prod['id'])
                     if master_sku and not master_product_id:
                         cur.execute(select_master_products_query, (master_sku, channel[1]))
                         try:
@@ -1040,8 +1058,7 @@ def fetch_bikayi_orders(cur, channel, manual=None):
                                                     float(prod['unitPrice']), weight, subcategory_id)
                             cur.execute(insert_master_product_query, master_product_insert_tuple)
                             master_product_id = cur.fetchone()[0]
-                    if not master_sku:
-                        master_sku = product_sku
+
                     product_insert_tuple = (prod['name'], product_sku, channel[2],
                                             channel[1], datetime.now(), dimensions, prod['unitPrice'],
                                             weight, master_sku, subcategory_id, master_product_id)
@@ -1344,7 +1361,10 @@ easyecom_wareiq_channel_map = {"Amazon.in": 2,
                            "FlipkartSmart": 3,
                                "Flipkart":3,
                                "Offline":4,
-                               "Shopify1":1
+                               "Shopify1": 1,
+                               "MenXP":11,
+                               "PayTM":12,
+                               "Snapdeal":10
                                }
 
 easyecom_wareiq_courier_map = {"eKart": 7}

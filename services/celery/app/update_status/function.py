@@ -1373,7 +1373,7 @@ def verification_text(current_order, exotel_idx, cur, ndr=None, ndr_reason=None)
                                 client_name, str(current_order[12]),
                                 del_confirmation_link)
     elif ndr_reason in (1, 3, 9, 11) and current_order[37] != False:
-        sms_body_key_data = "Dear Customer, your order from %s was attempted today but could not be delivered. Click on the link (%s) to re-attempt." % (
+        sms_body_key_data = "Dear Customer, Your order from %s was attempted today but could not be delivered. Click on the link (%s) to re-attempt. Powered by WareIQ." % (
                                 client_name, del_confirmation_link)
     else:
         sms_body_key_data = None

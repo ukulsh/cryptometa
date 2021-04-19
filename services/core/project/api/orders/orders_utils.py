@@ -125,7 +125,7 @@ def filter_query(filters, query_to_run, auth_data):
     return query_to_run
 
 
-def download_flag_func(query_to_run, get_selected_product_details, auth_data, ORDERS_DOWNLOAD_HEADERS, hide_weights):
+def download_flag_func(query_to_run, get_selected_product_details, auth_data, ORDERS_DOWNLOAD_HEADERS, hide_weights, report_id):
 
     client_prefix = auth_data.get('client_prefix') if auth_data.get('client_prefix') else auth_data.get('warehouse_prefix')
     query_to_run = re.sub(r"""__.+?__""", "", query_to_run)
@@ -234,7 +234,11 @@ def download_flag_func(query_to_run, get_selected_product_details, auth_data, OR
     bucket = s3.Bucket("wareiqfiles")
     bucket.upload_file(filename, "downloads/"+filename, ExtraArgs={'ACL': 'public-read'})
     invoice_url = "https://wareiqfiles.s3.amazonaws.com/downloads/" + filename
+    file_size = os.path.getsize(filename)
+    file_size = int(file_size / 1000)
     os.remove(filename)
+    cur.execute("UPDATE downloads SET download_link='%s', status='processed', file_size=%s where id=%s" % (invoice_url, file_size, report_id))
+    conn.commit()
     return {"url": invoice_url, "success": True}, 200
 
 

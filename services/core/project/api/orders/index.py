@@ -118,11 +118,19 @@ class OrderList(Resource):
             elif type == "return":
                 query_to_run = query_to_run.replace("__TAB_STATUS_FILTER__", "AND (aa.status_type='RT' or (aa.status_type='DL' and aa.status='RTO'))")
             elif type == "ndr":
+                query_to_run = query_to_run.replace("__NDR_AGGREGATION__", """left join (select ss.order_id, max(ss.id) as ndr_id, array_agg(tt.id order by ss.id desc) as reason_id, array_agg(tt.reason order by ss.id desc) as reason, array_agg(ss.date_created order by ss.id desc) as ndr_date from ndr_shipments ss left join ndr_reasons tt on ss.reason_id=tt.id 
+                                                                                                 group by order_id) rr
+                                                                                                 on aa.id=rr.order_id""")
+                query_to_run = query_to_run.replace("__NDR_AGG_SEL_1__", "rr.reason_id, rr.reason, rr.ndr_date,")
+                query_to_run = query_to_run.replace("__NDR_AGG_SEL_2__", "rr.ndr_id,")
                 query_to_run = query_to_run.replace("__TAB_STATUS_FILTER__", "AND (rr.ndr_id is not null AND aa.status='PENDING' AND aa.status_type!='RT')")
             elif type == 'all':
                 pass
             else:
                 return {"success": False, "msg": "Invalid URL"}, 404
+
+            query_to_run = query_to_run.replace("__NDR_AGG_SEL_1__", "null, null, null,")
+            query_to_run = query_to_run.replace("__NDR_AGG_SEL_2__", "null,")
 
             if filters:
                 query_to_run = filter_query(filters, query_to_run, auth_data)
@@ -139,20 +147,23 @@ class OrderList(Resource):
             total_count = cur.fetchone()[0]
 
             if download_flag:
+                title = type + " orders download"
+                cur.execute("""INSERT INTO downloads (warehouse_prefix, client_prefix, created_by, type, title, 
+                                                download_link, dl_from, dl_to, status, date_created) VALUES 
+                                                (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) returning id;""",
+                            (warehouse_prefix, client_prefix, auth_data.get('username'),
+                             "Orders", title, None, None, None, "processing",
+                             datetime.utcnow() + timedelta(hours=5.5)))
+                report_id = cur.fetchone()[0]
+                conn.commit()
                 if total_count<1000:
-                    return download_flag_func(query_to_run, get_selected_product_details, auth_data, ORDERS_DOWNLOAD_HEADERS, hide_weights)
+                    return download_flag_func(query_to_run, get_selected_product_details, auth_data, ORDERS_DOWNLOAD_HEADERS, hide_weights, report_id)
                 else:
-                    title = type + " orders download"
-                    cur.execute("""INSERT INTO downloads (warehouse_prefix, client_prefix, created_by, type, title, 
-                                download_link, dl_from, dl_to, status, date_created) VALUES 
-                                (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) returning id;""", (warehouse_prefix, client_prefix, auth_data.get('username'),
-                                                                     "Orders", title, None, None, None, "processing",
-                                                                     datetime.utcnow()+timedelta(hours=5.5)))
-                    report_id = cur.fetchone()[0]
-                    request_data = {"query_to_run": query_to_run, "get_selected_product_details": get_selected_product_details,
-                                    "auth_data": auth_data, "ORDERS_DOWNLOAD_HEADERS": ORDERS_DOWNLOAD_HEADERS, "hide_weights": hide_weights, "token": "b4r74rn3r84rn4ru84hr",
+                    request_data = {"query_to_run": query_to_run,
+                                    "get_selected_product_details": get_selected_product_details,
+                                    "auth_data": auth_data, "ORDERS_DOWNLOAD_HEADERS": ORDERS_DOWNLOAD_HEADERS,
+                                    "hide_weights": hide_weights, "token": "b4r74rn3r84rn4ru84hr",
                                     "report_id": report_id}
-                    conn.commit()
                     requests.post(
                         '{0}/scans/v1/downloadQueue/orders'.format(current_app.config['CELERY_SERVICE_URL']),
                         json=request_data)

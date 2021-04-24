@@ -475,7 +475,7 @@ def fetch_woocommerce_orders(cur, channel, manual=None):
                     weight = None
                     subcategory_id = None
                     if not master_sku:
-                        master_sku = sku_id
+                        master_sku = product_sku
                     if master_sku and not master_product_id:
                         cur.execute(select_master_products_query, (master_sku, channel[1]))
                         try:
@@ -858,13 +858,13 @@ def fetch_easyecom_orders(cur, channel, manual=None):
                             master_product_id = cur.fetchone()[0]
                         except Exception:
                             master_product_insert_tuple = (prod['productName'], master_sku, True, channel[1], datetime.now(), dimensions,
-                                                    float(prod['mrp']), weight, subcategory_id)
+                                                    float(prod['mrp']) if prod['mrp'] else None, weight, subcategory_id)
                             cur.execute(insert_master_product_query, master_product_insert_tuple)
                             master_product_id = cur.fetchone()[0]
 
                     product_insert_tuple = (prod['productName'], product_sku, channel[2],
                                             channel[1], datetime.now(), dimensions,
-                                            float(prod['mrp']), weight, master_sku, subcategory_id, master_product_id)
+                                            float(prod['mrp']) if prod['mrp'] else None, weight, master_sku, subcategory_id, master_product_id)
                     cur.execute(insert_product_query, product_insert_tuple)
                     product_id = cur.fetchone()[0]
 
@@ -1364,7 +1364,8 @@ easyecom_wareiq_channel_map = {"Amazon.in": 2,
                                "Shopify1": 1,
                                "MenXP":11,
                                "PayTM":12,
-                               "Snapdeal":10
+                               "Snapdeal":10,
+                               "Woocommerce":5
                                }
 
 easyecom_wareiq_courier_map = {"eKart": 7}

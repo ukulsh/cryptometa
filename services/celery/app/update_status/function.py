@@ -250,25 +250,8 @@ def track_delhivery_orders(courier, cur):
                             (True, time_now, orders_dict[current_awb][0]))
 
                 update_picked_on_channels(orders_dict[current_awb], cur)
-
-                if orders_dict[current_awb][19]:
-                    email = create_email(orders_dict[current_awb], edd.strftime('%-d %b') if edd else "",
-                                         orders_dict[current_awb][19])
-                    if email:
-                        emails_list.append((email, [orders_dict[current_awb][19]]))
-
                 cur.execute("UPDATE shipments SET pdd=%s WHERE awb=%s", (edd, current_awb))
-                sms_to_key = "Messages[%s][To]" % str(exotel_idx)
-                sms_body_key = "Messages[%s][Body]" % str(exotel_idx)
-
-                exotel_sms_data[sms_to_key] = customer_phone
-
-                tracking_link_wareiq = "https://webapp.wareiq.com/tracking/" + str(orders_dict[current_awb][1])
-
-                exotel_sms_data[sms_body_key] = "Shipped: Your %s order via Delhivery . Track here: %s . Powered by WareIQ." % (
-                client_name, tracking_link_wareiq)
-
-                exotel_idx += 1
+                send_shipped_event(customer_phone, orders_dict[current_awb][19], orders_dict[current_awb], edd.strftime('%-d %b'))
 
             if orders_dict[current_awb][2] != new_status:
 
@@ -316,9 +299,6 @@ def track_delhivery_orders(courier, cur):
             logger.error("Couldn't update pickup count for : " + str(e.args[0]))
 
     conn.commit()
-
-    if emails_list:
-        send_bulk_emails(emails_list)
 
 
 def track_shadowfax_orders(courier, cur):
@@ -485,24 +465,11 @@ def track_shadowfax_orders(courier, cur):
 
                 update_picked_on_channels(orders_dict[current_awb], cur)
 
-                if orders_dict[current_awb][19]:
-                    email = create_email(orders_dict[current_awb], edd.strftime('%-d %b') if edd else "",
-                                         orders_dict[current_awb][19])
-                    if email:
-                        emails_list.append((email, [orders_dict[current_awb][19]]))
-
                 if edd:
                     cur.execute("UPDATE shipments SET pdd=%s WHERE awb=%s", (edd, current_awb))
-                    edd = edd.strftime('%-d %b')
 
-                sms_to_key = "Messages[%s][To]" % str(exotel_idx)
-                sms_body_key = "Messages[%s][Body]" % str(exotel_idx)
-
-                exotel_sms_data[sms_to_key] = customer_phone
-                exotel_sms_data[
-                    sms_body_key] = "Shipped: Your %s order via Shadowfax . Track here: https://webapp.wareiq.com/tracking/%s . Powered by WareIQ." % (
-                    client_name, orders_dict[current_awb][1])
-                exotel_idx += 1
+                send_shipped_event(customer_phone, orders_dict[current_awb][19], orders_dict[current_awb],
+                                   edd.strftime('%-d %b'))
 
             if orders_dict[current_awb][2] != new_status:
                 status_update_tuple = (new_status, status_type, status_detail, orders_dict[current_awb][0])
@@ -549,9 +516,6 @@ def track_shadowfax_orders(courier, cur):
             logger.error("Couldn't update pickup count for : " + str(e.args[0]))
 
     conn.commit()
-
-    if emails_list:
-        send_bulk_emails(emails_list)
 
 
 def track_xpressbees_orders(courier, cur):
@@ -717,23 +681,10 @@ def track_xpressbees_orders(courier, cur):
                     'READY TO SHIP', 'PICKUP REQUESTED',
                     'NOT PICKED') and new_status == 'IN TRANSIT' and order_picked_check:
 
-                sms_to_key = "Messages[%s][To]" % str(exotel_idx)
-                sms_body_key = "Messages[%s][Body]" % str(exotel_idx)
-
-                exotel_sms_data[sms_to_key] = customer_phone
                 if edd:
                     cur.execute("UPDATE shipments SET pdd=%s WHERE awb=%s", (edd, current_awb))
-                    edd = edd.strftime('%-d %b')
-                    """
-                    short_url = requests.get(
-                        "https://cutt.ly/api/api.php?key=f445d0bb52699d2f870e1832a1f77ef3f9078&short=%s" % tracking_link_wareiq)
-                    short_url_track = short_url.json()['url']['shortLink']
-                    """
+
                 if order_picked_check:
-                    exotel_sms_data[
-                        sms_body_key] = "Shipped: Your %s order via Xpressbees . Track here: https://webapp.wareiq.com/tracking/%s . Powered by WareIQ." % (
-                        client_name, str(orders_dict[current_awb][1]))
-                    exotel_idx += 1
                     pickup_count += 1
                     if orders_dict[current_awb][11] not in pickup_dict:
                         pickup_dict[orders_dict[current_awb][11]] = 1
@@ -745,11 +696,9 @@ def track_xpressbees_orders(courier, cur):
 
                     update_picked_on_channels(orders_dict[current_awb], cur)
 
-                    if orders_dict[current_awb][19]:
+                    send_shipped_event(customer_phone, orders_dict[current_awb][19], orders_dict[current_awb],
+                                       edd.strftime('%-d %b'))
 
-                        email = create_email(orders_dict[current_awb], "", orders_dict[current_awb][19])
-                        if email:
-                            emails_list.append((email, [orders_dict[current_awb][19]]))
                 else:
                     continue
 
@@ -812,9 +761,6 @@ def track_xpressbees_orders(courier, cur):
             logger.error("Couldn't update pickup count for : " + str(e.args[0]))
 
     conn.commit()
-
-    if emails_list:
-        send_bulk_emails(emails_list)
 
 
 def track_bluedart_orders(courier, cur):
@@ -1009,24 +955,9 @@ def track_bluedart_orders(courier, cur):
                             (True, time_now, orders_dict[current_awb][0]))
                 update_picked_on_channels(orders_dict[current_awb], cur)
 
-                if orders_dict[current_awb][19]:
-                    email = create_email(orders_dict[current_awb], edd.strftime('%-d %b') if edd else "",
-                                         orders_dict[current_awb][19])
-                    if email:
-                        emails_list.append((email, [orders_dict[current_awb][19]]))
-
                 cur.execute("UPDATE shipments SET pdd=%s WHERE awb=%s", (edd, current_awb))
-                sms_to_key = "Messages[%s][To]" % str(exotel_idx)
-                sms_body_key = "Messages[%s][Body]" % str(exotel_idx)
-
-                exotel_sms_data[sms_to_key] = customer_phone
-
-                tracking_link_wareiq = "https://webapp.wareiq.com/tracking/" + str(orders_dict[current_awb][1])
-
-                exotel_sms_data[sms_body_key] = "Shipped: Your %s order via Bluedart . Track here: %s . Powered by WareIQ." % (
-                    client_name, tracking_link_wareiq)
-
-                exotel_idx += 1
+                send_shipped_event(customer_phone, orders_dict[current_awb][19], orders_dict[current_awb],
+                                   edd.strftime('%-d %b'))
 
             if orders_dict[current_awb][2] != new_status:
                 status_update_tuple = (new_status, status_type, status_detail, orders_dict[current_awb][0])
@@ -1073,9 +1004,6 @@ def track_bluedart_orders(courier, cur):
             logger.error("Couldn't update pickup count for : " + str(e.args[0]))
 
     conn.commit()
-
-    if emails_list:
-        send_bulk_emails(emails_list)
 
 
 def track_ecomxp_orders(courier, cur):
@@ -1258,24 +1186,9 @@ def track_ecomxp_orders(courier, cur):
 
                 update_picked_on_channels(orders_dict[current_awb], cur)
 
-                if orders_dict[current_awb][19]:
-                    email = create_email(orders_dict[current_awb], edd.strftime('%-d %b') if edd else "",
-                                         orders_dict[current_awb][19])
-                    if email:
-                        emails_list.append((email, [orders_dict[current_awb][19]]))
-
                 cur.execute("UPDATE shipments SET pdd=%s WHERE awb=%s", (edd, current_awb))
-                sms_to_key = "Messages[%s][To]" % str(exotel_idx)
-                sms_body_key = "Messages[%s][Body]" % str(exotel_idx)
-
-                exotel_sms_data[sms_to_key] = customer_phone
-
-                tracking_link_wareiq = "https://webapp.wareiq.com/tracking/" + str(orders_dict[current_awb][1])
-
-                exotel_sms_data[sms_body_key] = "Shipped: Your %s order via Ecom Express . Track here: %s . Powered by WareIQ." % (
-                    client_name, tracking_link_wareiq)
-
-                exotel_idx += 1
+                send_shipped_event(customer_phone, orders_dict[current_awb][19], orders_dict[current_awb],
+                                   edd.strftime('%-d %b'))
 
             if orders_dict[current_awb][2] != new_status:
                 status_update_tuple = (new_status, status_type, status_detail, orders_dict[current_awb][0])
@@ -1322,9 +1235,6 @@ def track_ecomxp_orders(courier, cur):
             logger.error("Couldn't update pickup count for : " + str(e.args[0]))
 
     conn.commit()
-
-    if emails_list:
-        send_bulk_emails(emails_list)
 
 
 def verification_text(current_order, exotel_idx, cur, ndr=None, ndr_reason=None):

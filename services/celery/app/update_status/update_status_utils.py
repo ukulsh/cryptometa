@@ -1,4 +1,4 @@
-import logging, boto3
+import logging, boto3, requests, json
 from datetime import datetime
 from time import sleep
 from email.mime.multipart import MIMEMultipart
@@ -8,11 +8,64 @@ from .order_shipped import order_shipped
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
-#email_server = smtplib.SMTP_SSL('smtpout.secureserver.net', 465)
-#email_server.login("noreply@wareiq.com", "Berlin@123")
 
 email_client = boto3.client('ses', region_name="us-east-1", aws_access_key_id='AKIAWRT2R3KC3YZUBFXY',
     aws_secret_access_key='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')
+
+
+def send_shipped_event(mobile, email, order, edd):
+    url = "https://api.ravenapp.dev/v1/apps/ccaaf889-232e-49df-aeb8-869e3153509d/events/send"
+    headers = {"Content-Type": "application/json",
+               "Authorization": "AuthKey K4noY3GgzaW8OEedfZWAOyg+AmKZTsqO/h/8Y4LVtFA="}
+
+    background_color = str(order[24]) if order[24] else "#B5D0EC"
+    client_logo = str(order[21]) if order[21] else "https://logourls.s3.amazonaws.com/client_logos/logo_ane.png"
+    client_name = str(order[20]) if order[20] else "WareIQ"
+    email_title = str(order[22]) if order[22] else "Your order has been shipped!"
+    order_id = str(order[12]) if order[12] else ""
+    customer_name = str(order[18]) if order[18] else "Customer"
+    courier_name = "WareIQ"
+    if order[23] in (1, 2, 8, 11, 12):
+        courier_name = "Delhivery"
+    elif order[23] in (5, 13):
+        courier_name = "Xpressbees"
+    elif order[23] in (4,):
+        courier_name = "Shadowfax"
+    elif order[23] in (9,):
+        courier_name = "Bluedart"
+
+    edd = edd if edd else ""
+    awb_number = str(order[1]) if order[1] else ""
+    tracking_link = "http://webapp.wareiq.com/tracking/" + str(order[1])
+
+    payload = {
+        "event": "shipped",
+        "user": {
+            "mobile": mobile,
+            "email": email if email else ""
+        },
+        "data": {
+            "client_name": client_name,
+            "customer_name": customer_name,
+            "courier_name": courier_name,
+            "tracking_link": tracking_link,
+            "email_title": email_title,
+            "order_id": order_id,
+            "edd": edd,
+            "awb_number": awb_number,
+            "background_color": background_color,
+            "client_logo": client_logo
+        },
+        "override": {
+            "email": {
+                "from": {
+                    "name": client_name
+                }
+            }
+        }
+    }
+
+    req = requests.post(url, headers=headers, data=json.dumps(payload))
 
 
 def send_bulk_emails(emails):

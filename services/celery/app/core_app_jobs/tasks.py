@@ -421,12 +421,15 @@ def queue_cod_remittance_razorpay():
                 print("Account data not avaiable for: "+str(remit[1]))
                 continue
 
+            payment_mode = "NEFT"
+            if remit[6]<200000:
+                payment_mode = "IMPS"
             amount = int(remit[6] * 100)
             razorpay_body = {
-                "account_number": "7878780047779262",
+                "account_number": "409001472401",
                 "amount": amount,
                 "currency": "INR",
-                "mode": "NEFT",
+                "mode": payment_mode,
                 "purpose": "COD Remittance",
                 "fund_account": {
                     "account_type": "bank_account",

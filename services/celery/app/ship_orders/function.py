@@ -15,6 +15,9 @@ conn = DbConnection.get_db_connection_instance()
 conn_2 = DbConnection.get_pincode_db_connection_instance()
 cur_2 = conn_2.cursor()
 
+RAVEN_URL = "https://api.ravenapp.dev/v1/apps/ccaaf889-232e-49df-aeb8-869e3153509d/events/send"
+RAVEN_HEADERS = {"Content-Type": "application/json", "Authorization": "AuthKey K4noY3GgzaW8OEedfZWAOyg+AmKZTsqO/h/8Y4LVtFA="}
+
 
 def ship_orders(courier_name=None, order_ids=None, force_ship=None):
     cur = conn.cursor()
@@ -83,27 +86,43 @@ def ship_orders(courier_name=None, order_ids=None, force_ship=None):
     cur.close()
 
 
-def cod_verification_text(order, exotel_idx, cur):
+def cod_verification_text(order, cur):
     cod_confirmation_link = "https://track.wareiq.com/core/v1/passthru/cod?CustomField=%s" % str(order[0])
-    """
-    short_url = requests.get(
-        "https://cutt.ly/api/api.php?key=f445d0bb52699d2f870e1832a1f77ef3f9078&short=%s" % cod_confirmation_link)
-    short_url_track = short_url.json()['url']['shortLink']
-    """
+
     insert_cod_ver_tuple = (order[0], cod_confirmation_link, datetime.now())
     cur.execute("INSERT INTO cod_verification (order_id, verification_link, date_created) VALUES (%s,%s,%s);",
                 insert_cod_ver_tuple)
     client_name = order[51]
     customer_phone = order[5].replace(" ", "")
     customer_phone = "0" + customer_phone[-10:]
+    payload = {
+        "event": "cod_verification",
+        "user": {
+            "mobile": customer_phone,
+        },
+        "data": {
+            "client_name": client_name,
+            "order_amount": str(order[27]),
+            "verification_link": cod_confirmation_link
+        }
+    }
 
-    sms_to_key = "Messages[%s][To]" % str(exotel_idx)
-    sms_body_key = "Messages[%s][Body]" % str(exotel_idx)
+    req = requests.post(RAVEN_URL, headers=RAVEN_HEADERS, data=json.dumps(payload))
 
-    sms_body_key_data = "Dear Customer, you recently placed an order from %s worth INR %s . Click on the link ( %s ) to confirm. Powered by WareIQ." % (
-                            client_name, str(order[27]), cod_confirmation_link)
 
-    return sms_to_key, sms_body_key, customer_phone, sms_body_key_data
+def send_received_event(client_name, customer_phone, tracking_link):
+    payload = {
+        "event": "received",
+        "user": {
+            "mobile": customer_phone,
+        },
+        "data": {
+            "client_name": client_name,
+            "tracking_link": tracking_link,
+        }
+    }
+
+    req = requests.post(RAVEN_URL, headers=RAVEN_HEADERS, data=json.dumps(payload))
 
 
 def get_delivery_zone(pick_pincode, del_pincode):
@@ -136,10 +155,6 @@ def get_delivery_zone(pick_pincode, del_pincode):
 
 
 def ship_delhivery_orders(cur, courier, courier_name, order_ids, order_id_tuple, backup_param=True, force_ship=None):
-    exotel_idx = 0
-    exotel_sms_data = {
-        'From': 'LM-WAREIQ'
-    }
     if courier_name and order_ids:
         orders_to_ship_query = get_orders_to_ship_query.replace("__ORDER_SELECT_FILTERS__",
                                                                 """and aa.id in %s""" % order_id_tuple)
@@ -256,12 +271,7 @@ def ship_delhivery_orders(cur, courier, courier_name, order_ids, order_id_tuple,
                         continue  # change this to continue later
                     if order[26].lower() == 'cod' and not order[43]:
                         try:  ## Cod confirmation  text
-                            sms_to_key, sms_body_key, customer_phone, sms_body_key_data = cod_verification_text(
-                                order, exotel_idx, cur)
-                            if not order[53]:
-                                exotel_sms_data[sms_to_key] = customer_phone
-                                exotel_sms_data[sms_body_key] = sms_body_key_data
-                                exotel_idx += 1
+                            cod_verification_text(order, cur)
                         except Exception as e:
                             logger.error(
                                 "Cod confirmation not sent. Order id: " + str(order[0]))
@@ -396,28 +406,16 @@ def ship_delhivery_orders(cur, courier, courier_name, order_ids, order_id_tuple,
                     customer_phone = orders_dict[package['refnum']][8].replace(" ", "")
                     customer_phone = "0" + customer_phone[-10:]
 
-                    sms_to_key = "Messages[%s][To]" % str(exotel_idx)
-                    sms_body_key = "Messages[%s][Body]" % str(exotel_idx)
-
                     if orders_dict[package['refnum']][11]==7:
                         push_awb_easyecom(orders_dict[package['refnum']][7],
                                           orders_dict[package['refnum']][4],
                                           package['waybill'], courier, cur, orders_dict[package['refnum']][9])
 
-                    exotel_sms_data[sms_to_key] = customer_phone
                     try:
                         tracking_link_wareiq = "https://webapp.wareiq.com/tracking/" + str(package['waybill'])
-                        """
-                        short_url = requests.get("https://cutt.ly/api/api.php?key=f445d0bb52699d2f870e1832a1f77ef3f9078&short=%s"%tracking_link_wareiq)
-                        short_url_track = short_url.json()['url']['shortLink']
-                        """
-                        exotel_sms_data[
-                            sms_body_key] = "Received: Your order from %s . Track here: %s . Powered by WareIQ" % (
-                            client_name, tracking_link_wareiq)
+                        send_received_event(client_name, customer_phone, tracking_link_wareiq)
                     except Exception:
                         pass
-
-                    exotel_idx += 1
 
                     if orders_dict[package['refnum']][9] == "NASHER":
                         try:
@@ -508,21 +506,8 @@ def ship_delhivery_orders(cur, courier, courier_name, order_ids, order_id_tuple,
 
         conn.commit()
 
-    if exotel_idx:
-        logger.info("Sending messages...count:" + str(exotel_idx))
-        try:
-            lad = requests.post(
-                'https://ff2064142bc89ac5e6c52a6398063872f95f759249509009:783fa09c0ba1110309f606c7411889192335bab2e908a079@api.exotel.com/v1/Accounts/wareiq1/Sms/bulksend',
-                data=exotel_sms_data)
-        except Exception as e:
-            logger.error("messages not sent." + "   Error: " + str(e.args[0]))
-
 
 def ship_shadowfax_orders(cur, courier, courier_name, order_ids, order_id_tuple, backup_param=True, force_ship=None):
-    exotel_idx = 0
-    exotel_sms_data = {
-        'From': 'LM-WAREIQ'
-    }
     if courier_name and order_ids:
         orders_to_ship_query = get_orders_to_ship_query.replace("__ORDER_SELECT_FILTERS__",
                                                                 """and aa.id in %s""" % order_id_tuple)
@@ -569,12 +554,7 @@ def ship_shadowfax_orders(cur, courier, courier_name, order_ids, order_id_tuple,
                     continue
                 if order[26].lower() == 'cod' and not order[43]:
                     try:  ## Cod confirmation  text
-                        sms_to_key, sms_body_key, customer_phone, sms_body_key_data = cod_verification_text(
-                            order, exotel_idx, cur)
-                        if not order[53]:
-                            exotel_sms_data[sms_to_key] = customer_phone
-                            exotel_sms_data[sms_body_key] = sms_body_key_data
-                            exotel_idx += 1
+                        cod_verification_text(order, cur)
                     except Exception as e:
                         logger.error(
                             "Cod confirmation not sent. Order id: " + str(order[0]))
@@ -691,25 +671,11 @@ def ship_shadowfax_orders(cur, courier, courier_name, order_ids, order_id_tuple,
                     customer_phone = order[5].replace(" ", "")
                     customer_phone = "0" + customer_phone[-10:]
 
-                    sms_to_key = "Messages[%s][To]" % str(exotel_idx)
-                    sms_body_key = "Messages[%s][Body]" % str(exotel_idx)
-
-                    exotel_sms_data[sms_to_key] = customer_phone
                     try:
-                        tracking_link_wareiq = "https://webapp.wareiq.com/tracking/" + str(
-                            return_data_raw['data']['awb_number'])
-                        """
-                        short_url = requests.get(
-                            "https://cutt.ly/api/api.php?key=f445d0bb52699d2f870e1832a1f77ef3f9078&short=%s" % tracking_link_wareiq)
-                        short_url_track = short_url.json()['url']['shortLink']
-                        """
-                        exotel_sms_data[
-                            sms_body_key] = "Received: Your order from %s . Track here: %s . Powered by WareIQ" % (
-                        client_name, tracking_link_wareiq)
+                        tracking_link_wareiq = "https://webapp.wareiq.com/tracking/" + str(return_data_raw['data']['awb_number'])
+                        send_received_event(client_name, customer_phone, tracking_link_wareiq)
                     except Exception:
                         pass
-
-                    exotel_idx += 1
 
                     data_tuple = tuple([(
                         return_data['awb_number'], return_data_raw['message'], order[0], pickup_point[1],
@@ -753,21 +719,8 @@ def ship_shadowfax_orders(cur, courier, courier_name, order_ids, order_id_tuple,
 
         conn.commit()
 
-    if exotel_idx:
-        logger.info("Sending messages...count:" + str(exotel_idx))
-        try:
-            lad = requests.post(
-                'https://ff2064142bc89ac5e6c52a6398063872f95f759249509009:783fa09c0ba1110309f606c7411889192335bab2e908a079@api.exotel.com/v1/Accounts/wareiq1/Sms/bulksend',
-                data=exotel_sms_data)
-        except Exception as e:
-            logger.error("messages not sent." + "   Error: " + str(e.args[0]))
-
 
 def ship_xpressbees_orders(cur, courier, courier_name, order_ids, order_id_tuple, backup_param=True, force_ship=None):
-    exotel_idx = 0
-    exotel_sms_data = {
-        'From': 'LM-WAREIQ'
-    }
     if courier_name and order_ids:
         orders_to_ship_query = get_orders_to_ship_query.replace("__ORDER_SELECT_FILTERS__",
                                                                 """and aa.id in %s""" % order_id_tuple)
@@ -891,12 +844,7 @@ def ship_xpressbees_orders(cur, courier, courier_name, order_ids, order_id_tuple
                 if order[26].lower() == 'cod' and not order[43]:
                     if order[26].lower() == 'cod' and not order[43]:
                         try:  ## Cod confirmation  text
-                            sms_to_key, sms_body_key, customer_phone, sms_body_key_data = cod_verification_text(
-                                order, exotel_idx, cur)
-                            if not order[53]:
-                                exotel_sms_data[sms_to_key] = customer_phone
-                                exotel_sms_data[sms_body_key] = sms_body_key_data
-                                exotel_idx += 1
+                            cod_verification_text(order, cur)
                         except Exception as e:
                             logger.error(
                                 "Cod confirmation not sent. Order id: " + str(order[0]))
@@ -1026,26 +974,11 @@ def ship_xpressbees_orders(cur, courier, courier_name, order_ids, order_id_tuple
                     customer_phone = order[5].replace(" ", "")
                     customer_phone = "0" + customer_phone[-10:]
 
-                    sms_to_key = "Messages[%s][To]" % str(exotel_idx)
-                    sms_body_key = "Messages[%s][Body]" % str(exotel_idx)
-
-                    exotel_sms_data[sms_to_key] = customer_phone
                     try:
-                        tracking_link_wareiq = "https://webapp.wareiq.com/tracking/" + str(
-                            return_data_raw['AddManifestDetails'][0]['AWBNo'])
-                        """
-                        short_url = requests.get(
-                            "https://cutt.ly/api/api.php?key=f445d0bb52699d2f870e1832a1f77ef3f9078&short=%s" % tracking_link_wareiq)
-                        short_url_track = short_url.json()['url']['shortLink']
-                        """
-                        exotel_sms_data[
-                            sms_body_key] = "Received: Your order from %s . Track here: %s . Powered by WareIQ" % (
-                        client_name, tracking_link_wareiq)
+                        tracking_link_wareiq = "https://webapp.wareiq.com/tracking/" + str(return_data_raw['AddManifestDetails'][0]['AWBNo'])
+                        send_received_event(client_name, customer_phone, tracking_link_wareiq)
                     except Exception:
                         pass
-
-                    exotel_idx += 1
-
 
                 else:
                     cur.execute("select * from client_couriers where client_prefix=%s and priority=%s;",
@@ -1092,21 +1025,8 @@ def ship_xpressbees_orders(cur, courier, courier_name, order_ids, order_id_tuple
 
         conn.commit()
 
-    if exotel_idx:
-        logger.info("Sending messages...count:" + str(exotel_idx))
-        try:
-            lad = requests.post(
-                'https://ff2064142bc89ac5e6c52a6398063872f95f759249509009:783fa09c0ba1110309f606c7411889192335bab2e908a079@api.exotel.com/v1/Accounts/wareiq1/Sms/bulksend',
-                data=exotel_sms_data)
-        except Exception as e:
-            logger.error("messages not sent." + "   Error: " + str(e.args[0]))
-
 
 def ship_ecom_orders(cur, courier, courier_name, order_ids, order_id_tuple, backup_param=True, force_ship=None):
-    exotel_idx = 0
-    exotel_sms_data = {
-        'From': 'LM-WAREIQ'
-    }
     if courier_name and order_ids:
         orders_to_ship_query = get_orders_to_ship_query.replace("__ORDER_SELECT_FILTERS__",
                                                                 """and aa.id in %s""" % order_id_tuple)
@@ -1203,12 +1123,7 @@ def ship_ecom_orders(cur, courier, courier_name, order_ids, order_id_tuple, back
                 if order[26].lower() == 'cod' and not order[43]:
                     if order[26].lower() == 'cod' and not order[43]:
                         try:  ## Cod confirmation  text
-                            sms_to_key, sms_body_key, customer_phone, sms_body_key_data = cod_verification_text(
-                                order, exotel_idx, cur)
-                            if not order[53]:
-                                exotel_sms_data[sms_to_key] = customer_phone
-                                exotel_sms_data[sms_body_key] = sms_body_key_data
-                                exotel_idx += 1
+                            cod_verification_text(order, cur)
                         except Exception as e:
                             logger.error(
                                 "Cod confirmation not sent. Order id: " + str(order[0]))
@@ -1354,24 +1269,11 @@ def ship_ecom_orders(cur, courier, courier_name, order_ids, order_id_tuple, back
                     customer_phone = order[5].replace(" ", "")
                     customer_phone = "0" + customer_phone[-10:]
 
-                    sms_to_key = "Messages[%s][To]" % str(exotel_idx)
-                    sms_body_key = "Messages[%s][Body]" % str(exotel_idx)
-
-                    exotel_sms_data[sms_to_key] = customer_phone
                     try:
-                        tracking_link_wareiq = "https://webapp.wareiq.com/tracking/" + str(
-                            return_data_raw['shipments'][0]['awb'])
-                        """
-                        short_url = requests.get(
-                            "https://cutt.ly/api/api.php?key=f445d0bb52699d2f870e1832a1f77ef3f9078&short=%s" % tracking_link_wareiq)
-                        short_url_track = short_url.json()['url']['shortLink']
-                        """
-                        exotel_sms_data[
-                            sms_body_key] = "Received: Your order from %s . Track here: %s . Powered by WareIQ" % (
-                        client_name, tracking_link_wareiq)
+                        tracking_link_wareiq = "https://webapp.wareiq.com/tracking/" + str(return_data_raw['shipments'][0]['awb'])
+                        send_received_event(client_name, customer_phone, tracking_link_wareiq)
                     except Exception:
                         pass
-                    exotel_idx += 1
 
                 else:
                     cur.execute("select * from client_couriers where client_prefix=%s and priority=%s;",
@@ -1418,21 +1320,8 @@ def ship_ecom_orders(cur, courier, courier_name, order_ids, order_id_tuple, back
 
         conn.commit()
 
-    if exotel_idx:
-        logger.info("Sending messages...count:" + str(exotel_idx))
-        try:
-            lad = requests.post(
-                'https://ff2064142bc89ac5e6c52a6398063872f95f759249509009:783fa09c0ba1110309f606c7411889192335bab2e908a079@api.exotel.com/v1/Accounts/wareiq1/Sms/bulksend',
-                data=exotel_sms_data)
-        except Exception as e:
-            logger.error("messages not sent." + "   Error: " + str(e.args[0]))
-
 
 def ship_bluedart_orders(cur, courier, courier_name, order_ids, order_id_tuple, backup_param=True, force_ship=None):
-    exotel_idx = 0
-    exotel_sms_data = {
-        'From': 'LM-WAREIQ'
-    }
     if courier_name and order_ids:
         orders_to_ship_query = get_orders_to_ship_query.replace("__ORDER_SELECT_FILTERS__",
                                                                 """and aa.id in %s""" % order_id_tuple)
@@ -1510,12 +1399,7 @@ def ship_bluedart_orders(cur, courier, courier_name, order_ids, order_id_tuple, 
                     continue  # change this to continue later
                 if order[26].lower() == 'cod' and not order[43]:
                     try:  ## Cod confirmation  text
-                        sms_to_key, sms_body_key, customer_phone, sms_body_key_data = cod_verification_text(
-                            order, exotel_idx, cur)
-                        if not order[53]:
-                            exotel_sms_data[sms_to_key] = customer_phone
-                            exotel_sms_data[sms_body_key] = sms_body_key_data
-                            exotel_idx += 1
+                        cod_verification_text(order, cur)
                     except Exception as e:
                         logger.error(
                             "Cod confirmation not sent. Order id: " + str(order[0]))
@@ -1673,25 +1557,11 @@ def ship_bluedart_orders(cur, courier, courier_name, order_ids, order_id_tuple, 
                     customer_phone = order[5].replace(" ", "")
                     customer_phone = "0" + customer_phone[-10:]
 
-                    sms_to_key = "Messages[%s][To]" % str(exotel_idx)
-                    sms_body_key = "Messages[%s][Body]" % str(exotel_idx)
-
-                    exotel_sms_data[sms_to_key] = customer_phone
                     try:
-                        tracking_link_wareiq = "https://webapp.wareiq.com/tracking/" + str(
-                            req['AWBNo'])
-                        """
-                        short_url = requests.get(
-                            "https://cutt.ly/api/api.php?key=f445d0bb52699d2f870e1832a1f77ef3f9078&short=%s" % tracking_link_wareiq)
-                        short_url_track = short_url.json()['url']['shortLink']
-                        """
-                        exotel_sms_data[
-                            sms_body_key] = "Received: Your order from %s . Track here: %s . Powered by WareIQ" % (
-                        client_name, tracking_link_wareiq)
+                        tracking_link_wareiq = "https://webapp.wareiq.com/tracking/" + str(req['AWBNo'])
+                        send_received_event(client_name, customer_phone, tracking_link_wareiq)
                     except Exception:
                         pass
-
-                    exotel_idx += 1
 
                 else:
                     cur.execute("select * from client_couriers where client_prefix=%s and priority=%s;",
@@ -1738,15 +1608,6 @@ def ship_bluedart_orders(cur, courier, courier_name, order_ids, order_id_tuple, 
         cur.execute("UPDATE client_pickups SET invoice_last=%s WHERE id=%s;", (last_invoice_no, pickup_id))
 
         conn.commit()
-
-    if exotel_idx:
-        logger.info("Sending messages...count:" + str(exotel_idx))
-        try:
-            lad = requests.post(
-                'https://ff2064142bc89ac5e6c52a6398063872f95f759249509009:783fa09c0ba1110309f606c7411889192335bab2e908a079@api.exotel.com/v1/Accounts/wareiq1/Sms/bulksend',
-                data=exotel_sms_data)
-        except Exception as e:
-            logger.error("messages not sent." + "   Error: " + str(e.args[0]))
 
 
 def ship_fedex_orders(cur, courier, courier_name, order_ids, order_id_tuple, backup_param=True, force_ship=None):
@@ -1823,12 +1684,7 @@ def ship_fedex_orders(cur, courier, courier_name, order_ids, order_id_tuple, bac
                     continue  # change this to continue later
                 if order[26].lower() == 'cod' and not order[43]:
                     try:  ## Cod confirmation  text
-                        sms_to_key, sms_body_key, customer_phone, sms_body_key_data = cod_verification_text(
-                            order, exotel_idx, cur)
-                        if not order[53]:
-                            exotel_sms_data[sms_to_key] = customer_phone
-                            exotel_sms_data[sms_body_key] = sms_body_key_data
-                            exotel_idx += 1
+                        cod_verification_text(order, cur)
                     except Exception as e:
                         logger.error(
                             "Cod confirmation not sent. Order id: " + str(order[0]))
@@ -1984,25 +1840,11 @@ def ship_fedex_orders(cur, courier, courier_name, order_ids, order_id_tuple, bac
                     customer_phone = order[5].replace(" ", "")
                     customer_phone = "0" + customer_phone[-10:]
 
-                    sms_to_key = "Messages[%s][To]" % str(exotel_idx)
-                    sms_body_key = "Messages[%s][Body]" % str(exotel_idx)
-
-                    exotel_sms_data[sms_to_key] = customer_phone
                     try:
-                        tracking_link_wareiq = "https://webapp.wareiq.com/tracking/" + str(
-                            awb_no)
-                        """
-                        short_url = requests.get(
-                            "https://cutt.ly/api/api.php?key=f445d0bb52699d2f870e1832a1f77ef3f9078&short=%s" % tracking_link_wareiq)
-                        short_url_track = short_url.json()['url']['shortLink']
-                        """
-                        exotel_sms_data[
-                            sms_body_key] = "Received: Your order from %s . Track here: %s . Powered by WareIQ" % (
-                        client_name, tracking_link_wareiq)
+                        tracking_link_wareiq = "https://webapp.wareiq.com/tracking/" + str(awb_no)
+                        send_received_event(client_name, customer_phone, tracking_link_wareiq)
                     except Exception:
                         pass
-
-                    exotel_idx += 1
 
                 else:
                     cur.execute("select * from client_couriers where client_prefix=%s and priority=%s;",
@@ -2061,10 +1903,6 @@ def ship_fedex_orders(cur, courier, courier_name, order_ids, order_id_tuple, bac
 
 
 def ship_selfshp_orders(cur, courier, courier_name, order_ids, order_id_tuple, backup_param=True, force_ship=None):
-    exotel_idx = 0
-    exotel_sms_data = {
-        'From': 'LM-WAREIQ'
-    }
     if courier_name and order_ids:
         orders_to_ship_query = get_orders_to_ship_query.replace("__ORDER_SELECT_FILTERS__",
                                                                 """and aa.id in %s""" % order_id_tuple)
@@ -2112,12 +1950,7 @@ def ship_selfshp_orders(cur, courier, courier_name, order_ids, order_id_tuple, b
                     continue  # change this to continue later
                 if order[26].lower() == 'cod' and not order[43]:
                     try:  ## Cod confirmation  text
-                        sms_to_key, sms_body_key, customer_phone, sms_body_key_data = cod_verification_text(
-                            order, exotel_idx, cur)
-                        if not order[53]:
-                            exotel_sms_data[sms_to_key] = customer_phone
-                            exotel_sms_data[sms_body_key] = sms_body_key_data
-                            exotel_idx += 1
+                        cod_verification_text(order, cur)
                     except Exception as e:
                         logger.error(
                             "Cod confirmation not sent. Order id: " + str(order[0]))
@@ -2200,21 +2033,8 @@ def ship_selfshp_orders(cur, courier, courier_name, order_ids, order_id_tuple, b
 
         conn.commit()
 
-    if exotel_idx:
-        logger.info("Sending messages...count:" + str(exotel_idx))
-        try:
-            lad = requests.post(
-                'https://ff2064142bc89ac5e6c52a6398063872f95f759249509009:783fa09c0ba1110309f606c7411889192335bab2e908a079@api.exotel.com/v1/Accounts/wareiq1/Sms/bulksend',
-                data=exotel_sms_data)
-        except Exception as e:
-            logger.error("messages not sent." + "   Error: " + str(e.args[0]))
-
 
 def ship_sdd_orders(cur, courier, courier_name, order_ids, order_id_tuple, backup_param=True, force_ship=None):
-    exotel_idx = 0
-    exotel_sms_data = {
-        'From': 'LM-WAREIQ'
-    }
     if courier_name and order_ids:
         orders_to_ship_query = get_orders_to_ship_query.replace("__ORDER_SELECT_FILTERS__",
                                                                 """and aa.id in %s""" % order_id_tuple)
@@ -2266,12 +2086,7 @@ def ship_sdd_orders(cur, courier, courier_name, order_ids, order_id_tuple, backu
                     continue  # change this to continue later
                 if order[26].lower() == 'cod' and not order[43]:
                     try:  ## Cod confirmation  text
-                        sms_to_key, sms_body_key, customer_phone, sms_body_key_data = cod_verification_text(
-                            order, exotel_idx, cur)
-                        if not order[53]:
-                            exotel_sms_data[sms_to_key] = customer_phone
-                            exotel_sms_data[sms_body_key] = sms_body_key_data
-                            exotel_idx += 1
+                        cod_verification_text(order, cur)
                     except Exception as e:
                         logger.error(
                             "Cod confirmation not sent. Order id: " + str(order[0]))
@@ -2377,19 +2192,12 @@ def ship_sdd_orders(cur, courier, courier_name, order_ids, order_id_tuple, backu
                 customer_phone = order[5].replace(" ", "")
                 customer_phone = "0" + customer_phone[-10:]
 
-                sms_to_key = "Messages[%s][To]" % str(exotel_idx)
-                sms_body_key = "Messages[%s][Body]" % str(exotel_idx)
-
-                exotel_sms_data[sms_to_key] = customer_phone
                 try:
                     tracking_link_wareiq = return_data_raw['data']['track_url']
-                    exotel_sms_data[
-                        sms_body_key] = "Received: Your order from %s . Track here: %s . Powered by WareIQ" % (
-                        client_name, tracking_link_wareiq)
+                    send_received_event(client_name, customer_phone, tracking_link_wareiq)
                 except Exception:
                     pass
 
-                exotel_idx += 1
             else:
                 cur.execute("select * from client_couriers where client_prefix=%s and priority=%s;",
                             (courier[1], courier[3] + 1))
@@ -2441,21 +2249,8 @@ def ship_sdd_orders(cur, courier, courier_name, order_ids, order_id_tuple, backu
 
         conn.commit()
 
-    if exotel_idx:
-        logger.info("Sending messages...count:" + str(exotel_idx))
-        try:
-            lad = requests.post(
-                'https://ff2064142bc89ac5e6c52a6398063872f95f759249509009:783fa09c0ba1110309f606c7411889192335bab2e908a079@api.exotel.com/v1/Accounts/wareiq1/Sms/bulksend',
-                data=exotel_sms_data)
-        except Exception as e:
-            logger.error("messages not sent." + "   Error: " + str(e.args[0]))
-
 
 def ship_pidge_orders(cur, courier, courier_name, order_ids, order_id_tuple, backup_param=True, force_ship=None):
-    exotel_idx = 0
-    exotel_sms_data = {
-        'From': 'LM-WAREIQ'
-    }
     if courier_name and order_ids:
         orders_to_ship_query = get_orders_to_ship_query.replace("__ORDER_SELECT_FILTERS__",
                                                                 """and aa.id in %s""" % order_id_tuple)
@@ -2508,12 +2303,7 @@ def ship_pidge_orders(cur, courier, courier_name, order_ids, order_id_tuple, bac
                     continue  # change this to continue later
                 if order[26].lower() == 'cod' and not order[43]:
                     try:  ## Cod confirmation  text
-                        sms_to_key, sms_body_key, customer_phone, sms_body_key_data = cod_verification_text(
-                            order, exotel_idx, cur)
-                        if not order[53]:
-                            exotel_sms_data[sms_to_key] = customer_phone
-                            exotel_sms_data[sms_body_key] = sms_body_key_data
-                            exotel_idx += 1
+                        cod_verification_text(order, cur)
                     except Exception as e:
                         logger.error(
                             "Cod confirmation not sent. Order id: " + str(order[0]))
@@ -2632,19 +2422,12 @@ def ship_pidge_orders(cur, courier, courier_name, order_ids, order_id_tuple, bac
                 customer_phone = order[5].replace(" ", "")
                 customer_phone = "0" + customer_phone[-10:]
 
-                sms_to_key = "Messages[%s][To]" % str(exotel_idx)
-                sms_body_key = "Messages[%s][Body]" % str(exotel_idx)
-
-                exotel_sms_data[sms_to_key] = customer_phone
                 try:
                     tracking_link_wareiq = return_data_raw['data']['track_url']
-                    exotel_sms_data[
-                        sms_body_key] = "Received: Your order from %s . Track here: %s . Powered by WareIQ" % (
-                        client_name, tracking_link_wareiq)
+                    send_received_event(client_name, customer_phone, tracking_link_wareiq)
                 except Exception:
                     pass
 
-                exotel_idx += 1
             else:
                 cur.execute("select * from client_couriers where client_prefix=%s and priority=%s;",
                             (courier[1], courier[3] + 1))
@@ -2695,15 +2478,6 @@ def ship_pidge_orders(cur, courier, courier_name, order_ids, order_id_tuple, bac
         cur.execute("UPDATE client_pickups SET invoice_last=%s WHERE id=%s;", (last_invoice_no, pickup_id))
 
         conn.commit()
-
-    if exotel_idx:
-        logger.info("Sending messages...count:" + str(exotel_idx))
-        try:
-            lad = requests.post(
-                'https://ff2064142bc89ac5e6c52a6398063872f95f759249509009:783fa09c0ba1110309f606c7411889192335bab2e908a079@api.exotel.com/v1/Accounts/wareiq1/Sms/bulksend',
-                data=exotel_sms_data)
-        except Exception as e:
-            logger.error("messages not sent." + "   Error: " + str(e.args[0]))
 
 
 def ship_vinculum_orders(cur, courier, courier_name, order_ids, order_id_tuple):

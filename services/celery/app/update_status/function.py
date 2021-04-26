@@ -55,7 +55,6 @@ def track_delhivery_orders(courier, cur):
     }
     orders_dict = dict()
     pickup_dict = dict()
-    emails_list = list()
     req_ship_data = list()
     chunks = [all_orders[x:x + 500] for x in range(0, len(all_orders), 500)]
     for some_orders in chunks:
@@ -209,18 +208,8 @@ def track_delhivery_orders(courier, cur):
             customer_phone = "0" + customer_phone[-10:]
 
             if new_status == 'DELIVERED':
-
                 update_delivered_on_channels(orders_dict[current_awb])
-
-                sms_to_key = "Messages[%s][To]" % str(exotel_idx)
-                sms_body_key = "Messages[%s][Body]" % str(exotel_idx)
-
-                exotel_sms_data[sms_to_key] = customer_phone
-
-                exotel_sms_data[sms_body_key] = "Delivered: Your %s order via Delhivery - https://webapp.wareiq.com/tracking/%s . Powered by WareIQ" % (
-                    client_name, current_awb)
-
-                exotel_idx += 1
+                send_delivered_event(customer_phone, orders_dict[current_awb], "Delhivery")
 
             if new_status == 'DTO':
                 sms_to_key = "Messages[%s][To]" % str(exotel_idx)
@@ -251,7 +240,7 @@ def track_delhivery_orders(courier, cur):
 
                 update_picked_on_channels(orders_dict[current_awb], cur)
                 cur.execute("UPDATE shipments SET pdd=%s WHERE awb=%s", (edd, current_awb))
-                send_shipped_event(customer_phone, orders_dict[current_awb][19], orders_dict[current_awb], edd.strftime('%-d %b'))
+                send_shipped_event(customer_phone, orders_dict[current_awb][19], orders_dict[current_awb], edd.strftime('%-d %b') if edd else "", "Delhivery")
 
             if orders_dict[current_awb][2] != new_status:
 
@@ -261,13 +250,7 @@ def track_delhivery_orders(courier, cur):
                 if new_status == 'PENDING' and status_code in delhivery_status_code_mapping_dict:
                     try:  # NDR check text
                         ndr_reason = delhivery_status_code_mapping_dict[status_code]
-                        sms_to_key, sms_body_key, customer_phone, sms_body_key_data = verification_text(
-                            orders_dict[current_awb], exotel_idx, cur, ndr=True,
-                            ndr_reason=ndr_reason)
-                        if sms_body_key_data:
-                            exotel_sms_data[sms_to_key] = customer_phone
-                            exotel_sms_data[sms_body_key] = sms_body_key_data
-                            exotel_idx += 1
+                        verification_text(orders_dict[current_awb], cur, ndr_reason=ndr_reason)
                     except Exception as e:
                         logger.error(
                             "NDR confirmation not sent. Order id: " + str(orders_dict[current_awb][0]))
@@ -305,14 +288,9 @@ def track_shadowfax_orders(courier, cur):
     pickup_count = 0
     cur.execute(get_status_update_orders_query % str(courier[0]))
     all_orders = cur.fetchall()
-    exotel_idx = 0
-    exotel_sms_data = {
-        'From': 'LM-WAREIQ'
-    }
     orders_dict = dict()
     awb_list = list()
     pickup_dict = dict()
-    emails_list = list()
     for order in all_orders:
         orders_dict[order[1]] = order
         awb_list.append(order[1])
@@ -431,23 +409,12 @@ def track_shadowfax_orders(courier, cur):
                     cur.execute("UPDATE shipments SET edd=%s WHERE awb=%s", (edd, current_awb))
                     cur.execute("UPDATE shipments SET pdd=%s WHERE awb=%s and pdd is null", (edd, current_awb))
 
-            client_name = orders_dict[current_awb][20]
             customer_phone = orders_dict[current_awb][4].replace(" ", "")
             customer_phone = "0" + customer_phone[-10:]
 
             if new_status == 'DELIVERED':
-
                 update_delivered_on_channels(orders_dict[current_awb])
-
-                sms_to_key = "Messages[%s][To]" % str(exotel_idx)
-                sms_body_key = "Messages[%s][Body]" % str(exotel_idx)
-
-                exotel_sms_data[sms_to_key] = customer_phone
-
-                exotel_sms_data[sms_body_key] = "Delivered: Your %s order via Shadowfax - https://webapp.wareiq.com/tracking/%s . Powered by WareIQ" % (
-                    client_name, current_awb)
-
-                exotel_idx += 1
+                send_delivered_event(customer_phone, orders_dict[current_awb], "Shadowfax")
 
             if new_status == 'RTO':
                 update_rto_on_channels(orders_dict[current_awb])
@@ -469,7 +436,7 @@ def track_shadowfax_orders(courier, cur):
                     cur.execute("UPDATE shipments SET pdd=%s WHERE awb=%s", (edd, current_awb))
 
                 send_shipped_event(customer_phone, orders_dict[current_awb][19], orders_dict[current_awb],
-                                   edd.strftime('%-d %b'))
+                                   edd.strftime('%-d %b') if edd else "", "Shadowfax")
 
             if orders_dict[current_awb][2] != new_status:
                 status_update_tuple = (new_status, status_type, status_detail, orders_dict[current_awb][0])
@@ -477,13 +444,7 @@ def track_shadowfax_orders(courier, cur):
                 if new_status == "PENDING" and ret_order['status'] in shadowfax_status_mapping \
                         and shadowfax_status_mapping[new_status][2]:
                     try:  # NDR check text
-                        sms_to_key, sms_body_key, customer_phone, sms_body_key_data = verification_text(
-                            orders_dict[current_awb], exotel_idx, cur, ndr=True,
-                            ndr_reason=shadowfax_status_mapping[new_status][2])
-                        if sms_body_key_data:
-                            exotel_sms_data[sms_to_key] = customer_phone
-                            exotel_sms_data[sms_body_key] = sms_body_key_data
-                            exotel_idx += 1
+                        verification_text(orders_dict[current_awb], cur, ndr_reason=shadowfax_status_mapping[new_status][2])
                     except Exception as e:
                         logger.error(
                             "NDR confirmation not sent. Order id: " + str(orders_dict[current_awb][0]))
@@ -493,16 +454,6 @@ def track_shadowfax_orders(courier, cur):
         except Exception as e:
             logger.error("status update failed for " + str(orders_dict[current_awb][0]) + "    err:" + str(
                 e.args[0]))
-
-    if exotel_idx:
-        logger.info("Sending messages...count:" + str(exotel_idx))
-        logger.info("Total Picked: " + str(exotel_idx) + "  Time: " + str(datetime.utcnow()))
-        try:
-            lad = requests.post(
-                'https://ff2064142bc89ac5e6c52a6398063872f95f759249509009:783fa09c0ba1110309f606c7411889192335bab2e908a079@api.exotel.com/v1/Accounts/wareiq1/Sms/bulksend',
-                data=exotel_sms_data)
-        except Exception as e:
-            logger.error("messages not sent." + "   Error: " + str(e.args[0]))
 
     if pickup_count:
         logger.info("Total Picked: " + str(pickup_count) + "  Time: " + str(datetime.utcnow()))
@@ -522,13 +473,8 @@ def track_xpressbees_orders(courier, cur):
     pickup_count = 0
     cur.execute(get_status_update_orders_query % str(courier[0]))
     all_orders = cur.fetchall()
-    exotel_idx = 0
-    exotel_sms_data = {
-        'From': 'LM-WAREIQ'
-    }
     orders_dict = dict()
     pickup_dict = dict()
-    emails_list = list()
     req_ship_data = list()
     headers = {"Content-Type": "application/json"}
     chunks = [all_orders[x:x + 20] for x in range(0, len(all_orders), 20)]
@@ -653,7 +599,6 @@ def track_xpressbees_orders(courier, cur):
                     cur.execute("UPDATE shipments SET edd=%s WHERE awb=%s", (edd, current_awb))
                     cur.execute("UPDATE shipments SET pdd=%s WHERE awb=%s and pdd is null", (edd, current_awb))
 
-            client_name = orders_dict[current_awb][20]
             customer_phone = orders_dict[current_awb][4].replace(" ", "")
             customer_phone = "0" + customer_phone[-10:]
 
@@ -661,18 +606,8 @@ def track_xpressbees_orders(courier, cur):
                 continue
 
             if new_status == 'DELIVERED':
-
                 update_delivered_on_channels(orders_dict[current_awb])
-
-                sms_to_key = "Messages[%s][To]" % str(exotel_idx)
-                sms_body_key = "Messages[%s][Body]" % str(exotel_idx)
-
-                exotel_sms_data[sms_to_key] = customer_phone
-
-                exotel_sms_data[sms_body_key] = "Delivered: Your %s order via Xpressbees - https://webapp.wareiq.com/tracking/%s . Powered by WareIQ" % (
-                    client_name, current_awb)
-
-                exotel_idx += 1
+                send_delivered_event(customer_phone, orders_dict[current_awb], "Xpressbees")
 
             if new_status == 'RTO':
                 update_rto_on_channels(orders_dict[current_awb])
@@ -697,7 +632,7 @@ def track_xpressbees_orders(courier, cur):
                     update_picked_on_channels(orders_dict[current_awb], cur)
 
                     send_shipped_event(customer_phone, orders_dict[current_awb][19], orders_dict[current_awb],
-                                       edd.strftime('%-d %b'))
+                                       edd.strftime('%-d %b') if edd else "", "Xpressbees")
 
                 else:
                     continue
@@ -721,13 +656,8 @@ def track_xpressbees_orders(courier, cur):
                             ndr_reason = 15
                         else:
                             ndr_reason = 14
-                        sms_to_key, sms_body_key, customer_phone, sms_body_key_data = verification_text(
-                            orders_dict[current_awb], exotel_idx, cur, ndr=True,
-                            ndr_reason=ndr_reason)
-                        if sms_body_key_data:
-                            exotel_sms_data[sms_to_key] = customer_phone
-                            exotel_sms_data[sms_body_key] = sms_body_key_data
-                            exotel_idx += 1
+                        verification_text(orders_dict[current_awb], cur, ndr_reason=ndr_reason)
+
                     except Exception as e:
                         logger.error(
                             "NDR confirmation not sent. Order id: " + str(orders_dict[current_awb][0]))
@@ -737,17 +667,6 @@ def track_xpressbees_orders(courier, cur):
         except Exception as e:
             logger.error("status update failed for " + str(orders_dict[current_awb][0]) + "    err:" + str(
                 e.args[0]))
-
-    if exotel_idx:
-        logger.info("Sending messages...count:" + str(exotel_idx))
-        logger.info("Total Picked: " + str(exotel_idx) + "  Time: " + str(datetime.utcnow()))
-
-        try:
-            lad = requests.post(
-                'https://ff2064142bc89ac5e6c52a6398063872f95f759249509009:783fa09c0ba1110309f606c7411889192335bab2e908a079@api.exotel.com/v1/Accounts/wareiq1/Sms/bulksend',
-                data=exotel_sms_data)
-        except Exception as e:
-            logger.error("messages not sent." + "   Error: " + str(e.args[0]))
 
     if pickup_count:
         logger.info("Total Picked: " + str(pickup_count) + "  Time: " + str(datetime.utcnow()))
@@ -773,7 +692,6 @@ def track_bluedart_orders(courier, cur):
     }
     orders_dict = dict()
     pickup_dict = dict()
-    emails_list = list()
     req_ship_data = list()
     chunks = [all_orders[x:x + 200] for x in range(0, len(all_orders), 200)]
     for some_orders in chunks:
@@ -922,23 +840,12 @@ def track_bluedart_orders(courier, cur):
                     cur.execute("UPDATE shipments SET edd=%s WHERE awb=%s", (edd, current_awb))
                     cur.execute("UPDATE shipments SET pdd=%s WHERE awb=%s and pdd is null", (edd, current_awb))
 
-            client_name = orders_dict[current_awb][20]
             customer_phone = orders_dict[current_awb][4].replace(" ", "")
             customer_phone = "0" + customer_phone[-10:]
 
             if new_status == 'DELIVERED':
-
                 update_delivered_on_channels(orders_dict[current_awb])
-
-                sms_to_key = "Messages[%s][To]" % str(exotel_idx)
-                sms_body_key = "Messages[%s][Body]" % str(exotel_idx)
-
-                exotel_sms_data[sms_to_key] = customer_phone
-
-                exotel_sms_data[sms_body_key] = "Delivered: Your %s order via Bluedart - https://webapp.wareiq.com/tracking/%s . Powered by WareIQ" % (
-                    client_name, current_awb)
-
-                exotel_idx += 1
+                send_delivered_event(customer_phone, orders_dict[current_awb], "Bluedart")
 
             if new_status == 'RTO':
                 update_rto_on_channels(orders_dict[current_awb])
@@ -957,7 +864,7 @@ def track_bluedart_orders(courier, cur):
 
                 cur.execute("UPDATE shipments SET pdd=%s WHERE awb=%s", (edd, current_awb))
                 send_shipped_event(customer_phone, orders_dict[current_awb][19], orders_dict[current_awb],
-                                   edd.strftime('%-d %b'))
+                                   edd.strftime('%-d %b') if edd else "", "Bluedart")
 
             if orders_dict[current_awb][2] != new_status:
                 status_update_tuple = (new_status, status_type, status_detail, orders_dict[current_awb][0])
@@ -966,13 +873,7 @@ def track_bluedart_orders(courier, cur):
                 if new_status == 'PENDING' and status_code in bluedart_status_mapping[scan_group]:
                     try:  # NDR check text
                         ndr_reason = bluedart_status_mapping[scan_group][status_code][3]
-                        sms_to_key, sms_body_key, customer_phone, sms_body_key_data = verification_text(
-                            orders_dict[current_awb], exotel_idx, cur, ndr=True,
-                            ndr_reason=ndr_reason)
-                        if sms_body_key_data:
-                            exotel_sms_data[sms_to_key] = customer_phone
-                            exotel_sms_data[sms_body_key] = sms_body_key_data
-                            exotel_idx += 1
+                        verification_text(orders_dict[current_awb], cur, ndr_reason=ndr_reason)
                     except Exception as e:
                         logger.error(
                             "NDR confirmation not sent. Order id: " + str(orders_dict[current_awb][0]))
@@ -1016,7 +917,6 @@ def track_ecomxp_orders(courier, cur):
     }
     orders_dict = dict()
     pickup_dict = dict()
-    emails_list = list()
     req_ship_data = list()
     chunks = [all_orders[x:x + 100] for x in range(0, len(all_orders), 100)]
     for some_orders in chunks:
@@ -1152,23 +1052,12 @@ def track_ecomxp_orders(courier, cur):
                     cur.execute("UPDATE shipments SET edd=%s WHERE awb=%s", (edd, current_awb))
                     cur.execute("UPDATE shipments SET pdd=%s WHERE awb=%s and pdd is null", (edd, current_awb))
 
-            client_name = orders_dict[current_awb][20]
             customer_phone = orders_dict[current_awb][4].replace(" ", "")
             customer_phone = "0" + customer_phone[-10:]
 
             if new_status == 'DELIVERED':
-
                 update_delivered_on_channels(orders_dict[current_awb])
-
-                sms_to_key = "Messages[%s][To]" % str(exotel_idx)
-                sms_body_key = "Messages[%s][Body]" % str(exotel_idx)
-
-                exotel_sms_data[sms_to_key] = customer_phone
-
-                exotel_sms_data[sms_body_key] = "Delivered: Your %s order via Ecom Express - https://webapp.wareiq.com/tracking/%s . Powered by WareIQ" % (
-                    client_name, current_awb)
-
-                exotel_idx += 1
+                send_delivered_event(customer_phone, orders_dict[current_awb], "Ecom Express")
 
             if new_status == 'RTO':
                 update_rto_on_channels(orders_dict[current_awb])
@@ -1188,7 +1077,7 @@ def track_ecomxp_orders(courier, cur):
 
                 cur.execute("UPDATE shipments SET pdd=%s WHERE awb=%s", (edd, current_awb))
                 send_shipped_event(customer_phone, orders_dict[current_awb][19], orders_dict[current_awb],
-                                   edd.strftime('%-d %b'))
+                                   edd.strftime('%-d %b') if edd else "", "Ecom Express")
 
             if orders_dict[current_awb][2] != new_status:
                 status_update_tuple = (new_status, status_type, status_detail, orders_dict[current_awb][0])
@@ -1197,13 +1086,7 @@ def track_ecomxp_orders(courier, cur):
                 if new_status == 'PENDING' and status_code in ecom_express_ndr_reasons:
                     try:  # NDR check text
                         ndr_reason = ecom_express_ndr_reasons[status_code]
-                        sms_to_key, sms_body_key, customer_phone, sms_body_key_data = verification_text(
-                            orders_dict[current_awb], exotel_idx, cur, ndr=True,
-                            ndr_reason=ndr_reason)
-                        if sms_body_key_data:
-                            exotel_sms_data[sms_to_key] = customer_phone
-                            exotel_sms_data[sms_body_key] = sms_body_key_data
-                            exotel_idx += 1
+                        verification_text(orders_dict[current_awb], cur, ndr_reason=ndr_reason)
                     except Exception as e:
                         logger.error(
                             "NDR confirmation not sent. Order id: " + str(orders_dict[current_awb][0]))
@@ -1237,58 +1120,31 @@ def track_ecomxp_orders(courier, cur):
     conn.commit()
 
 
-def verification_text(current_order, exotel_idx, cur, ndr=None, ndr_reason=None):
-    if not ndr:
-        del_confirmation_link = "http://track.wareiq.com/core/v1/passthru/delivery?CustomField=%s" % str(
-            current_order[0])
-    else:
-        del_confirmation_link = "http://track.wareiq.com/core/v1/passthru/ndr?CustomField=%s" % str(
-            current_order[0])
-    """
-    short_url = requests.get(
-        "https://cutt.ly/api/api.php?key=f445d0bb52699d2f870e1832a1f77ef3f9078&short=%s" % del_confirmation_link)
-    short_url_track = short_url.json()['url']['shortLink']
-    """
-    insert_cod_ver_tuple = (current_order[0], del_confirmation_link, datetime.now())
-    if not ndr:
-        cur.execute(
-            "INSERT INTO delivery_check (order_id, verification_link, date_created) VALUES (%s,%s,%s);",
-            insert_cod_ver_tuple)
-    else:
-        date_today = (datetime.utcnow()+timedelta(hours=5.5)).strftime('%Y-%m-%d')
-        cur.execute("SELECT * from ndr_shipments WHERE shipment_id=%s and date_created::date='%s';" % (str(current_order[10]), date_today))
-        if not cur.fetchone():
-            ndr_ship_tuple = (
-                current_order[0], current_order[10], ndr_reason, "required", datetime.utcnow() + timedelta(hours=5.5))
-            cur.execute(
-                "INSERT INTO ndr_shipments (order_id, shipment_id, reason_id, current_status, date_created) VALUES (%s,%s,%s,%s,%s);",
-                ndr_ship_tuple)
-            if current_order[37] != False:
-                cur.execute("SELECT * FROM ndr_verification where order_id=%s;"%str(current_order[0]))
-                if not cur.fetchone():
-                    cur.execute(
-                        "INSERT INTO ndr_verification (order_id, verification_link, date_created) VALUES (%s,%s,%s);",
-                        insert_cod_ver_tuple)
+def verification_text(current_order, cur, ndr_reason=None):
 
-    client_name = current_order[20]
+    ndr_confirmation_link = "http://track.wareiq.com/core/v1/passthru/ndr?CustomField=%s" % str(current_order[0])
+
+    insert_cod_ver_tuple = (current_order[0], ndr_confirmation_link, datetime.now())
+    date_today = (datetime.utcnow()+timedelta(hours=5.5)).strftime('%Y-%m-%d')
+    cur.execute("SELECT * from ndr_shipments WHERE shipment_id=%s and date_created::date='%s';" % (str(current_order[10]), date_today))
+    if not cur.fetchone():
+        ndr_ship_tuple = (
+            current_order[0], current_order[10], ndr_reason, "required", datetime.utcnow() + timedelta(hours=5.5))
+        cur.execute(
+            "INSERT INTO ndr_shipments (order_id, shipment_id, reason_id, current_status, date_created) VALUES (%s,%s,%s,%s,%s);",
+            ndr_ship_tuple)
+        if current_order[37] != False:
+            cur.execute("SELECT * FROM ndr_verification where order_id=%s;"%str(current_order[0]))
+            if not cur.fetchone():
+                cur.execute(
+                    "INSERT INTO ndr_verification (order_id, verification_link, date_created) VALUES (%s,%s,%s);",
+                    insert_cod_ver_tuple)
+
     customer_phone = current_order[4].replace(" ", "")
     customer_phone = "0" + customer_phone[-10:]
 
-    sms_to_key = "Messages[%s][To]" % str(exotel_idx)
-    sms_body_key = "Messages[%s][Body]" % str(exotel_idx)
-
-    if not ndr:
-        sms_body_key_data = "Dear Customer, your order from %s with order id %s was delivered today." \
-                            " Please click on the link (%s) to report any issue. We'll call you back shortly." % (
-                                client_name, str(current_order[12]),
-                                del_confirmation_link)
-    elif ndr_reason in (1, 3, 9, 11) and current_order[37] != False:
-        sms_body_key_data = "Dear Customer, Your order from %s was attempted today but could not be delivered. Click on the link (%s) to re-attempt. Powered by WareIQ." % (
-                                client_name, del_confirmation_link)
-    else:
-        sms_body_key_data = None
-
-    return sms_to_key, sms_body_key, customer_phone, sms_body_key_data
+    if ndr_reason in (1, 3, 9, 11) and current_order[37] != False:
+        send_ndr_event(customer_phone, current_order, ndr_confirmation_link)
 
 
 delhivery_status_code_mapping_dict = {

@@ -7,7 +7,8 @@ from woocommerce import API
 from math import ceil
 from app.db_utils import DbConnection
 from app.ship_orders.function import ship_orders
-from app.update_status.function import update_delivered_on_channels
+from app.update_status.function import update_delivered_on_channels, verification_text
+from app.update_status.update_status_utils import send_shipped_event, send_delivered_event, send_ndr_event
 
 conn = DbConnection.get_db_connection_instance()
 conn_2 = DbConnection.get_pincode_db_connection_instance()
@@ -77,22 +78,24 @@ def consume_ecom_scan_util(payload):
             cur.execute(insert_status_query, (
                 order[0], order[38], order[10], status_type, tracking_status, status_text, location, location_city, status_time))
 
+        customer_phone = order[4].replace(" ", "")
+        customer_phone = "0" + customer_phone[-10:]
+
         if tracking_status == "Picked":
             mark_picked_channel(order, cur)
-            exotel_send_shipped_sms(order, "Ecom Express")
-            send_shipped_email(order)
+            send_shipped_event(customer_phone, order[19], order, "", "Ecom Express")
             mark_order_picked_pickups(order, cur)
 
         elif tracking_status == "Delivered":
             mark_delivered_channel(order)
-            exotel_send_delivered_sms(order)
+            send_delivered_event(customer_phone, order, "Ecom Express")
 
         elif tracking_status == "RTO":
             mark_rto_channel(order)
 
         if reason_code_number in ecom_express_ndr_reasons:
             ndr_reason = ecom_express_ndr_reasons[reason_code_number]
-            update_ndr_shipment(order, cur, ndr_reason)
+            verification_text(order, cur, ndr_reason=ndr_reason)
 
         cur.execute("UPDATE orders SET status=%s, status_type=%s WHERE id=%s;", (status, status_type, order[0]))
 
@@ -157,15 +160,17 @@ def consume_sfxsdd_scan_util(payload):
             cur.execute(insert_status_query, (
                 order[0], order[38], order[10], status_type, tracking_status, status_text, location, location_city, status_time))
 
+        customer_phone = order[4].replace(" ", "")
+        customer_phone = "0" + customer_phone[-10:]
+
         if tracking_status == "Picked":
             mark_picked_channel(order, cur)
-            exotel_send_shipped_sms(order, "Shadowfax")
-            send_shipped_email(order)
+            send_shipped_event(customer_phone, order[19], order, "", "Shadowfax")
             mark_order_picked_pickups(order, cur)
 
         elif tracking_status == "Delivered":
             mark_delivered_channel(order)
-            exotel_send_delivered_sms(order)
+            send_delivered_event(customer_phone, order, "Shadowfax")
 
         elif tracking_status == "RTO":
             mark_rto_channel(order)

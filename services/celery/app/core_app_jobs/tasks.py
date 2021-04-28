@@ -1153,6 +1153,46 @@ def ndr_push_reattempts_util():
 
                 xpress_url = order[2]+"POSTShipmentService.svc/UpdateNDRDeferredDeliveryDate"
                 req = requests.post(xpress_url, headers=headers, data=json.dumps(body))
+
+            if order[1].startswith('Ecom'):  # Ecom
+                body = {"awb": order[0],
+                        "comments": "re-attempt requested",
+                        "scheduled_delivery_slot": "2",
+                        "instruction": "RAD"}
+
+                if order[6]:
+                    body["comments"] += ", Alternate address: "+ order[6]
+                if order[7]:
+                    body['comments'] += ", Alternate phone: "+ order[7]
+                if order[5]:
+                    body['scheduled_delivery_date'] = order[5].strftime('%Y-%m-%d')
+                else:
+                    body['scheduled_delivery_date'] = (datetime.utcnow()+timedelta(days=1)).strftime('%Y-%m-%d')
+
+                req = requests.post("https://api.ecomexpress.in/apiv2/ndr_resolutions/", data={"username": order[3], "password": order[4],
+                                                   "json_input": json.dumps([body])})
+
+            # if order[1].startswith('Bluedart'):  # Bluedart
+            #     from zeep import Client
+            #     login_id = order[4].split('|')[0]
+            #     bluedart_url = "https://netconnect.bluedart.com/Ver1.9/ShippingAPI/ALTInstruction/ALTInstructionUpdate.svc?wsdl"
+            #     waybill_client = Client(bluedart_url)
+            #     client_profile = {
+            #         "LoginID": login_id,
+            #         "LicenceKey": order[3],
+            #         "Api_type": "S",
+            #         "Version": "1.3"
+            #     }
+            #     request_data = {
+            #         "altreq": {
+            #             "AWBNo": order[0],
+            #             "AltInstRequestType": "DT",
+            #             "MobileNo": order[7] if order[7] else "",
+            #         },
+            #         "profile": client_profile
+            #     }
+            #     req = waybill_client.service.CustALTInstructionUpdate(**request_data)
+
         except Exception as e:
             logger.error("NDR push failed for: " + order[0])
 

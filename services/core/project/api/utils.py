@@ -1098,18 +1098,50 @@ def check_client_order_ids(order_ids, auth_data, cur):
 
 def cancel_order_on_couriers(order):
     if order.shipments and order.shipments[0].awb:
-        if order.shipments[0].courier.id in (1, 2, 8, 11, 12):  # Cancel on delhievry #todo: cancel on other platforms too
+        if order.shipments[0].courier.courier_name.startswith('Delhivery'):  # Cancel on delhievry #todo: cancel on other platforms too
             cancel_body = json.dumps({"waybill": order.shipments[0].awb, "cancellation": "true"})
             headers = {"Authorization": "Token " + order.shipments[0].courier.api_key,
                        "Content-Type": "application/json"}
             req_can = requests.post("https://track.delhivery.com/api/p/edit", headers=headers, data=cancel_body)
-        if order.shipments[0].courier.id in (5, 13):  # Cancel on Xpressbees
+        if order.shipments[0].courier.courier_name.startswith('Xpressbees'):  # Cancel on Xpressbees
             cancel_body = json.dumps({"AWBNumber": order.shipments[0].awb, "XBkey": order.shipments[0].courier.api_key,
                                       "RTOReason": "Cancelled by seller"})
             headers = {"Authorization": "Basic " + order.shipments[0].courier.api_key,
                        "Content-Type": "application/json"}
             req_can = requests.post("http://xbclientapi.xbees.in/POSTShipmentService.svc/RTONotifyShipment",
                                     headers=headers, data=cancel_body)
+        if order.shipments[0].courier.courier_name.startswith('Bluedart'):  # Cancel on Bluedart
+            from zeep import Client
+            login_id = order.shipments[0].courier.api_password.split('|')[0]
+            bluedart_url = "https://netconnect.bluedart.com/Ver1.9/ShippingAPI/ALTInstruction/ALTInstructionUpdate.svc?wsdl"
+            waybill_client = Client(bluedart_url)
+            client_profile = {
+                "LoginID": login_id,
+                "LicenceKey": order.shipments[0].courier.api_key,
+                "Api_type": "S",
+                "Version": "1.3"
+            }
+            request_data = {
+                "altreq": {
+                    "AWBNo": order.shipments[0].awb,
+                    "AltInstRequestType": "RTO"
+                  },
+                 "profile": client_profile
+            }
+            req = waybill_client.service.CustALTInstructionUpdate(**request_data)
+
+        if order.shipments[0].courier.courier_name.startswith('Ecom'):  # Cancel on Ecom Express
+            req = requests.post("https://api.ecomexpress.in/apiv2/cancel_awb/", data={"username": order.shipments[0].courier.api_key, "password": order.shipments[0].courier.api_password,
+                                                               "awbs": order.shipments[0].awb})
+
+        if order.shipments[0].courier.courier_name.startswith('Pidge'):  # Cancel on Pidge
+            url = order.shipments[0].courier.api_url + "/v1.0/vendor/order/%s/cancel"%str(order.id)
+            payload = {}
+            headers = {
+                'Content-Type': 'application/json',
+                'platform': 'WareIQ server'
+            }
+            req = requests.put(url, headers=headers, data=payload)
 
 
 def cancel_order_on_channels(order):

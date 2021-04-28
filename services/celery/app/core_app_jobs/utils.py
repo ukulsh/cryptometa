@@ -212,8 +212,6 @@ def magento_complete_order(order):
     status_mark = order[31]
     if not status_mark:
         status_mark = "delivered"
-    if order[3]=='KAMAAYURVEDA': #remove this
-        status_mark='shipped'
     time_now = datetime.utcnow() + timedelta(hours=5.5)
     time_now = time_now.strftime('%Y-%m-%d %H:%M:%S')
     complete_data = {

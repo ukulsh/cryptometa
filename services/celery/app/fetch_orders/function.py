@@ -332,31 +332,37 @@ def fetch_woocommerce_orders(cur, channel, manual=None):
     for fetch_id in all_fetched_ids:
         exclude_ids += str(fetch_id[0]) + ","
 
-    url = 'orders?per_page=100&after=%s&order=asc&exclude=%s&status=%s&consumer_key=%s&consumer_secret=%s' % (
-    time_after.isoformat(), exclude_ids, fetch_status, channel[3], channel[4])
     last_order_time = datetime.utcnow() + timedelta(hours=5.5)
-    try:
-        auth_session = API(
+    data = list()
+    total_cnt = 100
+    while total_cnt==100:
+        url = 'orders?per_page=100&after=%s&order=asc&exclude=%s&status=%s&consumer_key=%s&consumer_secret=%s' % (
+            time_after.isoformat(), exclude_ids, fetch_status, channel[3], channel[4])
+        try:
+            auth_session = API(
+                    url=channel[5],
+                    consumer_key=channel[3],
+                    consumer_secret=channel[4],
+                    version="wc/v3"
+                )
+            r = auth_session.get(url)
+        except Exception:
+            auth_session = API(
                 url=channel[5],
                 consumer_key=channel[3],
                 consumer_secret=channel[4],
-                version="wc/v3"
+                version="wc/v3",
+                verify_ssl=False
             )
-        r = auth_session.get(url)
-    except Exception:
-        auth_session = API(
-            url=channel[5],
-            consumer_key=channel[3],
-            consumer_secret=channel[4],
-            version="wc/v3",
-            verify_ssl=False
-        )
-        r = auth_session.get(url)
-    data = list()
-    try:
-        data = r.json()
-    except Exception as e:
-        logger.error("Client order fetch failed for: " + str(channel[0]) + "\nError: " + str(e.args[0]))
+            r = auth_session.get(url)
+        try:
+            data += r.json()
+            total_cnt = len(r.json())
+            time_after = r.json()[-1]['date_created']
+            time_after = datetime.strptime(time_after, '%Y-%m-%dT%H:%M:%S')
+        except Exception as e:
+            total_cnt = 0
+            logger.error("Client order fetch failed for: " + str(channel[0]) + "\nError: " + str(e.args[0]))
     if type(data) != list:
         logger.error("Client order fetch failed for: " + str(channel[0]))
         return None
@@ -508,7 +514,7 @@ def fetch_woocommerce_orders(cur, channel, manual=None):
                     for tax_line in order['tax_lines']:
                         tax_lines.append({'title': tax_line['label'], 'rate': tax_line['rate_percent']/100})
                 except Exception as e:
-                    logger.error("Couldn't fetch tex for: " + str(order_id))
+                    logger.error("Couldn't fetch tax for: " + str(order_id))
 
                 op_tuple = (product_id, order_id, prod['quantity'], float(prod['quantity'] * (float(prod['total'])+float(prod['total_tax']))), None, json.dumps(tax_lines), master_product_id)
 

@@ -168,9 +168,15 @@ def consume_ecom_scan(payload):
     return msg
 
 
-@celery_app.task(name='consume_ecom_scan')
+@celery_app.task(name='consume_sfxsdd_scan')
 def consume_sfxsdd_scan(payload):
     msg = consume_sfxsdd_scan_util(payload)
+    return msg
+
+
+@celery_app.task(name='consume_pidge_scan')
+def consume_pidge_scan(payload):
+    msg = consume_pidge_scan_util(payload)
     return msg
 
 
@@ -198,6 +204,15 @@ def sfxsdd_scan(resp):
     data = json.loads(request.data)
     consume_sfxsdd_scan.apply_async(queue='consume_scans', args=(data, ))
     return jsonify({"awb": data['sfx_order_id'], "status": True, "order_status": data['order_status'] }), 200
+
+
+@app.route('/scans/v1/consume/pidge', methods = ['POST'])
+def pidge_scan():
+    if request.headers.get('Authorization')!= "Token 44f9f1bd1894444g568a908520b5dda0":
+        return jsonify({"success": False, "msg": "Auth Failed"}), 404
+    data = json.loads(request.data)
+    consume_pidge_scan.apply_async(queue='consume_scans', args=(data, ))
+    return jsonify({"awb": data['PBID'], "success": True, "status_update_number": data['trip_status'] }), 200
 
 
 @app.route('/scans/v1/mark_delivered_channel', methods = ['POST'])

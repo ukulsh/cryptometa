@@ -184,6 +184,101 @@ def consume_sfxsdd_scan_util(payload):
     return "Successful: all tasks done"
 
 
+def consume_pidge_scan_util(payload):
+    try:
+        cur = conn.cursor()
+        awb = payload.get('PBID')
+        if not awb:
+            return "Skipped: no awb"
+
+        reason_code_number = payload.get('trip_status')
+        if not reason_code_number:
+            return "Skipped: no reason code"
+
+        if reason_code_number in (20, 100, 120, 130, 5):
+            return "No status to update"
+
+        cur.execute(get_order_details_query.replace('__FILTER_ORDER__', "bb.awb='%s'"%str(awb)))
+        try:
+            status_time = payload.get("timestamp")
+            status_time = datetime.strptime(status_time, "%Y-%m-%dT%H:%M:%S.%fZ")
+            status_time = status_time + timedelta(hours=5.5)
+        except Exception:
+            status_time = datetime.utcnow() + timedelta(hours=5.5)
+
+        order = None
+        try:
+            order = cur.fetchone()
+        except Exception:
+            pass
+
+        if not order:
+            return "Failed: order not found"
+
+        is_return = False
+        if payload.get("attempt_type")==30:
+            is_return = True
+        status_code = str(reason_code_number)
+        status = ""
+        status_text = str(reason_code_number)
+        location = order[39]
+        location_city = order[39]
+
+        if reason_code_number in pidge_status_mapping:
+            status = pidge_status_mapping[reason_code_number][0]
+            status_type = "UD" if not is_return else "RT"
+            status_text = pidge_status_mapping[reason_code_number][3]
+        else:
+            cur.execute(insert_scan_query, (
+                order[0], order[38], order[10], status_code, status, status_text, location, location_city, status_time))
+            conn.commit()
+            return "Successful: scan saved only"
+
+        if reason_code_number == 190 and is_return:
+            status = "RTO"
+
+        cur.execute(insert_scan_query, (
+            order[0], order[38], order[10], status_code, status, status_text, location, location_city, status_time))
+
+        if not status:
+            return "Successful: scan saved only"
+
+        tracking_status = ""
+        if not is_return:
+            tracking_status = pidge_status_mapping[reason_code_number][2]
+        elif reason_code_number in (150, 170):
+            tracking_status = "Returned"
+        elif reason_code_number in (190, ):
+            tracking_status = "RTO"
+
+        if tracking_status:
+            cur.execute(insert_status_query, (
+                order[0], order[38], order[10], status_type, tracking_status, status_text, location, location_city, status_time))
+
+        customer_phone = order[4].replace(" ", "")
+        customer_phone = "0" + customer_phone[-10:]
+
+        if tracking_status == "Picked":
+            mark_picked_channel(order, cur)
+            send_shipped_event(customer_phone, order[19], order, "", "Pidge")
+            mark_order_picked_pickups(order, cur)
+
+        elif tracking_status == "Delivered":
+            mark_delivered_channel(order)
+            send_delivered_event(customer_phone, order, "Pidge")
+
+        elif tracking_status == "RTO":
+            mark_rto_channel(order)
+
+        cur.execute("UPDATE orders SET status=%s, status_type=%s WHERE id=%s;", (status, status_type, order[0]))
+
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        return "Failed: " + str(e.args[0])
+    return "Successful: all tasks done"
+
+
 def mark_order_delivered_channels(data):
     cur = conn.cursor()
     order_ids = data.get("order_ids")

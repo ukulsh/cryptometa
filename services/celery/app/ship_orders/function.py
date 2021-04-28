@@ -52,32 +52,37 @@ def ship_orders(courier_name=None, order_ids=None, force_ship=None):
         all_couriers = cur.fetchall()
 
     for courier in all_couriers:
-        if courier[10].startswith('Delhivery'):
-            ship_delhivery_orders(cur, courier, courier_name, order_ids, order_id_tuple, force_ship=force_ship)
+        try:
+            if courier[10].startswith('Delhivery'):
+                ship_delhivery_orders(cur, courier, courier_name, order_ids, order_id_tuple, force_ship=force_ship)
 
-        elif courier[10] == "Shadowfax":
-            ship_shadowfax_orders(cur, courier, courier_name, order_ids, order_id_tuple, force_ship=force_ship)
+            elif courier[10] == "Shadowfax":
+                ship_shadowfax_orders(cur, courier, courier_name, order_ids, order_id_tuple, force_ship=force_ship)
 
-        elif courier[10].startswith('Xpressbees'):
-            ship_xpressbees_orders(cur, courier, courier_name, order_ids, order_id_tuple, force_ship=force_ship)
+            elif courier[10].startswith('Xpressbees'):
+                ship_xpressbees_orders(cur, courier, courier_name, order_ids, order_id_tuple, force_ship=force_ship)
 
-        elif courier[10].startswith('Bluedart'):
-            ship_bluedart_orders(cur, courier, courier_name, order_ids, order_id_tuple, force_ship=force_ship)
+            elif courier[10].startswith('Bluedart'):
+                ship_bluedart_orders(cur, courier, courier_name, order_ids, order_id_tuple, force_ship=force_ship)
 
-        elif courier[10].startswith('Ecom'):
-            ship_ecom_orders(cur, courier, courier_name, order_ids, order_id_tuple, force_ship=force_ship)
+            elif courier[10].startswith('Ecom'):
+                ship_ecom_orders(cur, courier, courier_name, order_ids, order_id_tuple, force_ship=force_ship)
 
-        elif courier[10].startswith('Self Ship'):
-            ship_selfshp_orders(cur, courier, courier_name, order_ids, order_id_tuple, force_ship=force_ship)
+            elif courier[10].startswith('Self Ship'):
+                ship_selfshp_orders(cur, courier, courier_name, order_ids, order_id_tuple, force_ship=force_ship)
 
-        # elif courier[10].startswith('Pidge'):
-        #     ship_pidge_orders(cur, courier, courier_name, order_ids, order_id_tuple, force_ship=force_ship)
+            elif courier[10].startswith('Pidge'):
+                ship_pidge_orders(cur, courier, courier_name, order_ids, order_id_tuple, force_ship=force_ship)
 
-        # elif courier[10].startswith('SDD'):
-        #     ship_sdd_orders(cur, courier, courier_name, order_ids, order_id_tuple, force_ship=force_ship)
+            # elif courier[10].startswith('SDD'):
+            #     ship_sdd_orders(cur, courier, courier_name, order_ids, order_id_tuple, force_ship=force_ship)
 
-        # elif courier[10].startswith('FedEx'):
-        #     ship_fedex_orders(cur, courier, courier_name, order_ids, order_id_tuple, force_ship=force_ship)
+            # elif courier[10].startswith('FedEx'):
+            #     ship_fedex_orders(cur, courier, courier_name, order_ids, order_id_tuple, force_ship=force_ship)
+
+        except Exception as e:
+            logger.error("couldn't ship orders: " + str(courier[10]) + "\nError: " + str(e))
+            conn.rollback()
 
     if not order_ids:
         cur.execute(update_same_state_query)
@@ -2351,21 +2356,15 @@ def ship_pidge_orders(cur, courier, courier_name, order_ids, order_id_tuple, bac
             for idx, prod in enumerate(order[40]):
                 package_string += prod + " (" + str(order[35][idx]) + ") + "
 
-            time_now = datetime.utcnow()+timedelta(hours=5.5)
-            if time_now.hour>12:
-                alloted_time = time_now + timedelta(days=1)
-            else:
-                alloted_time = time_now
-            alloted_time = alloted_time.replace(hour=14, minute=0)
+            customer_phone = order[5].replace(" ", "")
+            customer_phone = customer_phone[-10:]
+
             pidge_body = {
-                            "vendor_order_id": order[1],
-                            "volume": volumetric_weight*1000,
-                            "cash_to_be_collected": int(order[27]),
-                            "delivery_date": (alloted_time+timedelta(hours=2)).strftime('%Y-%m-%d'),
-                            "delivery_slot": "13:00-16:00",
+                            "vendor_order_id": order[0],
+                            "volume": max(volumetric_weight, weight)*500,
+                            "cash_to_be_collected": int(order[27]) if order[26].lower()=='cod' or order[26].lower()=='cash on delivery' else 0,
                             "originator_details": {
                                 "first_name": pickup_point[11],
-                                "last_name": "last",
                                 "mobile": pickup_point[3]
                             },
                             "sender_details": {
@@ -2374,15 +2373,15 @@ def ship_pidge_orders(cur, courier, courier_name, order_ids, order_id_tuple, bac
                             },
                             "receiver_details": {
                                 "name": order[13],
-                                "mobile": order[5]
+                                "mobile": customer_phone
                             },
                             "from_address": {
                                 "address_line1": pickup_point[4],
-                                "address_line2": pickup_point[5],
+                                "address_line2": pickup_point[5] if pickup_point[5] else pickup_point[10],
                                 "landmark": "N/A",
                                 "instructions_to_reach": "ANY",
                                 "google_maps_address": str(pickup_point[4])+str(pickup_point[5]),
-                                "exact_location": {
+                                "exact_location": { #todo: these are dlwhec pickup cordinates for now. Need to make them general
                                     "latitude": 28.538403,
                                     "longitude": 77.272284
                                 },
@@ -2391,7 +2390,7 @@ def ship_pidge_orders(cur, courier, courier_name, order_ids, order_id_tuple, bac
                             },
                             "to_address": {
                                 "address_line1": order[15],
-                                "address_line2": order[16],
+                                "address_line2": order[16] if order[16] else order[19],
                                 "landmark": "N/A",
                                 "instructions_to_reach": "ANY",
                                 "google_maps_address": str(order[15])+str(order[16]),
@@ -2406,24 +2405,22 @@ def ship_pidge_orders(cur, courier, courier_name, order_ids, order_id_tuple, bac
 
             return_data_raw = requests.post(courier[16] + "/v1.0/vendor/order", headers=headers, data=json.dumps(pidge_body)).json()
 
-            if return_data_raw['message'] == 'Success':
+            if return_data_raw.get('success'):
                 order_status_change_ids.append(order[0])
                 data_tuple = tuple([(
-                    str(return_data_raw['data']['sfx_order_id']),
+                    str(return_data_raw['data']['PBID']),
                     return_data_raw['message'],
                     order[0], pickup_point[1], courier[9], json.dumps(dimensions), volumetric_weight, weight,
-                    "", pickup_point[2], "", None, return_data_raw['data']['track_url'], zone)])
+                    "", pickup_point[2], "", None, "https://webapp.wareiq.com/tracking/"+str(return_data_raw['data']['PBID']), zone)])
 
                 if order[46] == 7:
-                    push_awb_easyecom(order[39], order[36], return_data_raw['AddManifestDetails'][0]['AWBNo'], courier,
+                    push_awb_easyecom(order[39], order[36], return_data_raw['data'][0]['PBID'], courier,
                                       cur, order[9])
 
                 client_name = str(order[51])
-                customer_phone = order[5].replace(" ", "")
-                customer_phone = "0" + customer_phone[-10:]
 
                 try:
-                    tracking_link_wareiq = return_data_raw['data']['track_url']
+                    tracking_link_wareiq = "https://webapp.wareiq.com/tracking/"+str(return_data_raw['data']['PBID'])
                     send_received_event(client_name, customer_phone, tracking_link_wareiq)
                 except Exception:
                     pass

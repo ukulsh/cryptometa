@@ -30,7 +30,7 @@ get_status_update_orders_query = """select aa.id, bb.awb, aa.status, aa.client_p
                                     left join client_mapping nn
                                     on aa.client_prefix=nn.client_prefix
                                     where (aa.status not in ('NEW','DELIVERED','NOT SHIPPED','RTO','CANCELED','CLOSED','DTO','LOST','DAMAGED','SHORTAGE','SHIPPED')
-                                        or (aa.status='CANCELED' and order_date>now() - interval '7 days'))
+                                        or (aa.status='CANCELED' and order_date>now() - interval '15 days'))
                                     and aa.status_type is distinct from 'DL'
                                     and bb.awb != ''
                                     and bb.awb is not null

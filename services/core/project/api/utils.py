@@ -56,6 +56,8 @@ def authenticate_restful(f):
         code = 401
         auth_header = request.headers.get('Authorization')
         if not auth_header:
+            auth_header = "Token " + request.args.get('token') if request.args.get('token') else None
+        if not auth_header:
             response_object['message'] = 'Provide a valid auth token.'
             code = 403
             return jsonify(response_object), code

@@ -16,267 +16,273 @@ conn_3 = DbConnection.get_users_db_connection_instance()
 
 
 def consume_ecom_scan_util(payload):
-    try:
-        cur = conn.cursor()
-        awb = payload.get('awb')
-        if not awb:
-            return "Skipped: no awb"
-
-        reason_code_number = payload.get('reason_code_number')
-        if not reason_code_number:
-            return "Skipped: no reason code"
-
-        cur.execute(get_order_details_query.replace('__FILTER_ORDER__', "bb.awb='%s'"%str(awb)))
+    with DbConnection.get_db_connection_instance() as conn:
         try:
-            status_time = payload.get("datetime")
-            status_time = datetime.strptime(status_time, "%Y-%m-%d %H:%M:%S")
-        except Exception:
-            status_time = datetime.utcnow() + timedelta(hours=5.5)
+            cur = conn.cursor()
+            awb = payload.get('awb')
+            if not awb:
+                return "Skipped: no awb"
 
-        order = None
-        try:
-            order = cur.fetchone()
-        except Exception:
-            pass
+            reason_code_number = payload.get('reason_code_number')
+            if not reason_code_number:
+                return "Skipped: no reason code"
 
-        if not order:
-            return "Failed: order not found"
+            cur.execute(get_order_details_query.replace('__FILTER_ORDER__', "bb.awb='%s'"%str(awb)))
+            try:
+                status_time = payload.get("datetime")
+                status_time = datetime.strptime(status_time, "%Y-%m-%d %H:%M:%S")
+            except Exception:
+                status_time = datetime.utcnow() + timedelta(hours=5.5)
 
-        is_return = False
-        if payload.get("ref_awb") and str(payload.get("reason_code_number"))!='777':
-            is_return = True
-        status_code = str(payload.get("reason_code_number"))
-        status = str(payload.get("reason_code"))
-        status_text = str(payload.get("status"))
-        location = str(payload.get("location"))
-        location_city = str(payload.get("city"))
+            order = None
+            try:
+                order = cur.fetchone()
+            except Exception:
+                pass
 
-        if reason_code_number in ecom_express_status_mapping:
-            status = ecom_express_status_mapping[reason_code_number][0]
-            status_type = ecom_express_status_mapping[reason_code_number][1]
-            status_text = ecom_express_status_mapping[reason_code_number][3]
-        else:
+            if not order:
+                return "Failed: order not found"
+
+            is_return = False
+            if payload.get("ref_awb") and str(payload.get("reason_code_number"))!='777':
+                is_return = True
+            status_code = str(payload.get("reason_code_number"))
+            status = str(payload.get("reason_code"))
+            status_text = str(payload.get("status"))
+            location = str(payload.get("location"))
+            location_city = str(payload.get("city"))
+
+            if reason_code_number in ecom_express_status_mapping:
+                status = ecom_express_status_mapping[reason_code_number][0]
+                status_type = ecom_express_status_mapping[reason_code_number][1]
+                status_text = ecom_express_status_mapping[reason_code_number][3]
+            else:
+                cur.execute(insert_scan_query, (
+                    order[0], order[38], order[10], status_code, status, status_text, location, location_city, status_time))
+                conn.commit()
+                return "Successful: scan saved only"
+
+            if str(payload.get("status")) == "R999":
+                status = "RTO"
+
             cur.execute(insert_scan_query, (
                 order[0], order[38], order[10], status_code, status, status_text, location, location_city, status_time))
+
+            if not status:
+                return "Successful: scan saved only"
+
+            if status!='RTO' and is_return:
+                return "Successful: scan saved only"
+
+            tracking_status = ecom_express_status_mapping[reason_code_number][2] if status!='RTO' else 'RTO'
+            if tracking_status:
+                cur.execute(insert_status_query, (
+                    order[0], order[38], order[10], status_type, tracking_status, status_text, location, location_city, status_time))
+
+            customer_phone = order[4].replace(" ", "")
+            customer_phone = "0" + customer_phone[-10:]
+
+            if tracking_status == "Picked":
+                mark_picked_channel(order, cur)
+                send_shipped_event(customer_phone, order[19], order, "", "Ecom Express")
+                mark_order_picked_pickups(order, cur)
+
+            elif tracking_status == "Delivered":
+                mark_delivered_channel(order)
+                send_delivered_event(customer_phone, order, "Ecom Express")
+
+            elif tracking_status == "RTO":
+                mark_rto_channel(order)
+
+            if reason_code_number in ecom_express_ndr_reasons:
+                ndr_reason = ecom_express_ndr_reasons[reason_code_number]
+                verification_text(order, cur, ndr_reason=ndr_reason)
+
+            cur.execute("UPDATE orders SET status=%s, status_type=%s WHERE id=%s;", (status, status_type, order[0]))
+
             conn.commit()
-            return "Successful: scan saved only"
-
-        if str(payload.get("status")) == "R999":
-            status = "RTO"
-
-        cur.execute(insert_scan_query, (
-            order[0], order[38], order[10], status_code, status, status_text, location, location_city, status_time))
-
-        if not status:
-            return "Successful: scan saved only"
-
-        if status!='RTO' and is_return:
-            return "Successful: scan saved only"
-
-        tracking_status = ecom_express_status_mapping[reason_code_number][2] if status!='RTO' else 'RTO'
-        if tracking_status:
-            cur.execute(insert_status_query, (
-                order[0], order[38], order[10], status_type, tracking_status, status_text, location, location_city, status_time))
-
-        customer_phone = order[4].replace(" ", "")
-        customer_phone = "0" + customer_phone[-10:]
-
-        if tracking_status == "Picked":
-            mark_picked_channel(order, cur)
-            send_shipped_event(customer_phone, order[19], order, "", "Ecom Express")
-            mark_order_picked_pickups(order, cur)
-
-        elif tracking_status == "Delivered":
-            mark_delivered_channel(order)
-            send_delivered_event(customer_phone, order, "Ecom Express")
-
-        elif tracking_status == "RTO":
-            mark_rto_channel(order)
-
-        if reason_code_number in ecom_express_ndr_reasons:
-            ndr_reason = ecom_express_ndr_reasons[reason_code_number]
-            verification_text(order, cur, ndr_reason=ndr_reason)
-
-        cur.execute("UPDATE orders SET status=%s, status_type=%s WHERE id=%s;", (status, status_type, order[0]))
-
-        conn.commit()
-    except Exception as e:
-        conn.rollback()
-        return "Failed: " + str(e.args[0])
-    return "Successful: all tasks done"
+        except Exception as e:
+            conn.rollback()
+            return "Failed: " + str(e.args[0])
+        return "Successful: all tasks done"
 
 
 def consume_sfxsdd_scan_util(payload):
-    try:
-        cur = conn.cursor()
-        awb = payload.get('sfx_order_id')
-        if not awb:
-            return "Skipped: no awb"
-
-        reason_code_number = payload.get('order_status')
-        if not reason_code_number:
-            return "Skipped: no reason code"
-
-        cur.execute(get_order_details_query.replace('__FILTER_ORDER__', "bb.awb='%s'"%str(awb)))
+    with DbConnection.get_db_connection_instance() as conn:
         try:
-            status_time = next(v for (k,v) in payload.items() if k.endswith('time'))
-            status_time = datetime.strptime(status_time.split('.')[0], "%Y-%m-%dT%H:%M:%S")
-        except Exception:
-            status_time = datetime.utcnow() + timedelta(hours=5.5)
+            cur = conn.cursor()
+            awb = payload.get('sfx_order_id')
+            if not awb:
+                return "Skipped: no awb"
 
-        order = None
-        try:
-            order = cur.fetchone()
-        except Exception:
-            pass
+            reason_code_number = payload.get('order_status')
+            if not reason_code_number:
+                return "Skipped: no reason code"
 
-        if not order:
-            return "Failed: order not found"
+            cur.execute(get_order_details_query.replace('__FILTER_ORDER__', "bb.awb='%s'"%str(awb)))
+            try:
+                status_time = next(v for (k,v) in payload.items() if k.endswith('time'))
+                status_time = datetime.strptime(status_time.split('.')[0], "%Y-%m-%dT%H:%M:%S")
+            except Exception:
+                status_time = datetime.utcnow() + timedelta(hours=5.5)
 
-        status_code = reason_code_number
-        status = reason_code_number
-        status_text = ""
-        location = order[39]
-        location_city = order[39]
+            order = None
+            try:
+                order = cur.fetchone()
+            except Exception:
+                pass
 
-        if reason_code_number in sfxsdd_status_mapping:
-            status = sfxsdd_status_mapping[reason_code_number][0]
-            status_type = sfxsdd_status_mapping[reason_code_number][1]
-            status_text = sfxsdd_status_mapping[reason_code_number][3]
-        else:
+            if not order:
+                return "Failed: order not found"
+
+            status_code = reason_code_number
+            status = reason_code_number
+            status_text = ""
+            location = order[39]
+            location_city = order[39]
+
+            if reason_code_number in sfxsdd_status_mapping:
+                status = sfxsdd_status_mapping[reason_code_number][0]
+                status_type = sfxsdd_status_mapping[reason_code_number][1]
+                status_text = sfxsdd_status_mapping[reason_code_number][3]
+            else:
+                cur.execute(insert_scan_query, (
+                    order[0], order[38], order[10], status_code, status, status_text, location, location_city, status_time))
+                conn.commit()
+                return "Successful: scan saved only"
+
             cur.execute(insert_scan_query, (
                 order[0], order[38], order[10], status_code, status, status_text, location, location_city, status_time))
+
+            if not status:
+                return "Successful: scan saved only"
+
+            tracking_status = sfxsdd_status_mapping[reason_code_number][2]
+            if tracking_status:
+                cur.execute(insert_status_query, (
+                    order[0], order[38], order[10], status_type, tracking_status, status_text, location, location_city, status_time))
+
+            customer_phone = order[4].replace(" ", "")
+            customer_phone = "0" + customer_phone[-10:]
+
+            if tracking_status == "Picked":
+                mark_picked_channel(order, cur)
+                send_shipped_event(customer_phone, order[19], order, "", "Shadowfax")
+                mark_order_picked_pickups(order, cur)
+
+            elif tracking_status == "Delivered":
+                mark_delivered_channel(order)
+                send_delivered_event(customer_phone, order, "Shadowfax")
+
+            elif tracking_status == "RTO":
+                mark_rto_channel(order)
+
+            cur.execute("UPDATE orders SET status=%s, status_type=%s WHERE id=%s;", (status, status_type, order[0]))
+
             conn.commit()
-            return "Successful: scan saved only"
-
-        cur.execute(insert_scan_query, (
-            order[0], order[38], order[10], status_code, status, status_text, location, location_city, status_time))
-
-        if not status:
-            return "Successful: scan saved only"
-
-        tracking_status = sfxsdd_status_mapping[reason_code_number][2]
-        if tracking_status:
-            cur.execute(insert_status_query, (
-                order[0], order[38], order[10], status_type, tracking_status, status_text, location, location_city, status_time))
-
-        customer_phone = order[4].replace(" ", "")
-        customer_phone = "0" + customer_phone[-10:]
-
-        if tracking_status == "Picked":
-            mark_picked_channel(order, cur)
-            send_shipped_event(customer_phone, order[19], order, "", "Shadowfax")
-            mark_order_picked_pickups(order, cur)
-
-        elif tracking_status == "Delivered":
-            mark_delivered_channel(order)
-            send_delivered_event(customer_phone, order, "Shadowfax")
-
-        elif tracking_status == "RTO":
-            mark_rto_channel(order)
-
-        cur.execute("UPDATE orders SET status=%s, status_type=%s WHERE id=%s;", (status, status_type, order[0]))
-
-        conn.commit()
-    except Exception as e:
-        conn.rollback()
-        return "Failed: " + str(e.args[0])
-    return "Successful: all tasks done"
+        except Exception as e:
+            conn.rollback()
+            return "Failed: " + str(e.args[0])
+        return "Successful: all tasks done"
 
 
 def consume_pidge_scan_util(payload):
-    try:
-        cur = conn.cursor()
-        awb = payload.get('PBID')
-        if not awb:
-            return "Skipped: no awb"
-
-        reason_code_number = payload.get('trip_status')
-        if not reason_code_number:
-            return "Skipped: no reason code"
-
-        if reason_code_number in (20, 100, 120, 130, 5):
-            return "No status to update"
-
-        cur.execute(get_order_details_query.replace('__FILTER_ORDER__', "bb.awb='%s'"%str(awb)))
+    with DbConnection.get_db_connection_instance() as conn:
         try:
-            status_time = payload.get("timestamp")
-            status_time = datetime.strptime(status_time, "%Y-%m-%dT%H:%M:%S.%fZ")
-            status_time = status_time + timedelta(hours=5.5)
-        except Exception:
-            status_time = datetime.utcnow() + timedelta(hours=5.5)
+            cur = conn.cursor()
+            awb = payload.get('PBID')
+            if not awb:
+                return "Skipped: no awb"
 
-        order = None
-        try:
-            order = cur.fetchone()
-        except Exception:
-            pass
+            reason_code_number = payload.get('trip_status')
+            if not reason_code_number:
+                return "Skipped: no reason code"
 
-        if not order:
-            return "Failed: order not found"
+            if payload.get("attempt_type") == 20:
+                return "Skipped: no status to update"
 
-        is_return = False
-        if payload.get("attempt_type")==30:
-            is_return = True
-        status_code = str(reason_code_number)
-        status = ""
-        status_text = str(reason_code_number)
-        location = order[39]
-        location_city = order[39]
+            if reason_code_number in (20, 100, 120, 130, 5):
+                return "No status to update"
 
-        if reason_code_number in pidge_status_mapping:
-            status = pidge_status_mapping[reason_code_number][0]
-            status_type = "UD" if not is_return else "RT"
-            status_text = pidge_status_mapping[reason_code_number][3]
-        else:
+            cur.execute(get_order_details_query.replace('__FILTER_ORDER__', "bb.awb='%s'"%str(awb)))
+            try:
+                status_time = payload.get("timestamp")
+                status_time = datetime.strptime(status_time, "%Y-%m-%dT%H:%M:%S.%fZ")
+                status_time = status_time + timedelta(hours=5.5)
+            except Exception:
+                status_time = datetime.utcnow() + timedelta(hours=5.5)
+
+            order = None
+            try:
+                order = cur.fetchone()
+            except Exception:
+                pass
+
+            if not order:
+                return "Failed: order not found"
+
+            is_return = False
+            if payload.get("attempt_type")==30:
+                is_return = True
+            status_code = str(reason_code_number)
+            status = ""
+            status_text = str(reason_code_number)
+            location = order[39]
+            location_city = order[39]
+
+            if reason_code_number in pidge_status_mapping:
+                status = pidge_status_mapping[reason_code_number][0]
+                status_type = "UD" if not is_return else "RT"
+                status_text = pidge_status_mapping[reason_code_number][3]
+            else:
+                cur.execute(insert_scan_query, (
+                    order[0], order[38], order[10], status_code, status, status_text, location, location_city, status_time))
+                conn.commit()
+                return "Successful: scan saved only"
+
+            if reason_code_number == 190 and is_return:
+                status = "RTO"
+
             cur.execute(insert_scan_query, (
                 order[0], order[38], order[10], status_code, status, status_text, location, location_city, status_time))
+
+            if not status:
+                return "Successful: scan saved only"
+
+            tracking_status = ""
+            if not is_return:
+                tracking_status = pidge_status_mapping[reason_code_number][2]
+            elif reason_code_number in (150, 170):
+                tracking_status = "Returned"
+            elif reason_code_number in (190, ):
+                tracking_status = "RTO"
+
+            if tracking_status:
+                cur.execute(insert_status_query, (
+                    order[0], order[38], order[10], status_type, tracking_status, status_text, location, location_city, status_time))
+
+            customer_phone = order[4].replace(" ", "")
+            customer_phone = "0" + customer_phone[-10:]
+
+            if tracking_status == "Picked":
+                mark_picked_channel(order, cur)
+                send_shipped_event(customer_phone, order[19], order, "", "Pidge")
+                mark_order_picked_pickups(order, cur)
+
+            elif tracking_status == "Delivered":
+                mark_delivered_channel(order)
+                send_delivered_event(customer_phone, order, "Pidge")
+
+            elif tracking_status == "RTO":
+                mark_rto_channel(order)
+
+            cur.execute("UPDATE orders SET status=%s, status_type=%s WHERE id=%s;", (status, status_type, order[0]))
+
             conn.commit()
-            return "Successful: scan saved only"
-
-        if reason_code_number == 190 and is_return:
-            status = "RTO"
-
-        cur.execute(insert_scan_query, (
-            order[0], order[38], order[10], status_code, status, status_text, location, location_city, status_time))
-
-        if not status:
-            return "Successful: scan saved only"
-
-        tracking_status = ""
-        if not is_return:
-            tracking_status = pidge_status_mapping[reason_code_number][2]
-        elif reason_code_number in (150, 170):
-            tracking_status = "Returned"
-        elif reason_code_number in (190, ):
-            tracking_status = "RTO"
-
-        if tracking_status:
-            cur.execute(insert_status_query, (
-                order[0], order[38], order[10], status_type, tracking_status, status_text, location, location_city, status_time))
-
-        customer_phone = order[4].replace(" ", "")
-        customer_phone = "0" + customer_phone[-10:]
-
-        if tracking_status == "Picked":
-            mark_picked_channel(order, cur)
-            send_shipped_event(customer_phone, order[19], order, "", "Pidge")
-            mark_order_picked_pickups(order, cur)
-
-        elif tracking_status == "Delivered":
-            mark_delivered_channel(order)
-            send_delivered_event(customer_phone, order, "Pidge")
-
-        elif tracking_status == "RTO":
-            mark_rto_channel(order)
-
-        cur.execute("UPDATE orders SET status=%s, status_type=%s WHERE id=%s;", (status, status_type, order[0]))
-
-        conn.commit()
-    except Exception as e:
-        conn.rollback()
-        return "Failed: " + str(e.args[0])
-    return "Successful: all tasks done"
+        except Exception as e:
+            conn.rollback()
+            return "Failed: " + str(e.args[0])
+        return "Successful: all tasks done"
 
 
 def mark_order_delivered_channels(data):

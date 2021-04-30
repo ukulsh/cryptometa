@@ -2689,6 +2689,7 @@ class GetShipmentData(Resource):
                     ret_obj['sort_code'] = order.shipments[0].routing_code
                     ret_obj['awb'] = order.shipments[0].awb
                     ret_obj['courier'] = order.shipments[0].courier.courier_name
+                    ret_obj['order_status'] = order.status
                 else:
                     ret_obj['status'] = 'failure'
                     ret_obj['msg'] = 'order not shipped yet'

@@ -16,7 +16,8 @@ conn_3 = DbConnection.get_users_db_connection_instance()
 
 
 def consume_ecom_scan_util(payload):
-    with DbConnection.get_db_connection_instance() as conn:
+    with psycopg2.connect(host=os.environ.get('DATABASE_HOST'), database=os.environ.get('DATABASE_NAME'),
+                                user=os.environ.get('DATABASE_USER'), password=os.environ.get('DATABASE_PASSWORD')) as conn:
         try:
             cur = conn.cursor()
             awb = payload.get('awb')
@@ -108,7 +109,8 @@ def consume_ecom_scan_util(payload):
 
 
 def consume_sfxsdd_scan_util(payload):
-    with DbConnection.get_db_connection_instance() as conn:
+    with psycopg2.connect(host=os.environ.get('DATABASE_HOST'), database=os.environ.get('DATABASE_NAME'),
+                                user=os.environ.get('DATABASE_USER'), password=os.environ.get('DATABASE_PASSWORD')) as conn:
         try:
             cur = conn.cursor()
             awb = payload.get('sfx_order_id')
@@ -187,7 +189,8 @@ def consume_sfxsdd_scan_util(payload):
 
 
 def consume_pidge_scan_util(payload):
-    with DbConnection.get_db_connection_instance() as conn:
+    with psycopg2.connect(host=os.environ.get('DATABASE_HOST'), database=os.environ.get('DATABASE_NAME'),
+                                user=os.environ.get('DATABASE_USER'), password=os.environ.get('DATABASE_PASSWORD')) as conn:
         try:
             cur = conn.cursor()
             awb = payload.get('PBID')

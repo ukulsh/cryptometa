@@ -2693,6 +2693,7 @@ class GetShipmentData(Resource):
                 else:
                     ret_obj['status'] = 'failure'
                     ret_obj['msg'] = 'order not shipped yet'
+                    ret_obj['order_status'] = order.status
 
                 ret_obj['WH'] = order.pickup_data.pickup.warehouse_prefix if order.pickup_data else None
                 return_data.append(ret_obj)

@@ -69,7 +69,7 @@ def consume_ecom_scan_util(payload):
             cur.execute(insert_scan_query, (
                 order[0], order[38], order[10], status_code, status, status_text, location, location_city, status_time))
 
-            if not status:
+            if not status or status == 'READY TO SHIP':
                 return "Successful: scan saved only"
 
             if status!='RTO' and is_return:
@@ -156,7 +156,7 @@ def consume_sfxsdd_scan_util(payload):
             cur.execute(insert_scan_query, (
                 order[0], order[38], order[10], status_code, status, status_text, location, location_city, status_time))
 
-            if not status:
+            if not status or status == 'READY TO SHIP':
                 return "Successful: scan saved only"
 
             tracking_status = sfxsdd_status_mapping[reason_code_number][2]
@@ -249,7 +249,7 @@ def consume_pidge_scan_util(payload):
             cur.execute(insert_scan_query, (
                 order[0], order[38], order[10], status_code, status, status_text, location, location_city, status_time))
 
-            if not status:
+            if not status or status == 'READY TO SHIP':
                 return "Successful: scan saved only"
 
             tracking_status = ""

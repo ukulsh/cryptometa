@@ -185,12 +185,10 @@ def track_delhivery_orders(courier, cur):
 
             new_status = new_status.upper()
 
-            if orders_dict[current_awb][2]=='CANCELED' and new_status!='IN TRANSIT':
+            if (orders_dict[current_awb][2]=='CANCELED' and new_status!='IN TRANSIT') or new_status in ('READY TO SHIP', 'NOT PICKED'):
                 continue
 
             status_type = ret_order['Shipment']['Status']['StatusType']
-            if new_status == 'NOT PICKED':
-                new_status = "PICKUP REQUESTED"
             status_detail = None
             status_code = None
             if new_status == "PENDING":
@@ -395,7 +393,7 @@ def track_shadowfax_orders(courier, cur):
                     status_type = "UD"
                     new_status_temp = new_status_temp.upper()
                     status_detail = None
-            if new_status_temp == "READY TO SHIP" and orders_dict[current_awb][2] == new_status:
+            if new_status_temp == "READY TO SHIP":
                 continue
             new_status = new_status_temp
 
@@ -584,7 +582,7 @@ def track_xpressbees_orders(courier, cur):
             except KeyError:
                 new_status_temp = new_status_temp.upper()
                 status_type = None
-            if new_status_temp == "READY TO SHIP" and orders_dict[current_awb][2] == new_status:
+            if new_status_temp == "READY TO SHIP":
                 continue
             new_status = new_status_temp
 
@@ -601,9 +599,6 @@ def track_xpressbees_orders(courier, cur):
 
             customer_phone = orders_dict[current_awb][4].replace(" ", "")
             customer_phone = "0" + customer_phone[-10:]
-
-            if orders_dict[current_awb][2]=='PICKUP REQUESTED' and new_status=='READY TO SHIP':
-                continue
 
             if new_status == 'DELIVERED':
                 update_delivered_on_channels(orders_dict[current_awb])
@@ -825,8 +820,8 @@ def track_bluedart_orders(courier, cur):
                 new_status='RTO'
 
             status_type = ret_order['StatusType']
-            if new_status == 'NOT PICKED':
-                new_status = "PICKUP REQUESTED"
+            if new_status in ('NOT PICKED', 'READY TO SHIP'):
+                continue
             status_detail = None
             status_code = scan_code
 
@@ -968,7 +963,7 @@ def track_ecomxp_orders(courier, cur):
             status_detail = None
             status_code = scan_code
 
-            if orders_dict[current_awb][2]=='CANCELED' and new_status!='IN TRANSIT':
+            if (orders_dict[current_awb][2]=='CANCELED' and new_status!='IN TRANSIT') or new_status=='READY TO SHIP':
                 continue
 
             try:
@@ -1188,14 +1183,14 @@ shadowfax_status_mapping = {"new": ("READY TO SHIP", "UD", None),
                             "rts_d": ("RTO", "DL", None),
                             "lost": ("LOST", "UD", None),
                             "on_hold": ("ON HOLD", "UD", None),
-                            "pickup_on_hold": ("PICKUP REQUESTED", "UD", None),
+                            "pickup_on_hold": ("READY TO SHIP", "UD", None),
                             }
 
 xpressbees_status_mapping = {"DRC": ("READY TO SHIP", "UD", ""),
-                             "PUC": ("PICKUP REQUESTED", "UD", ""),
-                             "OFP": ("PICKUP REQUESTED", "UD", ""),
+                             "PUC": ("READY TO SHIP", "UD", ""),
+                             "OFP": ("READY TO SHIP", "UD", ""),
                              "PUD": ("IN TRANSIT", "UD", ""),
-                             "PND": ("PICKUP REQUESTED", "UD", ""),
+                             "PND": ("READY TO SHIP", "UD", ""),
                              "PKD": ("IN TRANSIT", "UD", ""),
                              "IT": ("IN TRANSIT", "UD", ""),
                              "RAD": ("IN TRANSIT", "UD", ""),

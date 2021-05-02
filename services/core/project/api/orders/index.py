@@ -110,20 +110,22 @@ class OrderList(Resource):
                 query_to_run = query_to_run.replace("__SINCE_ID_FILTER__", "AND id>%s" % str(since_id))
 
             if type == 'new':
-                query_to_run = query_to_run.replace("__TAB_STATUS_FILTER__", "AND aa.status = 'NEW'")
+                query_to_run = query_to_run.replace("__TAB_STATUS_FILTER__", "AND aa.status = 'NEW' AND gg.payment_mode!='Pickup'")
             elif type == 'ready_to_ship':
-                query_to_run = query_to_run.replace("__TAB_STATUS_FILTER__", "AND aa.status in ('PICKUP REQUESTED','READY TO SHIP')")
+                query_to_run = query_to_run.replace("__TAB_STATUS_FILTER__", "AND aa.status = 'READY TO SHIP' AND gg.payment_mode!='Pickup'")
             elif type == 'shipped':
-                query_to_run = query_to_run.replace("__TAB_STATUS_FILTER__", "AND aa.status not in ('NEW', 'READY TO SHIP', 'PICKUP REQUESTED','NOT PICKED','CANCELED', 'CLOSED', 'PENDING PAYMENT','NEW - FAILED', 'LOST', 'NOT SHIPPED')")
+                query_to_run = query_to_run.replace("__TAB_STATUS_FILTER__", "AND aa.status not in ('NEW', 'READY TO SHIP', 'PICKUP REQUESTED','NOT PICKED','CANCELED', 'CLOSED', 'NOT SHIPPED') AND gg.payment_mode!='Pickup'")
             elif type == "return":
-                query_to_run = query_to_run.replace("__TAB_STATUS_FILTER__", "AND (aa.status_type='RT' or (aa.status_type='DL' and aa.status='RTO'))")
+                query_to_run = query_to_run.replace("__TAB_STATUS_FILTER__", "AND (aa.status_type='RT' or (aa.status_type='DL' and aa.status='RTO')) AND gg.payment_mode!='Pickup'")
             elif type == "ndr":
                 query_to_run = query_to_run.replace("__NDR_AGGREGATION__", """left join (select ss.order_id, max(ss.id) as ndr_id, array_agg(tt.id order by ss.id desc) as reason_id, array_agg(tt.reason order by ss.id desc) as reason, array_agg(ss.date_created order by ss.id desc) as ndr_date from ndr_shipments ss left join ndr_reasons tt on ss.reason_id=tt.id 
                                                                                                  group by order_id) rr
                                                                                                  on aa.id=rr.order_id""")
                 query_to_run = query_to_run.replace("__NDR_AGG_SEL_1__", "rr.reason_id, rr.reason, rr.ndr_date,")
                 query_to_run = query_to_run.replace("__NDR_AGG_SEL_2__", "rr.ndr_id,")
-                query_to_run = query_to_run.replace("__TAB_STATUS_FILTER__", "AND (rr.ndr_id is not null AND aa.status='PENDING' AND aa.status_type!='RT')")
+                query_to_run = query_to_run.replace("__TAB_STATUS_FILTER__", "AND (rr.ndr_id is not null AND aa.status='PENDING' AND aa.status_type!='RT') AND gg.payment_mode!='Pickup'")
+            elif type == "rvp":
+                query_to_run = query_to_run.replace("__TAB_STATUS_FILTER__", "AND gg.payment_mode='Pickup'")
             elif type == 'all':
                 pass
             else:
@@ -354,24 +356,30 @@ def get_orders_filters(resp):
         return jsonify(response), 200
 
     status_qs = db.session.query(Orders.status, func.count(Orders.status)).join(ClientPickups,
-                        Orders.pickup_data_id==ClientPickups.id, isouter=True).join(PickupPoints, PickupPoints.id==ClientPickups.pickup_id, isouter=True).group_by(Orders.status)
+                        Orders.pickup_data_id==ClientPickups.id, isouter=True).join(PickupPoints, PickupPoints.id==ClientPickups.pickup_id, isouter=True).join(OrdersPayments,
+                        Orders.id==OrdersPayments.order_id, isouter=True).group_by(Orders.status)
     courier_qs = db.session.query(MasterCouriers.courier_name, func.count(MasterCouriers.courier_name)) \
         .join(Shipments, MasterCouriers.id == Shipments.courier_id).join(Orders, Orders.id == Shipments.order_id) \
-        .join(ClientPickups,Orders.pickup_data_id == ClientPickups.id, isouter=True).join(PickupPoints, PickupPoints.id == ClientPickups.pickup_id, isouter=True).group_by(MasterCouriers.courier_name)
+        .join(ClientPickups,Orders.pickup_data_id == ClientPickups.id, isouter=True).join(PickupPoints, PickupPoints.id == ClientPickups.pickup_id, isouter=True).join(OrdersPayments,
+                        Orders.id==OrdersPayments.order_id, isouter=True).group_by(MasterCouriers.courier_name)
     pickup_point_qs = db.session.query(PickupPoints.warehouse_prefix, func.count(PickupPoints.warehouse_prefix)) \
-        .join(ClientPickups, PickupPoints.id == ClientPickups.pickup_id).join(Orders, ClientPickups.id == Orders.pickup_data_id).group_by(PickupPoints.warehouse_prefix)
+        .join(ClientPickups, PickupPoints.id == ClientPickups.pickup_id).join(Orders, ClientPickups.id == Orders.pickup_data_id).join(OrdersPayments,
+                        Orders.id==OrdersPayments.order_id, isouter=True).group_by(PickupPoints.warehouse_prefix)
     channel_qs = db.session.query(MasterChannels.channel_name, func.count(MasterChannels.channel_name))\
         .join(Orders, Orders.master_channel_id==MasterChannels.id).group_by(MasterChannels.channel_name)
 
-    shipped_filters = ['NEW', 'READY TO SHIP', 'PICKUP REQUESTED','NOT PICKED','CANCELED', 'CLOSED', 'PENDING PAYMENT','NEW - FAILED', 'LOST', 'NOT SHIPPED']
+    shipped_filters = ['NEW', 'READY TO SHIP', 'PICKUP REQUESTED','NOT PICKED','CANCELED', 'CLOSED', 'NOT SHIPPED', 'SCHEDULED']
     if auth_data['user_group'] == 'super-admin':
-        client_qs = db.session.query(Orders.client_prefix, func.count(Orders.client_prefix))
+        client_qs = db.session.query(Orders.client_prefix, func.count(Orders.client_prefix)).join(OrdersPayments,
+                        Orders.id==OrdersPayments.order_id, isouter=True)
     elif auth_data['user_group'] == 'warehouse':
         client_qs = db.session.query(Orders.client_prefix, func.count(Orders.client_prefix)).join(ClientPickups,
                         Orders.pickup_data_id==ClientPickups.id).join(PickupPoints,
-                        PickupPoints.id==ClientPickups.pickup_id).filter(PickupPoints.warehouse_prefix == warehouse_prefix)
+                        PickupPoints.id==ClientPickups.pickup_id).join(OrdersPayments,
+                        Orders.id==OrdersPayments.order_id, isouter=True).filter(PickupPoints.warehouse_prefix == warehouse_prefix)
     elif all_vendors:
-        client_qs = db.session.query(Orders.client_prefix, func.count(Orders.client_prefix)).filter(Orders.client_prefix.in_(all_vendors))
+        client_qs = db.session.query(Orders.client_prefix, func.count(Orders.client_prefix)).join(OrdersPayments,
+                        Orders.id==OrdersPayments.order_id, isouter=True).filter(Orders.client_prefix.in_(all_vendors))
 
     if auth_data['user_group'] == 'client':
         status_qs=status_qs.filter(Orders.client_prefix == client_prefix)
@@ -410,12 +418,18 @@ def get_orders_filters(resp):
         if client_qs:
             client_qs = client_qs.filter(Orders.status=="NEW")
     if current_tab=="ready_to_ship":
-        status_qs = status_qs.filter(Orders.status.in_(["READY TO SHIP","PICKUP REQUESTED"]))
-        courier_qs = courier_qs.filter(Orders.status.in_(["READY TO SHIP","PICKUP REQUESTED"]))
-        pickup_point_qs = pickup_point_qs.filter(Orders.status.in_(["READY TO SHIP","PICKUP REQUESTED"]))
-        channel_qs = channel_qs.filter(Orders.status.in_(["READY TO SHIP","PICKUP REQUESTED"]))
+        status_qs = status_qs.filter(Orders.status.in_(["READY TO SHIP"]))
+        courier_qs = courier_qs.filter(Orders.status.in_(["READY TO SHIP"]))
+        pickup_point_qs = pickup_point_qs.filter(Orders.status.in_(["READY TO SHIP"]))
+        channel_qs = channel_qs.filter(Orders.status.in_(["READY TO SHIP"]))
         if client_qs:
-            client_qs = client_qs.filter(Orders.status.in_(["READY TO SHIP","PICKUP REQUESTED"]))
+            client_qs = client_qs.filter(Orders.status.in_(["READY TO SHIP"]))
+    if current_tab=="rvp":
+        status_qs = status_qs.filter(OrdersPayments.payment_mode=='Pickup')
+        courier_qs = courier_qs.filter(OrdersPayments.payment_mode=='Pickup')
+        pickup_point_qs = pickup_point_qs.filter(OrdersPayments.payment_mode=='Pickup')
+        if client_qs:
+            client_qs = client_qs.filter(OrdersPayments.payment_mode=='Pickup')
     status_qs = status_qs.order_by(Orders.status).all()
     response['filters']['status'] = [{x[0]:x[1]} for x in status_qs]
     courier_qs = courier_qs.order_by(MasterCouriers.courier_name).all()

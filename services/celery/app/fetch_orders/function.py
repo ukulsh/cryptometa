@@ -34,35 +34,40 @@ def fetch_orders(client_prefix=None, sync_all=None):
             try:
                 fetch_shopify_orders(cur, channel, manual=True if client_prefix else None)
             except Exception as e:
-                conn.rollback()
+                cur.execute("UPDATE client_channel SET connection_status=false, status=false WHERE id=%s;" % str(channel[0]))
+                conn.commit()
                 logger.error("Couldn't fetch orders: " + str(channel[1]) + "\nError: " + str(e.args))
 
         elif channel[11] == "WooCommerce":
             try:
                 fetch_woocommerce_orders(cur, channel, manual=True if client_prefix else None)
             except Exception as e:
-                conn.rollback()
+                cur.execute("UPDATE client_channel SET connection_status=false, status=false WHERE id=%s;" % str(channel[0]))
+                conn.commit()
                 logger.error("Couldn't fetch orders: " + str(channel[1]) + "\nError: " + str(e.args))
 
         elif channel[11] == "Magento 2":
             try:
                 fetch_magento_orders(cur, channel, manual=True if client_prefix else None)
             except Exception as e:
-                conn.rollback()
+                cur.execute("UPDATE client_channel SET connection_status=false, status=false WHERE id=%s;" % str(channel[0]))
+                conn.commit()
                 logger.error("Couldn't fetch orders: " + str(channel[1]) + "\nError: " + str(e.args))
 
         elif channel[11] == "EasyEcom":
             try:
                 fetch_easyecom_orders(cur, channel, manual=True if client_prefix else None)
             except Exception as e:
-                conn.rollback()
+                cur.execute("UPDATE client_channel SET connection_status=false, status=false WHERE id=%s;" % str(channel[0]))
+                conn.commit()
                 logger.error("Couldn't fetch orders: " + str(channel[1]) + "\nError: " + str(e.args))
 
         elif channel[11] == "Bikayi":
             try:
                 fetch_bikayi_orders(cur, channel, manual=True if client_prefix else None)
             except Exception as e:
-                conn.rollback()
+                cur.execute("UPDATE client_channel SET connection_status=false, status=false WHERE id=%s;" % str(channel[0]))
+                conn.commit()
                 logger.error("Couldn't fetch orders: " + str(channel[1]) + "\nError: " + str(e.args))
 
     if not client_prefix:
@@ -358,11 +363,14 @@ def fetch_woocommerce_orders(cur, channel, manual=None):
         try:
             data += r.json()
             total_cnt = len(r.json())
-            time_after = r.json()[-1]['date_created']
-            time_after = datetime.strptime(time_after, '%Y-%m-%dT%H:%M:%S')
+            if r.json():
+                time_after = r.json()[-1]['date_created']
+                time_after = datetime.strptime(time_after, '%Y-%m-%dT%H:%M:%S')
         except Exception as e:
-            total_cnt = 0
+            cur.execute("UPDATE client_channel SET connection_status=false, status=false WHERE id=%s;"%str(channel[0]))
+            conn.commit()
             logger.error("Client order fetch failed for: " + str(channel[0]) + "\nError: " + str(e.args[0]))
+            return None
     if type(data) != list:
         logger.error("Client order fetch failed for: " + str(channel[0]))
         return None

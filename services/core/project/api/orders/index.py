@@ -112,7 +112,7 @@ class OrderList(Resource):
             if type == 'new':
                 query_to_run = query_to_run.replace("__TAB_STATUS_FILTER__", "AND aa.status = 'NEW' AND gg.payment_mode!='Pickup'")
             elif type == 'ready_to_ship':
-                query_to_run = query_to_run.replace("__TAB_STATUS_FILTER__", "AND aa.status = 'READY TO SHIP' AND gg.payment_mode!='Pickup'")
+                query_to_run = query_to_run.replace("__TAB_STATUS_FILTER__", "AND aa.status in ('READY TO SHIP', 'PICKUP REQUESTED') AND gg.payment_mode!='Pickup'")
             elif type == 'shipped':
                 query_to_run = query_to_run.replace("__TAB_STATUS_FILTER__", "AND aa.status not in ('NEW', 'READY TO SHIP', 'PICKUP REQUESTED','NOT PICKED','CANCELED', 'CLOSED', 'NOT SHIPPED') AND gg.payment_mode!='Pickup'")
             elif type == "return":
@@ -418,12 +418,12 @@ def get_orders_filters(resp):
         if client_qs:
             client_qs = client_qs.filter(Orders.status=="NEW")
     if current_tab=="ready_to_ship":
-        status_qs = status_qs.filter(Orders.status.in_(["READY TO SHIP"]))
-        courier_qs = courier_qs.filter(Orders.status.in_(["READY TO SHIP"]))
-        pickup_point_qs = pickup_point_qs.filter(Orders.status.in_(["READY TO SHIP"]))
-        channel_qs = channel_qs.filter(Orders.status.in_(["READY TO SHIP"]))
+        status_qs = status_qs.filter(Orders.status.in_(["READY TO SHIP", "PICKUP REQUESTED"]))
+        courier_qs = courier_qs.filter(Orders.status.in_(["READY TO SHIP", "PICKUP REQUESTED"]))
+        pickup_point_qs = pickup_point_qs.filter(Orders.status.in_(["READY TO SHIP", "PICKUP REQUESTED"]))
+        channel_qs = channel_qs.filter(Orders.status.in_(["READY TO SHIP", "PICKUP REQUESTED"]))
         if client_qs:
-            client_qs = client_qs.filter(Orders.status.in_(["READY TO SHIP"]))
+            client_qs = client_qs.filter(Orders.status.in_(["READY TO SHIP", "PICKUP REQUESTED"]))
     if current_tab=="rvp":
         status_qs = status_qs.filter(OrdersPayments.payment_mode=='Pickup')
         courier_qs = courier_qs.filter(OrdersPayments.payment_mode=='Pickup')

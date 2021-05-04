@@ -62,6 +62,8 @@ class ClientChannelIntegration(Resource):
             client_channel.invoiced_status = post_data.get('invoiced_status')
             client_channel.sync_inventory = post_data.get('sync_inventory')
             client_channel.status = post_data.get('status')
+            if post_data.get('status'):
+                client_channel.connection_status = post_data.get('status')
             db.session.commit()
             response_object['status'] = 'success'
             return response_object, 200

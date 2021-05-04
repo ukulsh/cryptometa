@@ -636,6 +636,38 @@ def freshdesk_url_new(auth_data):
 
 @core_blueprint.route('/core/dev', methods=['POST'])
 def ping_dev():
+    # from .models import PickupPoints, ReturnPoints, ClientPickups
+    # myfile = request.files['myfile']
+    # data_xlsx = pd.read_excel(myfile)
+    # iter_rw = data_xlsx.iterrows()
+    # for row in iter_rw:
+    #     pickup_point = db.session.query(PickupPoints).filter(PickupPoints.warehouse_prefix==str(row[1].warehouse_prefix)).first()
+    #     pickup_point.name = str(row[1].contactname)
+    #     pickup_point = db.session.query(ReturnPoints).filter(ReturnPoints.warehouse_prefix == str(row[1].warehouse_prefix)).first()
+    #     pickup_point.name = str(row[1].contactname)
+    #     db.session.commit()
+
+    # from .models import Orders, ShippingAddress
+    # cur = conn.cursor()
+    # cur.execute("""select * from orders where status='NEW' and delivery_address_id is null and client_prefix='MASTERCHOW'""")
+    # all_orders = cur.fetchall()
+    # for order in all_orders:
+    #     order_qs = db.session.query(Orders).filter(Orders.id==order[0]).first()
+    #     sh_qs = ShippingAddress(first_name=order_qs.billing_address.first_name,
+    #                             last_name=order_qs.billing_address.last_name,
+    #                             address_one=order_qs.billing_address.address_one,
+    #                             address_two=order_qs.billing_address.address_two,
+    #                             city=order_qs.billing_address.city,
+    #                             pincode=order_qs.billing_address.pincode,
+    #                             state=order_qs.billing_address.state,
+    #                             country=order_qs.billing_address.country,
+    #                             phone=order_qs.billing_address.phone,
+    #                             country_code=order_qs.billing_address.country_code,
+    #                             latitude=order_qs.billing_address.latitude,
+    #                             longitude=order_qs.billing_address.longitude,
+    #                             )
+    #     order_qs.delivery_address = sh_qs
+    #     db.session.commit()
     # cur = conn.cursor()
     # myfile = request.files['myfile']
     # data_xlsx = pd.read_excel(myfile)

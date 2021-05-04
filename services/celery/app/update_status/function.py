@@ -73,6 +73,9 @@ def track_delhivery_orders(courier, cur):
         except Exception as e:
             logger.error("Status Tracking Failed for: " + awb_string + "\nError: " + str(e.args[0]))
             if e.args[0] == 'ShipmentData':
+                if len(some_orders)>25:
+                    smaller_chunks = [some_orders[x:x + 20] for x in range(0, len(some_orders), 20)]
+                    chunks += smaller_chunks
                 sms_to_key = "Messages[%s][To]" % str(exotel_idx)
                 sms_body_key = "Messages[%s][Body]" % str(exotel_idx)
                 sms_body_key_data = "Status Update Fail Alert"

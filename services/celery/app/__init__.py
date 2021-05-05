@@ -78,6 +78,11 @@ app.config['CELERYBEAT_SCHEDULE'] = {
                         'schedule': crontab(hour=18, minute=00),
                         'options': {'queue': 'calculate_costs'}
                     },
+    'create-pickups-entry': {
+                            'task': 'create_pickups_entry',
+                            'schedule': crontab(hour=2, minute=45, day_of_week='mon,tue,wed,thu,fri,sat'),
+                            'options': {'queue': 'calculate_costs'}
+                        },
 }
 
 app.config['CELERY_TIMEZONE'] = 'UTC'
@@ -115,6 +120,12 @@ def sync_all_inventory():
     update_available_quantity_from_easyecom()
     update_available_quantity_on_channel()
     return 'successfully completed sync_all_inventory'
+
+
+@celery_app.task(name='create_pickups_entry')
+def create_pickups_entry():
+    create_pickups_entry_util()
+    return 'successfully completed create_pickups_entry'
 
 
 @celery_app.task(name='status_update')

@@ -122,3 +122,29 @@ update_easyecom_inventory_query = """update products_quantity
 insert_easyecom_inventory_query = """INSERT into products_quantity (product_id, available_quantity, warehouse_prefix, status, current_quantity, inline_quantity, total_quantity) 
                                     select aa.id, %s, %s, 'APPROVED', %s, %s, %s from master_products aa 
                                     where client_prefix=%s and sku=%s"""
+
+get_pickup_requests_query = """select aa.pickup_data_id,  bb.courier_id, dd.warehouse_prefix, aa.id, dd.id from orders aa
+                                left join shipments bb on aa.id=bb.order_id
+                                left join client_pickups cc on aa.pickup_data_id=cc.id
+                                left join pickup_points dd on cc.pickup_id=dd.id
+                                where aa.status in ('READY TO SHIP', 'PICKUP REQUESTED')
+                                and bb.id is not null"""
+
+insert_manifest_query = """INSERT into manifests (manifest_id, warehouse_prefix, courier_id, client_pickup_id, 
+                            pickup_id, pickup_date, manifest_url, total_scheduled) VALUES (%s,%s,%s,%s,%s,%s,%s,%s) returning id;"""
+
+insert_order_pickups_query = """INSERT INTO order_pickups (manifest_id, order_id, picked) VALUES __INSERT_STR__ ON CONFLICT 
+                                (order_id, manifest_id) DO NOTHING;"""
+
+mark_30_days_old_orders_not_shipped = """update orders set status='NOT SHIPPED' where id in
+                                        (select order_id from order_status aa
+                                        left join orders bb on aa.order_id=bb.id
+                                        where aa.status='Received'
+                                        and aa.status_time<(NOW() - interval '30 day')
+                                        and bb.status in ('READY TO SHIP', 'PICKUP REQUESTED'));
+                                        
+                                        update orders set status='NEW' where id in
+                                        (select aa.id from orders aa 
+                                        left join shipments bb on aa.id=bb.order_id
+                                        where aa.status in ('READY TO SHIP', 'PICKUP REQUESTED')
+                                        and bb.id is null);"""

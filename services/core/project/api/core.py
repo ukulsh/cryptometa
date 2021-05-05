@@ -454,7 +454,7 @@ def consume_x_payout():
 def thirdwatch_webhook():
     try:
         webhook_body = json.loads(request.data)
-        client = db.session.query(ClientChannel).filter(ClientChannel.unique_parameter==webhook_body['merchant_identifier']).first()
+        client = db.session.query(ClientMapping).filter(ClientMapping.unique_parameter==webhook_body['merchant_identifier']).first()
         if not client:
             return jsonify({"success": False, "msg": "Merchant not found"}), 400
 

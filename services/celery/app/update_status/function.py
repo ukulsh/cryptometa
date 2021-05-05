@@ -188,7 +188,7 @@ def track_delhivery_orders(courier, cur):
 
             new_status = new_status.upper()
 
-            if (orders_dict[current_awb][2]=='CANCELED' and new_status!='IN TRANSIT') or new_status in ('READY TO SHIP', 'NOT PICKED'):
+            if (orders_dict[current_awb][2]=='CANCELED' and new_status!='IN TRANSIT') or new_status in ('READY TO SHIP', 'NOT PICKED', 'PICKUP REQUESTED'):
                 continue
 
             status_type = ret_order['Shipment']['Status']['StatusType']
@@ -396,7 +396,7 @@ def track_shadowfax_orders(courier, cur):
                     status_type = "UD"
                     new_status_temp = new_status_temp.upper()
                     status_detail = None
-            if new_status_temp == "READY TO SHIP":
+            if new_status_temp in ("READY TO SHIP", "PICKUP REQUESTED"):
                 continue
             new_status = new_status_temp
 
@@ -585,7 +585,7 @@ def track_xpressbees_orders(courier, cur):
             except KeyError:
                 new_status_temp = new_status_temp.upper()
                 status_type = None
-            if new_status_temp == "READY TO SHIP":
+            if new_status_temp in ("READY TO SHIP", "PICKUP REQUESTED"):
                 continue
             new_status = new_status_temp
 
@@ -652,6 +652,12 @@ def track_xpressbees_orders(courier, cur):
                             ndr_reason = 2
                         elif "amount not ready" in ret_order['ShipmentSummary'][0]['Status'].lower():
                             ndr_reason = 15
+                        elif "customer not available" in ret_order['ShipmentSummary'][0]['Status'].lower():
+                            ndr_reason = 1
+                        elif "entry not permitted" in ret_order['ShipmentSummary'][0]['Status'].lower():
+                            ndr_reason = 7
+                        elif "customer refused to accept" in ret_order['ShipmentSummary'][0]['Status'].lower():
+                            ndr_reason = 3
                         else:
                             ndr_reason = 14
                         verification_text(orders_dict[current_awb], cur, ndr_reason=ndr_reason)
@@ -823,7 +829,7 @@ def track_bluedart_orders(courier, cur):
                 new_status='RTO'
 
             status_type = ret_order['StatusType']
-            if new_status in ('NOT PICKED', 'READY TO SHIP'):
+            if new_status in ('NOT PICKED', 'READY TO SHIP', 'PICKUP REQUESTED'):
                 continue
             status_detail = None
             status_code = scan_code
@@ -966,7 +972,7 @@ def track_ecomxp_orders(courier, cur):
             status_detail = None
             status_code = scan_code
 
-            if (orders_dict[current_awb][2]=='CANCELED' and new_status!='IN TRANSIT') or new_status=='READY TO SHIP':
+            if (orders_dict[current_awb][2]=='CANCELED' and new_status!='IN TRANSIT') or new_status in ('READY TO SHIP', 'PICKUP REQUESTED'):
                 continue
 
             try:

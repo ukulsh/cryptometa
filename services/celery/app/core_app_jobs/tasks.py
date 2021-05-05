@@ -2,7 +2,7 @@ from .contants import *
 from .queries import *
 from .utils import *
 from datetime import datetime
-import json
+import json, random, string
 from woocommerce import API
 from math import ceil
 from app.db_utils import DbConnection
@@ -1015,87 +1015,119 @@ def update_available_quantity_from_easyecom():
             all_skus = cur.fetchone()[0]
             chunks = [all_skus[x:x + 20] for x in range(0, len(all_skus), 20)]
             for chunk in chunks:
-                req_url = "https://api.easyecom.io/wms/V2/getInventoryDetails?api_token=%s&includeLocations=1&sku=%s"%(client[1], ",".join(chunk))
-                while req_url:
-                    req = requests.get(req_url)
-                    req_data = req.json()
+                try:
+                    req_url = "https://api.easyecom.io/wms/V2/getInventoryDetails?api_token=%s&includeLocations=1&sku=%s"%(client[1], ",".join(chunk))
+                    while req_url:
+                        req = requests.get(req_url)
+                        req_data = req.json()
 
-                    inventory_dict = dict()
+                        inventory_dict = dict()
 
-                    for req in req_data['data']['inventoryData']:
-                        if req['companyName'] not in inventory_dict:
-                            inventory_dict[req['companyName']] = [(req['sku'], int(req['availableInventory']) if req['availableInventory'] else 0,
-                                                                   int(req['reservedInventory']) if req['reservedInventory'] else 0)]
-                        else:
-                            inventory_dict[req['companyName']].append((req['sku'], int(req['availableInventory']) if req['availableInventory'] else 0,
-                                                                   int(req['reservedInventory']) if req['reservedInventory'] else 0))
-
-                    for ee_loc, val_list in inventory_dict.items():
-                        cur.execute("""select bb.warehouse_prefix from client_pickups aa
-                                                                left join pickup_points bb on aa.pickup_id=bb.id
-                                                                where aa.easyecom_loc_code='%s'""" % ee_loc)
-                        try:
-                            warehouse_prefix = cur.fetchone()[0]
-                        except Exception:
-                            continue
-
-                        for val_tuple in val_list:
-                            cur.execute("""select * from products_quantity aa
-                            left join master_products bb on aa.product_id=bb.id
-                            where aa.warehouse_prefix='%s' and bb.sku='%s'"""%(warehouse_prefix, val_tuple[0]))
-
-                            if cur.fetchall():
-                                cur.execute(update_easyecom_inventory_query, (val_tuple[1], val_tuple[2], val_tuple[1]+val_tuple[2], warehouse_prefix, val_tuple[0], client[0]))
+                        for req in req_data['data']['inventoryData']:
+                            if req['companyName'] not in inventory_dict:
+                                inventory_dict[req['companyName']] = [(req['sku'], int(req['availableInventory']) if req['availableInventory'] else 0,
+                                                                       int(req['reservedInventory']) if req['reservedInventory'] else 0)]
                             else:
-                                cur.execute(insert_easyecom_inventory_query, (val_tuple[1], warehouse_prefix, val_tuple[1]+val_tuple[2], val_tuple[2], val_tuple[1], client[0], val_tuple[0]))
+                                inventory_dict[req['companyName']].append((req['sku'], int(req['availableInventory']) if req['availableInventory'] else 0,
+                                                                       int(req['reservedInventory']) if req['reservedInventory'] else 0))
 
-                        conn.commit()
+                        for ee_loc, val_list in inventory_dict.items():
+                            cur.execute("""select bb.warehouse_prefix from client_pickups aa
+                                                                    left join pickup_points bb on aa.pickup_id=bb.id
+                                                                    where aa.easyecom_loc_code='%s'""" % ee_loc)
+                            try:
+                                warehouse_prefix = cur.fetchone()[0]
+                            except Exception:
+                                continue
 
-                    req_url = "https://api.easyecom.io"+req_data['data']['nextUrl'] if req_data['data']['nextUrl'] else None
+                            for val_tuple in val_list:
+                                cur.execute("""select * from products_quantity aa
+                                left join master_products bb on aa.product_id=bb.id
+                                where aa.warehouse_prefix='%s' and bb.sku='%s'"""%(warehouse_prefix, val_tuple[0]))
+
+                                if cur.fetchall():
+                                    cur.execute(update_easyecom_inventory_query, (val_tuple[1], val_tuple[2], val_tuple[1]+val_tuple[2], warehouse_prefix, val_tuple[0], client[0]))
+                                else:
+                                    cur.execute(insert_easyecom_inventory_query, (val_tuple[1], warehouse_prefix, val_tuple[1]+val_tuple[2], val_tuple[2], val_tuple[1], client[0], val_tuple[0]))
+
+                            conn.commit()
+
+                        req_url = "https://api.easyecom.io"+req_data['data']['nextUrl'] if req_data['data']['nextUrl'] else None
+                except Exception as e:
+                    conn.rollback()
+                    logger.error("Couldn't update inventory for: " + str(client[0]) + "\nError: " + str(e.args)+"\nSKUs: "+str(chunk))
         except Exception as e:
+            conn.rollback()
             logger.error("Couldn't update inventory for: "+str(client[0])+"\nError: "+str(e.args))
 
 
 def update_available_quantity_on_channel():
     cur = conn.cursor()
-    cur.execute("""SELECT client_prefix, channel_id, api_key, api_password, shop_url FROM client_channel WHERE sync_inventory=true;""")
+    cur.execute("""SELECT client_prefix, channel_id, api_key, api_password, shop_url, unique_parameter FROM client_channel WHERE sync_inventory=true and connection_status=true and status=true;""")
     all_channels = cur.fetchall()
 
     for channel in all_channels:
-        if channel[1]==6: #mangento sync
-            cur.execute("""select sku, sum(available_quantity) as available_quantity from products_quantity aa
-                                left join master_products bb on aa.product_id=bb.id
-                                where bb.client_prefix='__CLIENT_PREFIX__'
-                                group by sku
-                                order by available_quantity""".replace('__CLIENT_PREFIX__', channel[0]))
+        try:
+            if channel[1]==6: #mangento sync
+                cur.execute("""select sku, sum(available_quantity) as available_quantity from products_quantity aa
+                                    left join master_products bb on aa.product_id=bb.id
+                                    where bb.client_prefix='__CLIENT_PREFIX__'
+                                    group by sku
+                                    order by available_quantity""".replace('__CLIENT_PREFIX__', channel[0]))
 
-            all_quan = cur.fetchall()
-            source_items = list()
-            headers = {'Authorization': "Bearer " + channel[2],
-                       'Content-Type': 'application/json',
-                       'User-Agent': 'WareIQ server'}
-            for quan in all_quan:
-                update_quan = quan[1]
-                try:
-                    if update_quan>0:
-                        reserved_quan = requests.get("%s/V1/reserved-products/get/sku/%s"%(channel[4], quan[0]), headers=headers).json()
-                        reserved_quan = reserved_quan['quantity']
-                        update_quan -= reserved_quan if reserved_quan<0 else 0
-                    else:
-                        update_quan=0
-                    source_items.append({
-                        "sku": quan[0],
-                        "source_code": "default",
-                        "quantity": max(update_quan, 0),
-                        "status": 1
-                    })
-                except Exception as e:
-                    pass
+                all_quan = cur.fetchall()
+                source_items = list()
+                headers = {'Authorization': "Bearer " + channel[2],
+                           'Content-Type': 'application/json',
+                           'User-Agent': 'WareIQ server'}
+                for quan in all_quan:
+                    update_quan = quan[1]
+                    try:
+                        if update_quan>0:
+                            reserved_quan = requests.get("%s/V1/reserved-products/get/sku/%s"%(channel[4], quan[0]), headers=headers).json()
+                            reserved_quan = reserved_quan['quantity']
+                            update_quan -= reserved_quan if reserved_quan<0 else 0
+                        else:
+                            update_quan=0
+                        source_items.append({
+                            "sku": quan[0],
+                            "source_code": "default",
+                            "quantity": max(update_quan, 0),
+                            "status": 1
+                        })
+                    except Exception as e:
+                        pass
 
-            magento_url = channel[4]+ "/V1/inventory/source-items"
-            body = {
-                "sourceItems": source_items}
-            r = requests.post(magento_url, headers=headers, data=json.dumps(body))
+                magento_url = channel[4]+ "/V1/inventory/source-items"
+                body = {
+                    "sourceItems": source_items}
+                r = requests.post(magento_url, headers=headers, data=json.dumps(body))
+
+            elif channel[1]==1: #shopify sync
+                cur.execute("""select cc.sku, sum(available_quantity) as available_quantity from products_quantity aa
+                                    left join master_products bb on aa.product_id=bb.id
+                                    left join products cc on cc.master_product_id=bb.id
+                                    where bb.client_prefix='__CLIENT_PREFIX__'
+                                    and cc.sku is not null
+                                    group by cc.sku
+                                    order by available_quantity""".replace('__CLIENT_PREFIX__', channel[0]))
+
+                all_quan = cur.fetchall()
+                headers = {'Content-Type': 'application/json'}
+                url = "https://%s:%s@%s/admin/api/2021-04/inventory_levels/set.json" % (channel[2], channel[3], channel[4])
+                for quan in all_quan:
+                    fulfil_data = {
+                                      "location_id": int(channel[5]),
+                                      "inventory_item_id": int(quan[0]),
+                                      "available": quan[1] if quan[1] and quan[1]>0 else 0,
+                                      "disconnect_if_necessary": True
+                                    }
+                    req_ful = requests.post(url, data=json.dumps(fulfil_data), headers=headers)
+                    if req_ful.status_code == 403:
+                        break
+
+        except Exception as e:
+            logger.error("Couldn't sync inventory to channel: "+str(channel[0]) + "\nError: "+str(e.args))
 
 
 def ndr_push_reattempts_util():
@@ -1204,4 +1236,53 @@ def ndr_push_reattempts_util():
 
         except Exception as e:
             logger.error("NDR push failed for: " + order[0])
+
+
+def create_pickups_entry_util():
+    try:
+        cur = conn.cursor()
+        cur.execute(mark_30_days_old_orders_not_shipped)
+        conn.commit()
+        cur.execute(get_pickup_requests_query)
+        orders_qs = cur.fetchall()
+
+        pur_dict = dict()
+
+        for order in orders_qs:
+            if order[0] not in pur_dict:
+                pur_dict[order[0]] = {order[1]: [order]}
+            elif order[1] not in pur_dict[order[0]]:
+                pur_dict[order[0]][order[1]] = [order]
+            else:
+                pur_dict[order[0]][order[1]].append(order)
+
+        pickup_time_ist = datetime.utcnow() + timedelta(hours=5.5)
+        if pickup_time_ist.hour > 15:
+            pickup_time_ist = pickup_time_ist + timedelta(days=1)
+        pickup_time_str = pickup_time_ist.strftime("%Y-%m-%d")
+        for pickup_data_id, courier_dict in pur_dict.items():
+            for courier_id, order_list in courier_dict.items():
+                cur.execute("SELECT id FROM manifests WHERE client_pickup_id=%s and courier_id=%s and pickup_date>='%s'"%(str(pickup_data_id), str(courier_id), pickup_time_str))
+                try:
+                    manifest_id = cur.fetchone()[0]
+                except Exception:
+                    manifest_id_str = pickup_time_ist.strftime('%Y_%m_%d_') + ''.join(random.choices(string.ascii_uppercase, k=8))
+
+                    cur.execute(insert_manifest_query, (manifest_id_str, order_list[0][2], courier_id, pickup_data_id,
+                                                        order_list[0][4], pickup_time_ist.replace(hour=13, minute=0, second=0), "", len(order_list)))
+
+                    manifest_id = cur.fetchone()[0]
+
+                pickups_insert_list = list()
+                pickups_insert_str = ""
+                for order in order_list:
+                    pickups_insert_str += "%s,"
+                    pickups_insert_list.append((manifest_id, order[3], False))
+
+                cur.execute(insert_order_pickups_query.replace('__INSERT_STR__', pickups_insert_str.strip(",")), tuple(pickups_insert_list))
+
+            conn.commit()
+        conn.commit()
+    except Exception:
+        conn.rollback()
 

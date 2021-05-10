@@ -58,8 +58,6 @@ def fetch_orders(client_prefix=None, sync_all=None):
             try:
                 fetch_easyecom_orders(cur, channel, manual=True if client_prefix else None)
             except Exception as e:
-                cur.execute("UPDATE client_channel SET connection_status=false, status=false WHERE id=%s;" % str(channel[0]))
-                conn.commit()
                 logger.error("Couldn't fetch orders: " + str(channel[1]) + "\nError: " + str(e.args))
 
         elif channel[11] == "Bikayi":
@@ -187,7 +185,7 @@ def fetch_shopify_orders(cur, channel, manual=None):
                 billing_address_id = cur.fetchone()[0]
 
             channel_order_id = str(order['order_number'])
-            if channel[16]:
+            if channel[16] and len(channel[16])<5:
                 channel_order_id = str(channel[16]) + channel_order_id
 
             orders_tuple = (
@@ -307,9 +305,13 @@ def fetch_shopify_orders(cur, channel, manual=None):
                 op_tuple = (product_id, order_id, prod['quantity'], float(prod['quantity'] * float(prod['price'])), None, json.dumps(tax_lines), master_product_id)
                 cur.execute(insert_op_association_query, op_tuple)
 
+            cur.execute("UPDATE failed_orders SET synced=true WHERE order_id_channel_unique=%s and client_channel_id=%s", (str(order['id']), channel[0]))
+
         except Exception as e:
-            logger.error("order fetch failed for" + str(order['order_number']) + "\nError:" + str(e))
             conn.rollback()
+            cur.execute(insert_failed_order_query, (str(order['order_number']), order['created_at'], "", "", "", str(e.args[0]),
+                                                    False, channel[1], channel[0], 1, str(order['id']), datetime.utcnow()))
+            logger.error("order fetch failed for" + str(order['order_number']) + "\nError:" + str(e))
 
         conn.commit()
 
@@ -442,7 +444,7 @@ def fetch_woocommerce_orders(cur, channel, manual=None):
             insert_status = "NEW"
 
             channel_order_id = str(order['number'])
-            if channel[16]:
+            if channel[16] and len(channel[16])<5:
                 channel_order_id = str(channel[16]) + channel_order_id
 
             orders_tuple = (
@@ -528,7 +530,12 @@ def fetch_woocommerce_orders(cur, channel, manual=None):
 
                 cur.execute(insert_op_association_query, op_tuple)
 
+            cur.execute("UPDATE failed_orders SET synced=true WHERE order_id_channel_unique=%s and client_channel_id=%s", (str(order['id']), channel[0]))
+
         except Exception as e:
+            conn.rollback()
+            cur.execute(insert_failed_order_query, (str(order['number']), order['date_created'], "", "", "", str(e.args[0]), False, channel[1], channel[0], 5,
+                         str(order['id']), datetime.utcnow()))
             logger.error("order fetch failed for" + str(order['number']) + "\nError:" + str(e))
 
     if data:
@@ -652,7 +659,7 @@ def fetch_magento_orders(cur, channel, manual=None):
 
             order_time = datetime.strptime(order['created_at'], "%Y-%m-%d %X") + timedelta(hours=5.5)
             channel_order_id = str(order['increment_id'])
-            if channel[16]:
+            if channel[16] and len(channel[16])<5:
                 channel_order_id = str(channel[16]) + channel_order_id
             orders_tuple = (
                 channel_order_id, order_time, customer_name, order['customer_email'],
@@ -725,7 +732,12 @@ def fetch_magento_orders(cur, channel, manual=None):
             if mark_delivered and channel[1]=='KAMAAYURVEDA':
                 cur.execute("UPDATE orders SET status='DELIVERED' WHERE id=%s", (order_id, ))
 
+            cur.execute("UPDATE failed_orders SET synced=true WHERE order_id_channel_unique=%s and client_channel_id=%s", (str(order['increment_id']), channel[0]))
+
         except Exception as e:
+            conn.rollback()
+            cur.execute(insert_failed_order_query, (str(order['increment_id']), datetime.strptime(order['created_at'], "%Y-%m-%d %X") + timedelta(hours=5.5),
+                         "" ,"" , "", str(e.args[0]), False, channel[1], channel[0], 6, str(order['increment_id']), datetime.utcnow()))
             logger.error("order fetch failed for" + str(order['increment_id']) + "\nError:" + str(e))
 
     if data['items']:
@@ -744,15 +756,22 @@ def fetch_easyecom_orders(cur, channel, manual=None):
         created_after = datetime.utcnow() - timedelta(days=30)
         created_after = created_after.strftime("%Y-%m-%d %X")
 
-    fetch_status="2,3"
+    fetch_status="1,2,3"
     if channel[15]:
         fetch_status = ','.join(str(x) for x in channel[15])
-    easyecom_orders_url = "%s/orders/getAllOrders?api_token=%s&created_after=%s&status_id=%s" % (channel[5], channel[3], created_after, fetch_status)
-    data = requests.get(easyecom_orders_url).json()
+    data = list()
     last_synced_time = datetime.utcnow() + timedelta(hours=5.5)
-    if 'data' not in data:
+    easyecom_orders_url = "%s/orders/V2/getAllOrders?api_token=%s&created_after=%s&status_id=%s" % (channel[5], channel[3], created_after, fetch_status)
+    while easyecom_orders_url:
+        req = requests.get(easyecom_orders_url).json()
+        if req['data']:
+            data += req['data']['orders']
+            easyecom_orders_url = "https://api.easyecom.io"+req['data']['nextUrl'] if req['data']['nextUrl'] else None
+        else:
+            easyecom_orders_url = None
+    if not data:
         return None
-    for order in data['data']:
+    for order in data:
         try:
             cur.execute("SELECT id from orders where order_id_channel_unique='%s' and client_prefix='%s'" % (
             str(order['invoice_id']), channel[1]))
@@ -764,7 +783,6 @@ def fetch_easyecom_orders(cur, channel, manual=None):
             if existing_order:
                 continue
 
-            pickup_data_id = None
             try:
                 cur.execute(
                     "SELECT aa.id FROM client_pickups aa "
@@ -772,11 +790,21 @@ def fetch_easyecom_orders(cur, channel, manual=None):
                     "and aa.easyecom_loc_code='%s';" % (str(channel[1]), order['company_name']))
                 pickup_data_id = cur.fetchone()[0]
             except Exception:
+                pickup_data_id = update_easyecom_wh_mapping(order, channel[1], cur)
                 pass
+
+            failed_order = None
+            for item in order['suborders']:
+                if item['item_status'] == 'Pending':
+                    failed_order = True
+                    break
+
+            if failed_order:
+                raise Exception("Inventory not assigned")
 
             customer_name = order['customer_name']
 
-            customer_phone = order['contactNum']
+            customer_phone = order['contact_num']
             customer_phone = ''.join(e for e in str(customer_phone) if e.isalnum())
             customer_phone = "0" + customer_phone[-10:]
 
@@ -815,8 +843,6 @@ def fetch_easyecom_orders(cur, channel, manual=None):
             billing_address_id = cur.fetchone()[0]
 
             channel_order_id = str(order['reference_code'])
-            if channel[16]:
-                channel_order_id = str(channel[16]) + channel_order_id
 
             order_status="NEW"
             if order['courier']!='Self Ship' or order['payment_mode'] is None:
@@ -883,18 +909,12 @@ def fetch_easyecom_orders(cur, channel, manual=None):
                     product_id = cur.fetchone()[0]
 
                 tax_lines = list()
-                selling_price = prod['Item_Amount_Excluding_Tax']
+                selling_price = prod.get('selling_price', 0)
+                if selling_price:
+                    selling_price = float(selling_price)
                 try:
-                    if prod.get('Item_Amount_IGST'):
-                        tax_lines.append({'title': "GST",
-                                          'rate': prod['Item_Amount_IGST']/prod['Item_Amount_Excluding_Tax']})
-                        selling_price += prod['Item_Amount_IGST']
-                    else:
-                        tax_lines.append({'title': "CGST",
-                                          'rate': prod['Item_Amount_CGST']/prod['Item_Amount_Excluding_Tax']})
-                        tax_lines.append({'title': "SGST",
-                                          'rate': prod['Item_Amount_SGST']/prod['Item_Amount_Excluding_Tax']})
-                        selling_price += prod['Item_Amount_CGST']+prod['Item_Amount_SGST']
+                    tax_lines.append({'title': "GST",
+                                      'rate': prod['tax_rate']/100})
                 except Exception as e:
                     logger.error("Couldn't fetch tax for: " + str(order_id))
 
@@ -907,7 +927,7 @@ def fetch_easyecom_orders(cur, channel, manual=None):
                 except Exception as e:
                     pass
 
-                op_tuple = (product_id, order_id, prod['quantity'], float(prod['quantity'] * round(float(selling_price), 1)), None, json.dumps(tax_lines), master_product_id)
+                op_tuple = (product_id, order_id, prod['item_quantity'], float(prod['item_quantity'] * round(float(selling_price), 1)), None, json.dumps(tax_lines), master_product_id)
                 cur.execute(insert_op_association_query, op_tuple)
 
             subtotal_amount = total_amount - shipping_amount
@@ -924,15 +944,20 @@ def fetch_easyecom_orders(cur, channel, manual=None):
                 shipping_amount, "INR", order_id)
 
             cur.execute(insert_payments_data_query, payments_tuple)
+            cur.execute("UPDATE failed_orders SET synced=true WHERE order_id_channel_unique=%s and client_channel_id=%s", (str(order['invoice_id']), channel[0]))
 
         except Exception as e:
-            logger.error("order fetch failed for" + str(order['order_id']) + "\nError:" + str(e))
             conn.rollback()
+            cur.execute(insert_failed_order_query, (str(order['reference_code']), order['order_date'], order['customer_name'], "",
+                                                    order['contact_num'], str(e.args[0]), False, channel[1], channel[0],
+                                                    easyecom_wareiq_channel_map[order['marketplace']] if order['marketplace'] in easyecom_wareiq_channel_map else None,
+                                                    order['invoice_id'], datetime.utcnow()))
+            logger.error("order fetch failed for" + str(order['order_id']) + "\nError:" + str(e))
 
         conn.commit()
 
-    if data['data']:
-        last_sync_tuple = (str(data['data'][-1]['order_id']), last_synced_time, channel[0])
+    if data:
+        last_sync_tuple = (str(data[-1]['order_id']), last_synced_time, channel[0])
         cur.execute(update_last_fetched_data_query, last_sync_tuple)
 
     conn.commit()
@@ -1031,8 +1056,7 @@ def fetch_bikayi_orders(cur, channel, manual=None):
 
             order_time = datetime.fromtimestamp(order['date'])
             channel_order_id = str(order['orderId'])
-            if channel[16]:
-                channel_order_id = str(channel[16]) + channel_order_id
+
             orders_tuple = (
                 channel_order_id, order_time, customer_name, "",
                 customer_phone if customer_phone else "", shipping_address_id, billing_address_id,
@@ -1084,7 +1108,14 @@ def fetch_bikayi_orders(cur, channel, manual=None):
                 op_tuple = (product_id, order_id, prod['quantity'], None, None, json.dumps(tax_lines), master_product_id)
                 cur.execute(insert_op_association_query, op_tuple)
 
+            cur.execute("UPDATE failed_orders SET synced=true WHERE order_id_channel_unique=%s and client_channel_id=%s", (str(order['orderId']), channel[0]))
+
         except Exception as e:
+            conn.rollback()
+            cur.execute(insert_failed_order_query,
+                        (str(order['orderId']), datetime.fromtimestamp(order['date']), order['customerName'], "",
+                         order['customerPhone'], str(e.args[0]), False, channel[1], channel[0], 8,
+                         str(order['orderId']), datetime.utcnow()))
             logger.error("order fetch failed for" + str(order['orderId']) + "\nError:" + str(e))
 
     if data['orders']:
@@ -1383,3 +1414,17 @@ easyecom_wareiq_channel_map = {"Amazon.in": 2,
                                }
 
 easyecom_wareiq_courier_map = {"eKart": 7}
+
+
+def update_easyecom_wh_mapping(order, client_prefix, cur):
+    try:
+        cur.execute("""select aa.id from client_pickups aa
+                        left join pickup_points bb on aa.pickup_id=bb.id
+                        where aa.client_prefix='%s'
+                        and aa.active=true
+                        and bb.pincode = '%s';"""%(client_prefix, order['pickup_pin_code']))
+        pickup_data_id = cur.fetchone()[0]
+        cur.execute("""UPDATE client_pickups SET easyecom_loc_code='%s' WHERE id=%s"""%(order['company_name'], str(pickup_data_id)))
+        return pickup_data_id
+    except Exception:
+        return None

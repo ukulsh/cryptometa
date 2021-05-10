@@ -41,7 +41,6 @@ class CompanySetting(Resource):
             response_object['message'] = 'Failed while getting the Company Settings'
             return response_object, 400
 
-
     def post(self, resp):
         response_object = {'status': 'fail'}
         try:

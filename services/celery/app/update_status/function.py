@@ -1587,9 +1587,8 @@ def woocommerce_fulfillment(order):
 
 
 def lotus_organics_update(order, status):
-    url = "https://www.lotus-organics.com/api/v1/order/wareiq/update"
-    headers = {"Content-Type": "application/json",
-               "x-api-key": "901192e41675e1b908d26a7e95c77ddc"}
+    url = "https://lotusapi.farziengineer.co/plugins/plugin.wareiq/order/update"
+    headers = {"x-api-key": "c2d8f4d497ee44649653074f139eddf2"}
     data = {
         "id": int(order[5]),
         "ware_iq_id": order[0],
@@ -1597,7 +1596,7 @@ def lotus_organics_update(order, status):
         "status_information": status
     }
 
-    req = requests.put(url, headers=headers, data=json.dumps(data))
+    req = requests.post(url, headers=headers, data=data)
 
 
 def lotus_botanicals_shipped(order):
@@ -1913,7 +1912,7 @@ def update_picked_on_channels(order, cur):
             lotus_botanicals_shipped(order)
         elif order[3] == 'LOTUSORGANICS':
             try:
-                lotus_organics_update(order, "Orders Shipped")
+                lotus_organics_update(order, "Order Shipped")
             except Exception as e:
                 pass
         elif order[14] == 7: #Easyecom fulfilment
@@ -1949,7 +1948,7 @@ def update_delivered_on_channels(order):
 
     elif order[3] == 'LOTUSORGANICS':
         try:
-            lotus_organics_update(order, "Orders Delivered")
+            lotus_organics_update(order, "Order Delivered")
         except Exception as e:
             pass
 

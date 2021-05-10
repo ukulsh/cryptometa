@@ -13,16 +13,19 @@ env = 'prod' if env == 'production' else 'qa'
 
 
 def get_presigned_url(url):
-    if not url:
+    try:
+        if not url:
+            return url
+        url_prefix = 'https://%s/%s' % (aws_region, aws_client_data_bucket)
+        key = url.split(url_prefix)[1][1:]
+        s3_client = boto3.client('s3', aws_access_key_id=aws_access_key_id, aws_secret_access_key=aws_secret_access_key,
+                                 region_name=aws_region_prefix, config=Config(signature_version='s3v4'))
+        file_path = urllib.parse.unquote(key)
+        url = s3_client.generate_presigned_url('get_object', Params={'Bucket': aws_client_data_bucket, 'Key': file_path},
+                                               ExpiresIn=3600)
         return url
-    url_prefix = 'https://%s/%s' % (aws_region, aws_client_data_bucket)
-    key = url.split(url_prefix)[1][1:]
-    s3_client = boto3.client('s3', aws_access_key_id=aws_access_key_id, aws_secret_access_key=aws_secret_access_key,
-                             region_name=aws_region_prefix, config=Config(signature_version='s3v4'))
-    file_path = urllib.parse.unquote(key)
-    url = s3_client.generate_presigned_url('get_object', Params={'Bucket': aws_client_data_bucket, 'Key': file_path},
-                                           ExpiresIn=3600)
-    return url
+    except Exception:
+        return url
 
 
 def process_upload_file(client_prefix, file_ref, file_prefix):

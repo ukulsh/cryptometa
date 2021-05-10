@@ -283,6 +283,29 @@ class Orders(db.Model):
                       )
 
 
+class FailedOrders(db.Model):
+    __tablename__ = "failed_orders"
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    channel_order_id = db.Column(db.String, nullable=True)
+    order_date = db.Column(db.DateTime, nullable=True)
+    customer_name = db.Column(db.String, nullable=True)
+    customer_email = db.Column(db.String, nullable=True)
+    customer_phone = db.Column(db.String, nullable=True)
+    error = db.Column(db.String, nullable=True)
+    synced = db.Column(db.BOOLEAN, nullable=True, default=False)
+    client_prefix = db.Column(db.String, nullable=True)
+    client_channel_id = db.Column(db.Integer, db.ForeignKey('client_channel.id'))
+    client_channel = db.relationship("ClientChannel", backref=db.backref("failed_orders", uselist=True))
+    master_channel_id = db.Column(db.Integer, db.ForeignKey('master_channels.id'))
+    master_channel = db.relationship("MasterChannels", backref=db.backref("failed_orders"))
+    order_id_channel_unique = db.Column(db.String, nullable=True)
+    date_created = db.Column(db.DateTime, default=datetime.now)
+    date_updated = db.Column(db.DateTime, onupdate=datetime.now)
+    __table_args__ = (
+        db.UniqueConstraint('order_id_channel_unique', 'client_channel_id', name='fld_ord_unique'),
+    )
+
+
 class OrdersInvoice(db.Model):
     __tablename__ = "orders_invoice"
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)

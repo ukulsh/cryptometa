@@ -118,3 +118,10 @@ select_thirdwatch_check_orders_query = """select cc.ip_address, cc.session_id, c
                                         where jj.order_id is null
                                         and ii.thirdwatch=true
                                         and aa.order_date>'__ORDER_TIME__'"""
+
+
+insert_failed_order_query = """INSERT INTO failed_orders (channel_order_id, order_date, customer_name, customer_email, 
+                                customer_phone, error, synced, client_prefix, client_channel_id, master_channel_id, 
+                                order_id_channel_unique, date_created) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                                ON CONFLICT (order_id_channel_unique, client_channel_id) 
+                                DO NOTHING;"""

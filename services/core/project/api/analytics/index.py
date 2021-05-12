@@ -444,7 +444,7 @@ def get_transit_delays(resp):
         page = data.get('page', 1)
         per_page = data.get('per_page', 10)
         order_by = data.get('sort_by', "delayed_by_days")
-        order_type = data.get('sort', "desc")
+        order_type = data.get('sort', "asc")
         filters = data.get('filters', {})
         download_flag = request.args.get("download", None)
 
@@ -560,7 +560,7 @@ def get_rto_delays(resp):
         page = data.get('page', 1)
         per_page = data.get('per_page', 10)
         order_by = data.get('sort_by', "delayed_by_days")
-        order_type = data.get('sort', "desc")
+        order_type = data.get('sort', "asc")
         filters = data.get('filters', {})
         download_flag = request.args.get("download", None)
 

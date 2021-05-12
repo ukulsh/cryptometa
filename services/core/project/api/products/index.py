@@ -596,47 +596,25 @@ def bulk_reconciliation(resp):
                                          type=str(type).lower(),
                                          date_created=datetime.utcnow() + timedelta(hours=5.5))
 
-            shipped_quantity = 0
-            dto_quantity = 0
-            try:
-                cur.execute("""  select COALESCE(sum(quantity), 0) from op_association aa
-                        left join orders bb on aa.order_id=bb.id
-                        left join client_pickups cc on bb.pickup_data_id=cc.id
-                        left join pickup_points dd on cc.pickup_id=dd.id
-                        left join products ee on aa.product_id=ee.id
-                        where status in ('DELIVERED','DISPATCHED','IN TRANSIT','DAMAGED','SHORTAGE','SHIPPED','PENDING','LOST')
-                        and dd.warehouse_prefix='__WAREHOUSE__'
-                        and ee.master_sku='__SKU__';""".replace('__WAREHOUSE__', warehouse_prefix).replace('__SKU__', sku))
-                shipped_quantity_obj = cur.fetchone()
-                if shipped_quantity_obj is not None:
-                    shipped_quantity = shipped_quantity_obj[0]
-            except Exception:
-                conn.rollback()
-
-            try:
-                cur.execute("""select COALESCE(sum(quantity), 0) from op_association aa
-                        left join orders bb on aa.order_id=bb.id
-                        left join client_pickups cc on bb.pickup_data_id=cc.id
-                        left join pickup_points dd on cc.pickup_id=dd.id
-                        left join products ee on aa.product_id=ee.id
-                        where status in ('DTO')
-                        and dd.warehouse_prefix='__WAREHOUSE__'
-                        and ee.master_sku='__SKU__';""".replace('__WAREHOUSE__', warehouse_prefix).replace('__SKU__', sku))
-                dto_quantity_obj = cur.fetchone()
-                if dto_quantity_obj is not None:
-                    dto_quantity = dto_quantity_obj[0]
-            except Exception:
-                conn.rollback()
-
             if str(type).lower() == 'add':
                 quan_obj.total_quantity = quan_obj.total_quantity + quantity
                 quan_obj.approved_quantity = quan_obj.approved_quantity + quantity
+                quan_obj.available_quantity = quan_obj.available_quantity + quantity
+                quan_obj.current_quantity = quan_obj.current_quantity + quantity
             elif str(type).lower() == 'subtract':
                 quan_obj.total_quantity = quan_obj.total_quantity - quantity
                 quan_obj.approved_quantity = quan_obj.approved_quantity - quantity
+                quan_obj.available_quantity = quan_obj.available_quantity - quantity
+                quan_obj.current_quantity = quan_obj.current_quantity - quantity
             elif str(type).lower() == 'replace':
-                quan_obj.total_quantity = quantity + shipped_quantity - dto_quantity
-                quan_obj.approved_quantity = quantity + shipped_quantity - dto_quantity
+                diff = quantity - quan_obj.current_quantity
+                new_type = "subtract" if diff < 0 else "add"
+                update_obj.type = new_type
+                update_obj.quantity = abs(diff)
+                quan_obj.total_quantity = quan_obj.total_quantity - quan_obj.current_quantity + quantity
+                quan_obj.approved_quantity = quan_obj.approved_quantity - quan_obj.current_quantity + quantity
+                quan_obj.current_quantity = quantity
+                quan_obj.available_quantity = quantity - quan_obj.inline_quantity
             else:
                 continue
 
@@ -2099,52 +2077,30 @@ class UpdateInventory(Resource):
                                                  type=str(type).lower(),
                                                  date_created=datetime.utcnow() + timedelta(hours=5.5))
 
-                    shipped_quantity=0
-                    dto_quantity=0
-                    try:
-                        cur.execute("""  select COALESCE(sum(quantity), 0) from op_association aa
-                                left join orders bb on aa.order_id=bb.id
-                                left join client_pickups cc on bb.pickup_data_id=cc.id
-                                left join pickup_points dd on cc.pickup_id=dd.id
-                                left join products ee on aa.product_id=ee.id
-                                where status in ('DELIVERED','DISPATCHED','IN TRANSIT','DAMAGED','SHORTAGE','SHIPPED','PENDING','LOST')
-                                and dd.warehouse_prefix='__WAREHOUSE__'
-                                and ee.master_sku='__SKU__';""".replace('__WAREHOUSE__', warehouse).replace('__SKU__', sku))
-                        shipped_quantity_obj = cur.fetchone()
-                        if shipped_quantity_obj is not None:
-                            shipped_quantity = shipped_quantity_obj[0]
-                    except Exception:
-                        conn.rollback()
-
-                    try:
-                        cur.execute("""select COALESCE(sum(quantity), 0) from op_association aa
-                                left join orders bb on aa.order_id=bb.id
-                                left join client_pickups cc on bb.pickup_data_id=cc.id
-                                left join pickup_points dd on cc.pickup_id=dd.id
-                                left join products ee on aa.product_id=ee.id
-                                where status in ('DTO')
-                                and dd.warehouse_prefix='__WAREHOUSE__'
-                                and ee.master_sku='__SKU__';""".replace('__WAREHOUSE__', warehouse).replace('__SKU__', sku))
-                        dto_quantity_obj = cur.fetchone()
-                        if dto_quantity_obj is not None:
-                            dto_quantity = dto_quantity_obj[0]
-                    except Exception:
-                        conn.rollback()
-
                     if str(type).lower() == 'add':
                         quan_obj.total_quantity = quan_obj.total_quantity+quantity
                         quan_obj.approved_quantity = quan_obj.approved_quantity+quantity
+                        quan_obj.available_quantity = quan_obj.available_quantity+quantity
+                        quan_obj.current_quantity = quan_obj.current_quantity+quantity
                     elif str(type).lower() == 'subtract':
                         quan_obj.total_quantity = quan_obj.total_quantity - quantity
                         quan_obj.approved_quantity = quan_obj.approved_quantity - quantity
+                        quan_obj.available_quantity = quan_obj.available_quantity - quantity
+                        quan_obj.current_quantity = quan_obj.current_quantity - quantity
                     elif str(type).lower() == 'replace':
-                        quan_obj.total_quantity = quantity + shipped_quantity - dto_quantity
-                        quan_obj.approved_quantity = quantity + shipped_quantity - dto_quantity
+                        diff = quantity - quan_obj.current_quantity
+                        new_type = "subtract" if diff<0 else "add"
+                        update_obj.type = new_type
+                        update_obj.quantity = abs(diff)
+                        quan_obj.total_quantity = quan_obj.total_quantity-quan_obj.current_quantity + quantity
+                        quan_obj.approved_quantity = quan_obj.approved_quantity-quan_obj.current_quantity + quantity
+                        quan_obj.current_quantity = quantity
+                        quan_obj.available_quantity = quantity - quan_obj.inline_quantity
                     else:
                         continue
 
                     current_quantity.append({"warehouse": warehouse, "sku": sku,
-                                             "current_quantity": quan_obj.approved_quantity- shipped_quantity+dto_quantity})
+                                             "current_quantity": quan_obj.current_quantity})
 
                 except Exception:
                     failed_list.append(sku_obj)

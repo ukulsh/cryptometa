@@ -2201,9 +2201,9 @@ def track_order(awb):
         response['logo_url'] = None
         response['theme_color'] = None
         response['products'] = list()
-        for op_ass in shipment.order.products:
-            prod_obj = {"name": op_ass.master_product.name, "quantity": op_ass.quantity}
-            response['products'].append(prod_obj)
+        # for op_ass in shipment.order.products:
+        #     prod_obj = {"name": op_ass.master_product.name, "quantity": op_ass.quantity}
+        #     response['products'].append(prod_obj)
         response['destination_city'] = None
         if shipment.order.status not in ('DELIVERED','RTO') and shipment.order.status_type!='RT':
             response['destination_city'] = shipment.order.delivery_address.city

@@ -1,4 +1,4 @@
-import psycopg2, requests, os, json, hmac, hashlib, base64
+import psycopg2, requests, os, json, hmac, hashlib, base64, random, string
 from datetime import datetime, timedelta
 from requests_oauthlib.oauth1_session import OAuth1Session
 from woocommerce import API
@@ -42,8 +42,6 @@ def fetch_orders(client_prefix=None, sync_all=None):
             try:
                 fetch_woocommerce_orders(cur, channel, manual=True if client_prefix else None)
             except Exception as e:
-                cur.execute("UPDATE client_channel SET connection_status=false, status=false WHERE id=%s;" % str(channel[0]))
-                conn.commit()
                 logger.error("Couldn't fetch orders: " + str(channel[1]) + "\nError: " + str(e.args))
 
         elif channel[11] == "Magento 2":
@@ -183,6 +181,9 @@ def fetch_shopify_orders(cur, channel, manual=None):
 
                 cur.execute(insert_billing_address_query, billing_tuple)
                 billing_address_id = cur.fetchone()[0]
+                if not shipping_address_id:
+                    cur.execute(insert_shipping_address_query, billing_tuple)
+                    shipping_address_id = cur.fetchone()[0]
 
             channel_order_id = str(order['order_number'])
             if channel[16] and len(channel[16])<5:
@@ -909,7 +910,7 @@ def fetch_easyecom_orders(cur, channel, manual=None):
                     product_id = cur.fetchone()[0]
 
                 tax_lines = list()
-                selling_price = prod.get('selling_price', 0)
+                selling_price = prod.get('selling_price', 0) if prod.get('selling_price') != None else prod.get('mrp')
                 if selling_price:
                     selling_price = float(selling_price)
                 try:
@@ -927,7 +928,7 @@ def fetch_easyecom_orders(cur, channel, manual=None):
                 except Exception as e:
                     pass
 
-                op_tuple = (product_id, order_id, prod['item_quantity'], float(prod['item_quantity'] * round(float(selling_price), 1)), None, json.dumps(tax_lines), master_product_id)
+                op_tuple = (product_id, order_id, prod['item_quantity'], float(prod['item_quantity'] * round(float(selling_price), 1) if selling_price else 0), None, json.dumps(tax_lines), master_product_id)
                 cur.execute(insert_op_association_query, op_tuple)
 
             subtotal_amount = total_amount - shipping_amount
@@ -945,6 +946,7 @@ def fetch_easyecom_orders(cur, channel, manual=None):
 
             cur.execute(insert_payments_data_query, payments_tuple)
             cur.execute("UPDATE failed_orders SET synced=true WHERE order_id_channel_unique=%s and client_channel_id=%s", (str(order['invoice_id']), channel[0]))
+            invoice_easyecom_order(cur, order['invoice_number'], order['invoice_date'], order_id, pickup_data_id)
 
         except Exception as e:
             conn.rollback()
@@ -1428,3 +1430,16 @@ def update_easyecom_wh_mapping(order, client_prefix, cur):
         return pickup_data_id
     except Exception:
         return None
+
+
+def invoice_easyecom_order(cur, inv_text, inv_time, order_id, pickup_data_id):
+    try:
+        inv_time_new = datetime.strptime(inv_time, "%Y-%m-%d %H:%M:%S") if inv_time else datetime.utcnow()+timedelta(hours=5.5)
+        inv_no = 0
+
+        qr_url="https://track.wareiq.com/orders/v1/invoice/%s?uid=%s"%(str(order_id), ''.join(random.choices(string.ascii_lowercase+string.ascii_uppercase + string.digits, k=6)))
+
+        cur.execute("""INSERT INTO orders_invoice (order_id, pickup_data_id, invoice_no_text, invoice_no, date_created, qr_url) 
+                        VALUES (%s, %s, %s, %s, %s, %s);""", (order_id, pickup_data_id, inv_text, inv_no, inv_time_new, qr_url))
+    except Exception as e:
+        pass

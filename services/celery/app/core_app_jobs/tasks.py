@@ -1061,6 +1061,50 @@ def update_available_quantity_from_easyecom():
             conn.rollback()
             logger.error("Couldn't update inventory for: "+str(client[0])+"\nError: "+str(e.args))
 
+    try:        # kama store inventory update
+        cur.execute("""select bb.warehouse_prefix, aa.client_prefix from client_pickups aa
+                            left join pickup_points bb on aa.pickup_id=bb.id
+                            where aa.client_prefix='KAMAAYURVEDA'
+                            and aa.enable_sdd=true
+                            and bb.warehouse_prefix='TNPMRO'""")
+
+        pickup_points = cur.fetchall()
+        token_headers = {"Username": "WareIQ",
+                         "Password": "Wondersoft#12",
+                         "SERVICE_METHODNAME": "GetToken"}
+        token_url = "http://103.25.172.69:7006/eShopaidAPI/eShopaidService.svc/Token"
+        token_req = requests.post(token_url, headers=token_headers, json={})
+        auth_token = token_req.json()['Response']['Access_Token'].strip()
+        for pickup_point in pickup_points:
+            gi_headers = {"SERVICE_METHODNAME": "GetInventory",
+                          "AUTHORIZATION": auth_token}
+            gi_url = "http://103.25.172.69:7006/eShopaidAPI/eShopaidService.svc/ProcessData"
+            gi_body = {"Params": {"Location": pickup_point[0], "DateFilter": "", "ProductCode": ""}}
+            inventory_req = requests.post(gi_url, headers=gi_headers, json=gi_body)
+            prod_quan_list = inventory_req.json()['Response']['Data']['Inventory']['Items']['Item']
+            item_code_str = ""
+            for itm in prod_quan_list:
+                item_code_str += "('%s', %s)," % (itm['ItemCode'], str(int(float(itm['Stock']))))
+
+            item_code_str = item_code_str.rstrip(",")
+
+            update_quan_query = """update products_quantity aa set 
+                                     current_quantity=cc.cnt, available_quantity=cc.cnt-inline_quantity, 
+                                     total_quantity=total_quantity-current_quantity+cc.cnt
+                                      from (select xx.id, yy.cnt from (values
+                                                 %s
+                                                ) yy(sku, cnt)
+                                      left join master_products xx
+                                      on xx.sku=yy.sku
+                                      where client_prefix='%s') cc(product_id, cnt)
+                                      where aa.product_id=cc.product_id
+                                      and aa.warehouse_prefix='%s'""" % (
+            item_code_str, pickup_point[1], pickup_point[0])
+            cur.execute(update_quan_query)
+            conn.commit()
+    except Exception:
+        pass
+
 
 def update_available_quantity_on_channel():
     cur = conn.cursor()

@@ -641,10 +641,37 @@ def ping_dev():
     # data_xlsx = pd.read_excel(myfile)
     # iter_rw = data_xlsx.iterrows()
     # for row in iter_rw:
-    #     pickup_point = db.session.query(PickupPoints).filter(PickupPoints.warehouse_prefix==str(row[1].warehouse_prefix)).first()
-    #     pickup_point.name = str(row[1].contactname)
-    #     pickup_point = db.session.query(ReturnPoints).filter(ReturnPoints.warehouse_prefix == str(row[1].warehouse_prefix)).first()
-    #     pickup_point.name = str(row[1].contactname)
+    #     pickup_point = PickupPoints(pickup_location=str(row[1].pickup_location),
+    #                                 name=str(row[1].contactname),
+    #                                 phone=str(row[1].phone),
+    #                                 address=str(row[1].address),
+    #                                 address_two=str(row[1].address_two) if row[1].address_two==row[1].address_two else "",
+    #                                 city=str(row[1].city),
+    #                                 state=str(row[1].state),
+    #                                 country="India",
+    #                                 pincode=str(row[1].pincode),
+    #                                 warehouse_prefix=str(row[1].warehouse_prefix)
+    #                                 )
+    #     return_point = ReturnPoints(return_location=str(row[1].pickup_location),
+    #                                 name=str(row[1].contactname),
+    #                                 phone=str(row[1].phone),
+    #                                 address=str(row[1].address),
+    #                                 address_two=str(row[1].address_two) if row[1].address_two == row[
+    #                                     1].address_two else "",
+    #                                 city=str(row[1].city),
+    #                                 state=str(row[1].state),
+    #                                 country="India",
+    #                                 pincode=str(row[1].pincode),
+    #                                 warehouse_prefix=str(row[1].warehouse_prefix)
+    #                                 )
+    #
+    #     client_pickup = ClientPickups(client_prefix="ORGANIKNESS",
+    #                                   pickup=pickup_point,
+    #                                   return_point=return_point,
+    #                                   active=True,
+    #                                   wareiq_location=False,
+    #                                   )
+    #     db.session.add(client_pickup)
     #     db.session.commit()
 
     # from .models import Orders, ShippingAddress

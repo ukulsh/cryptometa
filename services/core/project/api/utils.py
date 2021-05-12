@@ -1184,15 +1184,15 @@ def cancel_order_on_channels(order):
             ful_header = {'Content-Type': 'application/json'}
             fulfil_data = {
                 "api_token": order.client_channel.api_key,
-                "reference_code": order.channel_order_id
+                "invoice_id": order.order_id_channel_unique
             }
             req_ful = requests.post(cancel_order_url, data=json.dumps(fulfil_data),
                                     headers=ful_header)
 
         if order.client_prefix=='LOTUSORGANICS':
-            url = "https://www.lotus-organics.com/api/v1/order/wareiq/update"
+            url = "https://lotusapi.farziengineer.co/plugins/plugin.wareiq/order/update"
             headers = {"Content-Type": "application/json",
-                       "x-api-key": "901192e41675e1b908d26a7e95c77ddc"}
+                       "x-api-key": "c2d8f4d497ee44649653074f139eddf2"}
             data = {
                 "id": int(order.channel_order_id),
                 "ware_iq_id": order.id,
@@ -1200,4 +1200,4 @@ def cancel_order_on_channels(order):
                 "status_information": "Cancelled"
             }
 
-            req = requests.put(url, headers=headers, data=json.dumps(data))
+            req = requests.post(url, headers=headers, data=data)

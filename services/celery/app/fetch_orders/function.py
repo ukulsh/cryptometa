@@ -1436,7 +1436,8 @@ def invoice_easyecom_order(cur, inv_text, inv_time, order_id, pickup_data_id):
     try:
         inv_time_new = datetime.strptime(inv_time, "%Y-%m-%d %H:%M:%S") if inv_time else datetime.utcnow()+timedelta(hours=5.5)
         inv_no = 0
-
+        if not inv_text:
+            return None
         qr_url="https://track.wareiq.com/orders/v1/invoice/%s?uid=%s"%(str(order_id), ''.join(random.choices(string.ascii_lowercase+string.ascii_uppercase + string.digits, k=6)))
 
         cur.execute("""INSERT INTO orders_invoice (order_id, pickup_data_id, invoice_no_text, invoice_no, date_created, qr_url) 

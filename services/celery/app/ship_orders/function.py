@@ -364,7 +364,6 @@ def ship_delhivery_orders(cur, courier, courier_name, order_ids, order_id_tuple,
                            }
 
         shipments_divided = [shipments[i * 15:(i + 1) * 15] for i in range((len(shipments) + 15 - 1) // 15)]
-        return_data = list()
 
         for new_shipments in shipments_divided:
             delivery_shipments_body = {
@@ -391,122 +390,124 @@ def ship_delhivery_orders(cur, courier, courier_name, order_ids, order_id_tuple,
                 requests.post(create_warehouse_url, headers=headers, data=json.dumps(warehouse_creation))
                 req = requests.post(delhivery_url, headers=headers, data=delivery_shipments_body)
 
-            return_data += req.json()['packages']
+            return_data = req.json()['packages']
 
-        insert_shipments_data_query = """INSERT INTO SHIPMENTS (awb, status, order_id, pickup_id, courier_id, 
-                                            dimensions, volumetric_weight, weight, remark, return_point_id, routing_code, 
-                                            channel_fulfillment_id, tracking_link, zone)
-                                            VALUES  """
+            insert_shipments_data_query = """INSERT INTO SHIPMENTS (awb, status, order_id, pickup_id, courier_id, 
+                                                dimensions, volumetric_weight, weight, remark, return_point_id, routing_code, 
+                                                channel_fulfillment_id, tracking_link, zone)
+                                                VALUES  """
 
-        order_status_change_ids = list()
-        insert_shipments_data_tuple = list()
-        insert_order_status_dict = dict()
-        for package in return_data:
-            try:
-                fulfillment_id = None
-                tracking_link = None
-                if package['waybill']:
+            order_status_change_ids = list()
+            insert_shipments_data_tuple = list()
+            insert_order_status_dict = dict()
+            for package in return_data:
+                try:
+                    fulfillment_id = None
+                    tracking_link = None
+                    if package['waybill']:
 
-                    order_status_change_ids.append(orders_dict[package['refnum']][0])
-                    client_name = str(orders_dict[package['refnum']][12])
-                    customer_phone = orders_dict[package['refnum']][8].replace(" ", "")
-                    customer_phone = "0" + customer_phone[-10:]
+                        order_status_change_ids.append(orders_dict[package['refnum']][0])
+                        client_name = str(orders_dict[package['refnum']][12])
+                        customer_phone = orders_dict[package['refnum']][8].replace(" ", "")
+                        customer_phone = "0" + customer_phone[-10:]
 
-                    if orders_dict[package['refnum']][11]==7:
-                        push_awb_easyecom(orders_dict[package['refnum']][7],
-                                          orders_dict[package['refnum']][4],
-                                          package['waybill'], courier, cur, orders_dict[package['refnum']][9])
+                        if orders_dict[package['refnum']][11]==7:
+                            push_awb_easyecom(orders_dict[package['refnum']][7],
+                                              orders_dict[package['refnum']][4],
+                                              package['waybill'], courier, cur, orders_dict[package['refnum']][9])
 
-                    try:
-                        tracking_link_wareiq = "https://webapp.wareiq.com/tracking/" + str(package['waybill'])
-                        send_received_event(client_name, customer_phone, tracking_link_wareiq)
-                    except Exception:
-                        pass
-
-                    if orders_dict[package['refnum']][9] == "NASHER":
                         try:
-                            nasher_url = "https://www.nashermiles.com/alexandria/api/v1/shipment/create"
-                            nasher_headers = {"Content-Type": "application/x-www-form-urlencoded",
-                                              "Authorization": "Basic c2VydmljZS5hcGl1c2VyOllQSGpBQXlXY3RWYzV5MWg="}
-                            nasher_body = {
-                                "order_id": package['refnum'],
-                                "awb_number": str(package['waybill']),
-                                "tracking_link": "https://webapp.wareiq.com/tracking/" + str(package['waybill'])}
-                            req = requests.post(nasher_url, headers=nasher_headers, data=json.dumps(nasher_body))
-                        except Exception as e:
-                            logger.error("Couldn't update shopify for: " + str(package['refnum'])
-                                         + "\nError: " + str(e.args))
+                            tracking_link_wareiq = "https://webapp.wareiq.com/tracking/" + str(package['waybill'])
+                            send_received_event(client_name, customer_phone, tracking_link_wareiq)
+                        except Exception:
+                            pass
 
-                remark = ''
-                if package['remarks']:
-                    remark = package['remarks'][0]
+                        if orders_dict[package['refnum']][9] == "NASHER":
+                            try:
+                                nasher_url = "https://www.nashermiles.com/alexandria/api/v1/shipment/create"
+                                nasher_headers = {"Content-Type": "application/x-www-form-urlencoded",
+                                                  "Authorization": "Basic c2VydmljZS5hcGl1c2VyOllQSGpBQXlXY3RWYzV5MWg="}
+                                nasher_body = {
+                                    "order_id": package['refnum'],
+                                    "awb_number": str(package['waybill']),
+                                    "tracking_link": "https://webapp.wareiq.com/tracking/" + str(package['waybill'])}
+                                req = requests.post(nasher_url, headers=nasher_headers, data=json.dumps(nasher_body))
+                            except Exception as e:
+                                logger.error("Couldn't update shopify for: " + str(package['refnum'])
+                                             + "\nError: " + str(e.args))
 
-                if 'COD' in remark or 'blocked' in remark:
-                    continue
+                    remark = ''
+                    if package['remarks']:
+                        remark = package['remarks'][0]
 
-                if not orders_dict[package['refnum']][13]:
-                    dimensions = orders_dict[package['refnum']][1][0]
-                    weight = orders_dict[package['refnum']][2][0] * orders_dict[package['refnum']][3][0]
-                    volumetric_weight = (dimensions['length'] * dimensions['breadth'] * dimensions['height']) * \
-                                        orders_dict[package['refnum']][3][0] / 5000
-                    for idx, dim in enumerate(orders_dict[package['refnum']][1]):
-                        if idx == 0:
-                            continue
-                        volumetric_weight += (dim['length'] * dim['breadth'] * dim['height']) * \
-                                             orders_dict[package['refnum']][3][idx] / 5000
-                        weight += orders_dict[package['refnum']][2][idx] * (orders_dict[package['refnum']][3][idx])
+                    if 'COD' in remark or 'blocked' in remark:
+                        continue
 
-                    if dimensions['length'] and dimensions['breadth']:
-                        dimensions['height'] = round(
-                            (volumetric_weight * 5000) / (dimensions['length'] * dimensions['breadth']))
+                    if not orders_dict[package['refnum']][13]:
+                        dimensions = orders_dict[package['refnum']][1][0]
+                        weight = orders_dict[package['refnum']][2][0] * orders_dict[package['refnum']][3][0]
+                        volumetric_weight = (dimensions['length'] * dimensions['breadth'] * dimensions['height']) * \
+                                            orders_dict[package['refnum']][3][0] / 5000
+                        for idx, dim in enumerate(orders_dict[package['refnum']][1]):
+                            if idx == 0:
+                                continue
+                            volumetric_weight += (dim['length'] * dim['breadth'] * dim['height']) * \
+                                                 orders_dict[package['refnum']][3][idx] / 5000
+                            weight += orders_dict[package['refnum']][2][idx] * (orders_dict[package['refnum']][3][idx])
+
+                        if dimensions['length'] and dimensions['breadth']:
+                            dimensions['height'] = round(
+                                (volumetric_weight * 5000) / (dimensions['length'] * dimensions['breadth']))
+                    else:
+                        dimensions = {"length": 1, "breadth": 1, "height": 1}
+                        weight = float(orders_dict[package['refnum']][13])
+                        volumetric_weight = float(orders_dict[package['refnum']][13])
+
+                    data_tuple = (package['waybill'], package['status'], orders_dict[package['refnum']][0], pickup_point[1],
+                                  courier[9], json.dumps(dimensions), volumetric_weight, weight, remark, pickup_point[2],
+                                  package['sort_code'], fulfillment_id, tracking_link, orders_dict[package['refnum']][14])
+                    insert_shipments_data_tuple.append(data_tuple)
+                    insert_shipments_data_query += "%s,"
+                    insert_order_status_dict[package['waybill']] = [orders_dict[package['refnum']][0], courier[9],
+                                                                    None, "UD", "Received", "Consignment Manifested",
+                                                                    pickup_point[6], pickup_point[6],
+                                                                    datetime.utcnow() + timedelta(hours=5.5)]
+
+                except Exception as e:
+                    logger.error("Order not shipped. Remarks: " + str(package['remarks']) + "\nError: " + str(e.args[0]))
+
+            if insert_shipments_data_tuple:
+                insert_shipments_data_tuple = tuple(insert_shipments_data_tuple)
+                insert_shipments_data_query = insert_shipments_data_query.strip(",")
+                insert_shipments_data_query += " RETURNING id,awb;"
+                cur.execute(insert_shipments_data_query, insert_shipments_data_tuple)
+                shipment_ret = cur.fetchall()
+                order_status_add_query = """INSERT INTO order_status (order_id, courier_id, shipment_id, 
+                                                                    status_code, status, status_text, location, location_city, 
+                                                                    status_time) VALUES """
+                order_status_tuple_list = list()
+                for ship_temp in shipment_ret:
+                    insert_order_status_dict[ship_temp[1]][2] = ship_temp[0]
+                    order_status_add_query += "%s,"
+                    order_status_tuple_list.append(tuple(insert_order_status_dict[ship_temp[1]]))
+
+                order_status_add_query = order_status_add_query.rstrip(',')
+                order_status_add_query += ";"
+
+                cur.execute(order_status_add_query, tuple(order_status_tuple_list))
+
+            if order_status_change_ids:
+                if len(order_status_change_ids) == 1:
+                    cur.execute(update_orders_status_query % (("(%s)") % str(order_status_change_ids[0])))
                 else:
-                    dimensions = {"length": 1, "breadth": 1, "height": 1}
-                    weight = float(orders_dict[package['refnum']][13])
-                    volumetric_weight = float(orders_dict[package['refnum']][13])
+                    cur.execute(update_orders_status_query, (tuple(order_status_change_ids),))
 
-                data_tuple = (package['waybill'], package['status'], orders_dict[package['refnum']][0], pickup_point[1],
-                              courier[9], json.dumps(dimensions), volumetric_weight, weight, remark, pickup_point[2],
-                              package['sort_code'], fulfillment_id, tracking_link, orders_dict[package['refnum']][14])
-                insert_shipments_data_tuple.append(data_tuple)
-                insert_shipments_data_query += "%s,"
-                insert_order_status_dict[package['waybill']] = [orders_dict[package['refnum']][0], courier[9],
-                                                                None, "UD", "Received", "Consignment Manifested",
-                                                                pickup_point[6], pickup_point[6],
-                                                                datetime.utcnow() + timedelta(hours=5.5)]
-
-            except Exception as e:
-                logger.error("Order not shipped. Remarks: " + str(package['remarks']) + "\nError: " + str(e.args[0]))
-
-        if insert_shipments_data_tuple:
-            insert_shipments_data_tuple = tuple(insert_shipments_data_tuple)
-            insert_shipments_data_query = insert_shipments_data_query.strip(",")
-            insert_shipments_data_query += " RETURNING id,awb;"
-            cur.execute(insert_shipments_data_query, insert_shipments_data_tuple)
-            shipment_ret = cur.fetchall()
-            order_status_add_query = """INSERT INTO order_status (order_id, courier_id, shipment_id, 
-                                                                status_code, status, status_text, location, location_city, 
-                                                                status_time) VALUES """
-            order_status_tuple_list = list()
-            for ship_temp in shipment_ret:
-                insert_order_status_dict[ship_temp[1]][2] = ship_temp[0]
-                order_status_add_query += "%s,"
-                order_status_tuple_list.append(tuple(insert_order_status_dict[ship_temp[1]]))
-
-            order_status_add_query = order_status_add_query.rstrip(',')
-            order_status_add_query += ";"
-
-            cur.execute(order_status_add_query, tuple(order_status_tuple_list))
+            conn.commit()
 
         if last_shipped_order_id:
             last_shipped_data_tuple = (
                 last_shipped_order_id, datetime.now(tz=pytz.timezone('Asia/Calcutta')), courier[1])
             cur.execute(update_last_shipped_order_query, last_shipped_data_tuple)
-
-        if order_status_change_ids:
-            if len(order_status_change_ids) == 1:
-                cur.execute(update_orders_status_query % (("(%s)") % str(order_status_change_ids[0])))
-            else:
-                cur.execute(update_orders_status_query, (tuple(order_status_change_ids),))
 
         cur.execute("UPDATE client_pickups SET invoice_last=%s WHERE id=%s;", (last_invoice_no, pickup_id))
 
@@ -1457,7 +1458,7 @@ def ship_bluedart_orders(cur, courier, courier_name, order_ids, order_id_tuple, 
                 consignee['ConsigneeMobile'] = shipping_phone
 
                 shipper['CustomerCode'] = customer_code
-                shipper['OriginArea'] = area_code
+                shipper['OriginArea'] = "BOM" if pickup_point[18]=='AAJMUM' and courier[1]=='DHANIPHARMACY' else area_code
                 shipper['CustomerName'] = courier[1]
 
                 pickup_address = pickup_point[4]

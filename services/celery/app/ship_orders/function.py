@@ -219,6 +219,9 @@ def ship_delhivery_orders(cur, courier, courier_name, order_ids, order_id_tuple,
                         order[26].lower() != 'pickup' and not force_ship:
                     continue
 
+                if (not zone or zone == 'E') and courier[1] in ("DHANIPHARMACY",):
+                    continue
+
                 if courier[1] == "ZLADE" and courier[10] == "Delhivery Surface Standard" and zone and zone not in (
                 'A', 'B') and order[26].lower() != 'pickup' and not force_ship:
                     continue

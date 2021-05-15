@@ -73,17 +73,10 @@ get_orders_to_assign_pickups = """select aa.id, aa.client_prefix, bb.pincode, xx
                                 and aa.date_created>%s"""
 
 
-available_warehouse_product_quantity = """select aa.warehouse_prefix, aa.product_id, bb.sku, COALESCE(aa.current_quantity-COALESCE(ff.inline_quantity, 0), 0) as available_count,  null as courier_id, 
+available_warehouse_product_quantity = """select aa.warehouse_prefix, aa.product_id, bb.sku, COALESCE(aa.available_quantity, 0) as available_count,  null as courier_id, 
                                          bb.weight, cc.pincode from products_quantity aa 
                                          left join master_products bb on aa.product_id=bb.id 
                                          left join pickup_points cc on aa.warehouse_prefix=cc.warehouse_prefix
-                                         left join (select hh.pickup_id, master_product_id, sum(quantity) as inline_quantity from op_association dd
-                                                   left join orders ee on dd.order_id=ee.id
-                                                   left join master_products gg on gg.id=dd.master_product_id
-                                                   left join client_pickups hh on hh.id=ee.pickup_data_id
-                                                   where ee.status in ('NEW', 'READY TO SHIP', 'PICKUP REQUESTED')
-                                                    and gg.sku in __SKU_STR__ and gg.client_prefix='__CLIENT_PREFIX__'
-                                                   group by hh.pickup_id, master_product_id) ff on ff.master_product_id=bb.id and cc.id=ff.pickup_id
                                          left join client_pickups kk on kk.client_prefix=bb.client_prefix and kk.pickup_id=cc.id
                                          where bb.sku in __SKU_STR__ and bb.client_prefix='__CLIENT_PREFIX__'
                                          and kk.active=true;"""

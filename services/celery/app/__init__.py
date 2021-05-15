@@ -142,7 +142,11 @@ def orders_ship(client_prefix=None):
 
 @app.route('/scans/v1/orders/ship', methods = ['GET'])
 def ship_orders_api():
-    orders_ship(request.args.get('client_prefix'))
+    client_prefix = request.args.get('client_prefix')
+    if client_prefix:
+        orders_ship.apply_async(queue='calculate_costs', args=(request.args.get('client_prefix'),))
+    else:
+        orders_ship.apply_async(queue='ship_orders')
     return jsonify({"msg": "ship order task received"}), 200
 
 

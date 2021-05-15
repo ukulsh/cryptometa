@@ -1113,6 +1113,7 @@ def update_available_quantity_on_channel():
 
     for channel in all_channels:
         try:
+            logger.info("Syncing %s inventory" % str(channel[0]))
             if channel[1]==6: #mangento sync
                 cur.execute("""select sku, sum(available_quantity) as available_quantity from products_quantity aa
                                     left join master_products bb on aa.product_id=bb.id

@@ -928,7 +928,7 @@ def fetch_easyecom_orders(cur, channel, manual=None):
                 except Exception as e:
                     pass
 
-                op_tuple = (product_id, order_id, prod['item_quantity'], float(prod['item_quantity'] * round(float(selling_price), 1) if selling_price else 0), None, json.dumps(tax_lines), master_product_id)
+                op_tuple = (product_id, order_id, prod['suborder_quantity'], float(prod['suborder_quantity'] * round(float(selling_price), 1) if selling_price else 0), None, json.dumps(tax_lines), master_product_id)
                 cur.execute(insert_op_association_query, op_tuple)
 
             subtotal_amount = total_amount - shipping_amount

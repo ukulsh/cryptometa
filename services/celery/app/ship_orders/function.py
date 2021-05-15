@@ -19,7 +19,7 @@ RAVEN_URL = "https://api.ravenapp.dev/v1/apps/ccaaf889-232e-49df-aeb8-869e315350
 RAVEN_HEADERS = {"Content-Type": "application/json", "Authorization": "AuthKey K4noY3GgzaW8OEedfZWAOyg+AmKZTsqO/h/8Y4LVtFA="}
 
 
-def ship_orders(courier_name=None, order_ids=None, force_ship=None):
+def ship_orders(courier_name=None, order_ids=None, force_ship=None, client_prefix=None):
     cur = conn.cursor()
     order_id_tuple = "()"
     if courier_name and order_ids:  # creating courier details list for manual shipping
@@ -48,7 +48,8 @@ def ship_orders(courier_name=None, order_ids=None, force_ship=None):
                                 (select id from orders where order_date>%s and status='NEW')
                                 and remark = 'Pincode not serviceable'""", (time_now,))
         conn.commit()
-        cur.execute(fetch_client_couriers_query)
+        cur.execute(fetch_client_couriers_query.replace('__CLIENT_FILTER__', "and aa.client_prefix!='DHANIPHARMACY'" if not
+                                                    client_prefix else "and aa.client_prefix='%s'"%client_prefix))
         all_couriers = cur.fetchall()
 
     for courier in all_couriers:
@@ -1011,20 +1012,17 @@ def ship_xpressbees_orders(cur, courier, courier_name, order_ids, order_id_tuple
                                            pickup_point[6], pickup_point[6], datetime.utcnow() + timedelta(hours=5.5))]
 
                 cur.execute(order_status_add_query, tuple(order_status_add_tuple))
+                cur.execute("UPDATE orders SET status='READY TO SHIP' WHERE id=%s;" % str(order[0]))
+                conn.commit()
 
             except Exception as e:
+                conn.rollback()
                 print("couldn't assign order: " + str(order[1]) + "\nError: " + str(e))
 
         if last_shipped_order_id:
             last_shipped_data_tuple = (
                 last_shipped_order_id, datetime.now(tz=pytz.timezone('Asia/Calcutta')), courier[1])
             cur.execute(update_last_shipped_order_query, last_shipped_data_tuple)
-
-        if order_status_change_ids:
-            if len(order_status_change_ids) == 1:
-                cur.execute(update_orders_status_query % (("(%s)") % str(order_status_change_ids[0])))
-            else:
-                cur.execute(update_orders_status_query, (tuple(order_status_change_ids),))
 
         cur.execute("UPDATE client_pickups SET invoice_last=%s WHERE id=%s;", (last_invoice_no, pickup_id))
 
@@ -1306,20 +1304,17 @@ def ship_ecom_orders(cur, courier, courier_name, order_ids, order_id_tuple, back
                                            pickup_point[6], pickup_point[6], datetime.utcnow() + timedelta(hours=5.5))]
 
                 cur.execute(order_status_add_query, tuple(order_status_add_tuple))
+                cur.execute("UPDATE orders SET status='READY TO SHIP' WHERE id=%s;" % str(order[0]))
+                conn.commit()
 
             except Exception as e:
+                conn.rollback()
                 print("couldn't assign order: " + str(order[1]) + "\nError: " + str(e))
 
         if last_shipped_order_id:
             last_shipped_data_tuple = (
                 last_shipped_order_id, datetime.now(tz=pytz.timezone('Asia/Calcutta')), courier[1])
             cur.execute(update_last_shipped_order_query, last_shipped_data_tuple)
-
-        if order_status_change_ids:
-            if len(order_status_change_ids) == 1:
-                cur.execute(update_orders_status_query % (("(%s)") % str(order_status_change_ids[0])))
-            else:
-                cur.execute(update_orders_status_query, (tuple(order_status_change_ids),))
 
         cur.execute("UPDATE client_pickups SET invoice_last=%s WHERE id=%s;", (last_invoice_no, pickup_id))
 
@@ -1595,20 +1590,17 @@ def ship_bluedart_orders(cur, courier, courier_name, order_ids, order_id_tuple, 
                                            datetime.utcnow() + timedelta(hours=5.5))]
 
                 cur.execute(order_status_add_query, tuple(order_status_add_tuple))
+                cur.execute("UPDATE orders SET status='READY TO SHIP' WHERE id=%s;"%str(order[0]))
+                conn.commit()
 
             except Exception as e:
+                conn.rollback()
                 print("couldn't assign order: " + str(order[1]) + "\nError: " + str(e))
 
         if last_shipped_order_id:
             last_shipped_data_tuple = (
                 last_shipped_order_id, datetime.now(tz=pytz.timezone('Asia/Calcutta')), courier[1])
             cur.execute(update_last_shipped_order_query, last_shipped_data_tuple)
-
-        if order_status_change_ids:
-            if len(order_status_change_ids) == 1:
-                cur.execute(update_orders_status_query % (("(%s)") % str(order_status_change_ids[0])))
-            else:
-                cur.execute(update_orders_status_query, (tuple(order_status_change_ids),))
 
         cur.execute("UPDATE client_pickups SET invoice_last=%s WHERE id=%s;", (last_invoice_no, pickup_id))
 

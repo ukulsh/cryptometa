@@ -163,8 +163,11 @@ def fill_shiplabel_data(c, order, offset, client_name=None):
 
     try:
         order_id_string = order.channel_order_id
-        order_id_barcode = code128.Code128(order_id_string, barHeight=0.6 * inch, barWidth=0.3 * mm)
-        order_id_barcode.drawOn(c, (offset+0.2) * inch, -0.6 * inch)
+        if order.client_prefix!='DHANIPHARMACY':
+            order_id_barcode = code128.Code128(order_id_string, barHeight=0.6 * inch, barWidth=0.3 * mm)
+            order_id_barcode.drawOn(c, (offset+0.2) * inch, -0.6 * inch)
+        else:
+            c.drawImage("Dhanipharmacy.png", (offset-0.3) * inch, -0.85 * inch, width=250, height=75, mask='auto')
         c.drawString((offset+0.4) * inch, -0.75 * inch, order_id_string)
         if order.orders_invoice:
             qr_url = order.orders_invoice[-1].qr_url
@@ -1191,8 +1194,7 @@ def cancel_order_on_channels(order):
 
         if order.client_prefix=='LOTUSORGANICS':
             url = "https://lotusapi.farziengineer.co/plugins/plugin.wareiq/order/update"
-            headers = {"Content-Type": "application/json",
-                       "x-api-key": "c2d8f4d497ee44649653074f139eddf2"}
+            headers = {"x-api-key": "c2d8f4d497ee44649653074f139eddf2"}
             data = {
                 "id": int(order.channel_order_id),
                 "ware_iq_id": order.id,

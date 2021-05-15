@@ -7,7 +7,8 @@ fetch_client_couriers_query = """select aa.id,aa.client_prefix,aa.courier_id,aa.
                                 left join client_mapping cc 
                                 on aa.client_prefix=cc.client_prefix
                                 where aa.active=true
-                                and (cc.account_type != 'prepaid' or cc.current_balance>=500)
+                                and (cc.account_type != 'prepaid' or cc.current_balance>=500) 
+                                __CLIENT_FILTER__ 
                                 order by aa.client_prefix, priority;"""
 
 get_pickup_points_query = """select aa.id, aa.pickup_id, aa.return_point_id, 

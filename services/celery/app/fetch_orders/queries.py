@@ -65,8 +65,10 @@ get_orders_to_assign_pickups = """select aa.id, aa.client_prefix, bb.pincode, xx
                                 group by ll.order_id) xx
                                 on aa.id=xx.order_id
                                 left join client_mapping cc on aa.client_prefix=cc.client_prefix
+                                left join (select * from client_channel where channel_id=7) dd on dd.client_prefix=aa.client_prefix
                                 where aa.pickup_data_id is null
                                 and aa.status='NEW'
+                                and dd.id is null
                                 and sku_list is not null
                                 and aa.date_created>%s"""
 

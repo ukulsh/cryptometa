@@ -135,14 +135,14 @@ def status_update():
 
 
 @celery_app.task(name='orders_ship')
-def orders_ship():
-    ship_orders()
+def orders_ship(client_prefix=None):
+    ship_orders(client_prefix=client_prefix)
     return 'successfully completed ship_orders'
 
 
 @app.route('/scans/v1/orders/ship', methods = ['GET'])
 def ship_orders_api():
-    orders_ship.apply_async(queue='ship_orders')
+    orders_ship(request.args.get('client_prefix'))
     return jsonify({"msg": "ship order task received"}), 200
 
 

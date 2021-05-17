@@ -56,12 +56,12 @@ app.config['CELERYBEAT_SCHEDULE'] = {
     'run-cod-queue': {
                     'task': 'cod_remittance_queue',
                     'schedule': crontab(hour=19, minute=20, day_of_week='thu'),
-                    'options': {'queue': 'calculate_costs'}
+                    'options': {'queue': 'mark_channel_delivered'}
                 },
     'run-cod-entry': {
                     'task': 'cod_remittance_entry',
                     'schedule': crontab(hour=19, minute=55, day_of_week='wed'),
-                    'options': {'queue': 'calculate_costs'}
+                    'options': {'queue': 'mark_channel_delivered'}
                 },
     'run-calculate-costs': {
                 'task': 'calculate_costs',
@@ -76,12 +76,12 @@ app.config['CELERYBEAT_SCHEDULE'] = {
     'run-ndr-reattempt': {
                         'task': 'ndr_push_reattempts',
                         'schedule': crontab(hour=18, minute=00),
-                        'options': {'queue': 'calculate_costs'}
+                        'options': {'queue': 'mark_channel_delivered'}
                     },
     'create-pickups-entry': {
                             'task': 'create_pickups_entry',
                             'schedule': crontab(hour=2, minute=45, day_of_week='mon,tue,wed,thu,fri,sat'),
-                            'options': {'queue': 'calculate_costs'}
+                            'options': {'queue': 'mark_channel_delivered'}
                         },
 }
 
@@ -167,7 +167,7 @@ def bulkship_orders(resp):
 
 @app.route('/scans/v1/dev', methods = ['GET'])
 def celery_dev():
-    orders_fetch.apply_async(queue='calculate_costs', args=("WAREIQ", 30))
+    orders_fetch.apply_async(queue='mark_channel_delivered', args=("WAREIQ", 30))
     return jsonify({"msg": "Task received"}), 200
 
 
@@ -246,7 +246,17 @@ def download_queue_orders_api():
     token = data.get("token")
     if token!="b4r74rn3r84rn4ru84hr":
         jsonify({"status": "Unauthorized"}), 302
-    generate_orders_report.apply_async(queue='calculate_costs', args=(data, ))
+    generate_orders_report.apply_async(queue='mark_channel_delivered', args=(data, ))
+    return jsonify({"status":"success"}), 200
+
+
+@app.route('/scans/v1/downloadQueue/shiplabels', methods = ['POST'])
+def download_queue_labels_api():
+    data = json.loads(request.data)
+    token = data.get("token")
+    if token!="b4r74rn3r84rn4ru84hr":
+        jsonify({"status": "Unauthorized"}), 302
+    generate_orders_labels.apply_async(queue='mark_channel_delivered', args=(data, ))
     return jsonify({"status":"success"}), 200
 
 
@@ -260,6 +270,12 @@ def mark_delivered_channel(payload):
 def generate_orders_report(data):
     msg = download_flag_func_orders(data['query_to_run'], data['get_selected_product_details'],
                                     data['auth_data'], data['ORDERS_DOWNLOAD_HEADERS'], data['hide_weights'], data['report_id'])
+    return msg
+
+
+@celery_app.task(name='generate_orders_labels')
+def generate_orders_labels(data):
+    msg = shiplabel_download_util(data['orders_qs'], data['auth_data'], data['report_id'])
     return msg
 
 

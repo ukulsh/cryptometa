@@ -1,6 +1,12 @@
 from datetime import datetime, timedelta
 import json, re, random, string, csv, boto3, os
 from app.db_utils import DbConnection
+from reportlab.lib.pagesizes import landscape, A4
+from reportlab.lib.units import inch, mm
+from reportlab.graphics.barcode import code128, qr
+from reportlab.graphics.shapes import Drawing
+
+from reportlab.pdfgen import canvas
 
 conn = DbConnection.get_db_connection_instance()
 session = boto3.Session(
@@ -128,3 +134,408 @@ def download_flag_func_orders(query_to_run, get_selected_product_details, auth_d
 
     except Exception:
         conn.rollback()
+
+
+def shiplabel_download_util(orders_qs, auth_data, report_id):
+    shiplabel_type = "A4"
+    cur = conn.cursor()
+    if auth_data['user_group'] in ('client', 'super-admin', 'multi-vendor'):
+        cur.execute("SELECT shipping_label FROM client_mapping WHERE client_prefix='%s'"%auth_data.get('client_prefix'))
+        qs = cur.fetchone()
+        if qs and qs[0]:
+            shiplabel_type = qs[0]
+    if auth_data['user_group'] == 'warehouse':
+        cur.execute("SELECT shipping_label FROM warehouse_mapping WHERE warehouse_prefix='%s'" % auth_data.get('warehouse_prefix'))
+        qs = cur.fetchone()
+        if qs and qs[0]:
+            shiplabel_type = qs[0]
+
+    file_pref = auth_data['client_prefix'] if auth_data['client_prefix'] else auth_data['warehouse_prefix']
+    file_name = "shiplabels_" + str(file_pref) + "_" + str(datetime.now().strftime("%d_%b_%Y_%H_%M_%S")) + ".pdf"
+    if shiplabel_type == 'TH1':
+        c = canvas.Canvas(file_name, pagesize=(288, 432))
+        create_shiplabel_blank_page_thermal(c)
+    else:
+        c = canvas.Canvas(file_name, pagesize=landscape(A4))
+        create_shiplabel_blank_page(c)
+    failed_ids = dict()
+    idx = 0
+    for ixx, order in enumerate(orders_qs):
+        try:
+            if not order[0].shipments or not order[0].shipments[0].awb:
+                continue
+            if shiplabel_type == 'TH1':
+                try:
+                    fill_shiplabel_data_thermal(c, order[0], order[1])
+                except Exception:
+                    pass
+
+                if idx != len(orders_qs) - 1:
+                    c.showPage()
+                    create_shiplabel_blank_page_thermal(c)
+
+            elif shiplabel_type == 'A41':
+                offset = 3.913
+                try:
+                    fill_shiplabel_data(c, order[0], offset, order[1])
+                except Exception:
+                    pass
+                c.setFillColorRGB(1, 1, 1)
+                c.rect(6.680 * inch, -1.0 * inch, 10 * inch, 10 * inch, fill=1)
+                c.rect(-1.0 * inch, -1.0 * inch, 3.907 * inch, 10 * inch, fill=1)
+                if idx != len(orders_qs) - 1:
+                    c.showPage()
+                    create_shiplabel_blank_page(c)
+            else:
+                offset_dict = {0: 0.20, 1: 3.913, 2: 7.676}
+                try:
+                    fill_shiplabel_data(c, order[0], offset_dict[idx % 3], order[1])
+                except Exception:
+                    pass
+                if idx % 3 == 2 and ixx != (len(orders_qs) - 1):
+                    c.showPage()
+                    create_shiplabel_blank_page(c)
+            idx += 1
+        except Exception as e:
+            failed_ids[order[0].channel_order_id] = str(e.args[0])
+            pass
+
+    if not (shiplabel_type in ('A41', 'TH1')):
+        c.setFillColorRGB(1, 1, 1)
+        if idx % 3 == 1:
+            c.rect(2.917 * inch, -1.0 * inch, 10 * inch, 10 * inch, fill=1)
+        if idx % 3 == 2:
+            c.rect(6.680 * inch, -1.0 * inch, 10 * inch, 10 * inch, fill=1)
+
+    c.save()
+    s3 = session.resource('s3')
+    bucket = s3.Bucket("wareiqshiplabels")
+    bucket.upload_file(file_name, file_name, ExtraArgs={'ACL': 'public-read'})
+    shiplabel_url = "https://wareiqshiplabels.s3.us-east-2.amazonaws.com/" + file_name
+    file_size = os.path.getsize(file_name)
+    file_size = int(file_size / 1000)
+    os.remove(file_name)
+    cur.execute("UPDATE downloads SET download_link='%s', status='processed', file_size=%s where id=%s" % (shiplabel_url, file_size, report_id))
+    conn.commit()
+    return shiplabel_url
+
+
+def create_shiplabel_blank_page(canvas):
+    canvas.setLineWidth(.8)
+    canvas.setFont('Helvetica', 12)
+    canvas.translate(inch, inch)
+    canvas.rect(-0.80 * inch, -0.80 * inch, 11.29 * inch, 7.87 * inch, fill=0)
+    canvas.setLineWidth(.05 * inch)
+    canvas.line(2.913 * inch, -0.80 * inch, 2.913 * inch, 7.07 * inch)
+    canvas.line(6.676 * inch, -0.80 * inch, 6.676 * inch, 7.07 * inch)
+    canvas.setLineWidth(0.8)
+    for i in (5.42, 3.62, 2.02):
+        canvas.line(-0.80 * inch, i * inch, 10.49 * inch, i * inch)
+    for i in (1.72, 0.35, 0.05):
+        canvas.line(-0.80 * inch, i * inch, 10.49 * inch, i * inch)
+    for i in (1.73, 5.47, 9.21):
+        canvas.line(i * inch, 3.62 * inch, i * inch, 5.42 * inch)  # upper vertcal
+        canvas.line(i * inch, 2.02 * inch, i * inch, 0.05 * inch)  # lower vertcal
+    for i in (1.33, 5.07, 8.81):
+        canvas.line(i * inch, 3.62 * inch, i * inch, 2.02 * inch)  # middle vertcal
+    for i in (-0.70, 3.013, 6.776):
+        canvas.drawString(i * inch, 1.80 * inch, "Product(s)")
+        canvas.drawString(i * inch, 6.90 * inch, "COURIER: ")
+    for i in (1.82, 5.543, 9.266):
+        canvas.drawString(i * inch, 1.80 * inch, "Price")
+    for i in (1.40, 5.14, 8.88):
+        canvas.drawString(i * inch, 3.45 * inch, "Dimensions:")
+        canvas.drawString(i * inch, 2.65 * inch, "Weight:")
+
+    canvas.setFont('Helvetica-Bold', 12)
+    for i in (-0.70, 3.013, 6.776):
+        canvas.drawString(i * inch, 0.13 * inch, "Total")
+        canvas.drawString(i * inch, 5.25 * inch, "Deliver To:")
+    canvas.setFont('Helvetica-Bold', 9)
+    for i in (-0.70, 3.013, 6.776):
+        canvas.drawString(i * inch, 3.45 * inch, "Shipped By (Return Address):")
+    canvas.setFont('Helvetica', 10)
+
+
+def fill_shiplabel_data(c, order, offset, client_name=None):
+    c.drawString(offset * inch, 6.90 * inch, order.shipments[0].courier.courier_name)
+    c.setFont('Helvetica-Bold', 14)
+    c.drawString((offset + 1.8) * inch, 4.90 * inch, order.payments[0].payment_mode)
+    if order.payments[0].payment_mode.lower()=="cod":
+        c.drawString((offset + 1.8) * inch, 4.40 * inch, str(order.payments[0].amount))
+    full_name = order.delivery_address.first_name
+    c.setFont('Helvetica-Bold', 12)
+    if order.delivery_address.last_name:
+        full_name += " " + order.delivery_address.last_name
+    c.drawString((offset - 0.85) * inch, 5.05 * inch, full_name)
+
+    awb_string = order.shipments[0].awb
+    awb_barcode = code128.Code128(awb_string,barHeight=0.8*inch, barWidth=0.5*mm)
+    temp_param = float((awb_barcode.width/165)-0.7)
+
+    awb_barcode.drawOn(c, (offset-temp_param)*inch, 5.90*inch)
+
+    try:
+        order_id_string = order.channel_order_id
+        if order.client_prefix!='DHANIPHARMACY':
+            order_id_barcode = code128.Code128(order_id_string, barHeight=0.6 * inch, barWidth=0.3 * mm)
+            order_id_barcode.drawOn(c, (offset+0.2) * inch, -0.6 * inch)
+        else:
+            c.drawImage("Dhanipharmacy.png", (offset-0.3) * inch, -0.85 * inch, width=250, height=75, mask='auto')
+        c.drawString((offset+0.2) * inch, -0.75 * inch, order_id_string)
+        if order.orders_invoice:
+            qr_url = order.orders_invoice[-1].qr_url
+            qr_code = qr.QrCodeWidget(qr_url)
+            bounds = qr_code.getBounds()
+            width = bounds[2] - bounds[0]
+            height = bounds[3] - bounds[1]
+            d = Drawing(60, 60, transform=[60. / width, 0, 0, 60. / height, 0, 0])
+            d.add(qr_code)
+            d.drawOn(c, (offset-0.8) * inch, -0.80*inch)
+    except Exception:
+        pass
+
+    c.drawString((offset+0.3) * inch, 5.75*inch, awb_string)
+    routing_code = "N/A"
+    if order.shipments[0].routing_code:
+        routing_code = str(order.shipments[0].routing_code)
+    c.drawString((offset+1.8) * inch, 5.50*inch, routing_code)
+
+    c.setFont('Helvetica', 10)
+    full_address = order.delivery_address.address_one
+    if order.delivery_address.address_two:
+        full_address += " "+order.delivery_address.address_two
+    full_address = split_string(full_address, 35)
+    y_axis = 4.85
+    for addr in full_address:
+        c.drawString((offset - 0.85) * inch, y_axis * inch, addr)
+        y_axis -= 0.15
+
+    try:
+        c.drawString((offset - 0.85) * inch, 4.10 * inch, order.delivery_address.city+", "+order.delivery_address.state)
+        c.drawString((offset - 0.85) * inch, 3.90 * inch, order.delivery_address.country+", PIN: "+order.delivery_address.pincode)
+    except Exception:
+        pass
+
+    if not client_name.hide_address or str(order.shipments[0].courier.courier_name).startswith("Bluedart"):
+        try:
+            if order.pickup_data:
+                return_point = order.pickup_data.return_point
+            else:
+                return_point = order.shipments[0].return_point
+            return_address = return_point.address
+            if return_point.address_two:
+                return_address += " "+ return_point.address_two
+
+            return_address = split_string(return_address, 30)
+
+            return_point_name = client_name.client_name if client_name else str(return_point.name)
+            c.drawString((offset - 0.85) * inch, 3.25 * inch, return_point_name)
+            y_axis = 3.05
+            for retn in return_address:
+                c.drawString((offset - 0.85) * inch, y_axis * inch, retn)
+                y_axis -= 0.15
+
+            c.drawString((offset - 0.85) * inch, 2.40 * inch, return_point.city + ", " + return_point.state)
+            c.drawString((offset - 0.85) * inch, 2.25 * inch, return_point.country + ", PIN: " + str(return_point.pincode))
+        except Exception:
+            pass
+
+    if not client_name.hide_products:
+        c.setFont('Helvetica', 8)
+        try:
+            products_string = ""
+            for prod in order.products:
+                products_string += prod.master_product.name + " (" + str(prod.quantity) + ") + "
+            products_string = products_string.rstrip(" + ")
+            if order.payments[0].shipping_charges:
+                products_string += " + Shipping"
+            products_string = split_string(products_string, 35)
+            if len(products_string) > 9:
+                products_string = products_string[:9]
+                products_string[8] += "..."
+
+            y_axis = 1.42
+            for prod in products_string:
+                c.drawString((offset - 0.85) * inch, y_axis * inch, prod)
+                y_axis -= 0.12
+
+            c.setFont('Helvetica', 12)
+            c.drawString((offset + 1.75) * inch, 0.13 * inch, str(order.payments[0].amount))
+            c.drawString((offset + 1.75) * inch, 1.32 * inch, str(order.payments[0].amount))
+        except Exception:
+            pass
+
+    c.setFont('Helvetica', 12)
+
+    try:
+        dimension_str = str(order.shipments[0].dimensions['length']) + \
+                        " x " + str(order.shipments[0].dimensions['breadth']) + \
+                        " x " + str(order.shipments[0].dimensions['height'])
+
+        weight_str = str(order.shipments[0].weight) + " kg"
+
+        c.drawString((offset + 1.35) * inch, 3.15 * inch, dimension_str)
+        c.drawString((offset + 1.35) * inch, 2.35 * inch, weight_str)
+    except Exception:
+        pass
+
+    c.setFont('Helvetica', 10)
+
+
+def create_shiplabel_blank_page_thermal(canvas):
+    canvas.setLineWidth(.8)
+    canvas.setFont('Helvetica', 9)
+    canvas.translate(inch, inch)
+    canvas.rect(-0.9 * inch, -0.9 * inch, 3.8 * inch, 5.8 * inch, fill=0)
+    canvas.setLineWidth(0.8)
+    for i in (3.2, 2.7, 0.9):
+        canvas.line(-0.90 * inch, i * inch, 2.9 * inch, i * inch)
+
+    canvas.drawString(-0.8 * inch, 4.75 * inch, "COURIER:")
+    canvas.drawString(-0.8 * inch, 3.05 * inch, "Dimensions:")
+    canvas.drawString(-0.8 * inch, 2.77 * inch, "Weight:")
+    canvas.drawString(0.85 * inch, 3.05 * inch, "Payment:")
+    canvas.setFont('Helvetica-Bold', 9)
+    canvas.drawString(1.5 * inch, 0.75 * inch,  "Total")
+    canvas.drawString(-0.8 * inch, 2.55 * inch, "Deliver To:")
+    canvas.drawString(-0.8 * inch, 0.75 * inch, "Product(s)")
+    canvas.drawString(-0.8 * inch, -0.5 * inch, "Shipped By (Return Address):")
+    canvas.setFont('Helvetica', 0)
+
+
+def fill_shiplabel_data_thermal(c, order, client_name=None):
+    c.setFont('Helvetica-Bold', 10)
+    c.drawString(1.45* inch, 3.05 * inch, order.payments[0].payment_mode)
+    if order.payments[0].payment_mode.lower()=="cod":
+        c.drawString(1.45 * inch, 2.80 * inch, str(order.payments[0].amount))
+    full_name = order.delivery_address.first_name
+    if order.delivery_address.last_name:
+        full_name += " " + order.delivery_address.last_name
+    c.drawString(-0.75 * inch, 2.37 * inch, full_name)
+
+    awb_string = order.shipments[0].awb
+    awb_barcode = code128.Code128(awb_string,barHeight=0.8*inch, barWidth=0.5*mm)
+    temp_param = float((awb_barcode.width/165)-0.7)
+
+    awb_barcode.drawOn(c, (0.15-temp_param)*inch, 3.75*inch)
+
+    try:
+        order_id_string = order.channel_order_id
+        c.drawString(1.75 * inch, 1.25 * inch, order_id_string)
+        if order.orders_invoice:
+            qr_url = order.orders_invoice[-1].qr_url
+            qr_code = qr.QrCodeWidget(qr_url)
+            bounds = qr_code.getBounds()
+            width = bounds[2] - bounds[0]
+            height = bounds[3] - bounds[1]
+            d = Drawing(60, 60, transform=[60. / width, 0, 0, 60. / height, 0, 0])
+            d.add(qr_code)
+            d.drawOn(c, 1.8 * inch, 1.4 * inch)
+    except Exception:
+        pass
+
+    c.drawString( 0.6 * inch, 3.60*inch, awb_string)
+    routing_code = "N/A"
+    if order.shipments[0].routing_code:
+        routing_code = str(order.shipments[0].routing_code)
+    c.drawString(2.1 * inch, 3.30*inch, routing_code)
+
+    c.setFont('Helvetica', 9)
+    c.drawString(0*inch, 4.75 * inch, order.shipments[0].courier.courier_name)
+    full_address = order.delivery_address.address_one
+    if order.delivery_address.address_two:
+        full_address += " "+order.delivery_address.address_two
+    full_address = split_string(full_address, 40)
+
+    y_axis = 2.22
+    for addr in full_address:
+        c.drawString(-0.75 * inch, y_axis * inch, addr)
+        y_axis -= 0.15
+
+    try:
+        c.drawString(-0.75 * inch, 1.20 * inch, order.delivery_address.city+", "+order.delivery_address.state)
+        c.drawString(-0.75 * inch, 1.00 * inch, order.delivery_address.country+", PIN: "+order.delivery_address.pincode)
+    except Exception:
+        pass
+
+    c.setFont('Helvetica', 8)
+    if not client_name.hide_address or str(order.shipments[0].courier.courier_name).startswith("Bluedart"):
+        try:
+            if order.pickup_data:
+                return_point = order.pickup_data.return_point
+            else:
+                return_point = order.shipments[0].return_point
+            return_address = return_point.address
+            if return_point.address_two:
+                return_address += " "+ return_point.address_two
+
+            return_point_name = client_name.client_name if client_name else str(return_point.name)
+            return_address = return_point_name + " |  " + return_address
+
+            return_address = split_string(return_address, 75)
+
+            y_axis = -0.65
+            for retn in return_address:
+                c.drawString(-0.75 * inch, y_axis * inch, retn)
+                y_axis -= 0.12
+
+        except Exception:
+            pass
+
+    if not client_name.hide_products:
+        c.setFont('Helvetica', 7)
+        try:
+            products_string = ""
+            for prod in order.products:
+                products_string += prod.master_product.name + " (" + str(prod.quantity) + ") + "
+            products_string = products_string.rstrip(" + ")
+            if order.payments[0].shipping_charges:
+                products_string += " + Shipping"
+            products_string = split_string(products_string, 45)
+            if len(products_string) > 7:
+                products_string = products_string[:7]
+                products_string[6] += "..."
+
+            y_axis = 0.6
+            for prod in products_string:
+                c.drawString(-0.75 * inch, y_axis * inch, prod)
+                y_axis -= 0.15
+
+            c.drawString(1.6 * inch, 0.5 * inch, str(order.payments[0].amount))
+        except Exception:
+            pass
+
+    c.setFont('Helvetica', 8)
+
+    try:
+        dimension_str = str(order.shipments[0].dimensions['length']) + \
+                        " x " + str(order.shipments[0].dimensions['breadth']) + \
+                        " x " + str(order.shipments[0].dimensions['height'])
+
+        weight_str = str(order.shipments[0].weight) + " kg"
+
+        c.drawString(-0.08 * inch, 3.05 * inch, dimension_str)
+        c.drawString(-0.15 * inch, 2.77 * inch, weight_str)
+    except Exception:
+        pass
+
+    c.setFont('Helvetica', 10)
+
+
+def split_string(str, limit, sep=" "):
+    words = str.split()
+    if max(map(len, words)) > limit:
+        str = str.replace(',', ' ')
+        str = str.replace(';', ' ')
+        words = str.split()
+    res, part, others = [], words[0], words[1:]
+    for word in others:
+        if len(sep)+len(word) > limit-len(part):
+            res.append(part)
+            part = word
+        else:
+            part += sep+word
+    if part:
+        res.append(part)
+    return res

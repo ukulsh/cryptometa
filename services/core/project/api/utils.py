@@ -1150,6 +1150,19 @@ def cancel_order_on_couriers(order):
 
 
 def cancel_order_on_channels(order):
+
+    if order.client_prefix == 'LOTUSORGANICS':
+        url = "https://lotusapi.farziengineer.co/plugins/plugin.wareiq/order/update"
+        headers = {"x-api-key": "c2d8f4d497ee44649653074f139eddf2"}
+        data = {
+            "id": int(order.channel_order_id),
+            "ware_iq_id": order.id,
+            "awb_number": "",
+            "status_information": "Cancelled"
+        }
+
+        req = requests.post(url, headers=headers, data=data)
+
     if order.client_channel and order.client_channel.mark_canceled and order.order_id_channel_unique:
         if order.client_channel.channel_id == 6: # cancel on magento
             cancel_header = {'Content-Type': 'application/json',
@@ -1191,15 +1204,3 @@ def cancel_order_on_channels(order):
             }
             req_ful = requests.post(cancel_order_url, data=json.dumps(fulfil_data),
                                     headers=ful_header)
-
-        if order.client_prefix=='LOTUSORGANICS':
-            url = "https://lotusapi.farziengineer.co/plugins/plugin.wareiq/order/update"
-            headers = {"x-api-key": "c2d8f4d497ee44649653074f139eddf2"}
-            data = {
-                "id": int(order.channel_order_id),
-                "ware_iq_id": order.id,
-                "awb_number": "",
-                "status_information": "Cancelled"
-            }
-
-            req = requests.post(url, headers=headers, data=data)

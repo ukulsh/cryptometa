@@ -904,6 +904,7 @@ def upload_orders(resp):
 def download_shiplabels(resp):
     data = json.loads(request.data)
     auth_data = resp.get('data')
+    cur = conn.cursor()
     if not auth_data:
         return jsonify({"success": False, "msg": "Auth Failed"}), 404
 
@@ -917,8 +918,17 @@ def download_shiplabels(resp):
     if not orders_qs:
         return jsonify({"success": False, "msg": "No valid order ID"}), 404
 
-    shiplabel_url, failed_ids = shiplabel_download_util(orders_qs, auth_data)
-
+    total_count = len(orders_qs)
+    title = str(total_count) + " orders shiplabels download"
+    cur.execute("""INSERT INTO downloads (warehouse_prefix, client_prefix, created_by, type, title, 
+                                                    download_link, dl_from, dl_to, status, date_created) VALUES 
+                                                    (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) returning id;""",
+                (auth_data.get('warehouse_prefix'), auth_data.get('client_prefix'), auth_data.get('username'),
+                 "Shiplabels", title, None, None, None, "processing",
+                 datetime.utcnow() + timedelta(hours=5.5)))
+    report_id = cur.fetchone()[0]
+    conn.commit()
+    shiplabel_url, failed_ids = shiplabel_download_util(orders_qs, auth_data, report_id, cur)
     return jsonify({
         'status': 'success',
         'url': shiplabel_url,
@@ -983,7 +993,7 @@ def update_ndr(resp):
     }), 200
 
 
-def shiplabel_download_util(orders_qs, auth_data):
+def shiplabel_download_util(orders_qs, auth_data, report_id, cur):
     shiplabel_type = "A4"
     if auth_data['user_group'] in ('client', 'super-admin', 'multi-vendor'):
         qs = db.session.query(ClientMapping).filter(
@@ -1058,7 +1068,11 @@ def shiplabel_download_util(orders_qs, auth_data):
     bucket = s3.Bucket("wareiqshiplabels")
     bucket.upload_file(file_name, file_name, ExtraArgs={'ACL': 'public-read'})
     shiplabel_url = "https://wareiqshiplabels.s3.us-east-2.amazonaws.com/" + file_name
+    file_size = os.path.getsize(file_name)
+    file_size = int(file_size / 1000)
     os.remove(file_name)
+    cur.execute("UPDATE downloads SET download_link='%s', status='processed', file_size=%s where id=%s" % (shiplabel_url, file_size, report_id))
+    conn.commit()
     return shiplabel_url, failed_ids
 
 
@@ -1178,13 +1192,29 @@ def pickup_download(resp, pickup_id):
         download_url = ""
 
         if flag=="labels":
+            cur = conn.cursor()
             orders_qs = db.session.query(Orders, ClientMapping).outerjoin(ClientMapping,
                                                               Orders.client_prefix == ClientMapping.client_prefix).outerjoin(
                 OrderPickups, Orders.id == OrderPickups.order_id).filter(OrderPickups.manifest_id == manifest_id).all()
             if not orders_qs:
                 return jsonify({"success": False, "msg": "No valid order ID"}), 400
 
-            download_url, failed_ids = shiplabel_download_util(orders_qs, auth_data)
+            total_count = len(orders_qs)
+            title = str(total_count) + " orders shiplabels download"
+            cur.execute("""INSERT INTO downloads (warehouse_prefix, client_prefix, created_by, type, title, 
+                                                                download_link, dl_from, dl_to, status, date_created) VALUES 
+                                                                (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) returning id;""",
+                        (auth_data.get('warehouse_prefix'), auth_data.get('client_prefix'), auth_data.get('username'),
+                         "Shiplabels", title, None, None, None, "processing",
+                         datetime.utcnow() + timedelta(hours=5.5)))
+            report_id = cur.fetchone()[0]
+            conn.commit()
+            shiplabel_url, failed_ids = shiplabel_download_util(orders_qs, auth_data, report_id, cur)
+            return jsonify({
+                'status': 'success',
+                'download_url': shiplabel_url,
+                "failed_ids": failed_ids
+            }), 200
 
         elif flag=="invoice":
             orders_qs = db.session.query(Orders, ClientMapping).outerjoin(ClientMapping,

@@ -40,7 +40,7 @@ cors.init_app(app)
 app.config['CELERYBEAT_SCHEDULE'] = {
     'run-status-update': {
             'task': 'status_update',
-            'schedule': crontab(minute='50', hour='*'),
+            'schedule': crontab(minute='50', hour='*/2'),
             'options': {'queue': 'update_status'}
         },
     'run-fetch-orders': {

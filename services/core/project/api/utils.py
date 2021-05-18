@@ -168,6 +168,8 @@ def fill_shiplabel_data(c, order, offset, client_name=None):
             order_id_barcode.drawOn(c, (offset+0.2) * inch, -0.6 * inch)
         else:
             c.drawImage("Dhanipharmacy.png", (offset-0.3) * inch, -0.85 * inch, width=250, height=75, mask='auto')
+            if order.shipments[0].courier_id==22:
+                c.drawString((offset - 0.85) * inch, 1.42 * inch, "Contact no: "+str(order.customer_phone))
         c.drawString((offset+0.2) * inch, -0.75 * inch, order_id_string)
         if order.orders_invoice:
             qr_url = order.orders_invoice[-1].qr_url

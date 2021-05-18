@@ -216,7 +216,7 @@ def ship_delhivery_orders(cur, courier, courier_name, order_ids, order_id_tuple,
                     orders_dict[str(order[0])] = (order[0], order[33], order[34], order[35],
                                                   order[36], order[37], order[38], order[39],
                                                   order[5], order[9], order[45], order[46],
-                                                  order[51], order[52], zone, order[54])
+                                                  order[51], order[52], zone, order[54], order[55], order[56])
 
                     if order[17].lower() in ("bengaluru", "bangalore", "banglore") and courier[1] in ("SOHOMATTRESS",) and \
                             order[26].lower() != 'pickup' and not force_ship:
@@ -405,6 +405,9 @@ def ship_delhivery_orders(cur, courier, courier_name, order_ids, order_id_tuple,
             insert_order_status_dict = dict()
             for package in return_data:
                 try:
+                    remark = ''
+                    if package['remarks']:
+                        remark = package['remarks'][0]
                     fulfillment_id = None
                     tracking_link = None
                     if package['waybill']:
@@ -417,7 +420,7 @@ def ship_delhivery_orders(cur, courier, courier_name, order_ids, order_id_tuple,
                         if orders_dict[package['refnum']][11]==7:
                             push_awb_easyecom(orders_dict[package['refnum']][7],
                                               orders_dict[package['refnum']][4],
-                                              package['waybill'], courier, cur, orders_dict[package['refnum']][9])
+                                              package['waybill'], courier, cur, orders_dict[package['refnum']][16], orders_dict[package['refnum']][17])
 
                         try:
                             tracking_link_wareiq = "https://webapp.wareiq.com/tracking/" + str(package['waybill'])
@@ -439,7 +442,7 @@ def ship_delhivery_orders(cur, courier, courier_name, order_ids, order_id_tuple,
                                 logger.error("Couldn't update shopify for: " + str(package['refnum'])
                                              + "\nError: " + str(e.args))
 
-                    elif 'pincode' in package['remarks']:
+                    elif 'pincode' in remark:
                         cur.execute("select * from client_couriers where client_prefix=%s and priority=%s;",
                                     (courier[1], courier[3] + 1))
                         qs = cur.fetchone()
@@ -449,10 +452,6 @@ def ship_delhivery_orders(cur, courier, courier_name, order_ids, order_id_tuple,
                                                                 None, None, None, None, "Pincode not serviceable", None,
                                                                 None, orders_dict[package['refnum']][14]), )
                         continue
-
-                    remark = ''
-                    if package['remarks']:
-                        remark = package['remarks'][0]
 
                     if 'COD' in remark or 'blocked' in remark:
                         continue
@@ -989,7 +988,7 @@ def ship_xpressbees_orders(cur, courier, courier_name, order_ids, order_id_tuple
                         "", pickup_point[2], "", fulfillment_id, tracking_link, zone)])
 
                     if order[46] == 7:
-                        push_awb_easyecom(order[39],order[36], return_data_raw['AddManifestDetails'][0]['AWBNo'], courier, cur, order[9])
+                        push_awb_easyecom(order[39],order[36], return_data_raw['AddManifestDetails'][0]['AWBNo'], courier, cur, order[55], order[56])
 
                     client_name = str(order[51])
                     customer_phone = order[5].replace(" ", "")
@@ -1063,27 +1062,32 @@ def ship_ecom_orders(cur, courier, courier_name, order_ids, order_id_tuple, back
             else:
                 pickup_point_order_dict[order[41]].append(order)
 
-    cur.execute("""select awb from shipments aa
-                        left join orders bb on aa.order_id=bb.id
-                        left join orders_payments cc on cc.order_id=bb.id
-                        where courier_id=%s
-                        and payment_mode ilike 'cod'
-                        order by aa.id DESC
-                        LIMIT 1;""" % str(courier[9]))
+    last_assigned_awb_cod = 0
+    last_assigned_awb_ppd = 0
+    try:
+        cur.execute("""select awb from shipments aa
+                            left join orders bb on aa.order_id=bb.id
+                            left join orders_payments cc on cc.order_id=bb.id
+                            where courier_id=%s
+                            and payment_mode ilike 'cod'
+                            order by aa.id DESC
+                            LIMIT 1;""" % str(courier[9]))
 
-    last_assigned_awb_cod = cur.fetchone()[0]
-    last_assigned_awb_cod = int(last_assigned_awb_cod)
+        last_assigned_awb_cod = cur.fetchone()[0]
+        last_assigned_awb_cod = int(last_assigned_awb_cod)
 
-    cur.execute("""select awb from shipments aa
-                        left join orders bb on aa.order_id=bb.id
-                        left join orders_payments cc on cc.order_id=bb.id
-                        where courier_id=%s
-                        and (payment_mode ilike 'prepaid' or payment_mode ilike 'paid')
-                        order by aa.id DESC
-                        LIMIT 1;""" % str(courier[9]))
+        cur.execute("""select awb from shipments aa
+                            left join orders bb on aa.order_id=bb.id
+                            left join orders_payments cc on cc.order_id=bb.id
+                            where courier_id=%s
+                            and (payment_mode ilike 'prepaid' or payment_mode ilike 'paid')
+                            order by aa.id DESC
+                            LIMIT 1;""" % str(courier[9]))
 
-    last_assigned_awb_ppd = cur.fetchone()[0]
-    last_assigned_awb_ppd = int(last_assigned_awb_ppd)
+        last_assigned_awb_ppd = cur.fetchone()[0]
+        last_assigned_awb_ppd = int(last_assigned_awb_ppd)
+    except Exception:
+        pass
 
     for pickup_id, all_new_orders in pickup_point_order_dict.items():
         last_shipped_order_id = 0
@@ -1281,7 +1285,7 @@ def ship_ecom_orders(cur, courier, courier_name, order_ids, order_id_tuple, back
                         "", pickup_point[2], "", fulfillment_id, tracking_link, zone)])
 
                     if order[46] == 7:
-                        push_awb_easyecom(order[39],order[36], return_data_raw['shipments'][0]['awb'], courier, cur, order[9])
+                        push_awb_easyecom(order[39],order[36], return_data_raw['shipments'][0]['awb'], courier, cur, order[55], order[56])
 
                     client_name = str(order[51])
                     customer_phone = order[5].replace(" ", "")
@@ -1568,7 +1572,7 @@ def ship_bluedart_orders(cur, courier, courier_name, order_ids, order_id_tuple, 
                         "", pickup_point[2], routing_code, fulfillment_id, tracking_link, zone)])
 
                     if order[46] == 7:
-                        push_awb_easyecom(order[39],order[36], req['AWBNo'], courier, cur, order[9])
+                        push_awb_easyecom(order[39],order[36], req['AWBNo'], courier, cur, order[55], order[56])
 
                     client_name = str(order[51])
                     customer_phone = order[5].replace(" ", "")
@@ -1848,7 +1852,7 @@ def ship_fedex_orders(cur, courier, courier_name, order_ids, order_id_tuple, bac
                         "", pickup_point[2], None, None, None, zone)])
 
                     if order[46] == 7:
-                        push_awb_easyecom(order[39],order[36], awb_no, courier, cur, order[9])
+                        push_awb_easyecom(order[39],order[36], awb_no, courier, cur, order[55], order[56])
 
                     client_name = str(order[51])
                     customer_phone = order[5].replace(" ", "")
@@ -2200,7 +2204,7 @@ def ship_sdd_orders(cur, courier, courier_name, order_ids, order_id_tuple, backu
 
                 if order[46] == 7:
                     push_awb_easyecom(order[39], order[36], return_data_raw['AddManifestDetails'][0]['AWBNo'], courier,
-                                      cur, order[9])
+                                      cur, order[55], order[56])
 
                 client_name = str(order[51])
                 customer_phone = order[5].replace(" ", "")
@@ -2290,6 +2294,8 @@ def ship_pidge_orders(cur, courier, courier_name, order_ids, order_id_tuple, bac
 
     for pickup_id, all_new_orders in pickup_point_order_dict.items():
 
+        if pickup_id!=142: #todo: remove this
+            continue
         last_shipped_order_id = 0
         pickup_points_tuple = (pickup_id,)
         cur.execute(get_pickup_points_query, pickup_points_tuple)
@@ -2304,6 +2310,9 @@ def ship_pidge_orders(cur, courier, courier_name, order_ids, order_id_tuple, bac
 
         for order in all_new_orders:
             if order[26].lower() == 'pickup':
+                continue
+            # kama ayurveda assign delhi orders pincode check
+            if order[18] not in kama_del_sdd_pincodes:
                 continue
             zone = None
             try:
@@ -2343,10 +2352,6 @@ def ship_pidge_orders(cur, courier, courier_name, order_ids, order_id_tuple, bac
             if pickup_point[0] == 1182 and order[18] not in kama_chn_sdd_pincodes:
                 continue
 
-            # kama ayurveda assign delhi orders pincode check
-            if pickup_point[0] == 142 and order[18] not in kama_del_sdd_pincodes:
-                continue
-
             dimensions = order[33][0]
             dimensions['length'] = dimensions['length'] * order[35][0]
             weight = order[34][0] * order[35][0]
@@ -2370,7 +2375,7 @@ def ship_pidge_orders(cur, courier, courier_name, order_ids, order_id_tuple, bac
 
             pidge_body = {
                             "vendor_order_id": order[0],
-                            "volume": max(volumetric_weight, weight)*500,
+                            "volume": (int(max(volumetric_weight, weight)*2) + 1)*250,
                             "cash_to_be_collected": int(order[27]) if order[26].lower()=='cod' or order[26].lower()=='cash on delivery' else 0,
                             "originator_details": {
                                 "first_name": pickup_point[11],
@@ -2424,7 +2429,7 @@ def ship_pidge_orders(cur, courier, courier_name, order_ids, order_id_tuple, bac
 
                 if order[46] == 7:
                     push_awb_easyecom(order[39], order[36], return_data_raw['data'][0]['PBID'], courier,
-                                      cur, order[9])
+                                      cur, order[55], order[56])
 
                 client_name = str(order[51])
 
@@ -2649,27 +2654,24 @@ def ship_vinculum_orders(cur, courier, courier_name, order_ids, order_id_tuple):
             logger.error("messages not sent." + "   Error: " + str(e.args[0]))
 
 
-def push_awb_easyecom(invoice_id, api_token, awb, courier, cur, client_prefix):
+def push_awb_easyecom(invoice_id, api_token, awb, courier, cur, companyCarrierId, client_channel_id):
     try:
-        companyCarrierId = courier[8]
-        if not companyCarrierId or not companyCarrierId.isdigit() or not courier[0]:
-            cur.execute("""SELECT aa.id, aa.unique_parameter FROM client_couriers aa
-                        LEFT JOIN master_couriers bb on aa.courier_id=bb.id 
-                        WHERE bb.courier_name='%s' 
-                        AND aa.client_prefix='%s'"""%(courier[10], client_prefix))
+        if not companyCarrierId or not companyCarrierId.isdigit():
+            cur.execute("""SELECT id, unique_parameter FROM client_channel
+                        WHERE id=%s;"""%str(client_channel_id))
 
             cour = cur.fetchone()
             if not cour[1] or not cour[1].isdigit():
                 add_url = "https://api.easyecom.io/Credentials/addCarrierCredentials?api_token=%s"%api_token
                 post_body = {
-                              "carrier_id":easyecom_carrier_id[courier[10]],
+                              "carrier_id": 14039,
                               "username":"wareiq",
                               "password":"wareiq",
-                              "token":courier[14]
+                              "token": "wareiq"
                             }
 
                 req = requests.post(add_url, data=post_body).json()
-                cur.execute("UPDATE client_couriers SET unique_parameter='%s' WHERE id=%s"%(req['data']['companyCarrierId'], cour[0]))
+                cur.execute("UPDATE client_channel SET unique_parameter='%s' WHERE id=%s"%(req['data']['companyCarrierId'], str(client_channel_id)))
                 companyCarrierId = req['data']['companyCarrierId']
             else:
                 companyCarrierId = cour[1]

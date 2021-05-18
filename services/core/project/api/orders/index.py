@@ -923,7 +923,7 @@ def download_shiplabels(resp):
     cur.execute("""INSERT INTO downloads (warehouse_prefix, client_prefix, created_by, type, title, 
                                                     download_link, dl_from, dl_to, status, date_created) VALUES 
                                                     (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) returning id;""",
-                (auth_data.get('warehouse_prefix'), auth_data.get('client_prefix'), auth_data.get('username'),
+                (auth_data.get('warehouse_prefix'), auth_data.get('client_prefix'), auth_data.get('username') if auth_data.get('username') else auth_data.get('client_prefix'),
                  "Shiplabels", title, None, None, None, "processing",
                  datetime.utcnow() + timedelta(hours=5.5)))
     report_id = cur.fetchone()[0]

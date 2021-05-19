@@ -1480,14 +1480,17 @@ def cancel_order_channel(resp, order_id):
         return jsonify({"success": False, "msg": "Auth Failed"}), 404
 
     orders_qs = db.session.query(Orders).filter(Orders.order_id_channel_unique == str(order_id), Orders.client_prefix==auth_data.get('client_prefix')).all()
+    if not orders_qs:
+        orders_qs = db.session.query(Orders).filter(Orders.channel_order_id == str(order_id), Orders.client_prefix == auth_data.get('client_prefix')).all()
 
     for order in orders_qs:
-        order.status = 'CANCELED'
-        cancel_order_on_couriers(order)
-        if order.orders_invoice:
-            for invoice_obj in order.orders_invoice:
-                invoice_obj.cancelled=True
-        db.session.query(OrderStatus).filter(OrderStatus.order_id == order.id).delete()
+        if order.status in ('NEW', 'READY TO SHIP', 'PICKUP REQUESTED', 'NOT SHIPPED'):
+            order.status = 'CANCELED'
+            cancel_order_on_couriers(order)
+            if order.orders_invoice:
+                for invoice_obj in order.orders_invoice:
+                    invoice_obj.cancelled=True
+            db.session.query(OrderStatus).filter(OrderStatus.order_id == order.id).delete()
 
     db.session.commit()
 

@@ -19,8 +19,9 @@ RAVEN_URL = "https://api.ravenapp.dev/v1/apps/ccaaf889-232e-49df-aeb8-869e315350
 RAVEN_HEADERS = {"Content-Type": "application/json", "Authorization": "AuthKey K4noY3GgzaW8OEedfZWAOyg+AmKZTsqO/h/8Y4LVtFA="}
 
 
-def ship_orders(courier_name=None, order_ids=None, force_ship=None, client_prefix=None):
-    cur = conn.cursor()
+def ship_orders(courier_name=None, order_ids=None, force_ship=None, client_prefix=None, cur=None):
+    if not cur:
+        cur = conn.cursor()
     order_id_tuple = "()"
     if courier_name and order_ids:  # creating courier details list for manual shipping
         if len(order_ids) == 1:
@@ -424,7 +425,8 @@ def ship_delhivery_orders(cur, courier, courier_name, order_ids, order_id_tuple,
 
                         try:
                             tracking_link_wareiq = "https://webapp.wareiq.com/tracking/" + str(package['waybill'])
-                            send_received_event(client_name, customer_phone, tracking_link_wareiq)
+                            if courier[1] != 'DHANIPHARMACY':
+                                send_received_event(client_name, customer_phone, tracking_link_wareiq)
                         except Exception:
                             pass
 
@@ -1293,7 +1295,8 @@ def ship_ecom_orders(cur, courier, courier_name, order_ids, order_id_tuple, back
 
                     try:
                         tracking_link_wareiq = "https://webapp.wareiq.com/tracking/" + str(return_data_raw['shipments'][0]['awb'])
-                        send_received_event(client_name, customer_phone, tracking_link_wareiq)
+                        if courier[1] != 'DHANIPHARMACY':
+                            send_received_event(client_name, customer_phone, tracking_link_wareiq)
                     except Exception:
                         pass
 
@@ -1509,7 +1512,6 @@ def ship_bluedart_orders(cur, courier, courier_name, order_ids, order_id_tuple, 
                 services['ItemCount'] = 1
                 services['CreditReferenceNo'] = str(order[0])
                 if courier[1]=='DHANIPHARMACY':
-                    services['PackType'] = 'L'
                     services['CreditReferenceNo'] = "dp" + str(order[0])
 
                 if order[26].lower() == "cod":
@@ -1580,7 +1582,8 @@ def ship_bluedart_orders(cur, courier, courier_name, order_ids, order_id_tuple, 
 
                     try:
                         tracking_link_wareiq = "https://webapp.wareiq.com/tracking/" + str(req['AWBNo'])
-                        send_received_event(client_name, customer_phone, tracking_link_wareiq)
+                        if courier[1]!='DHANIPHARMACY':
+                            send_received_event(client_name, customer_phone, tracking_link_wareiq)
                     except Exception:
                         pass
 

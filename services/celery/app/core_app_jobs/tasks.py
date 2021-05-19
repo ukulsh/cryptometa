@@ -917,7 +917,7 @@ def ship_bulk_orders(order_list, auth_data, courier):
             order_ids = cur.fetchone()[0]
             if not order_ids:
                 return {"success": False, "msg": "invalid order ids"}, 400
-            ship_orders(courier_name=courier, order_ids=order_ids, force_ship=True)
+            ship_orders(courier_name=courier, order_ids=order_ids, force_ship=True, cur=cur)
 
             return {"success": True, "msg": "shipped successfully"}, 200
 

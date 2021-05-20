@@ -19,9 +19,12 @@ conn = psycopg2.connect(host=host, database=database, user=user, password=passwo
 conn = DbConnection.get_db_connection_instance()
 
 
-def update_status():
+def update_status(sync_ext=None):
     cur = conn.cursor()
-    cur.execute(get_courier_id_and_key_query)
+    if not sync_ext:
+        cur.execute(get_courier_id_and_key_query + " where integrated is true;")
+    else:
+        cur.execute(get_courier_id_and_key_query + " where integrated is not true;")
     for courier in cur.fetchall():
         try:
             if courier[1].startswith('Delhivery'):
@@ -518,7 +521,7 @@ def track_xpressbees_orders(courier, cur):
                     to_record_status = ""
                     if each_scan['StatusCode'] == "DRC":
                         to_record_status = "Received"
-                    elif each_scan['StatusCode'] == "PUD":
+                    elif each_scan['StatusCode'] == "PUD" or (each_scan['StatusCode'] == "PKD" and each_scan.get('PickUpTime')):
                         to_record_status = "Picked"
                         order_picked_check = True
                     elif each_scan['StatusCode'] in ("IT", "RAD"):
@@ -705,31 +708,36 @@ def track_bluedart_orders(courier, cur):
             awb_string += order[1] + ","
 
         awb_string = awb_string.rstrip(',')
-
+        req = None
         check_status_url = "https://api.bluedart.com/servlet/RoutingServlet?handler=tnt&action=custawbquery&loginid=HYD50082&awb=awb&numbers=%s&format=xml&lickey=eguvjeknglfgmlsi5ko5hn3vvnhoddfs&verno=1.3&scan=1" % awb_string
         try:
             req = requests.get(check_status_url)
-        except ConnectionResetError:
+        except Exception:
             sleep(10)
-            req = requests.get(check_status_url)
-        try:
-            req = xmltodict.parse(req.content)
-            if type(req['ShipmentData']['Shipment'])==list:
-                req_ship_data += req['ShipmentData']['Shipment']
-            else:
-                req_ship_data += [req['ShipmentData']['Shipment']]
+            try:
+                req = requests.get(check_status_url)
+            except Exception as e:
+                logger.error("Bluedart connection issue: " + "\nError: " + str(e.args[0]))
+                pass
+        if req:
+            try:
+                req = xmltodict.parse(req.content)
+                if type(req['ShipmentData']['Shipment'])==list:
+                    req_ship_data += req['ShipmentData']['Shipment']
+                else:
+                    req_ship_data += [req['ShipmentData']['Shipment']]
 
-        except Exception as e:
-            logger.error("Status Tracking Failed for: " + awb_string + "\nError: " + str(e.args[0]))
-            if e.args[0] == 'ShipmentData':
-                sms_to_key = "Messages[%s][To]" % str(exotel_idx)
-                sms_body_key = "Messages[%s][Body]" % str(exotel_idx)
-                sms_body_key_data = "Status Update Fail Alert"
-                customer_phone = "08750108744"
-                exotel_sms_data[sms_to_key] = customer_phone
-                exotel_sms_data[sms_body_key] = sms_body_key_data
-                exotel_idx += 1
-            continue
+            except Exception as e:
+                logger.error("Status Tracking Failed for: " + awb_string + "\nError: " + str(e.args[0]))
+                if e.args[0] == 'ShipmentData':
+                    sms_to_key = "Messages[%s][To]" % str(exotel_idx)
+                    sms_body_key = "Messages[%s][Body]" % str(exotel_idx)
+                    sms_body_key_data = "Status Update Fail Alert"
+                    customer_phone = "08750108744"
+                    exotel_sms_data[sms_to_key] = customer_phone
+                    exotel_sms_data[sms_body_key] = sms_body_key_data
+                    exotel_idx += 1
+                continue
     logger.info("Count of Bluedart packages: " + str(len(req_ship_data)))
     for ret_order in req_ship_data:
         current_awb = ret_order['@WaybillNo'] if '@WaybillNo' in ret_order else ""
@@ -774,6 +782,8 @@ def track_bluedart_orders(courier, cur):
                     to_record_status = ""
                     if each_scan['ScanCode']=="015" and not is_return:
                         to_record_status = "Picked"
+                    elif each_scan['ScanCode']=="001" and not is_return:
+                        to_record_status = "Picked"
                     elif new_status=="IN TRANSIT" and each_scan['ScanType'] == "UD" and not is_return:
                         to_record_status = "In Transit"
                     elif each_scan['ScanCode'] in ("002", "092") and not is_return:
@@ -783,6 +793,8 @@ def track_bluedart_orders(courier, cur):
                     elif each_scan['ScanType'] == "RT" and not is_return:
                         to_record_status = "Returned"
                     elif each_scan['ScanCode'] == '000' and is_return:
+                        to_record_status = "RTO"
+                    elif each_scan['ScanCode'] == '188' and each_scan['ScanType'] == "RT":
                         to_record_status = "RTO"
 
                     if not to_record_status:
@@ -990,6 +1002,8 @@ def track_ecomxp_orders(courier, cur):
 
                     to_record_status = ""
                     if each_scan['reason_code_number']=="0011":
+                        to_record_status = "Picked"
+                    elif each_scan['reason_code_number']=="002":
                         to_record_status = "Picked"
                     elif each_scan['reason_code_number']=="003":
                         to_record_status = "In Transit"

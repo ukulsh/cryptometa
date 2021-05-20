@@ -223,9 +223,6 @@ def ship_delhivery_orders(cur, courier, courier_name, order_ids, order_id_tuple,
                             order[26].lower() != 'pickup' and not force_ship:
                         continue
 
-                    if (not zone or zone == 'E') and courier[1] in ("DHANIPHARMACY",):
-                        continue
-
                     if courier[1] == "ZLADE" and courier[10] == "Delhivery Surface Standard" and zone and zone not in (
                     'A', 'B') and order[26].lower() != 'pickup' and not force_ship:
                         continue
@@ -761,9 +758,14 @@ def ship_xpressbees_orders(cur, courier, courier_name, order_ids, order_id_tuple
             else:
                 pickup_point_order_dict[order[41]].append(order)
 
-    cur.execute("select max(awb) from shipments where courier_id=%s;" % str(courier[9]))
-    last_assigned_awb = cur.fetchone()[0]
-    last_assigned_awb = int(last_assigned_awb)
+    last_assigned_awb = 0
+    try:
+        cur.execute("select max(awb) from shipments where courier_id=%s;" % str(courier[9]))
+        fet_res = cur.fetchone()
+        if fet_res:
+            last_assigned_awb = int(fet_res[0])
+    except Exception:
+        pass
 
     for pickup_id, all_new_orders in pickup_point_order_dict.items():
         last_shipped_order_id = 0
@@ -975,6 +977,14 @@ def ship_xpressbees_orders(cur, courier, courier_name, order_ids, order_id_tuple
                     xpressbees_shipment_body['ManifestDetails']['AirWayBillNO'] = str(last_assigned_awb)
                     req = requests.post(xpressbees_url, headers=headers,
                                         data=json.dumps(xpressbees_shipment_body))
+
+                if req.json()['AddManifestDetails'][0]['ReturnMessage'] == 'Invalid AWB Prefix':
+                    headers['XBkey'] = courier[14]
+                    batch_create_req = requests.post("http://xbclientapi.xbees.in/POSTShipmentService.svc/AWBNumberSeriesGeneration", headers=headers, json={"BusinessUnit": "ECOM", "ServiceType":"FORWARD", "DeliveryType": "COD"})
+                    batch_req = requests.post("http://xbclientapi.xbees.in/TrackingService.svc/GetAWBNumberGeneratedSeries", headers=headers, json={"BusinessUnit": "ECOM", "ServiceType":"FORWARD", "BatchID": batch_create_req.json()['BatchID']})
+                    xpressbees_shipment_body['ManifestDetails']['AirWayBillNO'] = str(batch_req.json()['AWBNoSeries'][0])
+                    req = requests.post(xpressbees_url, headers=headers, data=json.dumps(xpressbees_shipment_body))
+
                 return_data_raw = req.json()
                 insert_shipments_data_query = """INSERT INTO SHIPMENTS (awb, status, order_id, pickup_id, courier_id, 
                                                                                                     dimensions, volumetric_weight, weight, remark, return_point_id, routing_code, 
@@ -998,7 +1008,8 @@ def ship_xpressbees_orders(cur, courier, courier_name, order_ids, order_id_tuple
 
                     try:
                         tracking_link_wareiq = "https://webapp.wareiq.com/tracking/" + str(return_data_raw['AddManifestDetails'][0]['AWBNo'])
-                        send_received_event(client_name, customer_phone, tracking_link_wareiq)
+                        if courier[1] != 'DHANIPHARMACY':
+                            send_received_event(client_name, customer_phone, tracking_link_wareiq)
                     except Exception:
                         pass
 
@@ -2286,7 +2297,9 @@ def ship_pidge_orders(cur, courier, courier_name, order_ids, order_id_tuple, bac
     pickup_point_order_dict = dict()
     headers = {"Authorization": "Bearer " + courier[14],
                "Content-Type": "application/json",
-               "platform": "postman"}
+               "platform": "Postman",
+               "deviceId": "abc",
+               "buildNumber": "123"}
 
     for order in all_orders:
         if order[41]:

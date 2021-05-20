@@ -40,9 +40,15 @@ cors.init_app(app)
 app.config['CELERYBEAT_SCHEDULE'] = {
     'run-status-update': {
             'task': 'status_update',
-            'schedule': crontab(minute='50', hour='*/2'),
+            'schedule': crontab(minute='50', hour='*'),
             'options': {'queue': 'update_status'}
         },
+    'run-status-update-2': {
+                'task': 'status_update',
+                'schedule': crontab(minute='50', hour='*/2'),
+                'options': {'queue': 'update_status_2'},
+                'args': (1, )
+            },
     'run-fetch-orders': {
                 'task': 'fetch_orders',
                 'schedule': crontab(minute='15,45', hour='*'),
@@ -129,8 +135,8 @@ def create_pickups_entry():
 
 
 @celery_app.task(name='status_update')
-def status_update():
-    update_status()
+def status_update(sync_ext=None):
+    update_status(sync_ext)
     return 'successfully completed status_update'
 
 

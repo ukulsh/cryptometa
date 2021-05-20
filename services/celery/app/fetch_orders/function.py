@@ -30,9 +30,11 @@ def fetch_orders(client_prefix=None, sync_all=None):
     else:
         cur.execute(fetch_client_channels_query+" AND aa.client_prefix='%s'"%client_prefix)
     for channel in cur.fetchall():
+        time_now = datetime.utcnow()+timedelta(hours=5.5)
+        sync_30_days = True if time_now.hour in (6, 16) and time_now.minute<30 and time_now.minute>15 else None
         if channel[11] == "Shopify":
             try:
-                fetch_shopify_orders(cur, channel, manual=True if client_prefix else None)
+                fetch_shopify_orders(cur, channel, manual=True if client_prefix or sync_30_days else None)
             except Exception as e:
                 cur.execute("UPDATE client_channel SET connection_status=false, status=false WHERE id=%s;" % str(channel[0]))
                 conn.commit()
@@ -40,13 +42,13 @@ def fetch_orders(client_prefix=None, sync_all=None):
 
         elif channel[11] == "WooCommerce":
             try:
-                fetch_woocommerce_orders(cur, channel, manual=True if client_prefix else None)
+                fetch_woocommerce_orders(cur, channel, manual=True if client_prefix or sync_30_days else None)
             except Exception as e:
                 logger.error("Couldn't fetch orders: " + str(channel[1]) + "\nError: " + str(e.args))
 
         elif channel[11] == "Magento 2":
             try:
-                fetch_magento_orders(cur, channel, manual=True if client_prefix else None)
+                fetch_magento_orders(cur, channel, manual=True if client_prefix or sync_30_days else None)
             except Exception as e:
                 cur.execute("UPDATE client_channel SET connection_status=false, status=false WHERE id=%s;" % str(channel[0]))
                 conn.commit()
@@ -54,13 +56,13 @@ def fetch_orders(client_prefix=None, sync_all=None):
 
         elif channel[11] == "EasyEcom":
             try:
-                fetch_easyecom_orders(cur, channel, manual=True if client_prefix else None)
+                fetch_easyecom_orders(cur, channel, manual=True if client_prefix or sync_30_days else None)
             except Exception as e:
                 logger.error("Couldn't fetch orders: " + str(channel[1]) + "\nError: " + str(e.args))
 
         elif channel[11] == "Bikayi":
             try:
-                fetch_bikayi_orders(cur, channel, manual=True if client_prefix else None)
+                fetch_bikayi_orders(cur, channel, manual=True if client_prefix or sync_30_days else None)
             except Exception as e:
                 cur.execute("UPDATE client_channel SET connection_status=false, status=false WHERE id=%s;" % str(channel[0]))
                 conn.commit()

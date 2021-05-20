@@ -841,7 +841,7 @@ def upload_orders(resp):
             new_order = Orders(channel_order_id=str(row_data.order_id).rstrip(),
                                order_date=datetime.now()+timedelta(hours=5.5),
                                customer_name=str(row_data.customer_name),
-                               customer_email=str(row_data.customer_email),
+                               customer_email=str(row_data.customer_email) if row_data.customer_email==row_data.customer_email else "",
                                customer_phone=str(row_data.customer_phone),
                                delivery_address=delivery_address,
                                status="NEW",

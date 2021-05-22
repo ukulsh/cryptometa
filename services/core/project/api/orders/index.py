@@ -2449,6 +2449,184 @@ def ivr_passthru(ivr_id):
         return jsonify({"success": False, "msg": str(e.args[0])}), 404
 
 
+@orders_blueprint.route('/orders/v1/badges/shopify', methods=['POST'])
+def serviceability_badges_shopify():
+    try:
+        cur = conn.cursor()
+        cur_2 = conn_2.cursor()
+        data = json.loads(request.data)
+
+        del_pincode = data.get("pincode")
+        cod_available = False
+
+        sku_list = data.get("sku_list")
+        if not del_pincode:
+            return {"success": False, "msg": "Pincode not provided"}, 400
+
+        covid_zone = None
+        city = None
+        state = None
+        try:
+            cod_req = requests.get(
+                "https://track.delhivery.com/c/api/pin-codes/json/?filter_codes=%s&token=d6ce40e10b52b5ca74805a6e2fb45083f0194185" % str(
+                    del_pincode)).json()
+            if not cod_req.get('delivery_codes'):
+                return {"success": False, "msg": "Pincode not serviceable"}, 400
+
+            if cod_req['delivery_codes'][0]['postal_code']['cod'].lower() == 'y':
+                cod_available = True
+            covid_zone = cod_req['delivery_codes'][0]['postal_code']['covid_zone']
+            city = cod_req['delivery_codes'][0]['postal_code']['district']
+            state = cod_req['delivery_codes'][0]['postal_code']['state_code']
+        except Exception:
+            pass
+        if not sku_list:
+            return {"success": True, "data": {"cod_available": cod_available, "covid_zone": covid_zone, "city": city,
+                                              "state": state}}, 200
+
+        sku_string = "('"
+
+        for value in sku_list:
+            sku_string += value['variant_id'] + "','"
+        sku_string = sku_string.rstrip("'").rstrip(",")
+        sku_string += ")"
+        sku_dict = dict()
+
+        cur.execute("""select dd.id, aa.sku from products aa
+                        left join master_products bb on aa.master_product_id=bb.id
+                        left join products_combos cc on bb.id=cc.combo_id
+                        left join master_products dd on cc.combo_prod_id=dd.id
+                        WHERE (aa.sku in __SKU_STR__)""".replace('__SKU_STR__', sku_string))
+        sku_tuple = cur.fetchall()
+        if not sku_tuple or not sku_tuple[0][0]:
+            cur.execute(
+                "SELECT bb.id, aa.sku FROM products aa left join master_products bb on aa.master_product_id=bb.id"
+                " WHERE aa.sku in __SKU_STR__".replace('__SKU_STR__', sku_string))
+            sku_tuple = cur.fetchall()
+
+            for sku in sku_list:
+                [accept_sku] = [a[0] for a in sku_tuple if sku['variant_id'] in a]
+                sku_dict[accept_sku] = sku['quantity']
+        else:
+            for sku in sku_tuple:
+                sku_dict[sku[0]] = 1  # defaulting qty to one for combos
+
+        sku_string = "("
+
+        for key, value in sku_dict.items():
+            sku_string += str(key) + ","
+        sku_string = sku_string.rstrip("'")
+        sku_string = sku_string.rstrip(",")
+        sku_string += ")"
+
+        no_sku = len(sku_list)
+        try:
+            cur.execute("""select aa.warehouse_prefix, aa.product_id, bb.sku, aa.available_quantity as available_count,  null as courier_id, 
+                                                         bb.weight, cc.pincode from products_quantity aa 
+                                                         left join master_products bb on aa.product_id=bb.id 
+                                                         left join pickup_points cc on aa.warehouse_prefix=cc.warehouse_prefix
+                                                         left join client_pickups kk on kk.client_prefix=bb.client_prefix and kk.pickup_id=cc.id
+                                                         where bb.id in __SKU_STR__
+                                                         and kk.active=true;""".replace('__SKU_STR__', sku_string))
+        except Exception:
+            conn.rollback()
+            return {"success": False, "msg": "",
+                    "cod_available": cod_available,
+                    "label_url": "https://logourls.s3.amazonaws.com/wareiq_standard.jpeg"}, 400
+
+        prod_wh_tuple = cur.fetchall()
+        wh_dict = dict()
+        courier_id = 1
+        courier_id_weight = 0.0
+        for prod_wh in prod_wh_tuple:
+            if sku_dict[prod_wh[1]] <= prod_wh[3]:
+                if prod_wh[0] not in wh_dict:
+                    wh_dict[prod_wh[0]] = {"pincode": prod_wh[6], "count": 1}
+                else:
+                    wh_dict[prod_wh[0]]['count'] += 1
+
+        if not wh_dict:
+            return {"success": False, "msg": "One or more SKUs not serviceable",
+                    "cod_available": cod_available,
+                    "label_url": "https://logourls.s3.amazonaws.com/wareiq_standard.jpeg"}, 400
+
+        warehouse_pincode_str = ""
+        highest_num_loc = list()
+        for key, value in wh_dict.items():
+            if not highest_num_loc or value['count'] > highest_num_loc[1]:
+                highest_num_loc = [key, value['count'], value['pincode']]
+            if value['count'] == no_sku:
+                warehouse_pincode_str += "('" + key + "','" + str(value['pincode']) + "'),"
+
+        if not warehouse_pincode_str:
+            warehouse_pincode_str = "('" + str(highest_num_loc[0]) + "','" + str(str(highest_num_loc[2])) + "'),"
+
+        warehouse_pincode_str = warehouse_pincode_str.rstrip(',')
+
+        if courier_id in (8, 11, 12):
+            courier_id = 1
+
+        try:
+            cur_2.execute(fetch_warehouse_to_pick_from.replace('__WAREHOUSE_PINCODES__', warehouse_pincode_str).replace(
+                '__COURIER_ID__', str(courier_id)).replace('__DELIVERY_PINCODE__', str(del_pincode)))
+        except Exception:
+            conn_2.rollback()
+            return {"success": False, "msg": "",
+                    "cod_available": cod_available,
+                    "label_url": "https://logourls.s3.amazonaws.com/wareiq_standard.jpeg"}, 400
+
+        final_wh = cur_2.fetchone()
+
+        if not final_wh or final_wh[1] is None:
+            return {"success": True, "data": {"cod_available": cod_available, "covid_zone": covid_zone,
+                                              "label_url": "https://logourls.s3.amazonaws.com/wareiq_standard.jpeg"}}, 200
+
+        current_time = datetime.utcnow() + timedelta(hours=5.5)
+        order_before = current_time
+        if current_time.hour >= 14:
+            order_before = order_before + timedelta(days=1)
+            order_before = order_before.replace(hour=14, minute=0, second=0)
+            days_for_delivery = final_wh[1] + 1
+            if days_for_delivery == 1:
+                days_for_delivery = 2
+        else:
+            order_before = order_before.replace(hour=14, minute=0, second=0)
+            days_for_delivery = final_wh[1]
+            if days_for_delivery == 0:
+                days_for_delivery = 1
+
+        days_for_delivery += 1
+        if days_for_delivery == 1:
+            label_url = "https://logourls.s3.amazonaws.com/wareiq_next_day.jpeg"
+        elif days_for_delivery == 2:
+            label_url = "https://logourls.s3.amazonaws.com/wareiq_two_days.jpeg"
+        else:
+            label_url = "https://logourls.s3.amazonaws.com/wareiq_standard.jpeg"
+
+        delivered_by = datetime.utcnow() + timedelta(hours=5.5) + timedelta(
+            days=days_for_delivery)
+
+        delivery_zone = final_wh[2]
+        if delivery_zone in ('D1', 'D2'):
+            delivery_zone = 'D'
+        if delivery_zone in ('C1', 'C2'):
+            delivery_zone = 'C'
+
+        return_data = {"delivery_date": delivered_by.strftime('%d-%m-%Y'),
+                       "cod_available": cod_available,
+                       "order_before": order_before.strftime('%d-%m-%Y %H:%M:%S'),
+                       "delivery_zone": delivery_zone,
+                       "label_url": label_url,
+                       "covid_zone": covid_zone,
+                       "city": city,
+                       "state": state}
+
+        return jsonify({"success": True, "data": return_data}), 200
+
+    except Exception as e:
+        return jsonify({"success": False, "msg": ""}), 400
+
+
 class PincodeServiceabilty(Resource):
 
     method_decorators = [authenticate_restful]

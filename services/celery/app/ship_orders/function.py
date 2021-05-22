@@ -28,7 +28,7 @@ def ship_orders(courier_name=None, order_ids=None, force_ship=None, client_prefi
             order_id_tuple = "('" + str(order_ids[0]) + "')"
         else:
             order_id_tuple = str(tuple(order_ids))
-        cur.execute("""DELETE FROM 	order_status where order_id in %s;
+        cur.execute("""DELETE FROM 	order_status where shipment_id in (select id from shipments where order_id in %s);
                            DELETE FROM shipments where order_id in %s;""" % (order_id_tuple, order_id_tuple))
         conn.commit()
         cur.execute("SELECT DISTINCT(client_prefix) from orders where id in %s" % order_id_tuple)
@@ -2391,6 +2391,7 @@ def ship_pidge_orders(cur, courier, courier_name, order_ids, order_id_tuple, bac
 
             pidge_body = {
                             "vendor_order_id": order[0],
+                            "reference_id": order[1],
                             "volume": (int(max(volumetric_weight, weight)*2) + 1)*250,
                             "cash_to_be_collected": int(order[27]) if order[26].lower()=='cod' or order[26].lower()=='cash on delivery' else 0,
                             "originator_details": {

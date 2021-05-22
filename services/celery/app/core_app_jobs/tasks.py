@@ -922,7 +922,7 @@ def ship_bulk_orders(order_list, auth_data, courier):
             return {"success": True, "msg": "shipped successfully"}, 200
 
         except Exception as e:
-            return {"success": False, "msg": "Some error occurred"}, 400
+            return {"success": False, "msg": str(e.args[0])}, 400
 
 
 def update_available_quantity():

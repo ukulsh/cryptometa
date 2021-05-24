@@ -78,7 +78,7 @@ sfxsdd_status_mapping = {"ALLOTTED": ("READY TO SHIP", "UD", "Received", "Order 
                              "UNDELIVERED": ("IN TRANSIT", "RT", "Returned", "Order returned"),
                              "RETURNED_TO_SELLER": ("RTO", "DL", "RTO", "Order RTO")}
 
-pidge_status_mapping = {140: ("IN TRANSIT", "UD", "Picked", "Shipment picked up"),
+pidge_status_mapping = {130: ("IN TRANSIT", "UD", "Picked", "Shipment picked up"),
                         150: ("IN TRANSIT", "UD", "In Transit", "Shipment in transit"),
                         170: ("DISPATCHED", "UD", "Out for delivery", "Shipment out for delivery"),
                         190: ("DELIVERED", "UD", "Delivered", "Shipment delivered"),

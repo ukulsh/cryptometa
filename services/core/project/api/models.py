@@ -188,6 +188,8 @@ class PickupPoints(db.Model):
     country = db.Column(db.String, nullable=False)
     pincode = db.Column(db.Integer, nullable=False)
     warehouse_prefix = db.Column(db.String, nullable=True)
+    latitude = db.Column(db.FLOAT, nullable=True)
+    longitude = db.Column(db.FLOAT, nullable=True)
 
     def __init__(self, pickup_location, name, phone, address, address_two, city, state, country, pincode, warehouse_prefix):
         self.pickup_location = pickup_location
@@ -223,6 +225,8 @@ class ReturnPoints(db.Model):
     country = db.Column(db.String, nullable=False)
     pincode = db.Column(db.Integer, nullable=False)
     warehouse_prefix = db.Column(db.String, nullable=True)
+    latitude = db.Column(db.FLOAT, nullable=True)
+    longitude = db.Column(db.FLOAT, nullable=True)
 
     def __init__(self, return_location, name, phone, address, address_two, city, state, country, pincode, warehouse_prefix):
         self.return_location = return_location
@@ -463,6 +467,7 @@ class ClientChannel(db.Model):
     connection_status = db.Column(db.BOOLEAN, default=True, nullable=False)
     unique_parameter = db.Column(db.String, nullable=True)
     sync_inventory = db.Column(db.BOOLEAN, nullable=True)
+    script_id = db.Column(db.String, nullable=True)
     date_created = db.Column(db.DateTime, default=datetime.now)
     date_updated = db.Column(db.DateTime, onupdate=datetime.now)
 
@@ -514,7 +519,9 @@ class ClientChannel(db.Model):
             'fetch_status': self.fetch_status if isinstance(self.fetch_status, list) else [],
             'status': self.status,
             'connection_status': self.connection_status,
-            'last_synced_time': str(self.last_synced_time) if self.last_synced_time else None
+            'last_synced_time': str(self.last_synced_time) if self.last_synced_time else None,
+            'badges_active': True if self.script_id else False,
+            'script_id': self.script_id
         }
 
 

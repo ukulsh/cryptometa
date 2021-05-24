@@ -204,7 +204,7 @@ def consume_pidge_scan_util(payload):
             if payload.get("attempt_type") == 20:
                 return "Skipped: no status to update"
 
-            if reason_code_number in (20, 100, 120, 130, 5):
+            if reason_code_number in (20, 100, 120, 5):
                 return "No status to update"
 
             cur.execute(get_order_details_query.replace('__FILTER_ORDER__', "bb.awb='%s'"%str(awb)))
@@ -918,10 +918,12 @@ def ship_bulk_orders(order_list, auth_data, courier):
             if not order_ids:
                 return {"success": False, "msg": "invalid order ids"}, 400
             ship_orders(courier_name=courier, order_ids=order_ids, force_ship=True, cur=cur)
+            conn.commit()
 
             return {"success": True, "msg": "shipped successfully"}, 200
 
         except Exception as e:
+            conn.rollback()
             return {"success": False, "msg": str(e.args[0])}, 400
 
 

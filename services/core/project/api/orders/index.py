@@ -447,6 +447,77 @@ def get_orders_filters(resp):
     return jsonify(response), 200
 
 
+@orders_blueprint.route('/orders/v1/failedOrders', methods=['GET'])
+@authenticate_restful
+def get_failed_orders(resp):
+    response = {"data":{}, "success": True, "meta": {}}
+    auth_data = resp.get('data')
+    search_key = request.args.get('search')
+    page = request.args.get('page', 1)
+    page = int(page)
+    per_page = request.args.get('per_page', 20)
+    per_page = int(per_page)
+    client_prefix = auth_data.get('client_prefix')
+    all_vendors = None
+    if auth_data['user_group'] == 'multi-vendor':
+        all_vendors = db.session.query(MultiVendor).filter(MultiVendor.client_prefix == client_prefix).first()
+        all_vendors = all_vendors.vendor_list
+
+    cur = conn.cursor()
+    query_to_run = """select aa.id, aa.channel_order_id, aa.order_date, aa.customer_name, aa.customer_email, aa.customer_phone, 
+                        aa.error, bb.channel_name, bb.logo_url from failed_orders aa
+                        left join master_channels bb on aa.master_channel_id=bb.id
+                        where aa.synced=false
+                        __CLIENT_FILTER__
+                        __SEARCH_FILTER__
+                        order by aa.date_created DESC
+                        __PAGINATION__"""
+    if auth_data['user_group'] == 'client':
+        query_to_run = query_to_run.replace("__CLIENT_FILTER__", "AND aa.client_prefix='%s'"%auth_data['client_prefix'])
+    elif all_vendors:
+        query_to_run = query_to_run.replace("__CLIENT_FILTER__", "AND aa.client_prefix in %s"%str(tuple(all_vendors)))
+    else:
+        query_to_run = query_to_run.replace("__CLIENT_FILTER__", "")
+
+    if search_key:
+        query_to_run = query_to_run.replace("__SEARCH_FILTER__", " and aa.channel_order_id ilike '%__SEARCH_KEY__%'".replace('__SEARCH_KEY__', search_key))
+    else:
+        query_to_run = query_to_run.replace("__SEARCH_FILTER__", "")
+
+    count_query = "select count(*) from (" + query_to_run.replace('__PAGINATION__', "") + ") xx"
+    count_query = re.sub(r"""__.+?__""", "", count_query)
+    cur.execute(count_query)
+    total_count = cur.fetchone()[0]
+    query_to_run = query_to_run.replace('__PAGINATION__',
+                                        "OFFSET %s LIMIT %s" % (str((page - 1) * per_page), str(per_page)))
+
+    order_list = list()
+    cur.execute(query_to_run)
+    all_orders = cur.fetchall()
+
+    for order in all_orders:
+        order_obj = dict()
+        order_obj['order_id'] = order[1]
+        order_obj['unique_id'] = order[0]
+        order_obj['order_date'] = order[2].strftime("%d %b %Y, %I:%M %p") if order[2] else None
+        order_obj['customer_name'] = order[3]
+        order_obj['customer_email'] = order[4]
+        order_obj['customer_phone'] = order[5]
+        order_obj['error'] = order[6]
+        order_obj['channel_name'] = order[7]
+        order_obj['channel_logo'] = order[8]
+        order_list.append(order_obj)
+
+    response['data'] = order_list
+    total_pages = math.ceil(total_count / per_page)
+    response['meta']['pagination'] = {'total': total_count,
+                                      'per_page': per_page,
+                                      'current_page': page,
+                                      'total_pages': total_pages}
+
+    return jsonify(response), 200
+
+
 # class AddOrder(Resource):
 #
 #     method_decorators = [authenticate_restful]
@@ -1147,33 +1218,47 @@ def request_pickups(resp):
 @orders_blueprint.route('/orders/v1/<pickup_id>/pick_orders', methods=['GET'])
 @authenticate_restful
 def pick_orders(resp, pickup_id):
-    response = list()
+    response = {"data": list(), "meta": {}, "success": True}
     try:
+        status = request.args.get('status', None)
+        page = request.args.get('page', 1)
+        page = int(page)
+        per_page = request.args.get('per_page', 20)
+        per_page = int(per_page)
         auth_data = resp.get('data')
         if not auth_data:
             return jsonify({"success": False, "msg": "Auth Failed"}), 401
 
         manifest_id=int(pickup_id)
 
-        order_qs = db.session.query(OrderPickups).filter(OrderPickups.manifest_id==manifest_id).order_by(OrderPickups.pickup_time.desc()).all()
-        for order in order_qs:
+        order_qs = db.session.query(OrderPickups).filter(OrderPickups.manifest_id==manifest_id)
+        if status and status.lower()=='picked':
+            order_qs = order_qs.filter(OrderPickups.picked==True)
+        elif status and status.lower()=='notpicked':
+            order_qs = order_qs.filter(OrderPickups.picked == False)
+        order_qs = order_qs.order_by(OrderPickups.pickup_time.desc()).paginate(page,per_page,error_out=False)
+        data = list()
+        for order in order_qs.items:
             res_obj = dict()
             res_obj['unique_id'] = order.order_id
             res_obj['order_id'] = order.order.channel_order_id
             res_obj['awb'] = order.order.shipments[0].awb if order.order.shipments[0] else None
             res_obj['picked'] = order.picked
             res_obj['picked_time'] = order.pickup_time
-            response.append(res_obj)
+            data.append(res_obj)
+
+        response['data'] = data
+        response['meta']['pagination'] = {'total': order_qs.total,
+                                          'per_page': order_qs.per_page,
+                                          'current_page': order_qs.page,
+                                          'total_pages': order_qs.pages}
 
     except Exception as e:
         return jsonify({
-            'status': 'failed'
+            'success': False
         }), 400
 
-    return jsonify({
-        'status': 'success',
-        'data': response
-    }), 200
+    return jsonify(response), 200
 
 
 @orders_blueprint.route('/orders/v1/<pickup_id>/download', methods=['GET'])

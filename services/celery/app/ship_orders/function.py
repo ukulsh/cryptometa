@@ -2004,7 +2004,7 @@ def ship_selfshp_orders(cur, courier, courier_name, order_ids, order_id_tuple, b
                 continue
 
             # kama ayurveda assign delhi orders pincode check
-            if pickup_point[0] == 142 and order[18] not in kama_del_sdd_pincodes:
+            if pickup_point[0] == 142 and order[18] not in pidge_del_sdd_pincodes:
                 continue
 
             dimensions = order[33][0]
@@ -2145,7 +2145,7 @@ def ship_sdd_orders(cur, courier, courier_name, order_ids, order_id_tuple, backu
                 continue
 
             # kama ayurveda assign delhi orders pincode check
-            if pickup_point[0] == 142 and order[18] not in kama_del_sdd_pincodes:
+            if pickup_point[0] == 142 and order[18] not in pidge_del_sdd_pincodes:
                 continue
 
             dimensions = order[33][0]
@@ -2310,8 +2310,6 @@ def ship_pidge_orders(cur, courier, courier_name, order_ids, order_id_tuple, bac
 
     for pickup_id, all_new_orders in pickup_point_order_dict.items():
 
-        if pickup_id!=142: #todo: remove this
-            continue
         last_shipped_order_id = 0
         pickup_points_tuple = (pickup_id,)
         cur.execute(get_pickup_points_query, pickup_points_tuple)
@@ -2319,16 +2317,24 @@ def ship_pidge_orders(cur, courier, courier_name, order_ids, order_id_tuple, bac
 
         pickup_point = cur.fetchone()  # change this as we get to dynamic pickups
 
+        if str(pickup_point[8]) not in pidge_del_sdd_pincodes: #todo: remove this
+            continue
+
         last_invoice_no = pickup_point[22] if pickup_point[22] else 0
 
         if not pickup_point[21]:
             continue
 
+        pick_lat, pick_lon = pickup_point[24], pickup_point[25]
+
+        if not (pick_lat and pick_lon):
+            pick_lat, pick_lon = get_lat_lon_pickup(pickup_point, cur)
+
         for order in all_new_orders:
             if order[26].lower() == 'pickup':
                 continue
             # kama ayurveda assign delhi orders pincode check
-            if order[18] not in kama_del_sdd_pincodes:
+            if order[18] not in pidge_del_sdd_pincodes:
                 continue
             zone = None
             try:
@@ -2355,18 +2361,6 @@ def ship_pidge_orders(cur, courier, courier_name, order_ids, order_id_tuple, bac
 
             if not (lat and lon):
                 lat, lon = get_lat_lon(order, cur)
-
-            # kama ayurveda assign mumbai orders pincode check
-            if pickup_point[0] == 170 and order[18] not in kama_mum_sdd_pincodes:
-                continue
-
-            # kama ayurveda assign blr orders pincode check
-            if pickup_point[0] == 143 and order[18] not in kama_blr_sdd_pincodes:
-                continue
-
-            # kama ayurveda assign chennai orders pincode check
-            if pickup_point[0] == 1182 and order[18] not in kama_chn_sdd_pincodes:
-                continue
 
             dimensions = order[33][0]
             dimensions['length'] = dimensions['length'] * order[35][0]
@@ -2412,9 +2406,9 @@ def ship_pidge_orders(cur, courier, courier_name, order_ids, order_id_tuple, bac
                                 "landmark": "N/A",
                                 "instructions_to_reach": "ANY",
                                 "google_maps_address": str(pickup_point[4])+str(pickup_point[5]),
-                                "exact_location": { #todo: these are dlwhec pickup cordinates for now. Need to make them general
-                                    "latitude": 28.538403,
-                                    "longitude": 77.272284
+                                "exact_location": {
+                                    "latitude": pick_lat,
+                                    "longitude": pick_lon
                                 },
                                 "state": pickup_point[10],
                                 "pincode": pickup_point[8]
@@ -2739,6 +2733,10 @@ def get_lat_lon(order, cur):
             address += ", " + order[18]
         res = requests.get("https://maps.googleapis.com/maps/api/geocode/json?address=%s&key=%s" % (
         address, "AIzaSyBg7syNb_e1gZgyL1lHXBHRmg3jeaXrkco"))
+        if not res.json()['results']:
+            address = order[18] + ", " + order[17]
+            res = requests.get("https://maps.googleapis.com/maps/api/geocode/json?address=%s&key=%s" % (
+                address, "AIzaSyBg7syNb_e1gZgyL1lHXBHRmg3jeaXrkco"))
         loc_rank = 0
         location_rank_dict = {"ROOFTOP": 1,
                               "RANGE_INTERPOLATED": 2,
@@ -2754,6 +2752,42 @@ def get_lat_lon(order, cur):
         return lat, lon
     except Exception as e:
         logger.error("lat lon on found for order: ." + str(order[0]) + "   Error: " + str(e.args[0]))
+        return None, None
+
+
+def get_lat_lon_pickup(pickup_point, cur):
+    try:
+        lat, lon = None, None
+        address = pickup_point[4]
+        if pickup_point[5]:
+            address += " " + pickup_point[5]
+        if pickup_point[6]:
+            address += ", " + pickup_point[6]
+        if pickup_point[10]:
+            address += ", " + pickup_point[10]
+        if pickup_point[8]:
+            address += ", " + str(pickup_point[8])
+        res = requests.get("https://maps.googleapis.com/maps/api/geocode/json?address=%s&key=%s" % (
+        address, "AIzaSyBg7syNb_e1gZgyL1lHXBHRmg3jeaXrkco"))
+        if not res.json()['results']:
+            address = str(pickup_point[8]) + ", " + pickup_point[6]
+            res = requests.get("https://maps.googleapis.com/maps/api/geocode/json?address=%s&key=%s" % (
+                address, "AIzaSyBg7syNb_e1gZgyL1lHXBHRmg3jeaXrkco"))
+        loc_rank = 0
+        location_rank_dict = {"ROOFTOP": 1,
+                              "RANGE_INTERPOLATED": 2,
+                              "GEOMETRIC_CENTER": 3,
+                              "APPROXIMATE": 4}
+        for result in res.json()['results']:
+            if location_rank_dict[result['geometry']['location_type']] > loc_rank:
+                loc_rank = location_rank_dict[result['geometry']['location_type']]
+                lat, lon = result['geometry']['location']['lat'], result['geometry']['location']['lng']
+
+        if lat and lon:
+            cur.execute("UPDATE pickup_points SET latitude=%s, longitude=%s WHERE id=%s", (lat, lon, pickup_point[1]))
+        return lat, lon
+    except Exception as e:
+        logger.error("lat lon on found for order: ." + str(pickup_point[1]) + "   Error: " + str(e.args[0]))
         return None, None
 
 
@@ -3108,4 +3142,4 @@ easyecom_carrier_id = {"Delhivery Surface Standard": 2,
 kama_blr_sdd_pincodes = ('560001','560002','560003','560004','560005','560006','560007','560008','560009','560010','560011','560012','560013','560014','560015','560016','560017','560018','560019','560020','560021','560022','560023','560024','560025','560026','560027','560028','560029','560030','560031','560032','560033','560034','560035','560036','560037','560038','560039','560040','560041','560042','560043','560044','560045','560046','560047','560048','560049','560050','560051','560052','560053','560054','560055','560056','560057','560058','560059','560060','560061','560062','560063','560064','560065','560066','560067','560068','560069','560070','560071','560072','560073','560074','560075','560076','560077','560078','560079','560080','560081','560082','560083','560084','560085','560086','560087','560088','560089','560090','560091','560092','560093','560094','560095','560096','560097','560098','560099','560100','560102','560103','560104','560105','560106','560107','560108','560109','560110','560111','560113','560114','560300','562106','562107','562125','562130','562149','562157')
 kama_mum_sdd_pincodes = ('400082','400080','400081','400078','400042','400076','400083','400079','400072','400084','400086','400075','400077','400089','400070','400071','400024','400059','400053','400069','400096','400093','400099','400074','400022','400043','400088','400085','400094','400017','400029','400047','400049','400050','400051','400052','400054','400055','400056','400057','400058','400060','400062','400063','400064','400065','400067','400087','400090','400097','400098','400101','400102','400104','400601','400602','400603','400604','400605','400606','400607','400608','400610','400615','401107','406007','400016','400019','400037','400028','400014','400031','400025','400030','400018','400013','400012','400015','400033','400011','400027','400010','400035','400006','400036','400026','400034','400007','400008','400004','400009','400003','400002','400001','400020','400023','400032','400021','400039','400005')
 kama_chn_sdd_pincodes = ('600001','600002','600003','600004','600005','600006','600007','600008','600009','600010','600011','600012','600013','600014','600015','600016','600017','600018','600019','600020','600021','600022','600023','600024','600025','600026','600027','600028','600029','600030','600031','600032','600033','600034','600035','600036','600037','600038','600039','600040','600041','600042','600043','600044','600045','600046','600047','600048','600049','600050','600053','600056','600058','600059','600061','600064','600070','600073','600074','600075','600076','600077','600078','600079','600080','600081','600082','600083','600084','600085','600086','600087','600088','600089','600090','600091','600092','600093','600094','600095','600096','600097','600098','600099','600100','600101','600102','600104','600106','600107','600108','600110','600112','600113','600114','600115','600116','600117','600118','600119','600122','600125','600129','600063','603210','600126')
-kama_del_sdd_pincodes = ('110001','110002','110003','110004','110005','110006','110008','110011','110012','110015','110055','110060','110069','110031','110032','110051','110091','110092','110093','110095','110096','110030','110037','110038','110047','110061','110068','110070','110074','110007','110009','110026','110034','110035','110052','110054','110056','110063','110083','110085','110087','110088','110089','110013','110014','110016','110017','110019','110020','110021','110022','110023','110024','110025','110029','110044','110048','110049','110057','110062','110065','110066','110067','110076','110080','110090','110010','110018','110027','110028','110045','110046','110058','110059','110064','110075','110077','110078','110079','122001','122002','122003','122004','122005','122007','122008','122009','122010','122011','122016','122017','122018','201301','201303','201304','201305','201307','201309','201006','201007','201009','201010','201011','201012','201014','201016','201017','201018','201019','121001','121002','121003','121005','121006','121007','121008','121009','121010','121011','110033','110041','110042','110053','110084','110086','110094','121004','121012','121013','201002')
+pidge_del_sdd_pincodes = ('110001','110002','110003','110004','110005','110006','110008','110011','110012','110015','110055','110060','110069','110031','110032','110051','110091','110092','110093','110095','110096','110030','110037','110038','110047','110061','110068','110070','110074','110007','110009','110026','110034','110035','110052','110054','110056','110063','110083','110085','110087','110088','110089','110013','110014','110016','110017','110019','110020','110021','110022','110023','110024','110025','110029','110044','110048','110049','110057','110062','110065','110066','110067','110076','110080','110090','110010','110018','110027','110028','110045','110046','110058','110059','110064','110075','110077','110078','110079','122001','122002','122003','122004','122005','122007','122008','122009','122010','122011','122016','122017','122018','201301','201303','201304','201305','201307','201309','201006','201007','201009','201010','201011','201012','201014','201016','201017','201018','201019','121001','121002','121003','121005','121006','121007','121008','121009','121010','121011','110033','110041','110042','110053','110084','110086','110094','121004','121012','121013','201002')

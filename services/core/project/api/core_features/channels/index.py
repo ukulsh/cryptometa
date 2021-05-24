@@ -4,7 +4,7 @@ from flask import Blueprint, request, jsonify
 from project.api.utils import authenticate_restful, pagination_validator
 from project import db
 from project.api.core_features.channels.channel_utils import get_channel_integration_object
-import logging
+import logging, requests, json
 
 logging.basicConfig(format='%(levelname)s:%(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -37,7 +37,6 @@ class ClientChannelIntegration(Resource):
             response_object['message'] = 'failed while integrating with channel'
             return response_object, 400
 
-
     def patch(self, resp):
         response_object = {'status': 'fail'}
         try:
@@ -64,6 +63,28 @@ class ClientChannelIntegration(Resource):
             client_channel.status = post_data.get('status')
             if post_data.get('status'):
                 client_channel.connection_status = post_data.get('status')
+            if post_data.get('activate_badge') is not None:
+                if post_data.get('activate_badge'):
+                    shopify_script_url = "https://%s:%s@%s/admin/api/2021-04/script_tags.json" % (
+                        client_channel.api_key, client_channel.api_password, client_channel.shop_url)
+                    ful_header = {'Content-Type': 'application/json'}
+                    shopify_script_body = {"script_tag": {
+                                                "event": "onload",
+                                                "src": "https://wareiq-shopify.s3.amazonaws.com/wareiq-shopify.js"
+                                              }
+                                            }
+
+                    req_ful = requests.post(shopify_script_url, data=json.dumps(shopify_script_body),
+                                            headers=ful_header)
+
+                    script_id = req_ful.json()['script_tag']['id']
+                    client_channel.script_id = str(script_id)
+                elif post_data.get('activate_badge')==False and client_channel.script_id:
+                    shopify_script_url = "https://%s:%s@%s/admin/api/2021-04/script_tags/%s.json" % (
+                        client_channel.api_key, client_channel.api_password, client_channel.shop_url, client_channel.script_id)
+                    req_scr = requests.delete(shopify_script_url)
+                    client_channel.script_id = None
+
             db.session.commit()
             response_object['status'] = 'success'
             return response_object, 200

@@ -179,6 +179,8 @@ def webhook_updates(order, cur, status, status_text, location, status_time, ndr_
                         headers[webhook[1]] = webhook[2]
 
                     req = requests.post(webhook[0], headers=headers, json=req_body, timeout=5)
+                    if not str(req.status_code).startswith('2'):
+                        cur.execute("UPDATE webhooks SET fail_count=fail_count+1 WHERE id=%s" % str(webhook[4]))
                 except Exception:
                     cur.execute("UPDATE webhooks SET fail_count=fail_count+1 WHERE id=%s"%str(webhook[4]))
                     pass

@@ -87,21 +87,21 @@ def consume_ecom_scan_util(payload):
                 mark_picked_channel(order, cur)
                 send_shipped_event(customer_phone, order[19], order, "", "Ecom Express")
                 mark_order_picked_pickups(order, cur)
-                webhook_updates(order, cur, status, "Shipment Picked Up", location, status_time, ndr_id=None)
+                webhook_updates(order, cur, status, "Shipment Picked Up", location, status_time.strftime('%Y-%m-%d %H:%M:%S'), ndr_id=None)
 
             elif tracking_status == "Delivered":
                 mark_delivered_channel(order)
                 send_delivered_event(customer_phone, order, "Ecom Express")
-                webhook_updates(order, cur, status, "Shipment Delivered", location, status_time, ndr_id=None)
+                webhook_updates(order, cur, status, "Shipment Delivered", location, status_time.strftime('%Y-%m-%d %H:%M:%S'), ndr_id=None)
 
             elif tracking_status == "RTO":
                 mark_rto_channel(order)
-                webhook_updates(order, cur, status, "Shipment RTO", location, status_time, ndr_id=None)
+                webhook_updates(order, cur, status, "Shipment RTO", location, status_time.strftime('%Y-%m-%d %H:%M:%S'), ndr_id=None)
 
             if reason_code_number in ecom_express_ndr_reasons:
                 ndr_reason = ecom_express_ndr_reasons[reason_code_number]
                 verification_text(order, cur, ndr_reason=ndr_reason)
-                webhook_updates(order, cur, status, "", location, status_time, ndr_id=ndr_reason)
+                webhook_updates(order, cur, status, "", location, status_time.strftime('%Y-%m-%d %H:%M:%S'), ndr_id=ndr_reason)
 
             cur.execute("UPDATE orders SET status=%s, status_type=%s WHERE id=%s;", (status, status_type, order[0]))
 
@@ -175,16 +175,16 @@ def consume_sfxsdd_scan_util(payload):
                 mark_picked_channel(order, cur)
                 send_shipped_event(customer_phone, order[19], order, "", "Shadowfax")
                 mark_order_picked_pickups(order, cur)
-                webhook_updates(order, cur, status, "Shipment Picked Up", location, status_time, ndr_id=None)
+                webhook_updates(order, cur, status, "Shipment Picked Up", location, status_time.strftime('%Y-%m-%d %H:%M:%S'), ndr_id=None)
 
             elif tracking_status == "Delivered":
                 mark_delivered_channel(order)
                 send_delivered_event(customer_phone, order, "Shadowfax")
-                webhook_updates(order, cur, status, "Shipment Delivered", location, status_time, ndr_id=None)
+                webhook_updates(order, cur, status, "Shipment Delivered", location, status_time.strftime('%Y-%m-%d %H:%M:%S'), ndr_id=None)
 
             elif tracking_status == "RTO":
                 mark_rto_channel(order)
-                webhook_updates(order, cur, status, "Shipment RTO", location, status_time, ndr_id=None)
+                webhook_updates(order, cur, status, "Shipment RTO", location, status_time.strftime('%Y-%m-%d %H:%M:%S'), ndr_id=None)
 
             cur.execute("UPDATE orders SET status=%s, status_type=%s WHERE id=%s;", (status, status_type, order[0]))
 
@@ -278,16 +278,16 @@ def consume_pidge_scan_util(payload):
                 mark_picked_channel(order, cur)
                 send_shipped_event(customer_phone, order[19], order, "", "Pidge")
                 mark_order_picked_pickups(order, cur)
-                webhook_updates(order, cur, status, "Shipment Picked Up", location, status_time, ndr_id=None)
+                webhook_updates(order, cur, status, "Shipment Picked Up", location, status_time.strftime('%Y-%m-%d %H:%M:%S'), ndr_id=None)
 
             elif tracking_status == "Delivered":
                 mark_delivered_channel(order)
                 send_delivered_event(customer_phone, order, "Pidge")
-                webhook_updates(order, cur, status, "Shipment Delivered", location, status_time, ndr_id=None)
+                webhook_updates(order, cur, status, "Shipment Delivered", location, status_time.strftime('%Y-%m-%d %H:%M:%S'), ndr_id=None)
 
             elif tracking_status == "RTO":
                 mark_rto_channel(order)
-                webhook_updates(order, cur, status, "Shipment RTO", location, status_time, ndr_id=None)
+                webhook_updates(order, cur, status, "Shipment RTO", location, status_time.strftime('%Y-%m-%d %H:%M:%S'), ndr_id=None)
 
             cur.execute("UPDATE orders SET status=%s, status_type=%s WHERE id=%s;", (status, status_type, order[0]))
 

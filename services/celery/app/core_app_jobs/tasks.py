@@ -8,7 +8,7 @@ from math import ceil
 from app.db_utils import DbConnection
 from app.ship_orders.function import ship_orders
 from app.update_status.function import update_delivered_on_channels, verification_text
-from app.update_status.update_status_utils import send_shipped_event, send_delivered_event, send_ndr_event
+from app.update_status.update_status_utils import send_shipped_event, send_delivered_event, send_ndr_event, webhook_updates
 
 conn = DbConnection.get_db_connection_instance()
 conn_2 = DbConnection.get_pincode_db_connection_instance()
@@ -59,7 +59,7 @@ def consume_ecom_scan_util(payload):
                 status_text = ecom_express_status_mapping[reason_code_number][3]
             else:
                 cur.execute(insert_scan_query, (
-                    order[0], order[38], order[10], status_code, status, status_text, location, location_city, status_time))
+                    order[0], order[40], order[10], status_code, status, status_text, location, location_city, status_time))
                 conn.commit()
                 return "Successful: scan saved only"
 
@@ -67,7 +67,7 @@ def consume_ecom_scan_util(payload):
                 status = "RTO"
 
             cur.execute(insert_scan_query, (
-                order[0], order[38], order[10], status_code, status, status_text, location, location_city, status_time))
+                order[0], order[40], order[10], status_code, status, status_text, location, location_city, status_time))
 
             if not status or status == 'READY TO SHIP':
                 return "Successful: scan saved only"
@@ -78,7 +78,7 @@ def consume_ecom_scan_util(payload):
             tracking_status = ecom_express_status_mapping[reason_code_number][2] if status!='RTO' else 'RTO'
             if tracking_status:
                 cur.execute(insert_status_query, (
-                    order[0], order[38], order[10], status_type, tracking_status, status_text, location, location_city, status_time))
+                    order[0], order[40], order[10], status_type, tracking_status, status_text, location, location_city, status_time))
 
             customer_phone = order[4].replace(" ", "")
             customer_phone = "0" + customer_phone[-10:]
@@ -87,17 +87,21 @@ def consume_ecom_scan_util(payload):
                 mark_picked_channel(order, cur)
                 send_shipped_event(customer_phone, order[19], order, "", "Ecom Express")
                 mark_order_picked_pickups(order, cur)
+                webhook_updates(order, cur, status, "Shipment Picked Up", location, status_time, ndr_id=None)
 
             elif tracking_status == "Delivered":
                 mark_delivered_channel(order)
                 send_delivered_event(customer_phone, order, "Ecom Express")
+                webhook_updates(order, cur, status, "Shipment Delivered", location, status_time, ndr_id=None)
 
             elif tracking_status == "RTO":
                 mark_rto_channel(order)
+                webhook_updates(order, cur, status, "Shipment RTO", location, status_time, ndr_id=None)
 
             if reason_code_number in ecom_express_ndr_reasons:
                 ndr_reason = ecom_express_ndr_reasons[reason_code_number]
                 verification_text(order, cur, ndr_reason=ndr_reason)
+                webhook_updates(order, cur, status, "", location, status_time, ndr_id=ndr_reason)
 
             cur.execute("UPDATE orders SET status=%s, status_type=%s WHERE id=%s;", (status, status_type, order[0]))
 
@@ -140,8 +144,8 @@ def consume_sfxsdd_scan_util(payload):
             status_code = reason_code_number
             status = reason_code_number
             status_text = ""
-            location = order[39]
-            location_city = order[39]
+            location = order[41]
+            location_city = order[41]
 
             if reason_code_number in sfxsdd_status_mapping:
                 status = sfxsdd_status_mapping[reason_code_number][0]
@@ -149,12 +153,12 @@ def consume_sfxsdd_scan_util(payload):
                 status_text = sfxsdd_status_mapping[reason_code_number][3]
             else:
                 cur.execute(insert_scan_query, (
-                    order[0], order[38], order[10], status_code, status, status_text, location, location_city, status_time))
+                    order[0], order[40], order[10], status_code, status, status_text, location, location_city, status_time))
                 conn.commit()
                 return "Successful: scan saved only"
 
             cur.execute(insert_scan_query, (
-                order[0], order[38], order[10], status_code, status, status_text, location, location_city, status_time))
+                order[0], order[40], order[10], status_code, status, status_text, location, location_city, status_time))
 
             if not status or status == 'READY TO SHIP':
                 return "Successful: scan saved only"
@@ -162,7 +166,7 @@ def consume_sfxsdd_scan_util(payload):
             tracking_status = sfxsdd_status_mapping[reason_code_number][2]
             if tracking_status:
                 cur.execute(insert_status_query, (
-                    order[0], order[38], order[10], status_type, tracking_status, status_text, location, location_city, status_time))
+                    order[0], order[40], order[10], status_type, tracking_status, status_text, location, location_city, status_time))
 
             customer_phone = order[4].replace(" ", "")
             customer_phone = "0" + customer_phone[-10:]
@@ -171,13 +175,16 @@ def consume_sfxsdd_scan_util(payload):
                 mark_picked_channel(order, cur)
                 send_shipped_event(customer_phone, order[19], order, "", "Shadowfax")
                 mark_order_picked_pickups(order, cur)
+                webhook_updates(order, cur, status, "Shipment Picked Up", location, status_time, ndr_id=None)
 
             elif tracking_status == "Delivered":
                 mark_delivered_channel(order)
                 send_delivered_event(customer_phone, order, "Shadowfax")
+                webhook_updates(order, cur, status, "Shipment Delivered", location, status_time, ndr_id=None)
 
             elif tracking_status == "RTO":
                 mark_rto_channel(order)
+                webhook_updates(order, cur, status, "Shipment RTO", location, status_time, ndr_id=None)
 
             cur.execute("UPDATE orders SET status=%s, status_type=%s WHERE id=%s;", (status, status_type, order[0]))
 
@@ -230,8 +237,8 @@ def consume_pidge_scan_util(payload):
             status_code = str(reason_code_number)
             status = ""
             status_text = str(reason_code_number)
-            location = order[39]
-            location_city = order[39]
+            location = order[41]
+            location_city = order[41]
 
             if reason_code_number in pidge_status_mapping:
                 status = pidge_status_mapping[reason_code_number][0]
@@ -239,7 +246,7 @@ def consume_pidge_scan_util(payload):
                 status_text = pidge_status_mapping[reason_code_number][3]
             else:
                 cur.execute(insert_scan_query, (
-                    order[0], order[38], order[10], status_code, status, status_text, location, location_city, status_time))
+                    order[0], order[40], order[10], status_code, status, status_text, location, location_city, status_time))
                 conn.commit()
                 return "Successful: scan saved only"
 
@@ -247,7 +254,7 @@ def consume_pidge_scan_util(payload):
                 status = "RTO"
 
             cur.execute(insert_scan_query, (
-                order[0], order[38], order[10], status_code, status, status_text, location, location_city, status_time))
+                order[0], order[40], order[10], status_code, status, status_text, location, location_city, status_time))
 
             if not status or status == 'READY TO SHIP':
                 return "Successful: scan saved only"
@@ -262,7 +269,7 @@ def consume_pidge_scan_util(payload):
 
             if tracking_status:
                 cur.execute(insert_status_query, (
-                    order[0], order[38], order[10], status_type, tracking_status, status_text, location, location_city, status_time))
+                    order[0], order[40], order[10], status_type, tracking_status, status_text, location, location_city, status_time))
 
             customer_phone = order[4].replace(" ", "")
             customer_phone = "0" + customer_phone[-10:]
@@ -271,13 +278,16 @@ def consume_pidge_scan_util(payload):
                 mark_picked_channel(order, cur)
                 send_shipped_event(customer_phone, order[19], order, "", "Pidge")
                 mark_order_picked_pickups(order, cur)
+                webhook_updates(order, cur, status, "Shipment Picked Up", location, status_time, ndr_id=None)
 
             elif tracking_status == "Delivered":
                 mark_delivered_channel(order)
                 send_delivered_event(customer_phone, order, "Pidge")
+                webhook_updates(order, cur, status, "Shipment Delivered", location, status_time, ndr_id=None)
 
             elif tracking_status == "RTO":
                 mark_rto_channel(order)
+                webhook_updates(order, cur, status, "Shipment RTO", location, status_time, ndr_id=None)
 
             cur.execute("UPDATE orders SET status=%s, status_type=%s WHERE id=%s;", (status, status_type, order[0]))
 

@@ -386,6 +386,21 @@ class CODRemittance(db.Model):
     date_updated = db.Column(db.DateTime, onupdate=datetime.now)
 
 
+class Webhooks(db.Model):
+    __tablename__ = "webhooks"
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    client_prefix = db.Column(db.String, nullable=False)
+    webhook_url = db.Column(db.String, nullable=False)
+    webhook_name = db.Column(db.String, nullable=True)
+    header_key = db.Column(db.String, nullable=True)
+    header_value = db.Column(db.String, nullable=True)
+    webhook_secret = db.Column(db.String, nullable=True)
+    status = db.Column(db.String)
+    fail_count = db.Column(db.Integer, nullable=True, default=0)
+    date_created = db.Column(db.DateTime, default=datetime.now)
+    date_updated = db.Column(db.DateTime, onupdate=datetime.now)
+
+
 class Shipments(db.Model):
     __tablename__ = "shipments"
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)

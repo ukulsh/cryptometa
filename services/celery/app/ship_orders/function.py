@@ -204,15 +204,17 @@ def ship_delhivery_orders(cur, courier, courier_name, order_ids, order_id_tuple,
             shipments = list()
             for order in order_chunk:
                 try:
-                    if not order[54]:
-                        last_invoice_no = invoice_order(cur, last_invoice_no, pickup_point[23], order[0], pickup_id)
-                    if order[26].lower() == 'cod' and not order[27] and not force_ship:
-                        continue
                     zone = None
                     try:
                         zone = get_delivery_zone(pickup_point[8], order[18])
                     except Exception as e:
                         logger.error("couldn't find zone: " + str(order[0]) + "\nError: " + str(e))
+                    if courier[1]=="DHANIPHARMACY" and zone not in ('A', 'B'):
+                        continue
+                    if not order[54]:
+                        last_invoice_no = invoice_order(cur, last_invoice_no, pickup_point[23], order[0], pickup_id)
+                    if order[26].lower() == 'cod' and not order[27] and not force_ship:
+                        continue
 
                     orders_dict[str(order[0])] = (order[0], order[33], order[34], order[35],
                                                   order[36], order[37], order[38], order[39],

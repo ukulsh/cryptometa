@@ -213,6 +213,7 @@ def track_delhivery_orders(courier, cur):
 
             if new_status == 'DELIVERED':
                 update_delivered_on_channels(orders_dict[current_awb])
+                webhook_updates(orders_dict[current_awb], cur, new_status, "Shipment Delivered", "", (datetime.utcnow()+timedelta(hours=5.5)).strftime("%d %b %Y, %H:%M:%S"))
                 send_delivered_event(customer_phone, orders_dict[current_awb], "Delhivery")
 
             if new_status == 'DTO':
@@ -231,6 +232,7 @@ def track_delhivery_orders(courier, cur):
 
             if new_status == 'RTO':
                 update_rto_on_channels(orders_dict[current_awb])
+                webhook_updates(orders_dict[current_awb], cur, new_status, "Shipment RTO", "", (datetime.utcnow()+timedelta(hours=5.5)).strftime("%d %b %Y, %H:%M:%S"))
 
             if orders_dict[current_awb][2] in ('READY TO SHIP', 'PICKUP REQUESTED', 'NOT PICKED') and new_status == 'IN TRANSIT':
                 pickup_count += 1
@@ -243,6 +245,7 @@ def track_delhivery_orders(courier, cur):
                             (True, time_now, orders_dict[current_awb][0]))
 
                 update_picked_on_channels(orders_dict[current_awb], cur)
+                webhook_updates(orders_dict[current_awb], cur, new_status, "Shipment Picked Up", "", (datetime.utcnow()+timedelta(hours=5.5)).strftime("%d %b %Y, %H:%M:%S"))
                 cur.execute("UPDATE shipments SET pdd=%s WHERE awb=%s", (edd, current_awb))
                 send_shipped_event(customer_phone, orders_dict[current_awb][19], orders_dict[current_awb], edd.strftime('%-d %b') if edd else "", "Delhivery")
 
@@ -255,6 +258,7 @@ def track_delhivery_orders(courier, cur):
                     try:  # NDR check text
                         ndr_reason = delhivery_status_code_mapping_dict[status_code]
                         verification_text(orders_dict[current_awb], cur, ndr_reason=ndr_reason)
+                        webhook_updates(orders_dict[current_awb], cur, new_status, "", "",(datetime.utcnow() + timedelta(hours=5.5)).strftime("%d %b %Y, %H:%M:%S"), ndr_id=ndr_reason)
                     except Exception as e:
                         logger.error(
                             "NDR confirmation not sent. Order id: " + str(orders_dict[current_awb][0]))
@@ -418,10 +422,12 @@ def track_shadowfax_orders(courier, cur):
 
             if new_status == 'DELIVERED':
                 update_delivered_on_channels(orders_dict[current_awb])
+                webhook_updates(orders_dict[current_awb], cur, new_status, "Shipment Delivered", "", (datetime.utcnow()+timedelta(hours=5.5)).strftime("%d %b %Y, %H:%M:%S"))
                 send_delivered_event(customer_phone, orders_dict[current_awb], "Shadowfax")
 
             if new_status == 'RTO':
                 update_rto_on_channels(orders_dict[current_awb])
+                webhook_updates(orders_dict[current_awb], cur, new_status, "Shipment RTO", "", (datetime.utcnow()+timedelta(hours=5.5)).strftime("%d %b %Y, %H:%M:%S"))
 
             if orders_dict[current_awb][2] in (
                     'READY TO SHIP', 'PICKUP REQUESTED', 'NOT PICKED') and new_status == 'IN TRANSIT':
@@ -435,6 +441,7 @@ def track_shadowfax_orders(courier, cur):
                             (True, time_now, orders_dict[current_awb][0]))
 
                 update_picked_on_channels(orders_dict[current_awb], cur)
+                webhook_updates(orders_dict[current_awb], cur, new_status, "Shipment Picked Up", "", (datetime.utcnow()+timedelta(hours=5.5)).strftime("%d %b %Y, %H:%M:%S"))
 
                 if edd:
                     cur.execute("UPDATE shipments SET pdd=%s WHERE awb=%s", (edd, current_awb))
@@ -448,7 +455,9 @@ def track_shadowfax_orders(courier, cur):
                 if new_status == "PENDING" and ret_order['status'] in shadowfax_status_mapping \
                         and shadowfax_status_mapping[new_status][2]:
                     try:  # NDR check text
-                        verification_text(orders_dict[current_awb], cur, ndr_reason=shadowfax_status_mapping[new_status][2])
+                        ndr_reason = shadowfax_status_mapping[new_status][2]
+                        verification_text(orders_dict[current_awb], cur, ndr_reason=ndr_reason)
+                        webhook_updates(orders_dict[current_awb], cur, new_status, "", "",(datetime.utcnow() + timedelta(hours=5.5)).strftime("%d %b %Y, %H:%M:%S"), ndr_id=ndr_reason)
                     except Exception as e:
                         logger.error(
                             "NDR confirmation not sent. Order id: " + str(orders_dict[current_awb][0]))
@@ -608,10 +617,12 @@ def track_xpressbees_orders(courier, cur):
 
             if new_status == 'DELIVERED':
                 update_delivered_on_channels(orders_dict[current_awb])
+                webhook_updates(orders_dict[current_awb], cur, new_status, "Shipment Delivered", "", (datetime.utcnow()+timedelta(hours=5.5)).strftime("%d %b %Y, %H:%M:%S"))
                 send_delivered_event(customer_phone, orders_dict[current_awb], "Xpressbees")
 
             if new_status == 'RTO':
                 update_rto_on_channels(orders_dict[current_awb])
+                webhook_updates(orders_dict[current_awb], cur, new_status, "Shipment RTO", "", (datetime.utcnow()+timedelta(hours=5.5)).strftime("%d %b %Y, %H:%M:%S"))
 
             if orders_dict[current_awb][2] in (
                     'READY TO SHIP', 'PICKUP REQUESTED',
@@ -631,7 +642,7 @@ def track_xpressbees_orders(courier, cur):
                                 (True, time_now, orders_dict[current_awb][0]))
 
                     update_picked_on_channels(orders_dict[current_awb], cur)
-
+                    webhook_updates(orders_dict[current_awb], cur, new_status, "Shipment Picked Up", "",(datetime.utcnow() + timedelta(hours=5.5)).strftime("%d %b %Y, %H:%M:%S"))
                     send_shipped_event(customer_phone, orders_dict[current_awb][19], orders_dict[current_awb],
                                        edd.strftime('%-d %b') if edd else "", "Xpressbees")
 
@@ -664,7 +675,7 @@ def track_xpressbees_orders(courier, cur):
                         else:
                             ndr_reason = 14
                         verification_text(orders_dict[current_awb], cur, ndr_reason=ndr_reason)
-
+                        webhook_updates(orders_dict[current_awb], cur, new_status, "", "",(datetime.utcnow() + timedelta(hours=5.5)).strftime("%d %b %Y, %H:%M:%S"), ndr_id=ndr_reason)
                     except Exception as e:
                         logger.error(
                             "NDR confirmation not sent. Order id: " + str(orders_dict[current_awb][0]))
@@ -861,10 +872,12 @@ def track_bluedart_orders(courier, cur):
 
             if new_status == 'DELIVERED':
                 update_delivered_on_channels(orders_dict[current_awb])
+                webhook_updates(orders_dict[current_awb], cur, new_status, "Shipment Delivered", "", (datetime.utcnow()+timedelta(hours=5.5)).strftime("%d %b %Y, %H:%M:%S"))
                 send_delivered_event(customer_phone, orders_dict[current_awb], "Bluedart")
 
             if new_status == 'RTO':
                 update_rto_on_channels(orders_dict[current_awb])
+                webhook_updates(orders_dict[current_awb], cur, new_status, "Shipment RTO", "", (datetime.utcnow()+timedelta(hours=5.5)).strftime("%d %b %Y, %H:%M:%S"))
 
             if orders_dict[current_awb][2] in (
                     'READY TO SHIP', 'PICKUP REQUESTED', 'NOT PICKED') and new_status == 'IN TRANSIT':
@@ -877,6 +890,7 @@ def track_bluedart_orders(courier, cur):
                 cur.execute("UPDATE order_pickups SET picked=%s, pickup_time=%s WHERE order_id=%s",
                             (True, time_now, orders_dict[current_awb][0]))
                 update_picked_on_channels(orders_dict[current_awb], cur)
+                webhook_updates(orders_dict[current_awb], cur, new_status, "Shipment Picked Up", "", (datetime.utcnow()+timedelta(hours=5.5)).strftime("%d %b %Y, %H:%M:%S"))
 
                 cur.execute("UPDATE shipments SET pdd=%s WHERE awb=%s", (edd, current_awb))
                 send_shipped_event(customer_phone, orders_dict[current_awb][19], orders_dict[current_awb],
@@ -890,6 +904,7 @@ def track_bluedart_orders(courier, cur):
                     try:  # NDR check text
                         ndr_reason = bluedart_status_mapping[scan_group][status_code][3]
                         verification_text(orders_dict[current_awb], cur, ndr_reason=ndr_reason)
+                        webhook_updates(orders_dict[current_awb], cur, new_status, "", "",(datetime.utcnow() + timedelta(hours=5.5)).strftime("%d %b %Y, %H:%M:%S"), ndr_id=ndr_reason)
                     except Exception as e:
                         logger.error(
                             "NDR confirmation not sent. Order id: " + str(orders_dict[current_awb][0]))
@@ -1075,10 +1090,12 @@ def track_ecomxp_orders(courier, cur):
 
             if new_status == 'DELIVERED':
                 update_delivered_on_channels(orders_dict[current_awb])
+                webhook_updates(orders_dict[current_awb], cur, new_status, "Shipment Delivered", "", (datetime.utcnow()+timedelta(hours=5.5)).strftime("%d %b %Y, %H:%M:%S"))
                 send_delivered_event(customer_phone, orders_dict[current_awb], "Ecom Express")
 
             if new_status == 'RTO':
                 update_rto_on_channels(orders_dict[current_awb])
+                webhook_updates(orders_dict[current_awb], cur, new_status, "Shipment RTO", "", (datetime.utcnow()+timedelta(hours=5.5)).strftime("%d %b %Y, %H:%M:%S"))
 
             if orders_dict[current_awb][2] in (
                     'READY TO SHIP', 'PICKUP REQUESTED', 'NOT PICKED') and new_status == 'IN TRANSIT':
@@ -1092,6 +1109,7 @@ def track_ecomxp_orders(courier, cur):
                             (True, time_now, orders_dict[current_awb][0]))
 
                 update_picked_on_channels(orders_dict[current_awb], cur)
+                webhook_updates(orders_dict[current_awb], cur, new_status, "Shipment Picked Up", "", (datetime.utcnow()+timedelta(hours=5.5)).strftime("%d %b %Y, %H:%M:%S"))
 
                 cur.execute("UPDATE shipments SET pdd=%s WHERE awb=%s", (edd, current_awb))
                 send_shipped_event(customer_phone, orders_dict[current_awb][19], orders_dict[current_awb],
@@ -1105,6 +1123,7 @@ def track_ecomxp_orders(courier, cur):
                     try:  # NDR check text
                         ndr_reason = ecom_express_ndr_reasons[status_code]
                         verification_text(orders_dict[current_awb], cur, ndr_reason=ndr_reason)
+                        webhook_updates(orders_dict[current_awb], cur, new_status, "", "",(datetime.utcnow() + timedelta(hours=5.5)).strftime("%d %b %Y, %H:%M:%S"), ndr_id=ndr_reason)
                     except Exception as e:
                         logger.error(
                             "NDR confirmation not sent. Order id: " + str(orders_dict[current_awb][0]))

@@ -155,3 +155,32 @@ def create_email(order, edd, email):
     except Exception as e:
         logger.error("Couldn't send email: " + str(order[1]) + "\nError: " + str(e.args))
         return None
+
+
+def webhook_updates(order, cur, status, status_text, location, status_time, ndr_id=None):
+    if order[38]:
+        try:
+            if ndr_id:
+                cur.execute("SELECT reason FROM ndr_reasons WHERE id=%s"%str(ndr_id))
+                status_text = cur.fetchone()[0]
+            cur.execute("SELECT webhook_url, header_key, header_value, webhook_secret, id FROM webhooks WHERE status='active' and client_prefix='%s'"%order[3])
+            all_webhooks = cur.fetchall()
+            for webhook in all_webhooks:
+                try:
+                    req_body = {"awb": order[1],
+                                "status": status,
+                                "event_time": status_time,
+                                "location": location,
+                                "order_id": order[12],
+                                "status_text": status_text}
+
+                    headers = {"Content-Type": "application/json"}
+                    if webhook[1] and webhook[2]:
+                        headers[webhook[1]] = webhook[2]
+
+                    req = requests.post(webhook[0], headers=headers, json=req_body, timeout=5)
+                except Exception:
+                    cur.execute("UPDATE webhooks SET fail_count=fail_count+1 WHERE id=%s"%str(webhook[4]))
+                    pass
+        except Exception:
+            pass

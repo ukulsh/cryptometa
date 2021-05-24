@@ -4,7 +4,7 @@ get_order_details_query = """select aa.id, bb.awb, aa.status, aa.client_prefix, 
                                     cc.channel_id, gg.location_id, mm.item_list, mm.sku_quan_list, aa.customer_name, aa.customer_email, 
                                     nn.client_name, nn.client_logo, nn.custom_email_subject, bb.courier_id, nn.theme_color, cc.unique_parameter,
                                     cc.mark_shipped, cc.shipped_status, cc.mark_invoiced, cc.invoiced_status, cc.mark_delivered, 
-                                    cc.delivered_status, cc.mark_returned, cc.returned_status, cc.id, ee.amount, oo.warehouse_prefix, 
+                                    cc.delivered_status, cc.mark_returned, cc.returned_status, cc.id, ee.amount, oo.warehouse_prefix, nn.verify_ndr, pp.webhook_id,
                                     nn.client_name, bb.courier_id, oo.city
                                     from orders aa
                                     left join shipments bb
@@ -28,6 +28,8 @@ get_order_details_query = """select aa.id, bb.awb, aa.status, aa.client_prefix, 
                                     and aa.pickup_data_id=gg.pickup_data_id
                                     left join client_mapping nn
                                     on aa.client_prefix=nn.client_prefix 
+                                    left join (select client_prefix, max(id) as webhook_id from webhooks where status='active' group by client_prefix) pp
+                                    on pp.client_prefix=aa.client_prefix
                                     where __FILTER_ORDER__;"""
 
 insert_scan_query = """INSERT INTO order_scans (order_id, courier_id, shipment_id, status_code, status, status_text, 

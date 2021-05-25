@@ -986,6 +986,7 @@ def ship_xpressbees_orders(cur, courier, courier_name, order_ids, order_id_tuple
                     batch_req = requests.post("http://xbclientapi.xbees.in/TrackingService.svc/GetAWBNumberGeneratedSeries", headers=headers, json={"BusinessUnit": "ECOM", "ServiceType":"FORWARD", "BatchID": batch_create_req.json()['BatchID']})
                     xpressbees_shipment_body['ManifestDetails']['AirWayBillNO'] = str(batch_req.json()['AWBNoSeries'][0])
                     req = requests.post(xpressbees_url, headers=headers, data=json.dumps(xpressbees_shipment_body))
+                    last_assigned_awb = int(batch_req.json()['AWBNoSeries'][0])
 
                 return_data_raw = req.json()
                 insert_shipments_data_query = """INSERT INTO SHIPMENTS (awb, status, order_id, pickup_id, courier_id, 
@@ -1284,6 +1285,10 @@ def ship_ecom_orders(cur, courier, courier_name, order_ids, order_id_tuple, back
                     json_input['AWB_NUMBER'] = str(fetch_awb_req.json()['awb'][0])
                     req = requests.post(ecom_url, data={"username": courier[14], "password": courier[15],
                                                         "json_input": json.dumps([json_input])})
+                    if order[26].lower() == "cod":
+                        last_assigned_awb_cod = int(fetch_awb_req.json()['awb'][0])
+                    else:
+                        last_assigned_awb_ppd = int(fetch_awb_req.json()['awb'][0])
                 return_data_raw = req.json()
                 insert_shipments_data_query = """INSERT INTO SHIPMENTS (awb, status, order_id, pickup_id, courier_id, 
                                                                                                     dimensions, volumetric_weight, weight, remark, return_point_id, routing_code, 

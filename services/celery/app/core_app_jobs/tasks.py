@@ -1171,6 +1171,13 @@ def update_available_quantity_on_channel():
                                     order by available_quantity""".replace('__CLIENT_PREFIX__', channel[0]))
 
                 all_quan = cur.fetchall()
+                if not channel[5]:
+                    location_url = "https://%s:%s@%s/admin/api/2021-04/locations.json"% (channel[2], channel[3], channel[4])
+                    loc_req = requests.get(location_url).json()
+                    location_id = loc_req['locations'][0]['id']
+                else:
+                    location_id = int(channel[5])
+
                 headers = {'Content-Type': 'application/json'}
                 url = "https://%s:%s@%s/admin/api/2021-04/inventory_levels/set.json" % (channel[2], channel[3], channel[4])
                 for quan in all_quan:
@@ -1178,7 +1185,7 @@ def update_available_quantity_on_channel():
                         prod_url = "https://%s:%s@%s/admin/api/2021-04/variants/%s.json"% (channel[2], channel[3], channel[4], quan[0])
                         req = requests.get(prod_url).json()
                         fulfil_data = {
-                                          "location_id": int(channel[5]),
+                                          "location_id": location_id,
                                           "inventory_item_id": req['variant']['inventory_item_id'],
                                           "available": quan[1] if quan[1] and quan[1]>0 else 0,
                                           "disconnect_if_necessary": True

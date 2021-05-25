@@ -490,7 +490,7 @@ def track_xpressbees_orders(courier, cur):
     pickup_dict = dict()
     req_ship_data = list()
     headers = {"Content-Type": "application/json"}
-    chunks = [all_orders[x:x + 20] for x in range(0, len(all_orders), 20)]
+    chunks = [all_orders[x:x + 10] for x in range(0, len(all_orders), 10)]
     for some_orders in chunks:
         awb_string = ""
         for order in some_orders:
@@ -606,11 +606,14 @@ def track_xpressbees_orders(courier, cur):
 
             edd = ret_order['ShipmentSummary'][0].get('ExpectedDeliveryDate')
             if edd:
-                edd = datetime.strptime(ret_order['ShipmentSummary'][0]['ExpectedDeliveryDate'],
-                                        '%m/%d/%Y %I:%M:%S %p')
-                if datetime.utcnow().hour < 4:
-                    cur.execute("UPDATE shipments SET edd=%s WHERE awb=%s", (edd, current_awb))
-                    cur.execute("UPDATE shipments SET pdd=%s WHERE awb=%s and pdd is null", (edd, current_awb))
+                try:
+                    edd = datetime.strptime(ret_order['ShipmentSummary'][0]['ExpectedDeliveryDate'],
+                                            '%d/%m/%Y %I:%M:%S %p')
+                    if datetime.utcnow().hour < 4:
+                        cur.execute("UPDATE shipments SET edd=%s WHERE awb=%s", (edd, current_awb))
+                        cur.execute("UPDATE shipments SET pdd=%s WHERE awb=%s and pdd is null", (edd, current_awb))
+                except Exception as e:
+                    logger.error(str(e.args))
 
             customer_phone = orders_dict[current_awb][4].replace(" ", "")
             customer_phone = "0" + customer_phone[-10:]

@@ -2546,7 +2546,7 @@ def serviceability_badges_shopify():
 
         sku_list = data.get("sku_list")
         if not del_pincode:
-            return {"success": False, "msg": "Pincode not provided"}, 400
+            return jsonify({"success": False, "msg": "Pincode not provided"}), 400
 
         covid_zone = None
         city = None
@@ -2556,7 +2556,7 @@ def serviceability_badges_shopify():
                 "https://track.delhivery.com/c/api/pin-codes/json/?filter_codes=%s&token=d6ce40e10b52b5ca74805a6e2fb45083f0194185" % str(
                     del_pincode)).json()
             if not cod_req.get('delivery_codes'):
-                return {"success": False, "msg": "Pincode not serviceable"}, 400
+                return jsonify({"success": False, "msg": "Pincode not serviceable"}), 400
 
             if cod_req['delivery_codes'][0]['postal_code']['cod'].lower() == 'y':
                 cod_available = True
@@ -2566,8 +2566,8 @@ def serviceability_badges_shopify():
         except Exception:
             pass
         if not sku_list:
-            return {"success": True, "data": {"cod_available": cod_available, "covid_zone": covid_zone, "city": city,
-                                              "state": state}}, 200
+            return jsonify({"success": True, "data": {"cod_available": cod_available, "covid_zone": covid_zone, "city": city,
+                                              "state": state}}), 200
 
         sku_string = "('"
 
@@ -2615,9 +2615,9 @@ def serviceability_badges_shopify():
                                                          and kk.active=true;""".replace('__SKU_STR__', sku_string))
         except Exception:
             conn.rollback()
-            return {"success": False, "msg": "",
+            return jsonify({"success": False, "msg": "",
                     "cod_available": cod_available,
-                    "label_url": "https://logourls.s3.amazonaws.com/wareiq_standard.jpeg"}, 400
+                    "label_url": "https://logourls.s3.amazonaws.com/wareiq_standard.jpeg"}), 400
 
         prod_wh_tuple = cur.fetchall()
         wh_dict = dict()
@@ -2631,9 +2631,9 @@ def serviceability_badges_shopify():
                     wh_dict[prod_wh[0]]['count'] += 1
 
         if not wh_dict:
-            return {"success": False, "msg": "One or more SKUs not serviceable",
+            return jsonify({"success": False, "msg": "One or more SKUs not serviceable",
                     "cod_available": cod_available,
-                    "label_url": "https://logourls.s3.amazonaws.com/wareiq_standard.jpeg"}, 400
+                    "label_url": "https://logourls.s3.amazonaws.com/wareiq_standard.jpeg"}), 400
 
         warehouse_pincode_str = ""
         highest_num_loc = list()
@@ -2656,15 +2656,15 @@ def serviceability_badges_shopify():
                 '__COURIER_ID__', str(courier_id)).replace('__DELIVERY_PINCODE__', str(del_pincode)))
         except Exception:
             conn_2.rollback()
-            return {"success": False, "msg": "",
+            return jsonify({"success": False, "msg": "",
                     "cod_available": cod_available,
-                    "label_url": "https://logourls.s3.amazonaws.com/wareiq_standard.jpeg"}, 400
+                    "label_url": "https://logourls.s3.amazonaws.com/wareiq_standard.jpeg"}), 400
 
         final_wh = cur_2.fetchone()
 
         if not final_wh or final_wh[1] is None:
-            return {"success": True, "data": {"cod_available": cod_available, "covid_zone": covid_zone,
-                                              "label_url": "https://logourls.s3.amazonaws.com/wareiq_standard.jpeg"}}, 200
+            return jsonify({"success": True, "data": {"cod_available": cod_available, "covid_zone": covid_zone,
+                                              "label_url": "https://logourls.s3.amazonaws.com/wareiq_standard.jpeg"}}), 200
 
         current_time = datetime.utcnow() + timedelta(hours=5.5)
         order_before = current_time

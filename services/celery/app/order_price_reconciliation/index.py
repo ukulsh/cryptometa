@@ -116,6 +116,16 @@ def calculate_new_charge(current_data, charged_weight, source_courier_id, total_
         total_charge_gst = forward_charge_gst + rto_charge_gst + cod_charged_gst
         if total_charge:
             cur.execute(update_client_balance, (total_charge_gst, current_data[16]))
+            try:
+                closing_balance = cur.fetchone()[0]
+                time_now = datetime.utcnow() + timedelta(hours=5.5)
+                cur.execute("""INSERT INTO wallet_passbook (client_prefix, credit, debit, closing_balance, ref_no, 
+                            descr, category, txn_time, date_created) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+                            (current_data[16], 0, total_charge_gst + 5.9, closing_balance, "shpId:" + str(current_data[8]),
+                             "Deduction for awb: " + str(current_data[12]), "Excess Weight Charge", time_now, time_now))
+            except Exception as e:
+                logger.error("couldn't insert into passbook, order: " + str(current_data[8]) + "\nError: " + str(e))
+                pass
             insert_rates_tuple = (charged_weight, delivery_zone, deduction_time, cod_charge, cod_charged_gst,
                                   forward_charge, forward_charge_gst, rto_charge, rto_charge_gst, current_data[8],
                                   total_charge, total_charge_gst, datetime.now(), datetime.now(), recon_status,)

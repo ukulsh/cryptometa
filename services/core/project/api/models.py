@@ -966,6 +966,20 @@ class ClientDeductions(db.Model):
     date_updated = db.Column(db.DateTime, onupdate=datetime.now)
 
 
+class WalletPassbook(db.Model):
+    __tablename__ = "wallet_passbook"
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    client_prefix = db.Column(db.String, nullable=False)
+    credit = db.Column(db.FLOAT, nullable=False, default=0)
+    debit = db.Column(db.FLOAT, nullable=False, default=0)
+    closing_balance = db.Column(db.FLOAT, nullable=True)
+    ref_no = db.Column(db.String, nullable=True)
+    descr = db.Column(db.String, nullable=True)
+    category = db.Column(db.String, nullable=True)
+    txn_time = db.Column(db.DateTime, default=datetime.now)
+    date_created = db.Column(db.DateTime, default=datetime.now)
+
+
 class ClientDefaultCost(db.Model):
     __tablename__ = "client_default_cost"
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)

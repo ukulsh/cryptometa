@@ -2615,7 +2615,7 @@ def serviceability_badges_shopify():
                                                          and kk.active=true;""".replace('__SKU_STR__', sku_string))
         except Exception:
             conn.rollback()
-            return jsonify({"success": False, "msg": "",
+            return jsonify({"success": False, "msg": "Product(s) currently out of stock, try again later",
                     "cod_available": cod_available,
                     "label_url": "https://logourls.s3.amazonaws.com/wareiq_standard.jpeg"}), 400
 
@@ -2631,7 +2631,7 @@ def serviceability_badges_shopify():
                     wh_dict[prod_wh[0]]['count'] += 1
 
         if not wh_dict:
-            return jsonify({"success": False, "msg": "One or more SKUs not serviceable",
+            return jsonify({"success": False, "msg": "Product(s) currently out of stock, try again later",
                     "cod_available": cod_available,
                     "label_url": "https://logourls.s3.amazonaws.com/wareiq_standard.jpeg"}), 400
 
@@ -2656,7 +2656,7 @@ def serviceability_badges_shopify():
                 '__COURIER_ID__', str(courier_id)).replace('__DELIVERY_PINCODE__', str(del_pincode)))
         except Exception:
             conn_2.rollback()
-            return jsonify({"success": False, "msg": "",
+            return jsonify({"success": False, "msg": "Service not available",
                     "cod_available": cod_available,
                     "label_url": "https://logourls.s3.amazonaws.com/wareiq_standard.jpeg"}), 400
 
@@ -2709,7 +2709,7 @@ def serviceability_badges_shopify():
         return jsonify({"success": True, "data": return_data}), 200
 
     except Exception as e:
-        return jsonify({"success": False, "msg": ""}), 400
+        return jsonify({"success": False, "msg": "Product(s) currently out of stock, try again later"}), 400
 
 
 class PincodeServiceabilty(Resource):
@@ -2795,7 +2795,7 @@ class PincodeServiceabilty(Resource):
                                                                                                         'client_prefix']))
             except Exception:
                 conn.rollback()
-                return {"success": False, "msg": "",
+                return {"success": False, "msg": "Product(s) currently out of stock, try again later",
                         "cod_available": cod_available,
                         "label_url":"https://logourls.s3.amazonaws.com/wareiq_standard.jpeg"}, 400
 
@@ -2811,7 +2811,7 @@ class PincodeServiceabilty(Resource):
                         wh_dict[prod_wh[0]]['count'] += 1
 
             if not wh_dict:
-                return {"success": False, "msg": "One or more SKUs not serviceable",
+                return {"success": False, "msg": "Product(s) currently out of stock, try again later",
                         "cod_available": cod_available,
                         "label_url":"https://logourls.s3.amazonaws.com/wareiq_standard.jpeg"}, 400
 
@@ -2836,7 +2836,7 @@ class PincodeServiceabilty(Resource):
                     '__COURIER_ID__', str(courier_id)).replace('__DELIVERY_PINCODE__', str(del_pincode)))
             except Exception:
                 conn_2.rollback()
-                return {"success": False, "msg": "",
+                return {"success": False, "msg": "Service not available",
                         "cod_available": cod_available,
                         "label_url": "https://logourls.s3.amazonaws.com/wareiq_standard.jpeg"}, 400
 

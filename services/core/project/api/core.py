@@ -25,7 +25,7 @@ from .queries import product_count_query, available_warehouse_product_quantity, 
 from project.api.models import Products, ProductQuantity, InventoryUpdate, WarehouseMapping, NDRReasons, MultiVendor, \
     Orders, OrdersPayments, PickupPoints, MasterChannels, ClientPickups, CodVerification, NDRVerification, NDRShipments,\
     MasterCouriers, Shipments, OPAssociation, ShippingAddress, Manifests, ClientCouriers, OrderStatus, DeliveryCheck, \
-    ClientMapping, IVRHistory, ClientRecharges, CODRemittance, ThirdwatchData, ClientChannel
+    ClientMapping, IVRHistory, ClientRecharges, CODRemittance, ThirdwatchData, ClientChannel, WalletPassbook
 from project.api.utils import authenticate_restful, fill_shiplabel_data_thermal, create_shiplabel_blank_page, \
     fill_shiplabel_data, create_shiplabel_blank_page_thermal, create_invoice_blank_page, fill_invoice_data, \
     generate_picklist, generate_packlist, cancel_order_on_channels
@@ -401,6 +401,21 @@ def capture_payment(resp):
     mapping_obj = db.session.query(ClientMapping).filter(ClientMapping.client_prefix==auth_data.get('client_prefix')).first()
     if mapping_obj:
         mapping_obj.current_balance = mapping_obj.current_balance + recharge_obj.recharge_amount
+        try:
+            passbook_obj = WalletPassbook(client_prefix=mapping_obj.client_prefix,
+                                          credit=recharge_obj.recharge_amount,
+                                          debit=0,
+                                          closing_balance=mapping_obj.current_balance,
+                                          ref_no="utr: "+str(razorpay_payment_id),
+                                          descr="Wallet Recharge Razorpay",
+                                          category="Wallet Recharge Razorpay",
+                                          txn_time=datetime.utcnow()+timedelta(hours=5.5),
+                                          date_created=datetime.utcnow()+timedelta(hours=5.5)
+                                          )
+            db.session.add(passbook_obj)
+        except Exception as e:
+            logger.error("wallet recharge passbook failed: " + str(mapping_obj.client_prefix)+"\nError: "+str(e.args[0]))
+
 
     #capture = razorpay_client.payment.capture(razorpay_payment_id, recharge_obj.recharge_amount*100, {"currency": "INR"})
     recharge_obj.bank_transaction_id = razorpay_payment_id

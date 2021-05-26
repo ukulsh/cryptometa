@@ -639,15 +639,7 @@ def calculate_costs_util():
             # if order[6] != 'NASHER':
             if order[3] and order[3] > charged_weight:
                 charged_weight = order[3]
-            '''
-            else:
-            if courier_id==1:
-                volumetric_weight = (order[14]['length']*order[14]['breadth']*order[14]['height'])/4500
-            else:
-                volumetric_weight = (order[14]['length']*order[14]['breadth']*order[14]['height'])/5000
-            if volumetric_weight > charged_weight:
-                charged_weight = volumetric_weight
-            '''
+
             if not charged_weight:
                 logger.info("charged weight not found: " + str(order[0]))
                 cur.execute(
@@ -659,22 +651,19 @@ def calculate_costs_util():
             try:
                 # if order[6] != 'NASHER' or (order[6] == 'NASHER' and charged_weight < 10.0):
                 cost_select_tuple = (order[6], order[2])
-                cur.execute(
-                    "SELECT __ZONE__, cod_min, cod_ratio, rto_ratio, __ZONE_STEP__, rvp_ratio from cost_to_clients WHERE client_prefix=%s and courier_id=%s;".replace(
+                cur.execute("SELECT __ZONE__, cod_min, cod_ratio, rto_ratio, __ZONE_STEP__, rvp_ratio from cost_to_clients WHERE client_prefix=%s and courier_id=%s;".replace(
                         '__ZONE__', zone_column_mapping[delivery_zone]).replace('__ZONE_STEP__',
                                                                                 zone_step_charge_column_mapping[
                                                                                     delivery_zone]), cost_select_tuple)
                 charge_rate_values = cur.fetchone()
                 if not charge_rate_values:
-                    cur.execute(
-                        "SELECT __ZONE__, cod_min, cod_ratio, rto_ratio, __ZONE_STEP__, rvp_ratio from client_default_cost WHERE courier_id=%s;".replace(
+                    cur.execute("SELECT __ZONE__, cod_min, cod_ratio, rto_ratio, __ZONE_STEP__, rvp_ratio from client_default_cost WHERE courier_id=%s;".replace(
                             '__ZONE__', zone_column_mapping[delivery_zone]).replace('__ZONE_STEP__',
                                                                                     zone_step_charge_column_mapping[
                                                                                         delivery_zone]), (order[2],))
                     charge_rate_values = cur.fetchone()
                 if not charge_rate_values:
-                    cur.execute(
-                        """INSERT INTO client_deductions (weight_charged, zone, shipment_id) VALUES (%s,%s,%s) RETURNING id;""",
+                    cur.execute("""INSERT INTO client_deductions (weight_charged, zone, shipment_id) VALUES (%s,%s,%s) RETURNING id;""",
                         (charged_weight, delivery_zone, order[0]))
 
                     logger.info("charge_rate_values not found: " + str(order[0]))
@@ -717,35 +706,6 @@ def calculate_costs_util():
                             cod_charge = charge_rate_values[1]
 
                         cod_charged_gst = cod_charge * 1.18
-                '''
-                else:
-                    charge_rate_values = (None, 32, 1.5, 1)
-                    intial_charge = nasher_zonal_mapping[delivery_zone][0]
-                    next_weight = charged_weight-10.0
-                    charge_rate = nasher_zonal_mapping[delivery_zone][1]
-                    multiple = ceil(next_weight / 1.0)
-
-                    forward_charge = charge_rate * multiple + intial_charge
-                    forward_charge_gst = forward_charge * 1.18
-
-                    rto_charge = 0
-                    rto_charge_gst = 0
-                    cod_charge = 0
-                    cod_charged_gst = 0
-                    if order[13] in ('RTO','DTO'):
-                        rto_charge = forward_charge * charge_rate_values[3]
-                        rto_charge_gst = forward_charge_gst * charge_rate_values[3]
-                    else:
-                        if order[11] and order[11].lower() == 'cod':
-                            if order[12]:
-                                cod_charge = order[12] * (charge_rate_values[2] / 100)
-                                if charge_rate_values[1] > cod_charge:
-                                    cod_charge = charge_rate_values[1]
-                            else:
-                                cod_charge = charge_rate_values[1]
-
-                            cod_charged_gst = cod_charge * 1.18
-                '''
 
                 if order[9]:
                     deduction_time = order[9]
@@ -765,11 +725,20 @@ def calculate_costs_util():
                                       total_charge, total_charge_gst, datetime.now(), datetime.now())
 
                 cur.execute(update_client_balance, (total_charge_gst+5.9, order[6]))
+                try:
+                    closing_balance = cur.fetchone()[0]
+                    time_now = datetime.utcnow()+timedelta(hours=5.5)
+                    cur.execute("""INSERT INTO wallet_passbook (client_prefix, credit, debit, closing_balance, ref_no, 
+                                descr, category, txn_time, date_created) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+                                (order[6], 0, total_charge_gst+5.9, closing_balance, "shpId:"+str(order[0]),
+                                "Deduction for awb: "+str(order[1]), "Shipment charge", time_now, time_now))
+                except Exception as e:
+                    logger.error("couldn't insert into passbook, order: " + str(order[0]) + "\nError: " + str(e))
+                    pass
                 cur.execute(insert_into_deduction_query, insert_rates_tuple)
             except Exception as e:
                 logger.error("couldn't calculate order: " + str(order[0]) + "\nError: " + str(e))
-                cur.execute(
-                    """INSERT INTO client_deductions (weight_charged, zone, shipment_id) VALUES (%s,%s,%s) RETURNING id;""",
+                cur.execute("""INSERT INTO client_deductions (weight_charged, zone, shipment_id) VALUES (%s,%s,%s) RETURNING id;""",
                     (charged_weight, delivery_zone, order[0]))
                 continue
             conn.commit()
@@ -787,8 +756,7 @@ def calculate_courier_cost(cur, delivery_zone, order):
             charged_weight = volumetric_weight
 
         cost_select_tuple = (order[2],)
-        cur.execute(
-            "SELECT __ZONE__, __ZONE___add, cod_min, cod_ratio, rto_ratio, first_step, next_step from courier_costs WHERE courier_id=%s;".replace(
+        cur.execute("SELECT __ZONE__, __ZONE___add, cod_min, cod_ratio, rto_ratio, first_step, next_step from courier_costs WHERE courier_id=%s;".replace(
                 '__ZONE__', zone_column_mapping_courier[delivery_zone]), cost_select_tuple)
         charge_rate_values = cur.fetchone()
         if not charge_rate_values:
@@ -859,8 +827,7 @@ def calculate_courier_cost(cur, delivery_zone, order):
         else:
             deduction_time = datetime.now()
 
-        insert_rates_tuple = (
-        charged_weight, delivery_zone, deduction_time, cod_charge, forward_charge, rto_charge, order[0],
+        insert_rates_tuple = (charged_weight, delivery_zone, deduction_time, cod_charge, forward_charge, rto_charge, order[0],
         total_charge, datetime.now(), datetime.now())
 
         cur.execute(insert_into_courier_cost_query, insert_rates_tuple)

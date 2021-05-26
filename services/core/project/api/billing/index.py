@@ -6,8 +6,9 @@ import math
 from flask import Blueprint, request, make_response, jsonify
 from flask_restful import Api, Resource
 from datetime import datetime, timedelta
+from sqlalchemy import or_, and_
 from project import db
-from project.api.models import MultiVendor
+from project.api.models import MultiVendor, WalletPassbook
 from project.api.utils import authenticate_restful, check_client_order_ids
 from project.api.utilities.db_utils import DbConnection
 from project.api.queries import select_wallet_deductions_query, select_wallet_remittance_query, \
@@ -971,6 +972,57 @@ def raise_dispute(resp):
     except Exception as e:
         response_object['message'] = 'failed'
         return jsonify(response_object), 400
+
+
+@billing_blueprint.route('/wallet/v1/passbook', methods=['POST'])
+@authenticate_restful
+def get_passbook(resp):
+    response = {"data": list(), "meta": {}, "success": True}
+    try:
+        auth_data = resp.get('data')
+        if not auth_data:
+            return {"success": False, "msg": "Auth Failed"}, 404
+        if auth_data['user_group'] not in ('client', 'super-admin'):
+            return {"success": False, "msg": "Invalid user"}, 400
+
+        post_data = request.get_json()
+        categories = post_data.get('categories', None)
+        search = post_data.get('search', None)
+        page = post_data.get('page', 1)
+        page = int(page)
+        per_page = post_data.get('per_page', 20)
+        per_page = int(per_page)
+
+        passbook_qs = db.session.query(WalletPassbook).filter(WalletPassbook.client_prefix == auth_data.get('client_prefix'))
+        if categories:
+            passbook_qs = passbook_qs.filter(WalletPassbook.category.in_(categories))
+        if search:
+            passbook_qs = passbook_qs.filter(or_(WalletPassbook.descr.contains(search), WalletPassbook.ref_no.contains(search)))
+        passbook_qs = passbook_qs.order_by(WalletPassbook.txn_time.desc()).paginate(page, per_page, error_out=False)
+        data = list()
+        for order in passbook_qs.items:
+            res_obj = dict()
+            res_obj['txn_time'] = order.txn_time.strftime('%Y-%m-%d %I:%M %p')
+            res_obj['category'] = order.category
+            res_obj['credit'] = order.credit
+            res_obj['debit'] = order.debit
+            res_obj['closing_balance'] = round(order.closing_balance, 2) if order.closing_balance else None
+            res_obj['ref_no'] = order.ref_no
+            res_obj['descr'] = order.descr
+            data.append(res_obj)
+
+        response['data'] = data
+        response['meta']['pagination'] = {'total': passbook_qs.total,
+                                          'per_page': passbook_qs.per_page,
+                                          'current_page': passbook_qs.page,
+                                          'total_pages': passbook_qs.pages}
+
+    except Exception as e:
+        return jsonify({
+            'success': False
+        }), 400
+
+    return jsonify(response), 200
 
 
 api.add_resource(WalletDeductions, '/wallet/v1/deductions')

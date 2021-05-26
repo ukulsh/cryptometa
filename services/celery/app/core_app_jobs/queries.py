@@ -68,7 +68,7 @@ insert_into_courier_cost_query = """INSERT INTO courier_charges (weight_charged,
                                 forward_charge,rto_charge,shipment_id,total_charge,date_created,date_updated) VALUES 
                                 (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s);"""
 
-update_client_balance = """UPDATE client_mapping SET current_balance=coalesce(current_balance, 0)-%s WHERE client_prefix=%s AND account_type ilike 'prepaid';"""
+update_client_balance = """UPDATE client_mapping SET current_balance=coalesce(current_balance, 0)-%s WHERE client_prefix=%s AND account_type ilike 'prepaid' RETURNING current_balance;"""
 
 select_remittance_amount_query = """select * from
                                         (select xx.unique_id, xx.client_prefix, xx.remittance_id, xx.date as remittance_date, 

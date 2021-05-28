@@ -973,7 +973,7 @@ def fetch_bikayi_orders(cur, channel, manual=None):
     if channel[7] and not (time_now.hour == 21 and 0<time_now.minute<30) and not manual:
         updated_after = channel[7].strftime("%s")
     else:
-        updated_after = datetime.utcnow() - timedelta(days=30)
+        updated_after = datetime.utcnow() - timedelta(days=1)
         updated_after = updated_after.strftime("%s")
 
     bikayi_orders_url = """%s/platformPartnerFunctions-fetchOrders""" % (channel[5],)

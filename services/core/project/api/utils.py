@@ -1146,7 +1146,10 @@ def cancel_order_on_couriers(order):
             payload = {}
             headers = {
                 'Content-Type': 'application/json',
-                'platform': 'WareIQ server'
+                'platform': 'WareIQ server',
+                "deviceId": "abc",
+                "buildNumber": "123",
+                "Authorization": "Bearer "+order.shipments[0].courier.api_key
             }
             req = requests.put(url, headers=headers, data=payload)
 

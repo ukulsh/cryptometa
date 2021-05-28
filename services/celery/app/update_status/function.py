@@ -608,7 +608,7 @@ def track_xpressbees_orders(courier, cur):
             if edd:
                 try:
                     edd = datetime.strptime(ret_order['ShipmentSummary'][0]['ExpectedDeliveryDate'],
-                                            '%d/%m/%Y %I:%M:%S %p')
+                                            '%m/%d/%Y %I:%M:%S %p')
                     if datetime.utcnow().hour < 4:
                         cur.execute("UPDATE shipments SET edd=%s WHERE awb=%s", (edd, current_awb))
                         cur.execute("UPDATE shipments SET pdd=%s WHERE awb=%s and pdd is null", (edd, current_awb))

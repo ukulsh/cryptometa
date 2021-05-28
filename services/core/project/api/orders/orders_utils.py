@@ -224,7 +224,7 @@ def download_flag_func(query_to_run, get_selected_product_details, auth_data, OR
                             not_shipped = "Pickup point not assigned"
                         if not_shipped:
                             new_row.append(not_shipped)
-                        if auth_data.get('user_group') == 'super-admin':
+                        if auth_data.get('user_group') in ('super-admin', 'warehouse'):
                             new_row.append(order[38])
                         cw.writerow(new_row)
             except Exception as e:

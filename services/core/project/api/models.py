@@ -1198,3 +1198,24 @@ class PincodeMapping(db.Model):
     city = db.Column(db.String, nullable=True)
     district = db.Column(db.String, nullable=True)
     state = db.Column(db.String, nullable=True)
+
+
+class UrlShortner(db.Model):
+    __tablename__ = "url_shortner"
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    url = db.Column(db.String, nullable=False)
+    hashid = db.Column(db.String, nullable=True)
+    clicks = db.Column(db.Integer, nullable=True, default=0)
+    date_created = db.Column(db.DateTime, default=datetime.now)
+
+
+class PincodeServiceability(db.Model):
+    __tablename__ = "pincode_serviceability"
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    pincode = db.Column(db.String, nullable=False)
+    courier_id = db.Column(db.Integer, db.ForeignKey('master_couriers.id'))
+    courier = db.relationship("MasterCouriers", backref=db.backref("pincode_serviceability", uselist=True))
+    serviceable = db.Column(db.BOOLEAN, nullable=True, default=None)
+    cod_available = db.Column(db.BOOLEAN, nullable=True, default=None)
+    reverse_pickup = db.Column(db.BOOLEAN, nullable=True, default=None)
+    last_updated = db.Column(db.DateTime, onupdate=datetime.now)

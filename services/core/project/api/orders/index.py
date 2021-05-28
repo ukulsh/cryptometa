@@ -2048,23 +2048,45 @@ class OrderDetails(Resource):
             if 'pickup_point' in data:
                 client_pickup = db.session.query(ClientPickups).join(PickupPoints,
                                          ClientPickups.pickup_id==PickupPoints.id).filter(ClientPickups.client_prefix==order.client_prefix, PickupPoints.warehouse_prefix==data.get('pickup_point')).first()
+
                 if client_pickup:
+                    if client_pickup.wareiq_location:
+                        def check_inventory_available(prod, warehouse_check):
+                            wh_found = None
+                            if not prod.quantity:
+                                return False
+                            for quan_obj in prod.quantity:
+                                if quan_obj.warehouse_prefix == warehouse_check:
+                                    wh_found = True
+                                    if quan_obj.available_quantity <= 0:
+                                        return False
+                            return True if wh_found else False
+
+                        for prod in order.products:
+                            if prod.master_product:
+                                if prod.master_product.combo:
+                                    for new_prod in prod.master_product.combo:
+                                        available_quan_check = check_inventory_available(new_prod.combo_prod,
+                                                                                         data.get('pickup_point'))
+                                        if not available_quan_check:
+                                            return {'status': 'Failed',
+                                                    'msg': "Inventory not available, cannot be assigned"}, 400
+                                else:
+                                    available_quan_check = check_inventory_available(prod.master_product,
+                                                                                     data.get('pickup_point'))
+                                    if not available_quan_check:
+                                        return {'status': 'Failed',
+                                                'msg': "Inventory not available, cannot be assigned"}, 400
+                            else:
+                                continue
+
                     order.pickup_data = client_pickup
                     order.status = 'NEW'
                     db.session.query(OrderStatus).filter(OrderStatus.order_id == int(order_id)).delete()
                     db.session.query(OrderScans).filter(OrderScans.order_id == int(order_id)).delete()
                     db.session.query(Shipments).filter(Shipments.order_id == int(order_id)).delete()
                     if order.shipments and order.shipments[0].awb:
-                        if order.shipments[0].courier.id in (1,2,8,11,12):  #Cancel on delhievry #todo: cancel on other platforms too
-                            cancel_body = json.dumps({"waybill": order.shipments[0].awb, "cancellation": "true"})
-                            headers = {"Authorization": "Token " + order.shipments[0].courier.api_key,
-                                        "Content-Type": "application/json"}
-                            req_can = requests.post("https://track.delhivery.com/api/p/edit", headers=headers, data=cancel_body)
-                        if order.shipments[0].courier.id in (5,13):  #Cancel on Xpressbees
-                            cancel_body = json.dumps({"AWBNumber": order.shipments[0].awb, "XBkey": order.shipments[0].courier.api_key, "RTOReason": "Cancelled by seller"})
-                            headers = {"Authorization": "Basic " + order.shipments[0].courier.api_key,
-                                        "Content-Type": "application/json"}
-                            req_can = requests.post("http://xbclientapi.xbees.in/POSTShipmentService.svc/RTONotifyShipment", headers=headers, data=cancel_body)
+                        cancel_order_on_couriers(order)
 
                     if order.orders_invoice:
                         for invoice_obj in order.orders_invoice:
@@ -2424,6 +2446,9 @@ def get_invoice_details(unique_id):
 
             except Exception:
                 pass
+
+        if order_qs.order.client_prefix=='DHANIPHARMACY':
+            cgst, igst, sgst, total_amount=0, 0, 0, 0
 
         content = {"client_name": client_name,
                    "client_logo": client_logo,
@@ -2994,6 +3019,7 @@ class GetShipmentData(Resource):
             for order in orders_qs:
                 ret_obj = dict()
                 ret_obj['order_no'] = order.order_id_channel_unique
+                ret_obj['order_date'] = order.order_date.strftime("%Y-%m-%d %I:%M %p") if order.order_date else None
                 if order.shipments and order.shipments[0].courier:
                     ret_obj['status'] = 'success'
                     ret_obj['sort_code'] = order.shipments[0].routing_code

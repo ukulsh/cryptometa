@@ -986,7 +986,7 @@ def get_passbook(resp):
             return {"success": False, "msg": "Invalid user"}, 400
 
         post_data = request.get_json()
-        categories = post_data.get('categories', None)
+        filters = post_data.get('filters', {})
         search = post_data.get('search', None)
         page = post_data.get('page', 1)
         page = int(page)
@@ -994,8 +994,8 @@ def get_passbook(resp):
         per_page = int(per_page)
 
         passbook_qs = db.session.query(WalletPassbook).filter(WalletPassbook.client_prefix == auth_data.get('client_prefix'))
-        if categories:
-            passbook_qs = passbook_qs.filter(WalletPassbook.category.in_(categories))
+        if filters.get('categories'):
+            passbook_qs = passbook_qs.filter(WalletPassbook.category.in_(filters.get('categories')))
         if search:
             passbook_qs = passbook_qs.filter(or_(WalletPassbook.descr.contains(search), WalletPassbook.ref_no.contains(search)))
         passbook_qs = passbook_qs.order_by(WalletPassbook.txn_time.desc()).paginate(page, per_page, error_out=False)

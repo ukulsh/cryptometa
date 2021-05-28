@@ -2036,8 +2036,7 @@ def ship_selfshp_orders(cur, courier, courier_name, order_ids, order_id_tuple, b
             if order[0] > last_shipped_order_id:
                 last_shipped_order_id = order[0]
             order_status_change_ids.append(order[0])
-            data_tuple = tuple([(
-                str(order[0]), "Success", order[0], pickup_point[1],
+            data_tuple = tuple([("WIQ"+str(order[0]), "Success", order[0], pickup_point[1],
                 courier[9], json.dumps(dimensions), volumetric_weight, weight, "", pickup_point[2],
                 "", None, None)])
 
@@ -2446,7 +2445,7 @@ def ship_pidge_orders(cur, courier, courier_name, order_ids, order_id_tuple, bac
                     "", pickup_point[2], "", None, "https://webapp.wareiq.com/tracking/"+str(return_data_raw['data']['PBID']), zone)])
 
                 if order[46] == 7:
-                    push_awb_easyecom(order[39], order[36], return_data_raw['data'][0]['PBID'], courier,
+                    push_awb_easyecom(order[39], order[36], str(return_data_raw['data']['PBID']), courier,
                                       cur, order[55], order[56])
 
                 client_name = str(order[51])

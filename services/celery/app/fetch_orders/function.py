@@ -752,12 +752,14 @@ def fetch_magento_orders(cur, channel, manual=None):
 
 def fetch_easyecom_orders(cur, channel, manual=None):
 
-    time_now = datetime.utcnow()
-    if channel[7] and not (time_now.hour == 21 and 0<time_now.minute<30) and not manual:
-        created_after = channel[7].strftime("%Y-%m-%d %X")
-    else:
+    time_2_hours_ago = datetime.utcnow() + timedelta(hours=3.5)
+    if manual:
         created_after = datetime.utcnow() - timedelta(days=30)
         created_after = created_after.strftime("%Y-%m-%d %X")
+    elif channel[7] and channel[7]<time_2_hours_ago:
+        created_after = channel[7].strftime("%Y-%m-%d %X")
+    else:
+        created_after = time_2_hours_ago.strftime("%Y-%m-%d %X")
 
     fetch_status="1,2,3"
     if channel[15]:

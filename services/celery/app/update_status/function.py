@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 from .queries import *
 from .update_status_utils import *
 from woocommerce import API
-from app.db_utils import DbConnection
+from app.db_utils import DbConnection, UrlShortner
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -214,7 +214,9 @@ def track_delhivery_orders(courier, cur):
             if new_status == 'DELIVERED':
                 update_delivered_on_channels(orders_dict[current_awb])
                 webhook_updates(orders_dict[current_awb], cur, new_status, "Shipment Delivered", "", (datetime.utcnow()+timedelta(hours=5.5)).strftime("%Y-%m-%d %H:%M:%S"))
-                send_delivered_event(customer_phone, orders_dict[current_awb], "Delhivery")
+                tracking_link = "https://webapp.wareiq.com/tracking/" + current_awb
+                tracking_link = UrlShortner.get_short_url(tracking_link, cur)
+                send_delivered_event(customer_phone, orders_dict[current_awb], "Delhivery", tracking_link)
 
             if new_status == 'DTO':
                 sms_to_key = "Messages[%s][To]" % str(exotel_idx)
@@ -247,7 +249,9 @@ def track_delhivery_orders(courier, cur):
                 update_picked_on_channels(orders_dict[current_awb], cur)
                 webhook_updates(orders_dict[current_awb], cur, new_status, "Shipment Picked Up", "", (datetime.utcnow()+timedelta(hours=5.5)).strftime("%Y-%m-%d %H:%M:%S"))
                 cur.execute("UPDATE shipments SET pdd=%s WHERE awb=%s", (edd, current_awb))
-                send_shipped_event(customer_phone, orders_dict[current_awb][19], orders_dict[current_awb], edd.strftime('%-d %b') if edd else "", "Delhivery")
+                tracking_link = "https://webapp.wareiq.com/tracking/" + current_awb
+                tracking_link = UrlShortner.get_short_url(tracking_link, cur)
+                send_shipped_event(customer_phone, orders_dict[current_awb][19], orders_dict[current_awb], edd.strftime('%-d %b') if edd else "", "Delhivery", tracking_link)
 
             if orders_dict[current_awb][2] != new_status:
 
@@ -423,7 +427,9 @@ def track_shadowfax_orders(courier, cur):
             if new_status == 'DELIVERED':
                 update_delivered_on_channels(orders_dict[current_awb])
                 webhook_updates(orders_dict[current_awb], cur, new_status, "Shipment Delivered", "", (datetime.utcnow()+timedelta(hours=5.5)).strftime("%Y-%m-%d %H:%M:%S"))
-                send_delivered_event(customer_phone, orders_dict[current_awb], "Shadowfax")
+                tracking_link = "https://webapp.wareiq.com/tracking/" + current_awb
+                tracking_link = UrlShortner.get_short_url(tracking_link, cur)
+                send_delivered_event(customer_phone, orders_dict[current_awb], "Shadowfax", tracking_link)
 
             if new_status == 'RTO':
                 update_rto_on_channels(orders_dict[current_awb])
@@ -446,8 +452,10 @@ def track_shadowfax_orders(courier, cur):
                 if edd:
                     cur.execute("UPDATE shipments SET pdd=%s WHERE awb=%s", (edd, current_awb))
 
+                tracking_link = "https://webapp.wareiq.com/tracking/" + current_awb
+                tracking_link = UrlShortner.get_short_url(tracking_link, cur)
                 send_shipped_event(customer_phone, orders_dict[current_awb][19], orders_dict[current_awb],
-                                   edd.strftime('%-d %b') if edd else "", "Shadowfax")
+                                   edd.strftime('%-d %b') if edd else "", "Shadowfax", tracking_link)
 
             if orders_dict[current_awb][2] != new_status:
                 status_update_tuple = (new_status, status_type, status_detail, orders_dict[current_awb][0])
@@ -621,7 +629,9 @@ def track_xpressbees_orders(courier, cur):
             if new_status == 'DELIVERED':
                 update_delivered_on_channels(orders_dict[current_awb])
                 webhook_updates(orders_dict[current_awb], cur, new_status, "Shipment Delivered", "", (datetime.utcnow()+timedelta(hours=5.5)).strftime("%Y-%m-%d %H:%M:%S"))
-                send_delivered_event(customer_phone, orders_dict[current_awb], "Xpressbees")
+                tracking_link = "https://webapp.wareiq.com/tracking/" + current_awb
+                tracking_link = UrlShortner.get_short_url(tracking_link, cur)
+                send_delivered_event(customer_phone, orders_dict[current_awb], "Xpressbees", tracking_link)
 
             if new_status == 'RTO':
                 update_rto_on_channels(orders_dict[current_awb])
@@ -646,8 +656,10 @@ def track_xpressbees_orders(courier, cur):
 
                     update_picked_on_channels(orders_dict[current_awb], cur)
                     webhook_updates(orders_dict[current_awb], cur, new_status, "Shipment Picked Up", "",(datetime.utcnow() + timedelta(hours=5.5)).strftime("%Y-%m-%d %H:%M:%S"))
+                    tracking_link = "https://webapp.wareiq.com/tracking/" + current_awb
+                    tracking_link = UrlShortner.get_short_url(tracking_link, cur)
                     send_shipped_event(customer_phone, orders_dict[current_awb][19], orders_dict[current_awb],
-                                       edd.strftime('%-d %b') if edd else "", "Xpressbees")
+                                       edd.strftime('%-d %b') if edd else "", "Xpressbees", tracking_link)
 
                 else:
                     continue
@@ -876,7 +888,9 @@ def track_bluedart_orders(courier, cur):
             if new_status == 'DELIVERED':
                 update_delivered_on_channels(orders_dict[current_awb])
                 webhook_updates(orders_dict[current_awb], cur, new_status, "Shipment Delivered", "", (datetime.utcnow()+timedelta(hours=5.5)).strftime("%Y-%m-%d %H:%M:%S"))
-                send_delivered_event(customer_phone, orders_dict[current_awb], "Bluedart")
+                tracking_link = "https://webapp.wareiq.com/tracking/" + current_awb
+                tracking_link = UrlShortner.get_short_url(tracking_link, cur)
+                send_delivered_event(customer_phone, orders_dict[current_awb], "Bluedart", tracking_link)
 
             if new_status == 'RTO':
                 update_rto_on_channels(orders_dict[current_awb])
@@ -896,8 +910,10 @@ def track_bluedart_orders(courier, cur):
                 webhook_updates(orders_dict[current_awb], cur, new_status, "Shipment Picked Up", "", (datetime.utcnow()+timedelta(hours=5.5)).strftime("%Y-%m-%d %H:%M:%S"))
 
                 cur.execute("UPDATE shipments SET pdd=%s WHERE awb=%s", (edd, current_awb))
+                tracking_link = "https://webapp.wareiq.com/tracking/" + current_awb
+                tracking_link = UrlShortner.get_short_url(tracking_link, cur)
                 send_shipped_event(customer_phone, orders_dict[current_awb][19], orders_dict[current_awb],
-                                   edd.strftime('%-d %b') if edd else "", "Bluedart")
+                                   edd.strftime('%-d %b') if edd else "", "Bluedart", tracking_link)
 
             if orders_dict[current_awb][2] != new_status:
                 status_update_tuple = (new_status, status_type, status_detail, orders_dict[current_awb][0])
@@ -1094,7 +1110,9 @@ def track_ecomxp_orders(courier, cur):
             if new_status == 'DELIVERED':
                 update_delivered_on_channels(orders_dict[current_awb])
                 webhook_updates(orders_dict[current_awb], cur, new_status, "Shipment Delivered", "", (datetime.utcnow()+timedelta(hours=5.5)).strftime("%Y-%m-%d %H:%M:%S"))
-                send_delivered_event(customer_phone, orders_dict[current_awb], "Ecom Express")
+                tracking_link = "https://webapp.wareiq.com/tracking/" + current_awb
+                tracking_link = UrlShortner.get_short_url(tracking_link, cur)
+                send_delivered_event(customer_phone, orders_dict[current_awb], "Ecom Express", tracking_link)
 
             if new_status == 'RTO':
                 update_rto_on_channels(orders_dict[current_awb])
@@ -1115,8 +1133,10 @@ def track_ecomxp_orders(courier, cur):
                 webhook_updates(orders_dict[current_awb], cur, new_status, "Shipment Picked Up", "", (datetime.utcnow()+timedelta(hours=5.5)).strftime("%Y-%m-%d %H:%M:%S"))
 
                 cur.execute("UPDATE shipments SET pdd=%s WHERE awb=%s", (edd, current_awb))
+                tracking_link = "https://webapp.wareiq.com/tracking/" + current_awb
+                tracking_link = UrlShortner.get_short_url(tracking_link, cur)
                 send_shipped_event(customer_phone, orders_dict[current_awb][19], orders_dict[current_awb],
-                                   edd.strftime('%-d %b') if edd else "", "Ecom Express")
+                                   edd.strftime('%-d %b') if edd else "", "Ecom Express", tracking_link)
 
             if orders_dict[current_awb][2] != new_status:
                 status_update_tuple = (new_status, status_type, status_detail, orders_dict[current_awb][0])
@@ -1163,6 +1183,7 @@ def track_ecomxp_orders(courier, cur):
 def verification_text(current_order, cur, ndr_reason=None):
 
     ndr_confirmation_link = "http://track.wareiq.com/core/v1/passthru/ndr?CustomField=%s" % str(current_order[0])
+    ndr_confirmation_link = UrlShortner.get_short_url(ndr_confirmation_link, cur)
 
     insert_cod_ver_tuple = (current_order[0], ndr_confirmation_link, datetime.now())
     date_today = (datetime.utcnow()+timedelta(hours=5.5)).strftime('%Y-%m-%d')

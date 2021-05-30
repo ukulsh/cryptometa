@@ -3,7 +3,7 @@ import logging, random, string
 from datetime import datetime, timedelta
 from requests_oauthlib.oauth1_session import OAuth1Session
 from zeep import Client
-from app.db_utils import DbConnection
+from app.db_utils import DbConnection, UrlShortner
 #from fedex.config import FedexConfig
 
 from .queries import *
@@ -95,6 +95,7 @@ def ship_orders(courier_name=None, order_ids=None, force_ship=None, client_prefi
 
 def cod_verification_text(order, cur):
     cod_confirmation_link = "https://track.wareiq.com/core/v1/passthru/cod?CustomField=%s" % str(order[0])
+    cod_confirmation_link = UrlShortner.get_short_url(cod_confirmation_link, cur)
 
     insert_cod_ver_tuple = (order[0], cod_confirmation_link, datetime.now())
     cur.execute("INSERT INTO cod_verification (order_id, verification_link, date_created) VALUES (%s,%s,%s);",
@@ -424,6 +425,7 @@ def ship_delhivery_orders(cur, courier, courier_name, order_ids, order_id_tuple,
 
                         try:
                             tracking_link_wareiq = "https://webapp.wareiq.com/tracking/" + str(package['waybill'])
+                            tracking_link_wareiq = UrlShortner.get_short_url(tracking_link_wareiq, cur)
                             if courier[1] != 'DHANIPHARMACY':
                                 send_received_event(client_name, customer_phone, tracking_link_wareiq)
                         except Exception:
@@ -694,6 +696,7 @@ def ship_shadowfax_orders(cur, courier, courier_name, order_ids, order_id_tuple,
 
                     try:
                         tracking_link_wareiq = "https://webapp.wareiq.com/tracking/" + str(return_data_raw['data']['awb_number'])
+                        tracking_link_wareiq = UrlShortner.get_short_url(tracking_link_wareiq, cur)
                         send_received_event(client_name, customer_phone, tracking_link_wareiq)
                     except Exception:
                         pass
@@ -1011,6 +1014,7 @@ def ship_xpressbees_orders(cur, courier, courier_name, order_ids, order_id_tuple
 
                     try:
                         tracking_link_wareiq = "https://webapp.wareiq.com/tracking/" + str(return_data_raw['AddManifestDetails'][0]['AWBNo'])
+                        tracking_link_wareiq = UrlShortner.get_short_url(tracking_link_wareiq, cur)
                         if courier[1] != 'DHANIPHARMACY':
                             send_received_event(client_name, customer_phone, tracking_link_wareiq)
                     except Exception:
@@ -1313,6 +1317,7 @@ def ship_ecom_orders(cur, courier, courier_name, order_ids, order_id_tuple, back
 
                     try:
                         tracking_link_wareiq = "https://webapp.wareiq.com/tracking/" + str(return_data_raw['shipments'][0]['awb'])
+                        tracking_link_wareiq = UrlShortner.get_short_url(tracking_link_wareiq, cur)
                         if courier[1] != 'DHANIPHARMACY':
                             send_received_event(client_name, customer_phone, tracking_link_wareiq)
                     except Exception:
@@ -1600,6 +1605,7 @@ def ship_bluedart_orders(cur, courier, courier_name, order_ids, order_id_tuple, 
 
                     try:
                         tracking_link_wareiq = "https://webapp.wareiq.com/tracking/" + str(req['AWBNo'])
+                        tracking_link_wareiq = UrlShortner.get_short_url(tracking_link_wareiq, cur)
                         if courier[1]!='DHANIPHARMACY':
                             send_received_event(client_name, customer_phone, tracking_link_wareiq)
                     except Exception:
@@ -1881,6 +1887,7 @@ def ship_fedex_orders(cur, courier, courier_name, order_ids, order_id_tuple, bac
 
                     try:
                         tracking_link_wareiq = "https://webapp.wareiq.com/tracking/" + str(awb_no)
+                        tracking_link_wareiq = UrlShortner.get_short_url(tracking_link_wareiq, cur)
                         send_received_event(client_name, customer_phone, tracking_link_wareiq)
                     except Exception:
                         pass
@@ -2232,6 +2239,7 @@ def ship_sdd_orders(cur, courier, courier_name, order_ids, order_id_tuple, backu
 
                 try:
                     tracking_link_wareiq = return_data_raw['data']['track_url']
+                    tracking_link_wareiq = UrlShortner.get_short_url(tracking_link_wareiq, cur)
                     send_received_event(client_name, customer_phone, tracking_link_wareiq)
                 except Exception:
                     pass
@@ -2452,6 +2460,7 @@ def ship_pidge_orders(cur, courier, courier_name, order_ids, order_id_tuple, bac
 
                 try:
                     tracking_link_wareiq = "https://webapp.wareiq.com/tracking/"+str(return_data_raw['data']['PBID'])
+                    tracking_link_wareiq = UrlShortner.get_short_url(tracking_link_wareiq, cur)
                     send_received_event(client_name, customer_phone, tracking_link_wareiq)
                 except Exception:
                     pass
@@ -2624,11 +2633,7 @@ def ship_vinculum_orders(cur, courier, courier_name, order_ids, order_id_tuple):
                     exotel_sms_data[sms_to_key] = customer_phone
                     try:
                         tracking_link_wareiq = "https://webapp.wareiq.com/tracking/" + str(return_data['awbno'])
-                        """
-                        short_url = requests.get(
-                            "https://cutt.ly/api/api.php?key=f445d0bb52699d2f870e1832a1f77ef3f9078&short=%s" % tracking_link_wareiq)
-                        short_url_track = short_url.json()['url']['shortLink']
-                        """
+                        tracking_link_wareiq = UrlShortner.get_short_url(tracking_link_wareiq, cur)
                         exotel_sms_data[
                             sms_body_key] = "Received: Your order from %s . Track here: %s . Powered by WareIQ." % (
                         client_name, tracking_link_wareiq)

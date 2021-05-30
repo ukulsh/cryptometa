@@ -2050,7 +2050,7 @@ class OrderDetails(Resource):
                                          ClientPickups.pickup_id==PickupPoints.id).filter(ClientPickups.client_prefix==order.client_prefix, PickupPoints.warehouse_prefix==data.get('pickup_point')).first()
 
                 if client_pickup:
-                    if client_pickup.wareiq_location:
+                    if client_pickup.wareiq_location and auth_data.get('user_group') != 'super-admin':
                         def check_inventory_available(prod, warehouse_check):
                             wh_found = None
                             if not prod.quantity:

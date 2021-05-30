@@ -1203,7 +1203,7 @@ class PincodeMapping(db.Model):
 class UrlShortner(db.Model):
     __tablename__ = "url_shortner"
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    url = db.Column(db.String, nullable=False)
+    url = db.Column(db.String, nullable=False, unique=True)
     hashid = db.Column(db.String, nullable=True)
     clicks = db.Column(db.Integer, nullable=True, default=0)
     date_created = db.Column(db.DateTime, default=datetime.now)

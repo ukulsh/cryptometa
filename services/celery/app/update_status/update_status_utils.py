@@ -15,7 +15,7 @@ email_client = boto3.client('ses', region_name="us-east-1", aws_access_key_id='A
     aws_secret_access_key='3dw3MQgEL9Q0Ug9GqWLo8+O1e5xu5Edi5Hl90sOs')
 
 
-def send_shipped_event(mobile, email, order, edd, courier_name):
+def send_shipped_event(mobile, email, order, edd, courier_name, tracking_link=None):
     background_color = str(order[24]) if order[24] else "#B5D0EC"
     client_logo = str(order[21]) if order[21] else "https://logourls.s3.amazonaws.com/client_logos/logo_ane.png"
     client_name = str(order[20]) if order[20] else "WareIQ"
@@ -25,7 +25,8 @@ def send_shipped_event(mobile, email, order, edd, courier_name):
 
     edd = edd if edd else ""
     awb_number = str(order[1]) if order[1] else ""
-    tracking_link = "http://webapp.wareiq.com/tracking/" + str(order[1])
+    if not tracking_link:
+        tracking_link = "http://webapp.wareiq.com/tracking/" + str(order[1])
 
     payload = {
         "event": "shipped",
@@ -57,9 +58,10 @@ def send_shipped_event(mobile, email, order, edd, courier_name):
     req = requests.post(RAVEN_URL, headers=RAVEN_HEADERS, data=json.dumps(payload))
 
 
-def send_delivered_event(mobile, order, courier_name):
+def send_delivered_event(mobile, order, courier_name, tracking_link=None):
     client_name = str(order[20]) if order[20] else "WareIQ"
-    tracking_link = "http://webapp.wareiq.com/tracking/" + str(order[1])
+    if not tracking_link:
+        tracking_link = "http://webapp.wareiq.com/tracking/" + str(order[1])
     payload = {
         "event": "delivered",
         "user": {

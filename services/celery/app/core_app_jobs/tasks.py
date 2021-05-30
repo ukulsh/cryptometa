@@ -5,7 +5,7 @@ from datetime import datetime
 import json, random, string
 from woocommerce import API
 from math import ceil
-from app.db_utils import DbConnection
+from app.db_utils import DbConnection, UrlShortner
 from app.ship_orders.function import ship_orders
 from app.update_status.function import update_delivered_on_channels, verification_text
 from app.update_status.update_status_utils import send_shipped_event, send_delivered_event, send_ndr_event, webhook_updates
@@ -82,16 +82,19 @@ def consume_ecom_scan_util(payload):
 
             customer_phone = order[4].replace(" ", "")
             customer_phone = "0" + customer_phone[-10:]
+            tracking_link = "https://webapp.wareiq.com/tracking/" + order[1]
 
             if tracking_status == "Picked":
                 mark_picked_channel(order, cur)
-                send_shipped_event(customer_phone, order[19], order, "", "Ecom Express")
+                tracking_link = UrlShortner.get_short_url(tracking_link, cur)
+                send_shipped_event(customer_phone, order[19], order, "", "Ecom Express", tracking_link)
                 mark_order_picked_pickups(order, cur)
                 webhook_updates(order, cur, status, "Shipment Picked Up", location, status_time.strftime('%Y-%m-%d %H:%M:%S'), ndr_id=None)
 
             elif tracking_status == "Delivered":
                 mark_delivered_channel(order)
-                send_delivered_event(customer_phone, order, "Ecom Express")
+                tracking_link = UrlShortner.get_short_url(tracking_link, cur)
+                send_delivered_event(customer_phone, order, "Ecom Express", tracking_link)
                 webhook_updates(order, cur, status, "Shipment Delivered", location, status_time.strftime('%Y-%m-%d %H:%M:%S'), ndr_id=None)
 
             elif tracking_status == "RTO":
@@ -170,16 +173,19 @@ def consume_sfxsdd_scan_util(payload):
 
             customer_phone = order[4].replace(" ", "")
             customer_phone = "0" + customer_phone[-10:]
+            tracking_link = "https://webapp.wareiq.com/tracking/" + order[1]
 
             if tracking_status == "Picked":
                 mark_picked_channel(order, cur)
-                send_shipped_event(customer_phone, order[19], order, "", "Shadowfax")
+                tracking_link = UrlShortner.get_short_url(tracking_link, cur)
+                send_shipped_event(customer_phone, order[19], order, "", "Shadowfax", tracking_link)
                 mark_order_picked_pickups(order, cur)
                 webhook_updates(order, cur, status, "Shipment Picked Up", location, status_time.strftime('%Y-%m-%d %H:%M:%S'), ndr_id=None)
 
             elif tracking_status == "Delivered":
                 mark_delivered_channel(order)
-                send_delivered_event(customer_phone, order, "Shadowfax")
+                tracking_link = UrlShortner.get_short_url(tracking_link, cur)
+                send_delivered_event(customer_phone, order, "Shadowfax", tracking_link)
                 webhook_updates(order, cur, status, "Shipment Delivered", location, status_time.strftime('%Y-%m-%d %H:%M:%S'), ndr_id=None)
 
             elif tracking_status == "RTO":
@@ -280,16 +286,19 @@ def consume_pidge_scan_util(payload):
 
             customer_phone = order[4].replace(" ", "")
             customer_phone = "0" + customer_phone[-10:]
+            tracking_link = "https://webapp.wareiq.com/tracking/" + order[1]
 
             if tracking_status == "Picked":
                 mark_picked_channel(order, cur)
-                send_shipped_event(customer_phone, order[19], order, "", "Pidge")
+                tracking_link = UrlShortner.get_short_url(tracking_link, cur)
+                send_shipped_event(customer_phone, order[19], order, "", "Pidge", tracking_link)
                 mark_order_picked_pickups(order, cur)
                 webhook_updates(order, cur, status, "Shipment Picked Up", location, status_time.strftime('%Y-%m-%d %H:%M:%S'), ndr_id=None)
 
             elif tracking_status == "Delivered":
                 mark_delivered_channel(order)
-                send_delivered_event(customer_phone, order, "Pidge")
+                tracking_link = UrlShortner.get_short_url(tracking_link, cur)
+                send_delivered_event(customer_phone, order, "Pidge", tracking_link)
                 webhook_updates(order, cur, status, "Shipment Delivered", location, status_time.strftime('%Y-%m-%d %H:%M:%S'), ndr_id=None)
 
             elif tracking_status == "RTO":

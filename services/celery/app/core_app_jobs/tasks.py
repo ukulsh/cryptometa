@@ -7,8 +7,10 @@ from woocommerce import API
 from math import ceil
 from app.db_utils import DbConnection, UrlShortner
 from app.ship_orders.function import ship_orders
-from app.update_status.function import update_delivered_on_channels, verification_text
-from app.update_status.update_status_utils import send_shipped_event, send_delivered_event, send_ndr_event, webhook_updates
+from app.update_status.function import update_delivered_on_channels, verification_text, \
+    delhivery_status_code_mapping_dict, xpressbees_status_mapping, Xpressbees_ndr_reasons
+from app.update_status.update_status_utils import send_shipped_event, send_delivered_event, send_ndr_event, \
+    webhook_updates, send_picked_rvp_event, send_delivered_rvp_event
 
 conn = DbConnection.get_db_connection_instance()
 conn_2 = DbConnection.get_pincode_db_connection_instance()
@@ -304,6 +306,249 @@ def consume_pidge_scan_util(payload):
             elif tracking_status == "RTO":
                 mark_rto_channel(order)
                 webhook_updates(order, cur, status, "Shipment RTO", location, status_time.strftime('%Y-%m-%d %H:%M:%S'), ndr_id=None)
+
+            cur.execute("UPDATE orders SET status=%s, status_type=%s WHERE id=%s;", (status, status_type, order[0]))
+
+            conn.commit()
+        except Exception as e:
+            conn.rollback()
+            return "Failed: " + str(e.args[0])
+        return "Successful: all tasks done"
+
+
+def consume_delhivery_scan_util(payload):
+    with psycopg2.connect(host=os.environ.get('DATABASE_HOST'), database=os.environ.get('DATABASE_NAME'),
+                                user=os.environ.get('DATABASE_USER'), password=os.environ.get('DATABASE_PASSWORD')) as conn:
+        try:
+            cur = conn.cursor()
+            payload = payload.get('Shipment')
+            awb = payload.get('AWB')
+            if not awb:
+                return "Skipped: no awb"
+
+            reason_code_number = payload['Status'].get('Status')
+            if not reason_code_number:
+                return "Skipped: no reason code"
+
+            cur.execute(get_order_details_query.replace('__FILTER_ORDER__', "bb.awb='%s'"%str(awb)))
+            try:
+                status_time = payload['Status'].get('StatusDateTime')
+                if len(status_time) == 19:
+                    status_time = datetime.strptime(status_time, '%Y-%m-%dT%H:%M:%S')
+                else:
+                    status_time = datetime.strptime(status_time, '%Y-%m-%dT%H:%M:%S.%f')
+            except Exception:
+                status_time = datetime.utcnow() + timedelta(hours=5.5)
+
+            order = None
+            try:
+                order = cur.fetchone()
+            except Exception:
+                pass
+
+            if not order or not order[40]:
+                return "Failed: order not found"
+
+            try:
+                cur.execute("select * from master_couriers where id=__COURIER_ID__ and courier_name ilike 'Delhivery%'".replace('__COURIER_ID__', str(order[40])))
+                temp = cur.fetchone()[0]
+            except Exception:
+                return "Failed: order not found"
+
+            status_code = str(payload.get('NSLCode'))
+            status = payload['Status'].get('Status').upper()
+            status_type = payload['Status'].get('StatusType')
+            status_text = payload['Status'].get('Instructions')
+            location = payload['Status'].get('StatusLocation')
+            location_city = payload['Status'].get('StatusLocation')
+
+            cur.execute(insert_scan_query, (
+                order[0], order[40], order[10], status_code, status, status_text, location, location_city, status_time))
+
+            if not status or status in ('READY TO SHIP', 'NOT PICKED', 'PICKUP REQUESTED', 'MANIFESTED'):
+                return "Successful: scan saved only"
+
+            tracking_status = None
+            if status == "IN TRANSIT" and "picked" in status_text.lower() and status_type=='UD':
+                tracking_status = "Picked"
+            elif status == "IN TRANSIT" and status_code=='EOD-77':
+                tracking_status = "Picked RVP"
+            elif status == "IN TRANSIT" and status_type in ('UD', 'PU'):
+                tracking_status = "In Transit"
+            elif status == "DISPATCHED" and status_type=='PU':
+                tracking_status = "Dispatched for DTO"
+            elif status == "DISPATCHED" and status_type=='RT':
+                tracking_status = "Dispatched for DTO"
+            elif status == "DISPATCHED" and "out for delivery" in status_text.lower():
+                tracking_status = "Out for delivery"
+            elif status == "DELIVERED":
+                tracking_status = "Delivered"
+            elif status_type == "RT" and 'RT' in status_code:
+                tracking_status = "Returned"
+            elif status == "RTO":
+                tracking_status = "RTO"
+            elif status == "DTO":
+                tracking_status = "DTO"
+
+            if tracking_status:
+                cur.execute(insert_status_query, (
+                    order[0], order[40], order[10], status_type, tracking_status, status_text, location, location_city, status_time))
+
+            customer_phone = order[4].replace(" ", "")
+            customer_phone = "0" + customer_phone[-10:]
+            tracking_link = "https://webapp.wareiq.com/tracking/" + order[1]
+
+            if tracking_status == "Picked":
+                mark_picked_channel(order, cur)
+                tracking_link = UrlShortner.get_short_url(tracking_link, cur)
+                send_shipped_event(customer_phone, order[19], order, "", "Delhivery", tracking_link)
+                mark_order_picked_pickups(order, cur)
+                webhook_updates(order, cur, status, "Shipment Picked Up", location, status_time.strftime('%Y-%m-%d %H:%M:%S'), ndr_id=None)
+
+            elif tracking_status == "Delivered":
+                mark_delivered_channel(order)
+                tracking_link = UrlShortner.get_short_url(tracking_link, cur)
+                send_delivered_event(customer_phone, order, "Delhivery", tracking_link)
+                webhook_updates(order, cur, status, "Shipment Delivered", location, status_time.strftime('%Y-%m-%d %H:%M:%S'), ndr_id=None)
+
+            elif tracking_status == "RTO":
+                mark_rto_channel(order)
+                webhook_updates(order, cur, status, "Shipment RTO", location, status_time.strftime('%Y-%m-%d %H:%M:%S'), ndr_id=None)
+
+            elif tracking_status == "DTO":
+                tracking_link = UrlShortner.get_short_url(tracking_link, cur)
+                send_delivered_rvp_event(customer_phone, order, "Delhivery", tracking_link)
+
+            elif tracking_status == "Picked RVP":
+                tracking_link = UrlShortner.get_short_url(tracking_link, cur)
+                send_picked_rvp_event(customer_phone, order, "Delhivery", tracking_link)
+
+            if status_code in delhivery_status_code_mapping_dict:
+                ndr_reason = delhivery_status_code_mapping_dict[status_code]
+                verification_text(order, cur, ndr_reason=ndr_reason)
+                webhook_updates(order, cur, status, "", location, status_time.strftime('%Y-%m-%d %H:%M:%S'), ndr_id=ndr_reason)
+
+            cur.execute("UPDATE orders SET status=%s, status_type=%s WHERE id=%s;", (status, status_type, order[0]))
+
+            conn.commit()
+        except Exception as e:
+            conn.rollback()
+            return "Failed: " + str(e.args[0])
+        return "Successful: all tasks done"
+
+
+def consume_xpressbees_scan_util(payload):
+    with psycopg2.connect(host=os.environ.get('DATABASE_HOST'), database=os.environ.get('DATABASE_NAME'),
+                                user=os.environ.get('DATABASE_USER'), password=os.environ.get('DATABASE_PASSWORD')) as conn:
+        try:
+            cur = conn.cursor()
+            awb = payload.get('AWBNO')
+            if not awb:
+                return "Skipped: no awb"
+
+            cur.execute(get_order_details_query.replace('__FILTER_ORDER__', "bb.awb='%s'"%str(awb)))
+            try:
+                status_time = payload['StatusDate'] + " " + payload['StatusTime']
+                status_time = datetime.strptime(status_time, '%d-%m-%Y %H%M')
+            except Exception:
+                status_time = datetime.utcnow() + timedelta(hours=5.5)
+
+            order = None
+            try:
+                order = cur.fetchone()
+            except Exception:
+                pass
+
+            if not order or not order[40]:
+                return "Failed: order not found"
+
+            try:
+                cur.execute("select * from master_couriers where id=__COURIER_ID__ and courier_name ilike 'Xpressbees%'".replace('__COURIER_ID__', str(order[40])))
+                temp = cur.fetchone()[0]
+            except Exception:
+                return "Failed: order not found"
+
+            status_code = str(payload.get('StatusCode'))
+            status = xpressbees_status_mapping[status_code][0]
+            status_type = xpressbees_status_mapping[status_code][1]
+            status_text = payload['Remarks']
+            location = payload['CurrentLocation']
+            location_city = payload['CurrentLocation']
+
+            cur.execute(insert_scan_query, (
+                order[0], order[40], order[10], status_code, status, status_text, location, location_city, status_time))
+
+            if not status or status in ('READY TO SHIP', 'NOT PICKED', 'PICKUP REQUESTED', 'MANIFESTED'):
+                return "Successful: scan saved only"
+
+            tracking_status = None
+            if status_code == "PUD":
+                tracking_status = "Picked"
+            elif status_code in ("IT", "RAD"):
+                tracking_status = "In Transit"
+            elif status_code == 'OFD':
+                tracking_status = "Out for delivery"
+            elif status_code == 'DLVD':
+                tracking_status = "Delivered"
+            elif status_code == 'RTO':
+                tracking_status = "Returned"
+            elif status_code == 'RTD':
+                tracking_status = "RTO"
+
+            if tracking_status:
+                cur.execute(insert_status_query, (
+                    order[0], order[40], order[10], status_type, tracking_status, status_text, location, location_city, status_time))
+
+            customer_phone = order[4].replace(" ", "")
+            customer_phone = "0" + customer_phone[-10:]
+            tracking_link = "https://webapp.wareiq.com/tracking/" + order[1]
+
+            if tracking_status == "Picked":
+                mark_picked_channel(order, cur)
+                tracking_link = UrlShortner.get_short_url(tracking_link, cur)
+                send_shipped_event(customer_phone, order[19], order, "", "Xpressbees", tracking_link)
+                mark_order_picked_pickups(order, cur)
+                webhook_updates(order, cur, status, "Shipment Picked Up", location, status_time.strftime('%Y-%m-%d %H:%M:%S'), ndr_id=None)
+
+            elif tracking_status == "Delivered":
+                mark_delivered_channel(order)
+                tracking_link = UrlShortner.get_short_url(tracking_link, cur)
+                send_delivered_event(customer_phone, order, "Xpressbees", tracking_link)
+                webhook_updates(order, cur, status, "Shipment Delivered", location, status_time.strftime('%Y-%m-%d %H:%M:%S'), ndr_id=None)
+
+            elif tracking_status == "RTO":
+                mark_rto_channel(order)
+                webhook_updates(order, cur, status, "Shipment RTO", location, status_time.strftime('%Y-%m-%d %H:%M:%S'), ndr_id=None)
+
+            elif tracking_status == "DTO":
+                tracking_link = UrlShortner.get_short_url(tracking_link, cur)
+                send_delivered_rvp_event(customer_phone, order, "Xpressbees", tracking_link)
+
+            elif tracking_status == "Picked RVP":
+                tracking_link = UrlShortner.get_short_url(tracking_link, cur)
+                send_picked_rvp_event(customer_phone, order, "Xpressbees", tracking_link)
+
+            if status_code == 'UD':
+                if status_text in Xpressbees_ndr_reasons:
+                    ndr_reason = Xpressbees_ndr_reasons[status_text]
+                elif "future delivery" in status_text.lower():
+                    ndr_reason = 4
+                elif "open delivery" in status_text.lower():
+                    ndr_reason = 10
+                elif "address incomplete" in status_text.lower():
+                    ndr_reason = 2
+                elif "amount not ready" in status_text.lower():
+                    ndr_reason = 15
+                elif "customer not available" in status_text.lower():
+                    ndr_reason = 1
+                elif "entry not permitted" in status_text.lower():
+                    ndr_reason = 7
+                elif "customer refused to accept" in status_text.lower():
+                    ndr_reason = 3
+                else:
+                    ndr_reason = 14
+                verification_text(order, cur, ndr_reason=ndr_reason)
+                webhook_updates(order, cur, status, "", location, status_time.strftime('%Y-%m-%d %H:%M:%S'), ndr_id=ndr_reason)
 
             cur.execute("UPDATE orders SET status=%s, status_type=%s WHERE id=%s;", (status, status_type, order[0]))
 

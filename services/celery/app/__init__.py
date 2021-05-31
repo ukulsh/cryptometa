@@ -1,7 +1,7 @@
 from flask import Flask, request, jsonify
 from celery import Celery
 from flask_cors import cross_origin, CORS
-import json, re
+import json, re, base64
 import io
 import csv
 from datetime import timedelta
@@ -15,6 +15,11 @@ from .core_app_jobs.utils import authenticate_username_password, authenticate_re
 from .order_price_reconciliation.index import process_order_price_reconciliation
 
 cors = CORS()
+
+session = boto3.Session(
+    aws_access_key_id='AKIAWRT2R3KC3YZUBFXY',
+    aws_secret_access_key='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',
+)
 
 
 def make_celery(app):
@@ -201,6 +206,39 @@ def consume_pidge_scan(payload):
     return msg
 
 
+@celery_app.task(name='consume_delhivery_scan')
+def consume_delhivery_scan(payload):
+    msg = consume_delhivery_scan_util(payload)
+    return msg
+
+
+@celery_app.task(name='consume_xpressbees_scan')
+def consume_xpressbees_scan(payload):
+    msg = consume_xpressbees_scan_util(payload)
+    return msg
+
+
+@celery_app.task(name='consume_delhivery_pod')
+def consume_delhivery_pod(payload):
+    cur=conn.cursor()
+    base64_img = payload.get('Image')
+    if not base64_img:
+        return "Invalid image data"
+    base64_img = base64.b64decode(base64_img)
+    image_name = str(payload.get('Waybill'))+''.join(random.choices(string.ascii_uppercase, k=8))+'_pod.png'
+    with open(image_name, "wb") as fh:
+        fh.write(base64_img)
+
+    s3 = session.resource('s3')
+    bucket = s3.Bucket("wareiqpods")
+    bucket.upload_file(image_name, image_name, ExtraArgs={'ACL': 'public-read'})
+    pod_url = "https://wareiqpods.s3.amazonaws.com/" + image_name
+    os.remove(image_name)
+    cur.execute("UPDATE shipments SET tracking_link=%s WHERE awb=%s;", (pod_url, payload.get('Waybill')))
+    conn.commit()
+    return "Succesfully saved POD for " + str(payload.get('Waybill'))
+
+
 @app.route('/scans/v1/consume/ecom', methods = ['POST'])
 @authenticate_username_password
 def ecom_scan(resp):
@@ -234,6 +272,33 @@ def pidge_scan():
     data = json.loads(request.data)
     consume_pidge_scan.apply_async(queue='consume_scans', args=(data, ))
     return jsonify({"awb": data['PBID'], "success": True, "status_update_number": data['trip_status'] }), 200
+
+
+@app.route('/scans/v1/consume/pod_delhivery', methods = ['POST'])
+def delhivery_pod():
+    if request.headers.get('Authorization')!= "Token a9bf5xZ1768e5ff511ab9d6fg8g8090221ghYdtR":
+        return jsonify({"success": False, "msg": "Auth Failed"}), 404
+    data = json.loads(request.data)
+    consume_delhivery_pod.apply_async(queue='mark_channel_delivered', args=(data, ))
+    return jsonify({"awb": data['Waybill'], "success": True}), 200
+
+
+@app.route('/scans/v1/consume/delhivery', methods = ['POST'])
+def delhivery_scan():
+    if request.headers.get('Authorization')!= "Token a9bf5xZ1768e5ff511ab9d6fg8g8090221ghYdtR":
+        return jsonify({"success": False, "msg": "Auth Failed"}), 404
+    data = json.loads(request.data)
+    consume_delhivery_scan.apply_async(queue='consume_scans', args=(data, ))
+    return jsonify({"awb": data['Shipment']['AWB'], "success": True}), 200
+
+
+@app.route('/scans/v1/consume/xpressbees', methods = ['POST'])
+def xpressbees_scan():
+    if request.headers.get('Authorization')!= "Token xWDN7TB7yZ9wdp1CQrCxpiN94BqIApf1O72FrDsW":
+        return jsonify({"success": False, "msg": "Auth Failed"}), 404
+    data = json.loads(request.data)
+    consume_xpressbees_scan.apply_async(queue='consume_scans', args=(data, ))
+    return jsonify({"awb": data['AWBNO'], "success": True}), 200
 
 
 @app.route('/scans/v1/mark_delivered_channel', methods = ['POST'])

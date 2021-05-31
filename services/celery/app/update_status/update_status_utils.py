@@ -77,6 +77,44 @@ def send_delivered_event(mobile, order, courier_name, tracking_link=None):
     req = requests.post(RAVEN_URL, headers=RAVEN_HEADERS, data=json.dumps(payload))
 
 
+def send_picked_rvp_event(mobile, order, courier_name, tracking_link=None):
+    client_name = str(order[20]) if order[20] else "WareIQ"
+    if not tracking_link:
+        tracking_link = "http://webapp.wareiq.com/tracking/" + str(order[1])
+    payload = {
+        "event": "picked_rvp",
+        "user": {
+            "mobile": mobile,
+        },
+        "data": {
+            "client_name": client_name,
+            "courier_name": courier_name,
+            "tracking_link": tracking_link
+        }
+    }
+
+    req = requests.post(RAVEN_URL, headers=RAVEN_HEADERS, data=json.dumps(payload))
+
+
+def send_delivered_rvp_event(mobile, order, courier_name, tracking_link=None):
+    client_name = str(order[20]) if order[20] else "WareIQ"
+    if not tracking_link:
+        tracking_link = "http://webapp.wareiq.com/tracking/" + str(order[1])
+    payload = {
+        "event": "delivered_rvp",
+        "user": {
+            "mobile": mobile,
+        },
+        "data": {
+            "client_name": client_name,
+            "courier_name": courier_name,
+            "tracking_link": tracking_link
+        }
+    }
+
+    req = requests.post(RAVEN_URL, headers=RAVEN_HEADERS, data=json.dumps(payload))
+
+
 def send_ndr_event(mobile, order, verification_link):
     client_name = str(order[20]) if order[20] else "WareIQ"
     payload = {

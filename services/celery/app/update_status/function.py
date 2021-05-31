@@ -1191,21 +1191,17 @@ def verification_text(current_order, cur, ndr_reason=None):
     if not cur.fetchone():
         ndr_ship_tuple = (
             current_order[0], current_order[10], ndr_reason, "required", datetime.utcnow() + timedelta(hours=5.5))
-        cur.execute(
-            "INSERT INTO ndr_shipments (order_id, shipment_id, reason_id, current_status, date_created) VALUES (%s,%s,%s,%s,%s);",
+        cur.execute("INSERT INTO ndr_shipments (order_id, shipment_id, reason_id, current_status, date_created) VALUES (%s,%s,%s,%s,%s);",
             ndr_ship_tuple)
         if current_order[37] != False:
             cur.execute("SELECT * FROM ndr_verification where order_id=%s;"%str(current_order[0]))
             if not cur.fetchone():
-                cur.execute(
-                    "INSERT INTO ndr_verification (order_id, verification_link, date_created) VALUES (%s,%s,%s);",
+                cur.execute("INSERT INTO ndr_verification (order_id, verification_link, date_created) VALUES (%s,%s,%s);",
                     insert_cod_ver_tuple)
-
-    customer_phone = current_order[4].replace(" ", "")
-    customer_phone = "0" + customer_phone[-10:]
-
-    if ndr_reason in (1, 3, 9, 11) and current_order[37] != False:
-        send_ndr_event(customer_phone, current_order, ndr_confirmation_link)
+                customer_phone = current_order[4].replace(" ", "")
+                customer_phone = "0" + customer_phone[-10:]
+                if ndr_reason in (1, 3, 9, 11):
+                    send_ndr_event(customer_phone, current_order, ndr_confirmation_link)
 
 
 delhivery_status_code_mapping_dict = {
@@ -1315,7 +1311,7 @@ bluedart_status_mapping = {'S': {'002':('DISPATCHED','UD','SHIPMENT OUTSCAN',),
                            "T":{'098':('CANCELED','DL','TCL PICKUP CANCELLED',),
 '135':('CONFISCATED','DL','SHPT.CONFISCATED,CASE CLOSED',),
 '129':('DAMAGED','UD','DAMAGED SHIPMENT, CASE CLOSED',),
-'130':('DAMAGED','UD','SHPT/PACKAGE RECD.IN DAMAGED CONDITION',),
+'130':('IN TRANSIT','UD','CONTACT CUSTOMER CARE',),
 '178':('DAMAGED','DL','SHIPMENT SPOILED-SHIPPER RECONSTRUCTING',),
 '000':('DELIVERED','DL','SHIPMENT DELIVERED',),
 '090':('DELIVERED','DL','FORWARDED TO 3RD PARTY-NO POD AVAILABLE',),

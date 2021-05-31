@@ -1435,7 +1435,7 @@ def ship_bluedart_orders(cur, courier, courier_name, order_ids, order_id_tuple, 
             if courier[1] == "ZLADE" and zone in ('A', ) and not force_ship:
                 continue
 
-            if order[26].lower() == "prepaid" and courier[1] in ("ACTIFIBER", "BEHIR", "SHAHIKITCHEN", "SUKHILIFE", "ORGANICRIOT") and not force_ship:
+            if order[26].lower() == "prepaid" and courier[1] in ("ACTIFIBER", "BEHIR", "SHAHIKITCHEN", "SUKHILIFE", "ORGANICRIOT", "SUCCESSCRAFT", "HOMELY") and not force_ship:
                 continue
 
             time_2_days = datetime.utcnow() + timedelta(hours=5.5) - timedelta(days=1)
@@ -1969,6 +1969,10 @@ def ship_selfshp_orders(cur, courier, courier_name, order_ids, order_id_tuple, b
 
     for pickup_id, all_new_orders in pickup_point_order_dict.items():
 
+        # todo: remove this
+        if int(pickup_id) in (1140, 1141, 1142, 1442):
+            continue
+
         last_shipped_order_id = 0
         pickup_points_tuple = (pickup_id,)
         cur.execute(get_pickup_points_query, pickup_points_tuple)
@@ -2002,7 +2006,7 @@ def ship_selfshp_orders(cur, courier, courier_name, order_ids, order_id_tuple, b
                             "Cod confirmation not sent. Order id: " + str(order[0]))
                     continue
 
-            if zone != 'A' and not force_ship:
+            if zone != 'A' and not force_ship and courier[1]=='KAMAAYURVEDA':
                 continue
 
             # kama ayurveda assign mumbai orders pincode check
@@ -2389,6 +2393,9 @@ def ship_pidge_orders(cur, courier, courier_name, order_ids, order_id_tuple, bac
             if dimensions['length'] and dimensions['breadth']:
                 dimensions['height'] = round(
                     (volumetric_weight * 5000) / (dimensions['length'] * dimensions['breadth']))
+
+            if max(volumetric_weight, weight)>2:
+                continue
 
             package_string = ""
             for idx, prod in enumerate(order[40]):

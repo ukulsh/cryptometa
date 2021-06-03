@@ -11,6 +11,7 @@ from app.update_status.function import update_delivered_on_channels, verificatio
     delhivery_status_code_mapping_dict, xpressbees_status_mapping, Xpressbees_ndr_reasons
 from app.update_status.update_status_utils import send_shipped_event, send_delivered_event, send_ndr_event, \
     webhook_updates, send_picked_rvp_event, send_delivered_rvp_event
+from app.download_queues.tasks import session
 
 conn = DbConnection.get_db_connection_instance()
 conn_2 = DbConnection.get_pincode_db_connection_instance()
@@ -1596,3 +1597,98 @@ def create_pickups_entry_util():
     except Exception:
         conn.rollback()
 
+
+def update_pincode_serviceability_table():
+    courier_list = (15, 2, 5, 9, 27, 12)
+    with conn.cursor() as cur:
+        for courier in courier_list:
+            try:
+                cur.execute("SELECT id, courier_name, api_key, api_password, api_url FROM master_couriers WHERE id=%s", (courier, ))
+                courer_data = cur.fetchone()
+                if courier==15:
+                    url = "https://api.ecomexpress.in/apiv2/pincodes/"
+                    req = requests.post(url, data={"username": courer_data[2], "password": courer_data[3]})
+                    pincode_list = req.json()
+                    for pincode in pincode_list:
+                        serviceable = pincode.get('active')
+                        pincode_str = str(pincode.get('pincode'))
+                        sortcode = pincode.get('route')
+                        cur.execute(update_pincode_serviceability_query, (pincode_str, courier, serviceable,
+                                                                          serviceable, serviceable, serviceable, sortcode,
+                                                                          datetime.utcnow()+timedelta(hours=5.5)))
+                        conn.commit()
+                elif courier in (2, 12):
+                    url = "https://track.delhivery.com/c/api/pin-codes/json/"
+                    headers = {"Content-Type": "application/json",
+                               "Authorization": "Token %s"%(courer_data[2])}
+                    req = requests.get(url, headers=headers)
+                    pincode_list = req.json()
+                    for pincode in pincode_list['delivery_codes']:
+                        serviceable = True if pincode['postal_code'].get('pre_paid').upper()=='Y' else False
+                        cod_available = True if pincode['postal_code'].get('cod').upper()=='Y' else False
+                        pickup = True if pincode['postal_code'].get('pickup').upper()=='Y' else False
+                        pincode_str = str(pincode['postal_code'].get('pin'))
+                        sortcode = str(pincode['postal_code'].get('sort_code'))
+                        cur.execute(update_pincode_serviceability_query, (pincode_str, courier, serviceable,
+                                                                          cod_available, pickup, pickup, sortcode,
+                                                                          datetime.utcnow()+timedelta(hours=5.5)))
+
+                        conn.commit()
+
+                elif courier==9:
+                    from zeep import Client
+                    check_url = "https://netconnect.bluedart.com/Ver1.9/ShippingAPI/Finder/ServiceFinderQuery.svc?wsdl"
+                    pincode_client = Client(check_url)
+                    login_id = courer_data[3].split('|')[0]
+                    client_profile = {
+                        "LoginID": login_id,
+                        "LicenceKey": courer_data[2],
+                        "Api_type": "S",
+                        "Version": "1.3"
+                    }
+                    cur.execute("SELECT pincode FROM pincode_serviceability WHERE courier_id=15;")
+                    all_pincodes = cur.fetchall()
+                    for pincode in all_pincodes:
+                        request_data = {
+                            'pinCode': str(pincode[0]),
+                            "profile": client_profile
+                        }
+                        req = pincode_client.service.GetServicesforPincode(**request_data)
+                        serviceable = True if req['eTailPrePaidAirInbound']=='Yes' else False
+                        cod_available = True if req['eTailCODAirInbound']=='Yes' else False
+                        pickup = True if req['eTailPrePaidAirOutound']=='Yes' else False
+                        pincode_str = str(req['PinCode'])
+                        sortcode = None
+                        cur.execute(update_pincode_serviceability_query, (pincode_str, courier, serviceable,
+                                                                          cod_available, pickup, pickup, sortcode,
+                                                                          datetime.utcnow()+timedelta(hours=5.5)))
+
+                        conn.commit()
+            except Exception as e:
+                logger.error("Couldn't update serviceability for "+str(courier)+"\nError: "+str(e.args[0]))
+
+        try:
+            import csv
+            cur.execute(create_pincode_serv_file_query)
+            all_pincodes = cur.fetchall()
+            filename = "wareiq_pincode_serviceability.csv"
+            with open(filename, 'w') as mycsvfile:
+                cw = csv.writer(mycsvfile)
+                cw.writerow(["Pincode", "City", "State", "Prepaid Delivery", "COD Delivery", "Pickup"])
+                for pincode in all_pincodes:
+                    new_row = list()
+                    new_row.append(str(pincode[0]))
+                    new_row.append(str(pincode[1]))
+                    new_row.append(str(pincode[2]))
+                    new_row.append('Y' if pincode[3] else 'N')
+                    new_row.append('Y' if pincode[4] else 'N')
+                    new_row.append('Y' if pincode[5] else 'N')
+                    cw.writerow(new_row)
+
+            s3 = session.resource('s3')
+            bucket = s3.Bucket("wareiqfiles")
+            bucket.upload_file(filename, "downloads/" + filename, ExtraArgs={'ACL': 'public-read'})
+            os.remove(filename)
+
+        except Exception as e:
+            logger.error("Couldn't create csv for serviceability"+ "\nError: " + str(e.args[0]))

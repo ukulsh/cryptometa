@@ -94,6 +94,11 @@ app.config['CELERYBEAT_SCHEDULE'] = {
                             'schedule': crontab(hour=2, minute=45, day_of_week='mon,tue,wed,thu,fri,sat'),
                             'options': {'queue': 'mark_channel_delivered'}
                         },
+    'update-pincode-serviceability': {
+                        'task': 'update_pincode_serviceability',
+                        'schedule': crontab(hour=20, minute=30),
+                        'options': {'queue': 'sync_all_inventory'}
+                    },
 }
 
 app.config['CELERY_TIMEZONE'] = 'UTC'
@@ -117,6 +122,12 @@ def cod_remittance_queue():
 def ndr_push_reattempts():
     ndr_push_reattempts_util()
     return 'successfully completed ndr_push_reattempts'
+
+
+@celery_app.task(name='update_pincode_serviceability')
+def update_pincode_serviceability():
+    update_pincode_serviceability_table()
+    return 'successfully completed update_pincode_serviceability'
 
 
 @celery_app.task(name='calculate_costs')

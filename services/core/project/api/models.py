@@ -1218,4 +1218,8 @@ class PincodeServiceability(db.Model):
     serviceable = db.Column(db.BOOLEAN, nullable=True, default=None)
     cod_available = db.Column(db.BOOLEAN, nullable=True, default=None)
     reverse_pickup = db.Column(db.BOOLEAN, nullable=True, default=None)
+    pickup = db.Column(db.BOOLEAN, nullable=True, default=None)
+    sortcode = db.Column(db.String, nullable=True)
     last_updated = db.Column(db.DateTime, onupdate=datetime.now)
+    __table_args__ = (UniqueConstraint('pincode', 'courier_id', name='pin_courier_id_unique'),
+                      )

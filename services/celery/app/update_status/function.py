@@ -1957,7 +1957,7 @@ def update_picked_on_channels(order, cur):
                              + "\nError: " + str(e.args))
         elif order[14] == 8:  # Bikayi fulfilment
             try:
-                update_bikayi_status(order, "IN TRANSIT")
+                update_bikayi_status(order, "IN_PROGRESS")
             except Exception as e:
                 logger.error("Couldn't update Bikayi for: " + str(order[0])
                              + "\nError: " + str(e.args))
@@ -2058,7 +2058,7 @@ def update_rto_on_channels(order):
 
         elif order[14] == 8:  # Bikayi RTO
             try:
-                update_bikayi_status(order, "RTO")
+                update_bikayi_status(order, "RETURNED")
             except Exception as e:
                 logger.error("Couldn't update Bikayi for: " + str(order[0])
                              + "\nError: " + str(e.args))

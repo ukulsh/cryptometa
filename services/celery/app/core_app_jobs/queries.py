@@ -150,3 +150,20 @@ mark_30_days_old_orders_not_shipped = """update orders set status='NOT SHIPPED' 
                                         left join shipments bb on aa.id=bb.order_id
                                         where aa.status in ('READY TO SHIP', 'PICKUP REQUESTED')
                                         and bb.id is null);"""
+
+update_pincode_serviceability_query = """INSERT INTO pincode_serviceability (pincode, courier_id, serviceable, 
+                                         cod_available, reverse_pickup, pickup, sortcode, last_updated) VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
+                                         ON CONFLICT (pincode, courier_id) DO UPDATE
+                                         SET serviceable=EXCLUDED.serviceable, cod_available=EXCLUDED.cod_available,
+                                         reverse_pickup=EXCLUDED.reverse_pickup, pickup=EXCLUDED.pickup, 
+                                         last_updated=EXCLUDED.last_updated;"""
+
+create_pincode_serv_file_query = """select aa.pincode, city, state, bool_or(serviceable) as serviceable, 
+                                                bool_or(cod_available) as cod_available, bool_or(reverse_pickup) as reverse_pickup 
+                                                from  pincode_serviceability aa
+                                                left join pincode_mapping bb on aa.pincode=bb.pincode
+                                                where serviceable=true
+                                                and state is not null
+                                                and length(aa.pincode)=6
+                                                group by aa.pincode, city, state
+                                                order by aa.pincode"""

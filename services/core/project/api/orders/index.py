@@ -2568,6 +2568,8 @@ def serviceability_badges_shopify():
 
         del_pincode = data.get("pincode")
         cod_available = False
+        serviceable = False
+        reverse_pickup = False
 
         sku_list = data.get("sku_list")
         if not del_pincode:
@@ -2577,22 +2579,28 @@ def serviceability_badges_shopify():
         city = None
         state = None
         try:
-            cod_req = requests.get(
-                "https://track.delhivery.com/c/api/pin-codes/json/?filter_codes=%s&token=d6ce40e10b52b5ca74805a6e2fb45083f0194185" % str(
-                    del_pincode)).json()
-            if not cod_req.get('delivery_codes'):
-                return jsonify({"success": False, "msg": "Pincode not serviceable"}), 400
+            cur.execute("""select serviceable, cod_available, reverse_pickup, city, state
+                                                            from pincode_serviceability aa
+                                                            left join pincode_mapping bb on aa.pincode=bb.pincode
+                                                            where aa.pincode=%s order by serviceable desc, cod_available desc""",
+                        (str(del_pincode),))
 
-            if cod_req['delivery_codes'][0]['postal_code']['cod'].lower() == 'y':
-                cod_available = True
-            covid_zone = cod_req['delivery_codes'][0]['postal_code']['covid_zone']
-            city = cod_req['delivery_codes'][0]['postal_code']['district']
-            state = cod_req['delivery_codes'][0]['postal_code']['state_code']
+            req = cur.fetchone()
+            if not req:
+                return {"success": False, "msg": "Pincode not serviceable"}, 400
+
+            serviceable = req[0] if req[0] else False
+            cod_available = req[1] if req[1] else False
+            reverse_pickup = req[2] if req[2] else False
+
+            city = req[3] if req[3] else None
+            state = req[4] if req[4] else None
         except Exception:
             pass
         if not sku_list:
-            return jsonify({"success": True, "data": {"cod_available": cod_available, "covid_zone": covid_zone, "city": city,
-                                              "state": state}}), 200
+            return {"success": True, "data": {"serviceable": serviceable, "cod_available": cod_available,
+                                              "covid_zone": covid_zone, "reverse_pickup": reverse_pickup,
+                                              "city": city, "state": state}}, 200
 
         sku_string = "('"
 
@@ -2752,6 +2760,8 @@ class PincodeServiceabilty(Resource):
 
             del_pincode = data.get("pincode")
             cod_available = False
+            serviceable = False
+            reverse_pickup = False
 
             sku_list = data.get("sku_list")
             if not del_pincode:
@@ -2761,21 +2771,28 @@ class PincodeServiceabilty(Resource):
             city = None
             state = None
             try:
-                cod_req = requests.get(
-                    "https://track.delhivery.com/c/api/pin-codes/json/?filter_codes=%s&token=d6ce40e10b52b5ca74805a6e2fb45083f0194185" % str(
-                        del_pincode)).json()
-                if not cod_req.get('delivery_codes'):
+                cur.execute("""select serviceable, cod_available, reverse_pickup, city, state
+                                                from pincode_serviceability aa
+                                                left join pincode_mapping bb on aa.pincode=bb.pincode
+                                                where aa.pincode=%s order by serviceable desc, cod_available desc""",
+                            (str(del_pincode),))
+
+                req = cur.fetchone()
+                if not req:
                     return {"success": False, "msg": "Pincode not serviceable"}, 400
 
-                if cod_req['delivery_codes'][0]['postal_code']['cod'].lower() == 'y':
-                    cod_available = True
-                covid_zone = cod_req['delivery_codes'][0]['postal_code']['covid_zone']
-                city = cod_req['delivery_codes'][0]['postal_code']['district']
-                state = cod_req['delivery_codes'][0]['postal_code']['state_code']
+                serviceable = req[0] if req[0] else False
+                cod_available = req[1] if req[1] else False
+                reverse_pickup = req[2] if req[2] else False
+
+                city = req[3] if req[3] else None
+                state = req[4] if req[4] else None
             except Exception:
                 pass
             if not sku_list:
-                return {"success": True, "data": {"cod_available": cod_available, "covid_zone": covid_zone, "city": city, "state":state}}, 200
+                return {"success": True, "data": {"serviceable": serviceable, "cod_available": cod_available,
+                                                  "covid_zone": covid_zone, "reverse_pickup":reverse_pickup,
+                                                  "city": city, "state":state}}, 200
 
             sku_string = "('"
 
@@ -2956,32 +2973,32 @@ class PincodeServiceabilty(Resource):
 
     def get(self, resp):
         try:
-            auth_data = resp.get('data')
-            pincode = request.args.get('pincode')
-            if not auth_data:
-                return {"success": False, "msg": "Auth Failed"}, 400
-            if not pincode:
-                return {"success": False, "msg": "Pincode not provided"}, 401
+            with conn.cursor() as cur:
+                auth_data = resp.get('data')
+                pincode = request.args.get('pincode')
+                if not auth_data:
+                    return {"success": False, "msg": "Auth Failed"}, 400
+                if not pincode:
+                    return {"success": False, "msg": "Pincode not provided"}, 401
 
-            cod_req = requests.get(
-                "https://track.delhivery.com/c/api/pin-codes/json/?filter_codes=%s&token=d6ce40e10b52b5ca74805a6e2fb45083f0194185" % str(
-                    pincode)).json()
-            if not cod_req.get('delivery_codes'):
-                return {"success": False, "msg": "Pincode not serviceable"}, 400
+                cur.execute("""select serviceable, cod_available, reverse_pickup, city, state
+                                from pincode_serviceability aa
+                                left join pincode_mapping bb on aa.pincode=bb.pincode
+                                where aa.pincode=%s order by serviceable desc, cod_available desc""", (str(pincode), ))
 
-            cod_available = False
-            reverse_pickup = False
-            if cod_req['delivery_codes'][0]['postal_code']['cod'].lower() == 'y':
-                cod_available = True
-            if cod_req['delivery_codes'][0]['postal_code']['pickup'].lower() == 'y':
-                reverse_pickup = True
+                req = cur.fetchone()
+                if not req:
+                    return {"success": False, "msg": "Pincode not serviceable"}, 400
 
-            covid_zone = cod_req['delivery_codes'][0]['postal_code']['covid_zone']
-            city = cod_req['delivery_codes'][0]['postal_code']['district']
-            state = cod_req['delivery_codes'][0]['postal_code']['state_code']
+                serviceable = req[0] if req[0] else False
+                cod_available = req[1] if req[1] else False
+                reverse_pickup = req[2] if req[2] else False
 
-            return {"success": True, "data": {"serviceable": True, "cod_available": cod_available, "reverse_pickup": reverse_pickup,
-                                              "covid_zone": covid_zone, "city": city, "state": state}}, 200
+                city = req[3] if req[3] else None
+                state = req[4] if req[4] else None
+
+                return {"success": True, "data": {"serviceable": serviceable, "cod_available": cod_available,
+                                                  "reverse_pickup": reverse_pickup, "city": city, "state": state}}, 200
 
         except Exception as e:
             return {"success": False, "msg": ""}, 400

@@ -104,7 +104,7 @@ def shopify_cancel(order):
                             headers=tra_header)
 
 
-def magento_fulfillment(order, cur):
+def magento_fulfillment(order, cur, courier=None):
     create_fulfillment_url = "%s/V1/order/%s/ship" % (order[9], order[5])
     tracking_link = "http://webapp.wareiq.com/tracking/%s" % str(order[1])
     ful_header = {'Content-Type': 'application/json',
@@ -126,8 +126,8 @@ def magento_fulfillment(order, cur):
             {
                 "extension_attributes": {"warehouse_name": str(order[36])},
                 "track_number": str(order[1]),
-                "title": "WareIQ",
-                "carrier_code": "WareIQ"
+                "title": courier,
+                "carrier_code": courier
             }
         ]
     }
@@ -320,7 +320,7 @@ def update_ndr_shipment(order, cur, ndr_reason):
             insert_ndr_ver_tuple)
 
 
-def mark_picked_channel(order, cur):
+def mark_picked_channel(order, cur, courier=None):
     if order[26] != False:
         if order[14] == 5:
             try:
@@ -339,7 +339,7 @@ def mark_picked_channel(order, cur):
             try:
                 if order[28] != False:
                     magento_invoice(order)
-                magento_fulfillment(order, cur)
+                magento_fulfillment(order, cur, courier=courier)
             except Exception as e:
                 logger.error("Couldn't update Magento for: " + str(order[0])
                              + "\nError: " + str(e.args))

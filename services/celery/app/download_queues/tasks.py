@@ -113,6 +113,8 @@ def download_flag_func_orders(query_to_run, get_selected_product_details, auth_d
                                 not_shipped = "Pincode not serviceable"
                             elif not order[26]:
                                 not_shipped = "Pickup point not assigned"
+                            elif order[12] and "incorrect phone" in order[12].lower():
+                                not_shipped = "Invalid contact number"
                             if not_shipped:
                                 new_row.append(not_shipped)
                             if auth_data.get('user_group') == 'super-admin':

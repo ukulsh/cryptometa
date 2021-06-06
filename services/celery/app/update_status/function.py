@@ -246,7 +246,7 @@ def track_delhivery_orders(courier, cur):
                 cur.execute("UPDATE order_pickups SET picked=%s, pickup_time=%s WHERE order_id=%s",
                             (True, time_now, orders_dict[current_awb][0]))
 
-                update_picked_on_channels(orders_dict[current_awb], cur)
+                update_picked_on_channels(orders_dict[current_awb], cur, courier=courier)
                 webhook_updates(orders_dict[current_awb], cur, new_status, "Shipment Picked Up", "", (datetime.utcnow()+timedelta(hours=5.5)).strftime("%Y-%m-%d %H:%M:%S"))
                 cur.execute("UPDATE shipments SET pdd=%s WHERE awb=%s", (edd, current_awb))
                 tracking_link = "https://webapp.wareiq.com/tracking/" + current_awb
@@ -446,7 +446,7 @@ def track_shadowfax_orders(courier, cur):
                 cur.execute("UPDATE order_pickups SET picked=%s, pickup_time=%s WHERE order_id=%s",
                             (True, time_now, orders_dict[current_awb][0]))
 
-                update_picked_on_channels(orders_dict[current_awb], cur)
+                update_picked_on_channels(orders_dict[current_awb], cur, courier=courier)
                 webhook_updates(orders_dict[current_awb], cur, new_status, "Shipment Picked Up", "", (datetime.utcnow()+timedelta(hours=5.5)).strftime("%Y-%m-%d %H:%M:%S"))
 
                 if edd:
@@ -654,7 +654,7 @@ def track_xpressbees_orders(courier, cur):
                     cur.execute("UPDATE order_pickups SET picked=%s, pickup_time=%s WHERE order_id=%s",
                                 (True, time_now, orders_dict[current_awb][0]))
 
-                    update_picked_on_channels(orders_dict[current_awb], cur)
+                    update_picked_on_channels(orders_dict[current_awb], cur, courier=courier)
                     webhook_updates(orders_dict[current_awb], cur, new_status, "Shipment Picked Up", "",(datetime.utcnow() + timedelta(hours=5.5)).strftime("%Y-%m-%d %H:%M:%S"))
                     tracking_link = "https://webapp.wareiq.com/tracking/" + current_awb
                     tracking_link = UrlShortner.get_short_url(tracking_link, cur)
@@ -674,6 +674,8 @@ def track_xpressbees_orders(courier, cur):
                         if ret_order['ShipmentSummary'][0]['Status'].lower() in Xpressbees_ndr_reasons:
                             ndr_reason = Xpressbees_ndr_reasons[ret_order['ShipmentSummary'][0]['Status'].lower()]
                         elif "future delivery" in ret_order['ShipmentSummary'][0]['Status'].lower():
+                            ndr_reason = 4
+                        elif "evening delivery" in ret_order['ShipmentSummary'][0]['Status'].lower():
                             ndr_reason = 4
                         elif "open delivery" in ret_order['ShipmentSummary'][0]['Status'].lower():
                             ndr_reason = 10
@@ -906,7 +908,7 @@ def track_bluedart_orders(courier, cur):
                 time_now = datetime.utcnow() + timedelta(hours=5.5)
                 cur.execute("UPDATE order_pickups SET picked=%s, pickup_time=%s WHERE order_id=%s",
                             (True, time_now, orders_dict[current_awb][0]))
-                update_picked_on_channels(orders_dict[current_awb], cur)
+                update_picked_on_channels(orders_dict[current_awb], cur, courier=courier)
                 webhook_updates(orders_dict[current_awb], cur, new_status, "Shipment Picked Up", "", (datetime.utcnow()+timedelta(hours=5.5)).strftime("%Y-%m-%d %H:%M:%S"))
 
                 cur.execute("UPDATE shipments SET pdd=%s WHERE awb=%s", (edd, current_awb))
@@ -1129,7 +1131,7 @@ def track_ecomxp_orders(courier, cur):
                 cur.execute("UPDATE order_pickups SET picked=%s, pickup_time=%s WHERE order_id=%s",
                             (True, time_now, orders_dict[current_awb][0]))
 
-                update_picked_on_channels(orders_dict[current_awb], cur)
+                update_picked_on_channels(orders_dict[current_awb], cur, courier=courier)
                 webhook_updates(orders_dict[current_awb], cur, new_status, "Shipment Picked Up", "", (datetime.utcnow()+timedelta(hours=5.5)).strftime("%Y-%m-%d %H:%M:%S"))
 
                 cur.execute("UPDATE shipments SET pdd=%s WHERE awb=%s", (edd, current_awb))
@@ -1782,7 +1784,7 @@ def shopify_cancel(order):
                             headers=tra_header)
 
 
-def magento_fulfillment(order, cur):
+def magento_fulfillment(order, cur, courier=None):
     create_fulfillment_url = "%s/V1/order/%s/ship" % (order[9], order[5])
     tracking_link = "http://webapp.wareiq.com/tracking/%s" % str(order[1])
     ful_header = {'Content-Type': 'application/json',
@@ -1804,8 +1806,8 @@ def magento_fulfillment(order, cur):
             {
                 "extension_attributes": {"warehouse_name": str(order[36])},
                 "track_number": str(order[1]),
-                "title": "WareIQ",
-                "carrier_code": "WareIQ"
+                "title": courier[1],
+                "carrier_code": courier[1]
             }
         ]
     }
@@ -1899,7 +1901,7 @@ def magento_complete_order(order):
             "parent_id": int(order[5]),
             "is_customer_notified": 0,
             "is_visible_on_front": 0,
-            "status": "delivered"
+            "status": status_mark
         }
     }
     req_ful = requests.post(complete_order_url, data=json.dumps(complete_data),
@@ -1930,7 +1932,7 @@ def magento_return_order(order):
                             headers=ful_header)
 
 
-def update_picked_on_channels(order, cur):
+def update_picked_on_channels(order, cur, courier=None):
     if order[3] == "NASHER" and order[5]:
         hepta_fulfilment(order)
     if order[26] != False:
@@ -1951,7 +1953,7 @@ def update_picked_on_channels(order, cur):
             try:
                 if order[28] != False:
                     magento_invoice(order)
-                magento_fulfillment(order, cur)
+                magento_fulfillment(order, cur, courier=courier)
             except Exception as e:
                 logger.error("Couldn't update Magento for: " + str(order[0])
                              + "\nError: " + str(e.args))

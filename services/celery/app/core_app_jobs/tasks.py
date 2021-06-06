@@ -88,7 +88,7 @@ def consume_ecom_scan_util(payload):
             tracking_link = "https://webapp.wareiq.com/tracking/" + order[1]
 
             if tracking_status == "Picked":
-                mark_picked_channel(order, cur)
+                mark_picked_channel(order, cur, courier="Ecom Express")
                 tracking_link = UrlShortner.get_short_url(tracking_link, cur)
                 send_shipped_event(customer_phone, order[19], order, "", "Ecom Express", tracking_link)
                 mark_order_picked_pickups(order, cur)
@@ -179,7 +179,7 @@ def consume_sfxsdd_scan_util(payload):
             tracking_link = "https://webapp.wareiq.com/tracking/" + order[1]
 
             if tracking_status == "Picked":
-                mark_picked_channel(order, cur)
+                mark_picked_channel(order, cur, courier="Shadowfax")
                 tracking_link = UrlShortner.get_short_url(tracking_link, cur)
                 send_shipped_event(customer_phone, order[19], order, "", "Shadowfax", tracking_link)
                 mark_order_picked_pickups(order, cur)
@@ -292,7 +292,7 @@ def consume_pidge_scan_util(payload):
             tracking_link = "https://webapp.wareiq.com/tracking/" + order[1]
 
             if tracking_status == "Picked":
-                mark_picked_channel(order, cur)
+                mark_picked_channel(order, cur, courier="Pidge")
                 tracking_link = UrlShortner.get_short_url(tracking_link, cur)
                 send_shipped_event(customer_phone, order[19], order, "", "Pidge", tracking_link)
                 mark_order_picked_pickups(order, cur)
@@ -400,7 +400,7 @@ def consume_delhivery_scan_util(payload):
             tracking_link = "https://webapp.wareiq.com/tracking/" + order[1]
 
             if tracking_status == "Picked":
-                mark_picked_channel(order, cur)
+                mark_picked_channel(order, cur, courier="Delhivery")
                 tracking_link = UrlShortner.get_short_url(tracking_link, cur)
                 send_shipped_event(customer_phone, order[19], order, "", "Delhivery", tracking_link)
                 mark_order_picked_pickups(order, cur)
@@ -505,7 +505,7 @@ def consume_xpressbees_scan_util(payload):
             tracking_link = "https://webapp.wareiq.com/tracking/" + order[1]
 
             if tracking_status == "Picked":
-                mark_picked_channel(order, cur)
+                mark_picked_channel(order, cur, courier="Xpressbees")
                 tracking_link = UrlShortner.get_short_url(tracking_link, cur)
                 send_shipped_event(customer_phone, order[19], order, "", "Xpressbees", tracking_link)
                 mark_order_picked_pickups(order, cur)
@@ -533,6 +533,8 @@ def consume_xpressbees_scan_util(payload):
                 if status_text in Xpressbees_ndr_reasons:
                     ndr_reason = Xpressbees_ndr_reasons[status_text]
                 elif "future delivery" in status_text.lower():
+                    ndr_reason = 4
+                elif "evening delivery" in status_text.lower():
                     ndr_reason = 4
                 elif "open delivery" in status_text.lower():
                     ndr_reason = 10
@@ -1599,7 +1601,7 @@ def create_pickups_entry_util():
 
 
 def update_pincode_serviceability_table():
-    courier_list = (15, 2, 5, 9, 27, 12)
+    courier_list = (15, 2, 5, 9, 27)
     with conn.cursor() as cur:
         for courier in courier_list:
             try:

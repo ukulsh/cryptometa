@@ -25,7 +25,7 @@ from project.api.models import NDRReasons, MultiVendor, NDRShipments, Orders, Cl
     Manifests, OrderStatus, IVRHistory, OrderPickups, BillingAddress, MasterChannels, MasterProducts, NDRVerification, \
     OrderScans, OrdersInvoice
 from project.api.queries import select_orders_list_query, available_warehouse_product_quantity, \
-    fetch_warehouse_to_pick_from, select_pickups_list_query, get_selected_product_details
+    fetch_warehouse_to_pick_from, select_pickups_list_query, get_selected_product_details, select_serviceable_couriers_orders
 from project.api.utils import authenticate_restful, fill_shiplabel_data_thermal, \
     create_shiplabel_blank_page, fill_shiplabel_data, create_shiplabel_blank_page_thermal, \
     create_invoice_blank_page, fill_invoice_data, generate_picklist, generate_packlist, \
@@ -3187,3 +3187,45 @@ def get_pickup_points(resp):
     except Exception:
         response['message'] = 'failed while getting pickup-points'
         return jsonify(response), 400
+
+
+@orders_blueprint.route('/orders/v1/getshipcouriers', methods=['POST'])
+@authenticate_restful
+def getshipcouriers(resp):
+    with conn.cursor() as cur:
+        try:
+            auth_data = resp.get('data')
+            if auth_data.get('user_group') not in ('client', 'super-admin'):
+                return jsonify({"msg": "Invalid user type"}), 400
+            data = json.loads(request.data)
+            total_orders = len(data.get('order_ids'))
+            order_tuple_str = check_client_order_ids(data.get('order_ids'), auth_data, cur)
+
+            if not order_tuple_str:
+                return jsonify({"success": False, "msg": "Invalid order ids"}), 400
+
+            cur.execute(select_serviceable_couriers_orders.replace("__ORDER_IDS__", order_tuple_str))
+            all_cours = cur.fetchall()
+            serv_dict = dict()
+            for cour in all_cours:
+                if cour[2] and cour[3]:
+                    if cour[0] not in serv_dict:
+                        serv_dict[cour[0]] = {"serviceable_count": 1}
+                    else:
+                        serv_dict[cour[0]]['serviceable_count'] += 1
+
+            courier_list = list()
+
+            for courier, data in serv_dict.items():
+                cur.execute("""SELECT id, courier_name FROM master_couriers WHERE integrated=true 
+                                and courier_name ilike '__CN__%'""".replace('__CN__', courier))
+                fetched_couriers = cur.fetchall()
+                for fetch in fetched_couriers:
+                    courier_list.append({"courier_name": fetch[1], "id": fetch[0],
+                                         "serviceable_count": data["serviceable_count"],
+                                         "unserviceable_count": total_orders - data["serviceable_count"]})
+
+            courier_list = sorted(courier_list, key=lambda k: k['serviceable_count'], reverse=True)
+            return jsonify({"courier_list": courier_list, "success": True}), 200
+        except Exception:
+            return jsonify({"success": False}), 400

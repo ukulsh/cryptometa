@@ -162,6 +162,12 @@ def orders_ship(client_prefix=None):
     return 'successfully completed ship_orders'
 
 
+@celery_app.task(name='ship_bulk_orders_job')
+def ship_bulk_orders_job(order_ids, auth_data, courier):
+    ship_bulk_orders(order_ids, auth_data, courier)
+    return 'successfully completed ship_bulk_orders'
+
+
 @app.route('/scans/v1/orders/ship', methods = ['GET'])
 def ship_orders_api():
     client_prefix = request.args.get('client_prefix')
@@ -183,8 +189,12 @@ def bulkship_orders(resp):
     courier = data['courier']
     if not order_ids:
         return jsonify({"success": False, "msg": "order ids not found"}), 400
-    return_data, code = ship_bulk_orders(order_ids, auth_data, courier)
-    return jsonify(return_data), code
+    if len(order_ids)==1:
+        return_data, code = ship_bulk_orders(order_ids, auth_data, courier)
+        return jsonify(return_data), code
+    else:
+        ship_bulk_orders_job.apply_async(queue='ship_orders', args=(order_ids, auth_data, courier))
+        return jsonify({"success": True, "msg": "shipping request created"}), 202
 
 
 @app.route('/scans/v1/dev', methods = ['GET'])

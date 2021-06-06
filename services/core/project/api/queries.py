@@ -482,7 +482,7 @@ select_wallet_deductions_query = """SELECT aa.status_time, aa.status, bb.courier
                                     ee.forward_charge, ee.rto_charge, ee.total_charge, ee.zone, ee.weight_charged, 
                                     (CASE WHEN (ff.management_fee_static is not null) THEN ff.management_fee_static 
                                      WHEN (ff.management_fee is not null) THEN COALESCE((ff.management_fee/100)*ee.forward_charge, 0) ELSE 
-                                     5 END) tot_amount from order_status aa
+                                     5 END) tot_amount, ee.type from order_status aa
                                     LEFT JOIN master_couriers bb on aa.courier_id=bb.id
                                     LEFT JOIN shipments cc on aa.shipment_id=cc.id
                                     LEFT JOIN orders dd on aa.order_id=dd.id
@@ -756,4 +756,29 @@ select_ndr_reason_orders_query = """select cc.channel_order_id, cc.status, dd.aw
                                     and (cc.status_type='UD' or cc.status_type is null)
                                     __CLIENT_FILTER__
                                     order by cc.order_date"""
+
+select_serviceable_couriers_orders = """select courier_name, id, pickup,
+                                        CASE WHEN (payment_mode ilike 'cod') THEN cod_available
+                                             WHEN (payment_mode ilike 'pickup') THEN reverse_pickup ELSE serviceable 
+                                        END as delivery FROM
+                                        (select aa.id, aa.pickup_pincode, aa.delivery_pincode, dd.courier_name, aa.payment_mode,
+                                        bool_or(pickup) as pickup, bool_or(serviceable) as serviceable, 
+                                        bool_or(cod_available) as cod_available, bool_or(reverse_pickup) as reverse_pickup from 
+                                        (select aa.id, cc.pincode::varchar as pickup_pincode, ee.pincode as delivery_pincode, ff.payment_mode from orders aa
+                                        left join client_pickups bb on aa.pickup_data_id=bb.id
+                                        left join pickup_points cc on bb.pickup_id=cc.id
+                                        left join shipping_address ee on ee.id=aa.delivery_address_id
+                                        left join orders_payments ff on ff.order_id=aa.id
+                                        where aa.id in __ORDER_IDS__) aa
+                                        left join 
+                                        (select aa.pincode, bb.courier_name, pickup from  pincode_serviceability aa
+                                        left join master_couriers bb on aa.courier_id=bb.id
+                                        ) dd on aa.pickup_pincode=dd.pincode
+                                        left join 
+                                        (select aa.pincode, bb.courier_name, serviceable, cod_available, reverse_pickup 
+                                        from pincode_serviceability aa
+                                        left join master_couriers bb on aa.courier_id=bb.id
+                                        ) ff on aa.delivery_pincode=ff.pincode
+                                        where dd.courier_name=ff.courier_name
+                                        group by aa.id, aa.pickup_pincode, aa.delivery_pincode, dd.courier_name, aa.payment_mode) xx"""
 

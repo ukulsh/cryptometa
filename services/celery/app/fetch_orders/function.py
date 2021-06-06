@@ -972,7 +972,10 @@ def fetch_easyecom_orders(cur, channel, manual=None):
 def fetch_bikayi_orders(cur, channel, manual=None):
 
     time_now = datetime.utcnow()
-    if channel[7] and not (time_now.hour == 21 and 0<time_now.minute<30) and not manual:
+    if not channel[7]:
+        updated_after = datetime.utcnow() - timedelta(days=30)
+        updated_after = updated_after.strftime("%s")
+    elif channel[7] and not (time_now.hour == 21 and 0<time_now.minute<30) and not manual:
         updated_after = channel[7].strftime("%s")
     else:
         updated_after = datetime.utcnow() - timedelta(days=1)

@@ -64,6 +64,7 @@ get_orders_to_ship_query = """select aa.id,aa.channel_order_id,aa.order_date,aa.
                                 left join (select * from orders_invoice where cancelled is not true) zz
                                 on zz.order_id=aa.id
                                 where aa.client_prefix=%s
+                                and aa.status='NEW'
                                 __ORDER_SELECT_FILTERS__
                                 and NOT EXISTS (SELECT 1 FROM unnest(ee.weights) x WHERE x IS NULL)
                                 and (xx.id is null or (xx.id is not null and xx.cod_verified = true) 

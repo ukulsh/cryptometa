@@ -110,7 +110,10 @@ class WalletDeductions(Resource):
                             new_row.append(str(deduction[6]))
                             new_row.append(str(deduction[7]))
                             new_row.append(str(deduction[8]))
-                            new_row.append(str(deduction[12]) if deduction[12] else '5')
+                            if deduction[13]!='reconciliation':
+                                new_row.append(str(deduction[12]) if deduction[12] else '5')
+                            else:
+                                new_row.append(str(0))
                             new_row.append(str(total_charge))
                             new_row.append(str(total_charge*1.18))
                             new_row.append(str(deduction[10]))
@@ -148,7 +151,8 @@ class WalletDeductions(Resource):
                     total_charge = None
                     if entry[9]:
                         total_charge = float(entry[9])
-                        total_charge += float(entry[12]) if entry[12] else 5
+                        if entry[13]!='reconciliation':
+                            total_charge += float(entry[12]) if entry[12] else 5
                         total_charge = total_charge*1.18
                     ret_obj['amount'] = round(total_charge, 1) if total_charge else None
                     ret_obj['zone'] = entry[10]

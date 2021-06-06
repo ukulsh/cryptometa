@@ -651,6 +651,31 @@ def freshdesk_url_new(auth_data):
 
 @core_blueprint.route('/core/dev', methods=['POST'])
 def ping_dev():
+    return 0
+    import requests
+    cur = conn.cursor()
+    cur.execute("""select bb.api_key, aa.order_id_channel_unique, ee.courier_name, dd.awb, bb.unique_parameter from orders aa
+                    left join client_channel bb on aa.client_channel_id=bb.id
+                    left join (select * from order_status where status='Received') cc on cc.order_id=aa.id
+                    left join shipments dd on dd.order_id=aa.id
+                    left join master_couriers ee on dd.courier_id=ee.id
+                    where bb.channel_id=7
+                    and cc.status_time<'2021-06-04' and cc.status_time>'2021-06-03 19:00:00'""")
+    all_orders = cur.fetchall()
+    for order in all_orders:
+        try:
+            post_url = "https://api.easyecom.io/Carrier/assignAWB?api_token=%s" % order[0]
+            post_body = {
+                "invoiceId": order[1],
+                "api_token": order[0],
+                "courier": order[2],
+                "awbNum": order[3],
+                "companyCarrierId": int(order[4])
+            }
+            req = requests.post(post_url, data=post_body)
+        except Exception as e:
+            print(str(e.args[0]))
+
     # from .models import PickupPoints, ReturnPoints, ClientPickups
     # myfile = request.files['myfile']
     # data_xlsx = pd.read_excel(myfile)

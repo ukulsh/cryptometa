@@ -70,13 +70,13 @@ insert_into_courier_cost_query = """INSERT INTO courier_charges (weight_charged,
 
 update_client_balance = """UPDATE client_mapping SET current_balance=coalesce(current_balance, 0)-%s WHERE client_prefix=%s AND account_type ilike 'prepaid' RETURNING current_balance;"""
 
-select_remittance_amount_query = """select * from
+select_remittance_amount_query = """select unique_id, client_prefix, remittance_id, remittance_date, status, transaction_id, remittance_total from
                                         (select xx.unique_id, xx.client_prefix, xx.remittance_id, xx.date as remittance_date, 
-                                         xx.status, xx.transaction_id, sum(yy.amount) as remittance_total from
+                                         xx.status, xx.transaction_id, xx.payout_id, sum(yy.amount) as remittance_total from
                                         (select id as unique_id, client_prefix, remittance_id, transaction_id, DATE(remittance_date), 
                                         DATE(del_from) AS order_start,
                                         DATE(del_to) AS order_end,
-                                        status from cod_remittance) xx 
+                                        status, payout_id from cod_remittance) xx 
                                         left join 
                                         (select client_prefix, channel_order_id, order_date, payment_mode, amount, cc.status_time as delivered_date from orders aa
                                         left join orders_payments bb on aa.id=bb.order_id
@@ -89,10 +89,11 @@ select_remittance_amount_query = """select * from
                                         and ee.integrated=true) yy
                                         on xx.client_prefix=yy.client_prefix 
                                         and yy.delivered_date BETWEEN xx.order_start AND xx.order_end
-                                        group by xx.unique_id, xx.client_prefix, xx.remittance_id, xx.date, xx.status, xx.transaction_id) zz
+                                        group by xx.unique_id, xx.client_prefix, xx.remittance_id, xx.date, xx.status, xx.transaction_id, xx.payout_id) zz
                                         WHERE remittance_total is not null
                                         and remittance_date<='__REMITTANCE_DATE__'
                                         and remittance_date>'2021-01-01'
+                                        and payout_id is null
                                         and status='processing'
                                         order by remittance_date DESC, remittance_total DESC"""
 

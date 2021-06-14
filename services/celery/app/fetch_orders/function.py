@@ -949,7 +949,7 @@ def fetch_easyecom_orders(cur, channel, manual=None):
                 shipping_amount, "INR", order_id)
 
             cur.execute(insert_payments_data_query, payments_tuple)
-            cur.execute("UPDATE failed_orders SET synced=true WHERE order_id_channel_unique=%s and client_channel_id=%s", (str(order['invoice_id']), channel[0]))
+            cur.execute("UPDATE failed_orders SET synced=true WHERE channel_order_id=%s and client_channel_id=%s", (str(order['reference_code']), channel[0]))
             invoice_easyecom_order(cur, order['invoice_number'], order['invoice_date'], order_id, pickup_data_id)
 
         except Exception as e:

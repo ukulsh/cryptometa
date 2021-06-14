@@ -428,7 +428,7 @@ select_orders_list_query = """select distinct on (aa.order_date, aa.id) aa.chann
                               bb.weight, bb.dimensions, bb.volumetric_weight,bb.remark, aa.customer_name, aa.customer_phone, aa.customer_email, dd.address_one, 
                               dd.address_two, dd.city, dd.state, dd.country, dd.pincode, ee.delivered_time, ff.pickup_time, gg.payment_mode, gg.amount, ii.warehouse_prefix,
                              mm.id,  mm.cod_verified, mm.verified_via, nn.id,  nn.ndr_verified, nn.verified_via, vv.logo_url, qq.manifest_time, __NDR_AGG_SEL_1__ 
-                             aa.client_prefix, bb.pdd, uu.flag, uu.score, uu.reasons, gg.shipping_charges, ww.invoice_no, ww.date_created, __NDR_AGG_SEL_2__ uu.tags, bb.same_state
+                             aa.client_prefix, bb.pdd, uu.flag, uu.score, uu.reasons, gg.shipping_charges, ww.invoice_no, ww.date_created, __NDR_AGG_SEL_2__ uu.tags, bb.same_state, bb.tracking_link as pod_link
                              from orders aa
                              left join shipments bb
                              on aa.id=bb.order_id

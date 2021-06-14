@@ -265,6 +265,9 @@ class OrderList(Resource):
                 if type == "shipped":
                     resp_obj['status_detail'] = order[4]
 
+                if order[49] and order[3]=='DELIVERED' and order[49].startswith("https://wareiqpods"):
+                    resp_obj['pod_link'] = order[49]
+
                 resp_obj['status'] = order[3]
                 if order[3] in ('NEW','CANCELED','PENDING PAYMENT','READY TO SHIP','PICKUP REQUESTED','NOT PICKED') or not order[5]:
                     resp_obj['status_change'] = True
@@ -917,6 +920,7 @@ def upload_orders(resp):
                                delivery_address=delivery_address,
                                status="NEW",
                                client_prefix=auth_data.get('client_prefix'),
+                               order_id_channel_unique=str(row_data.order_id).rstrip(),
                                pickup_data=pickup_data,
                                master_channel_id=9
                                )
@@ -1937,6 +1941,8 @@ class OrderDetails(Resource):
                     resp_obj['dimensions'] = order.shipments[0].dimensions
                     resp_obj['weight'] = order.shipments[0].weight
                     resp_obj['volumetric'] = order.shipments[0].volumetric_weight
+                    if order.shipments[0].tracking_link and order.shipments[0].tracking_link.startswith("https://wareiqpods") and order.status=='DELIVERED':
+                        resp_obj['pod_link'] = order.shipments[0].tracking_link
 
                 if order.pickup_data:
                     resp_obj['pickup_point'] = order.pickup_data.pickup.warehouse_prefix
@@ -3022,8 +3028,8 @@ class GetShipmentData(Resource):
             if not channel_order_ids:
                 return {"success": False, "msg": "orders_nos is mandatory"}, 400
 
-            if len(channel_order_ids)>20:
-                return {"success": False, "msg": "Max 20 orders allowed at a time"}, 400
+            if len(channel_order_ids)>200:
+                return {"success": False, "msg": "Max 200 orders allowed at a time"}, 400
 
             orders_qs = db.session.query(Orders).filter(Orders.order_id_channel_unique.in_(channel_order_ids), Orders.client_prefix==auth_data.get('client_prefix')).all()
 
@@ -3085,8 +3091,8 @@ class TrackShipments(Resource):
             if not awbs:
                 return {"status": "Failed", "msg": "awbs value is mandatory"}, 400
 
-            if len(awbs)>50:
-                return {"status": "Failed", "msg": "max allowed awbs 50"}, 400
+            if len(awbs)>200:
+                return {"status": "Failed", "msg": "max allowed awbs 200"}, 400
 
             shipment_qs = db.session.query(Shipments).filter(Shipments.awb.in_(awbs)).all()
             found_awbs = list()

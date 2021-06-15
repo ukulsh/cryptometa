@@ -80,6 +80,9 @@ class OrderList(Resource):
             if not auth_data:
                 return {"success": False, "msg": "Auth Failed"}, 404
 
+            if per_page>500:
+                return {"success": False, "msg": "Max 500 records allowed at a time"}, 400
+
             client_prefix = auth_data.get('client_prefix')
             warehouse_prefix = auth_data.get('warehouse_prefix')
             cur.execute("SELECT hide_weights, thirdwatch FROM client_mapping WHERE client_prefix='%s'" % client_prefix)
@@ -267,6 +270,8 @@ class OrderList(Resource):
 
                 if order[49] and order[3]=='DELIVERED' and order[49].startswith("https://wareiqpods"):
                     resp_obj['pod_link'] = order[49]
+
+                resp_obj['last_updated'] = order[50].strftime("%Y-%m-%d %H:%M:%S") if order[50] else None
 
                 resp_obj['status'] = order[3]
                 if order[3] in ('NEW','CANCELED','PENDING PAYMENT','READY TO SHIP','PICKUP REQUESTED','NOT PICKED') or not order[5]:
@@ -757,6 +762,8 @@ def add_order_post(resp):
                            chargeable_weight=chargeable_weight,
                            order_id_channel_unique=str(data.get('order_id')).rstrip(),
                            master_channel_id=9,
+                           date_created=datetime.utcnow() + timedelta(hours=5.5),
+                           date_updated=datetime.utcnow() + timedelta(hours=5.5),
                            status_detail=str(data)
                            )
 
@@ -922,6 +929,8 @@ def upload_orders(resp):
                                client_prefix=auth_data.get('client_prefix'),
                                order_id_channel_unique=str(row_data.order_id).rstrip(),
                                pickup_data=pickup_data,
+                               date_created=datetime.now()+timedelta(hours=5.5),
+                               date_updated=datetime.now()+timedelta(hours=5.5),
                                master_channel_id=9
                                )
 
@@ -1575,6 +1584,7 @@ def cancel_order_channel(resp, order_id):
     for order in orders_qs:
         if order.status in ('NEW', 'READY TO SHIP', 'PICKUP REQUESTED', 'NOT SHIPPED'):
             order.status = 'CANCELED'
+            order.date_updated = datetime.utcnow()+timedelta(hours=5.5)
             cancel_order_on_couriers(order)
             if order.orders_invoice:
                 for invoice_obj in order.orders_invoice:
@@ -2098,6 +2108,7 @@ class OrderDetails(Resource):
                         for invoice_obj in order.orders_invoice:
                             invoice_obj.cancelled = True
 
+            order.date_updated = datetime.utcnow()+timedelta(hours=5.5)
             db.session.commit()
             return {'status': 'success', 'msg': "successfully updated"}, 200
 

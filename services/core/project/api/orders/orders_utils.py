@@ -91,6 +91,10 @@ def filter_query(filters, query_to_run, auth_data):
         flag_tuple = str(filters['thirdwatch_tags'])
         query_to_run = query_to_run.replace("__THIRDWATCH_TAGS_FILTER__", "AND uu.tags @> ARRAY%s::varchar[]" % flag_tuple)
 
+    if 'updated_after' in filters:
+        updated_after = filters['updated_after']
+        query_to_run = query_to_run.replace("__UPDATED_AFTER__", "AND aa.date_updated > '%s'" % updated_after)
+
     if 'pickup_time' in filters:
         filter_date_start = filters['pickup_time'][0][0:19].replace('T', ' ')
         filter_date_end = filters['pickup_time'][1][0:19].replace('T', ' ')

@@ -142,6 +142,7 @@ def verification_passthru(type):
                 cod_ver = db.session.query(CodVerification).filter(CodVerification.order_id==order_id).first()
                 if digits=="0" and cod_ver.order.status=='NEW':
                     cod_ver.order.status='CANCELED'
+                    cod_ver.order.date_updated = datetime.utcnow()+timedelta(hours=5.5)
                     cancel_order_on_channels(cod_ver.order)
             elif type=='delivery':
                 cod_ver = db.session.query(DeliveryCheck).filter(DeliveryCheck.order_id==order_id).first()

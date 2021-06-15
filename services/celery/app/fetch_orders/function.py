@@ -194,7 +194,8 @@ def fetch_shopify_orders(cur, channel, manual=None):
             orders_tuple = (
                 channel_order_id, order['created_at'], customer_name, order['customer']['email'],
                 customer_phone if customer_phone else "", shipping_address_id, billing_address_id,
-                datetime.now(), "NEW", channel[1], channel[0], str(order['id']), pickup_data_id, 1)
+                datetime.utcnow()+timedelta(hours=5.5), "NEW", channel[1], channel[0], str(order['id']),
+                pickup_data_id, 1, datetime.utcnow()+timedelta(hours=5.5))
 
             cur.execute(insert_orders_data_query, orders_tuple)
             order_id = cur.fetchone()[0]
@@ -280,7 +281,8 @@ def fetch_shopify_orders(cur, channel, manual=None):
                 if master_product_id in (57599, 57620) and channel[1] == 'HEALTHI' and prod_no<total_prods:
                     orders_tuple = (channel_order_id, order['created_at'], customer_name, order['customer']['email'],
                         customer_phone if customer_phone else "", shipping_address_id, billing_address_id,
-                        datetime.now(), "NEW", channel[1], channel[0], str(order['id']), pickup_data_id, 1)
+                        datetime.utcnow()+timedelta(hours=5.5), "NEW", channel[1], channel[0], str(order['id']),
+                        pickup_data_id, 1, datetime.utcnow()+timedelta(hours=5.5))
 
                     cur.execute(insert_orders_data_query, orders_tuple)
                     temp_order_id = cur.fetchone()[0]
@@ -453,7 +455,8 @@ def fetch_woocommerce_orders(cur, channel, manual=None):
             orders_tuple = (
                 channel_order_id, order['date_created'], customer_name, order['billing']['email'],
                 customer_phone if customer_phone else "", shipping_address_id, billing_address_id,
-                datetime.now(), insert_status, channel[1], channel[0], str(order['id']), pickup_data_id, 5)
+                datetime.utcnow()+timedelta(hours=5.5), insert_status, channel[1], channel[0],
+                str(order['id']), pickup_data_id, 5, datetime.utcnow()+timedelta(hours=5.5))
 
             cur.execute(insert_orders_data_query, orders_tuple)
             order_id = cur.fetchone()[0]
@@ -667,7 +670,8 @@ def fetch_magento_orders(cur, channel, manual=None):
             orders_tuple = (
                 channel_order_id, order_time, customer_name, order['customer_email'],
                 customer_phone if customer_phone else "", shipping_address_id, billing_address_id,
-                datetime.now(), insert_status, channel[1], channel[0], str(order['entity_id']), pickup_data_id, 6)
+                datetime.utcnow()+timedelta(hours=5.5), insert_status, channel[1], channel[0],
+                str(order['entity_id']), pickup_data_id, 6, datetime.utcnow()+timedelta(hours=5.5))
 
             cur.execute(insert_orders_data_query, orders_tuple)
             order_id = cur.fetchone()[0]
@@ -861,7 +865,8 @@ def fetch_easyecom_orders(cur, channel, manual=None):
             orders_tuple = (
                 channel_order_id, order['order_date'], customer_name, order['email'],
                 customer_phone if customer_phone else "", shipping_address_id, billing_address_id,
-                datetime.now(), order_status, channel[1], channel[0], str(order['invoice_id']), pickup_data_id, master_channel_id)
+                datetime.utcnow()+timedelta(hours=5.5), order_status, channel[1], channel[0], str(order['invoice_id']),
+                pickup_data_id, master_channel_id, datetime.utcnow()+timedelta(hours=5.5))
 
             cur.execute(insert_orders_data_query, orders_tuple)
             order_id = cur.fetchone()[0]
@@ -1069,7 +1074,8 @@ def fetch_bikayi_orders(cur, channel, manual=None):
             orders_tuple = (
                 channel_order_id, order_time, customer_name, "",
                 customer_phone if customer_phone else "", shipping_address_id, billing_address_id,
-                datetime.now(), insert_status, channel[1], channel[0], str(order['orderId']), pickup_data_id, 8)
+                datetime.utcnow()+timedelta(hours=5.5), insert_status, channel[1], channel[0],
+                str(order['orderId']), pickup_data_id, 8, datetime.utcnow()+timedelta(hours=5.5))
 
             cur.execute(insert_orders_data_query, orders_tuple)
             order_id = cur.fetchone()[0]

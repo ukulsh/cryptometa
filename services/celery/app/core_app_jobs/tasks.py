@@ -1281,25 +1281,26 @@ def update_available_quantity_from_easyecom():
                                                                                int(req['reservedInventory']) if req['reservedInventory'] else 0))
 
                                 for ee_loc, val_list in inventory_dict.items():
-                                    cur.execute("""select bb.warehouse_prefix from client_pickups aa
-                                                                            left join pickup_points bb on aa.pickup_id=bb.id
-                                                                            where aa.easyecom_loc_code='%s'""" % ee_loc)
-                                    try:
-                                        warehouse_prefix = cur.fetchone()[0]
-                                    except Exception:
-                                        continue
+                                    if ee_loc:
+                                        cur.execute("""select bb.warehouse_prefix from client_pickups aa
+                                                                                left join pickup_points bb on aa.pickup_id=bb.id
+                                                                                where aa.easyecom_loc_code='%s'""" % ee_loc)
+                                        try:
+                                            warehouse_prefix = cur.fetchone()[0]
+                                        except Exception:
+                                            continue
 
-                                    for val_tuple in val_list:
-                                        cur.execute("""select * from products_quantity aa
-                                        left join master_products bb on aa.product_id=bb.id
-                                        where aa.warehouse_prefix='%s' and bb.sku='%s'"""%(warehouse_prefix, val_tuple[0]))
+                                        for val_tuple in val_list:
+                                            cur.execute("""select * from products_quantity aa
+                                            left join master_products bb on aa.product_id=bb.id
+                                            where aa.warehouse_prefix='%s' and bb.sku='%s'"""%(warehouse_prefix, val_tuple[0]))
 
-                                        if cur.fetchall():
-                                            cur.execute(update_easyecom_inventory_query, (val_tuple[1], val_tuple[2], val_tuple[1]+val_tuple[2], warehouse_prefix, val_tuple[0], client[0]))
-                                        else:
-                                            cur.execute(insert_easyecom_inventory_query, (val_tuple[1], warehouse_prefix, val_tuple[1]+val_tuple[2], val_tuple[2], val_tuple[1], client[0], val_tuple[0]))
+                                            if cur.fetchall():
+                                                cur.execute(update_easyecom_inventory_query, (val_tuple[1], val_tuple[2], val_tuple[1]+val_tuple[2], warehouse_prefix, val_tuple[0], client[0]))
+                                            else:
+                                                cur.execute(insert_easyecom_inventory_query, (val_tuple[1], warehouse_prefix, val_tuple[1]+val_tuple[2], val_tuple[2], val_tuple[1], client[0], val_tuple[0]))
 
-                                    conn.commit()
+                                        conn.commit()
 
                                 req_url = "https://api.easyecom.io"+req_data['data']['nextUrl'] if req_data['data']['nextUrl'] else None
                         except Exception as e:

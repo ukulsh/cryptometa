@@ -128,7 +128,7 @@ class OrderList(Resource):
                 query_to_run = query_to_run.replace("__NDR_AGG_SEL_2__", "rr.ndr_id,")
                 query_to_run = query_to_run.replace("__TAB_STATUS_FILTER__", "AND (rr.ndr_id is not null AND aa.status='PENDING' AND aa.status_type!='RT') AND gg.payment_mode!='Pickup'")
             elif type == "rvp":
-                query_to_run = query_to_run.replace("__TAB_STATUS_FILTER__", "AND gg.payment_mode='Pickup'")
+                query_to_run = query_to_run.replace("__TAB_STATUS_FILTER__", "AND gg.payment_mode ilike 'pickup'")
             elif type == 'all':
                 pass
             else:
@@ -2718,19 +2718,18 @@ def serviceability_badges_shopify():
 
         current_time = datetime.utcnow() + timedelta(hours=5.5)
         order_before = current_time
-        if current_time.hour >= 14:
+        if current_time.hour >= 12:
             order_before = order_before + timedelta(days=1)
-            order_before = order_before.replace(hour=14, minute=0, second=0)
+            order_before = order_before.replace(hour=12, minute=0, second=0)
             days_for_delivery = final_wh[1] + 1
             if days_for_delivery == 1:
                 days_for_delivery = 2
         else:
-            order_before = order_before.replace(hour=14, minute=0, second=0)
+            order_before = order_before.replace(hour=12, minute=0, second=0)
             days_for_delivery = final_wh[1]
             if days_for_delivery == 0:
                 days_for_delivery = 1
 
-        days_for_delivery += 1
         if days_for_delivery == 1:
             label_url = "https://logourls.s3.amazonaws.com/wareiq_next_day.jpeg"
         elif days_for_delivery == 2:
@@ -2907,19 +2906,18 @@ class PincodeServiceabilty(Resource):
 
             current_time = datetime.utcnow() + timedelta(hours=5.5)
             order_before = current_time
-            if current_time.hour >= 14:
+            if current_time.hour >= 12:
                 order_before = order_before + timedelta(days=1)
-                order_before = order_before.replace(hour=14, minute=0, second=0)
+                order_before = order_before.replace(hour=12, minute=0, second=0)
                 days_for_delivery = final_wh[1] + 1
                 if days_for_delivery == 1:
                     days_for_delivery = 2
             else:
-                order_before = order_before.replace(hour=14, minute=0, second=0)
+                order_before = order_before.replace(hour=12, minute=0, second=0)
                 days_for_delivery = final_wh[1]
                 if days_for_delivery == 0:
                     days_for_delivery = 1
 
-            days_for_delivery += 1
             if days_for_delivery == 1:
                 label_url = "https://logourls.s3.amazonaws.com/wareiq_next_day.jpeg"
             elif days_for_delivery == 2:
@@ -3241,7 +3239,9 @@ def getshipcouriers(resp):
                     courier_list.append({"courier_name": fetch[1], "id": fetch[0],
                                          "serviceable_count": data["serviceable_count"],
                                          "unserviceable_count": total_orders - data["serviceable_count"]})
-
+            courier_list.append({"courier_name": "Self Ship", "id": 19,
+                                         "serviceable_count": total_orders,
+                                         "unserviceable_count": 0})
             courier_list = sorted(courier_list, key=lambda k: k['serviceable_count'], reverse=True)
             return jsonify({"courier_list": courier_list, "success": True}), 200
         except Exception:

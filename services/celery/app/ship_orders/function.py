@@ -2335,7 +2335,7 @@ def ship_pidge_orders(cur, courier, courier_name, order_ids, order_id_tuple, bac
 
         pickup_point = cur.fetchone()  # change this as we get to dynamic pickups
 
-        if str(pickup_point[8]) not in pidge_del_sdd_pincodes: #todo: remove this
+        if str(pickup_point[8]) not in pidge_del_sdd_pincodes or pickup_point[0]==1443: #todo: remove this
             continue
 
         last_invoice_no = pickup_point[22] if pickup_point[22] else 0

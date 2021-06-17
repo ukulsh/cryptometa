@@ -92,7 +92,7 @@ fetch_warehouse_to_pick_from = """with temp_table (warehouse, pincode) as (VALUE
                                     and city in (select city from city_pin_mapping where pincode='__DELIVERY_PINCODE__')
                                     and courier_id=__COURIER_ID__) xx
                                     on yy.city=xx.zone
-                                    order by tat,zone_value
+                                    order by zone_value,tat
                                     limit 1"""
 
 select_thirdwatch_check_orders_query = """select cc.ip_address, cc.session_id, cc.user_agent, cc.user_id, cc.user_created_at, 
@@ -120,3 +120,27 @@ insert_failed_order_query = """INSERT INTO failed_orders (channel_order_id, orde
                                 order_id_channel_unique, date_created) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                                 ON CONFLICT (order_id_channel_unique, client_channel_id) 
                                 DO NOTHING;"""
+
+wondersoft_push_query = """select cc.first_name, cc.last_name, aa.customer_phone, aa.customer_email, ff.gstin, 
+                            cc.address_one,cc.address_two, cc.city, cc.state, cc.pincode, aa.order_date, 
+                            aa.channel_order_id, gg.warehouse_prefix, dd.amount, dd.payment_mode, ee.products_sku,
+                            ee.quan, ee.prod_amount from orders aa
+                            left join shipping_address cc
+                            on aa.delivery_address_id=cc.id
+                            left join orders_payments dd
+                            on dd.order_id=aa.id
+                            left join 
+                            (select order_id, array_agg(quantity) as quan, array_agg(pp.sku) as products_sku, 
+                             array_agg(amount) as prod_amount
+                             from op_association opa 
+                             left join master_products pp
+                             on opa.master_product_id = pp.id
+                             group by order_id) ee
+                            on aa.id=ee.order_id
+                            left join shipments ll
+                            on ll.order_id=aa.id
+                            left join client_pickups ff
+                            on ff.id=aa.pickup_data_id
+                            left join pickup_points gg
+                            on gg.id=ff.pickup_id
+                            where aa.id=%s"""

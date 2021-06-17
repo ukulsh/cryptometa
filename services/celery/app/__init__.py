@@ -8,6 +8,7 @@ from datetime import timedelta
 from celery.schedules import crontab
 from .update_status.function import update_status
 from .fetch_orders.function import fetch_orders
+from .fetch_orders.sync_channel_status import sync_channel_status
 from .ship_orders.function import ship_orders
 from .core_app_jobs.tasks import *
 from .download_queues.tasks import *
@@ -99,6 +100,11 @@ app.config['CELERYBEAT_SCHEDULE'] = {
                         'schedule': crontab(hour=20, minute=30),
                         'options': {'queue': 'sync_all_inventory'}
                     },
+    'sync-channel-status': {
+                'task': 'sync_channel_status',
+                'schedule': crontab(minute='40', hour='*'),
+                'options': {'queue': 'sync_channel_status'}
+            },
 }
 
 app.config['CELERY_TIMEZONE'] = 'UTC'
@@ -207,6 +213,12 @@ def celery_dev():
 def orders_fetch(client_prefix=None, sync_all=None):
     fetch_orders(client_prefix, sync_all)
     return 'successfully completed fetch_orders'
+
+
+@celery_app.task(name='sync_channel_status')
+def sync_channel_status_task(client_prefix=None):
+    sync_channel_status(client_prefix)
+    return 'successfully completed sync_channel_status'
 
 
 @celery_app.task(name='consume_ecom_scan')
@@ -379,6 +391,7 @@ def sync_channel_prods(client_prefix):
 
 @celery_app.task(name='sync_channel_orders')
 def sync_channel_ords(client_prefix):
+    sync_channel_status(client_prefix=client_prefix)
     fetch_orders(client_prefix=client_prefix)
     return "received fetch orders"
 

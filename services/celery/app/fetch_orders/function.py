@@ -1254,6 +1254,9 @@ def assign_pickup_points_for_unassigned(cur, cur_2, days=5):
             cur.execute("""UPDATE orders SET pickup_data_id = %s WHERE id=%s""", (pickup_id[0], order[0]))
             conn.commit()
 
+            if final_wh[0] in ('TNPMRO', ):
+                push_kama_wondersoft(order[0], cur)
+
         except Exception as e:
             if order[6]:
                 assign_default_wh(cur, order)
@@ -1457,3 +1460,77 @@ def invoice_easyecom_order(cur, inv_text, inv_time, order_id, pickup_data_id):
                         VALUES (%s, %s, %s, %s, %s, %s);""", (order_id, pickup_data_id, inv_text, inv_no, inv_time_new, qr_url))
     except Exception as e:
         pass
+
+
+def push_kama_wondersoft(unique_id, cur=conn.cursor()):
+    try:
+        cur.execute(wondersoft_push_query, (int(unique_id), ))
+        order = cur.fetchone()
+        line_items = []
+        line_no = 1
+        for idx, sku in enumerate(order[15]):
+            line_items.append({"LineNumber": line_no,
+                                "ItemCode": sku,
+                                "Quantity": order[16][idx],
+                                "Rate": order[17][idx]})
+            line_no += 1
+
+        json_body = {"Order": {
+                            "Customer": {
+                                "FirstName": order[0],
+                                "LastName": order[1],
+                                "MobileNumber": int(order[2]),
+                                "EmailID": order[3] if order[3] else "test@gmail.com",
+                                "GSTIN": order[4],
+                                "CustomerAddressLine1": str(order[5])+str(order[6]),
+                                "CustomerAddressLine2": "",
+                                "CustomerAddressLine3": "",
+                                "CustomerCityName": order[7],
+                                "CustomerStateName": order[8],
+                                "CustomerStateGSTCode": order[4],
+                                "Pincode": order[9]
+                            },
+                            "Header": {
+                                "OrderDate": order[10].strftime('%Y%m%d'),
+                                "OrderNumber": order[11],
+                                "OrderLocation": order[12],
+                                "DeliveryAddressLine1": str(order[5])+str(order[6]),
+                                "DeliveryAddressLine2": "",
+                                "DeliveryAddressLine3": "",
+                                "DeliveryCityName": order[7],
+                                "DeliveryStateName": order[8],
+                                "DeliveryStateGSTCode": order[4],
+                                "DeliveryPincode": order[9],
+                                "TotalOrderValue": order[13],
+                                "ExpectedDeliveryDate": order[10].strftime('%Y%m%d'),
+                                "SourceChannel": "WareIQ"
+                            },
+                            "Items": {
+                                "Item": line_items
+                            },
+                            "Payments": {
+                                "Payment": [
+                                    {
+                                        "PaymentMode": order[14],
+                                        "PaymentValue": order[13],
+                                        "ModeType": "nan",
+                                        "PaymentReference": "****"
+                                    }
+                                ]
+                            }
+                        }
+                    }
+
+        token_headers = {"Username": "WareIQ",
+                         "Password": "Wondersoft#12",
+                         "SERVICE_METHODNAME": "GetToken"}
+        token_url = "http://103.25.172.69:7006/eShopaidAPI/eShopaidService.svc/Token"
+        token_req = requests.post(token_url, headers=token_headers, json={})
+        auth_token = token_req.json()['Response']['Access_Token'].strip()
+        gi_headers = {"SERVICE_METHODNAME": "CreateSalesOrder",
+                      "AUTHORIZATION": auth_token}
+        gi_url = "http://103.25.172.69:7006/eShopaidAPI/eShopaidService.svc/ProcessData"
+        so_req = requests.post(gi_url, headers=gi_headers, json=json_body)
+    except Exception:
+        pass
+

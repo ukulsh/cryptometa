@@ -601,7 +601,8 @@ class ClientCouriers(db.Model):
             'client_prefix': self.client_prefix,
             'courier_name': self.courier.courier_name,
             'priority': self.priority,
-            'active': self .active,
+            'active': self.active,
+            'logo_url': self.courier.logo_url if self.courier else None,
         }
 
 

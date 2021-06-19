@@ -896,6 +896,10 @@ class ProductUpdate(Resource):
                 product.dimensions = data.get('dimensions')
             if data.get('weight'):
                 product.weight = data.get('weight')
+            if data.get('hsn'):
+                product.hsn_code = data.get('hsn')
+            if data.get('tax_rate'):
+                product.tax_rate = data.get('tax_rate')
 
             db.session.commit()
             return {'status': 'success', 'msg': "successfully updated"}, 200

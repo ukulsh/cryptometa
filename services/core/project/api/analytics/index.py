@@ -22,7 +22,7 @@ session = boto3.Session(
     aws_secret_access_key='3dw3MQgEL9Q0Ug9GqWLo8+O1e5xu5Edi5Hl90sOs',
 )
 
-STATE_DOWNLOAD_HEADERS = ["State", "TotalOrders", "OrderPerc", "AvgShipCost", "AvgTransitDays", "RTOPerc", "CODPerc", "AvgRevenue", "MostFrequentZone"]
+STATE_DOWNLOAD_HEADERS = ["State", "TotalOrders", "OrderPerc", "AvgShipCost", "AvgTransitDays", "RTOPerc", "CODPerc", "AvgRevenue", "MostFrequentZone", "MostFrequentWH"]
 COURIER_DOWNLOAD_HEADERS = ["Courier", "TotalOrders", "OrderPerc", "AvgShipCost", "AvgTransitDays", "RTOPerc", "DeliveredPerc", "DeliveredWithinSLA", "NDRPerc"]
 ZONE_DOWNLOAD_HEADERS = ["Zone", "TotalOrders", "OrderPerc", "AvgShipCost", "AvgTransitDays", "RTOPerc", "DeliveredPerc", "DeliveredWithinSLA", "NDRPerc"]
 TRANSIT_DELAY_DOWNLOAD_HEADERS = ["OrderID", "Status", "AWB", "Courier", "ShippedDate", "PromisedDeliveryDate", "DelayedByDays",
@@ -107,6 +107,7 @@ def get_state_performance(resp):
                         new_row.append(str(state[8]))
                         new_row.append(str(state[6]))
                         new_row.append(str(state[7]))
+                        new_row.append(str(state[9]))
                         cw.writerow(new_row)
                     except Exception as e:
                         pass
@@ -130,6 +131,7 @@ def get_state_performance(resp):
             st_obj['rev_per_order'] = float(state[6]) if state[6] else None
             st_obj['freq_zone'] = state[7]
             st_obj['cod_perc'] = float(state[8]) if state[8] else None
+            st_obj['freq_wh'] = state[9]
             data.append(st_obj)
 
         response['data'] = data

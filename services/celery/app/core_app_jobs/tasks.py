@@ -1169,8 +1169,10 @@ def ship_bulk_orders(order_list, auth_data, courier):
 
 
 def update_available_quantity():
-    with conn.cursor() as cur:
+    with psycopg2.connect(host=os.environ.get('DATABASE_HOST'), database=os.environ.get('DATABASE_NAME'),
+                          user=os.environ.get('DATABASE_USER'), password=os.environ.get('DATABASE_PASSWORD')) as conn:
         try:
+            cur = conn.cursor()
             cur.execute(fetch_inventory_quantity_query)
             all_prods_status = cur.fetchall()
             quantity_dict = dict()
@@ -1253,8 +1255,10 @@ def update_available_quantity():
 
 
 def update_available_quantity_from_easyecom():
-    with conn.cursor() as cur:
+    with psycopg2.connect(host=os.environ.get('DATABASE_HOST'), database=os.environ.get('DATABASE_NAME'),
+                          user=os.environ.get('DATABASE_USER'), password=os.environ.get('DATABASE_PASSWORD')) as conn:
         try:
+            cur=conn.cursor()
             cur.execute("select client_prefix, api_key from client_channel where channel_id=7;")
             all_clients = cur.fetchall()
 
@@ -1319,7 +1323,7 @@ def update_available_quantity_from_easyecom():
                                 left join pickup_points bb on aa.pickup_id=bb.id
                                 where aa.client_prefix='KAMAAYURVEDA'
                                 and aa.enable_sdd=true
-                                and bb.warehouse_prefix='TNPMRO'""")
+                                and bb.warehouse_prefix in ('TLLTRO', 'MHCHRO', 'MHJTRO', 'HRDGRO', 'RJMIRO', 'TNPMRO')""")
 
             pickup_points = cur.fetchall()
             token_headers = {"Username": "WareIQ",
@@ -1361,7 +1365,9 @@ def update_available_quantity_from_easyecom():
 
 
 def update_available_quantity_on_channel():
-    with conn.cursor() as cur:
+    with psycopg2.connect(host=os.environ.get('DATABASE_HOST'), database=os.environ.get('DATABASE_NAME'),
+                          user=os.environ.get('DATABASE_USER'), password=os.environ.get('DATABASE_PASSWORD')) as conn:
+        cur = conn.cursor()
         cur.execute("""SELECT client_prefix, channel_id, api_key, api_password, shop_url, unique_parameter FROM client_channel WHERE sync_inventory=true and connection_status=true and status=true;""")
         all_channels = cur.fetchall()
         for channel in all_channels:

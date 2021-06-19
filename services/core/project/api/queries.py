@@ -590,13 +590,14 @@ select_state_performance_query = """select state, order_count, ROUND((order_coun
                                     ROUND(transit_days::numeric/nullif(delivered_count, 0), 1) as avg_tras_days, 
                                     ROUND(rto_count*100::numeric/nullif(order_count, 0), 1) as rto_perc, 
                                     ROUND(revenue::numeric/nullif(delivered_count, 0), 2) as avg_revenue, freq_zone, 
-                                    ROUND(cod_count*100::numeric/nullif(order_count, 0), 1) as cod_perc from 
+                                    ROUND(cod_count*100::numeric/nullif(order_count, 0), 1) as cod_perc, freq_wh from 
                                     (select cc.state, count(*) as order_count, sum(case when aa.status='DELIVERED' then forward_charge+rto_charge else 0 end) as shipping_cost, 
                                     sum(dd.status_time::date-ee.status_time::date) as transit_days, sum(case when aa.status='DELIVERED' then 1 else 0 end) as delivered_count,
                                     sum(case when aa.status='RTO' then 1 else 0 end) as rto_count, sum(case when aa.status='DELIVERED' then ii.amount else 0 end) as revenue,
                                     sum(case when gg.forward_charge is not null and aa.status='DELIVERED' then 1 else 0 end) as ship_cost_count,
                                     sum(case when ii.payment_mode ilike 'cod' then 1 else 0 end) as cod_count,
-                                    mode() within group (order by hh.zone) as freq_zone
+                                    mode() within group (order by hh.zone) as freq_zone,
+                                    mode() within group (order by kk.warehouse_prefix) as freq_wh
                                     from orders aa
                                     left join shipping_address bb on aa.delivery_address_id=bb.id
                                     left join pincode_mapping cc on bb.pincode=cc.pincode
@@ -606,6 +607,8 @@ select_state_performance_query = """select state, order_count, ROUND((order_coun
                                     left join (select * from order_status where status in ('RTO')) ff on ff.order_id=aa.id
                                     left join client_deductions gg on gg.shipment_id=hh.id
                                     left join orders_payments ii on aa.id=ii.order_id
+                                    left join client_pickups jj on aa.pickup_data_id=jj.id
+                                    left join pickup_points kk on jj.pickup_id=kk.id
                                     where aa.status in ('DELIVERED','RTO')
                                     and hh.courier_id!=19
                                     and aa.order_date>'%s' and aa.order_date<'%s'

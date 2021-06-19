@@ -18,7 +18,7 @@ conn = DbConnection.get_db_connection_instance()
 def sync_channel_status(client_prefix=None):
     cur = conn.cursor()
     if not client_prefix:
-        cur.execute(fetch_client_channels_query + "AND aa.channel_id=7")
+        cur.execute(fetch_client_channels_query + " AND aa.channel_id=7")
     else:
         cur.execute(fetch_client_channels_query+" AND aa.client_prefix='%s'"%client_prefix)
     time_now = datetime.utcnow() + timedelta(hours=5.5)

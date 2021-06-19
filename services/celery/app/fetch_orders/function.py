@@ -4,7 +4,8 @@ from requests_oauthlib.oauth1_session import OAuth1Session
 from woocommerce import API
 import logging
 from app.db_utils import DbConnection
-from app.ship_orders.function import kama_chn_sdd_pincodes
+from app.ship_orders.function import kama_chn_sdd_pincodes, kama_TLLTRO_sdd_pincodes, kama_MHCHRO_sdd_pincodes, \
+    kama_MHJTRO_sdd_pincodes, kama_HRDGRO_sdd_pincodes, kama_RJMIRO_sdd_pincodes
 
 from .queries import *
 
@@ -811,7 +812,7 @@ def fetch_easyecom_orders(cur, channel, manual=None):
             if failed_order:
                 raise Exception("Inventory not assigned")
 
-            customer_name = order['customer_name']
+            customer_name = order.get('customer_name') if order.get('customer_name') else order.get('billing_name')
 
             customer_phone = order['contact_num']
             customer_phone = ''.join(e for e in str(customer_phone) if e.isalnum())
@@ -1199,6 +1200,16 @@ def assign_pickup_points_for_unassigned(cur, cur_2, days=5):
             for key, value in wh_dict.items():
                 if key == 'TNPMRO' and order[2] not in kama_chn_sdd_pincodes: #todo generalise this
                     continue
+                if key == 'TLLTRO' and order[2] not in kama_TLLTRO_sdd_pincodes: #todo generalise this
+                    continue
+                if key == 'MHCHRO' and order[2] not in kama_MHCHRO_sdd_pincodes: #todo generalise this
+                    continue
+                if key == 'MHJTRO' and order[2] not in kama_MHJTRO_sdd_pincodes: #todo generalise this
+                    continue
+                if key == 'HRDGRO' and order[2] not in kama_HRDGRO_sdd_pincodes: #todo generalise this
+                    continue
+                if key == 'RJMIRO' and order[2] not in kama_RJMIRO_sdd_pincodes: #todo generalise this
+                    continue
                 if value['count'] == no_sku:
                     warehouse_pincode_str += "('" + key + "','" + str(value['pincode']) + "'),"
 
@@ -1254,7 +1265,7 @@ def assign_pickup_points_for_unassigned(cur, cur_2, days=5):
             cur.execute("""UPDATE orders SET pickup_data_id = %s WHERE id=%s""", (pickup_id[0], order[0]))
             conn.commit()
 
-            if final_wh[0] in ('TNPMRO', ):
+            if final_wh[0] in ('TNPMRO', 'TLLTRO', 'MHCHRO', 'MHJTRO', 'HRDGRO', 'RJMIRO'):
                 push_kama_wondersoft(order[0], cur)
 
         except Exception as e:

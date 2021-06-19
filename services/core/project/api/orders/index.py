@@ -749,8 +749,14 @@ def add_order_post(resp):
         chargeable_weight = data.get('weight')
         if chargeable_weight:
             chargeable_weight = float(chargeable_weight)
+
+        order_date = data.get('order_date')
+        if not order_date:
+            order_date = datetime.utcnow() + timedelta(hours=5.5)
+        else:
+            order_date = datetime.strptime(order_date, "%Y-%m-%d %H:%M:%S")
         new_order = Orders(channel_order_id=str(data.get('order_id')).rstrip(),
-                           order_date=datetime.utcnow() + timedelta(hours=5.5),
+                           order_date=order_date,
                            customer_name=data.get('full_name'),
                            customer_email=data.get('customer_email'),
                            customer_phone=data.get('customer_phone'),
@@ -1962,23 +1968,9 @@ class OrderDetails(Resource):
                 if auth_data['user_group'] == 'super-admin' and order.shipments:
                     resp_obj['remark'] = order.shipments[0].remark
 
-                if not order.exotel_data or order.status not in ('NEW','CANCELED','PENDING PAYMENT'):
-                    pass
-                elif order.exotel_data[0].cod_verified == None:
-                    resp_obj['cod_verification'] = None
-                elif order.exotel_data[0].cod_verified == False:
-                    resp_obj['cod_verification'] = False
-                else:
-                    resp_obj['cod_verification'] = True
-
-                if not order.ndr_verification:
-                    pass
-                elif order.ndr_verification[0].ndr_verified == None:
-                    resp_obj['ndr_verification'] = None
-                elif order.ndr_verification[0].ndr_verified == False:
-                    resp_obj['ndr_verification'] = False
-                else:
-                    resp_obj['ndr_verification'] = True
+                if order.exotel_data:
+                    resp_obj['cod_verification'] = {"confirmed": order.exotel_data[0].cod_verified,
+                                                    "via": order.exotel_data[0].verified_via}
 
                 if order.status in ('NEW','CANCELED','PENDING PAYMENT','READY TO SHIP','PICKUP REQUESTED','NOT PICKED') or not order.shipments:
                     resp_obj['status_change'] = True
@@ -3174,14 +3166,19 @@ def get_pickup_points(resp):
     try:
         cur = conn.cursor()
         auth_data = resp.get('data')
+        page = request.args.get("page", 1)
+        per_page = request.args.get("per_page", 50)
+        search = request.args.get("search", "")
         client_prefix = auth_data.get('client_prefix')
         pickup_points_select_query = """select array_agg(warehouse_prefix) from
                                                     (select distinct bb.warehouse_prefix from client_pickups aa
                                                     left join pickup_points bb on aa.pickup_id=bb.id
                                                     __CLIENT_FILTER__
-                                                    order by bb.warehouse_prefix) xx"""
+                                                    __SEARCH_FILTER__
+                                                    order by bb.warehouse_prefix
+                                                    __PAGINATION__) xx"""
         if auth_data['user_group'] == 'super-admin':
-            pickup_points_select_query = pickup_points_select_query.replace("__CLIENT_FILTER__", "")
+            pickup_points_select_query = pickup_points_select_query.replace("__CLIENT_FILTER__", " where 1=1 ")
         elif auth_data['user_group'] == 'client':
             pickup_points_select_query = pickup_points_select_query.replace("__CLIENT_FILTER__",
                                                                             "where aa.client_prefix='%s'" % str(
@@ -3192,6 +3189,13 @@ def get_pickup_points(resp):
                                                                                 client_prefix))
         else:
             pickup_points_select_query = None
+
+        pickup_points_select_query = pickup_points_select_query.replace('__PAGINATION__', " OFFSET %s LIMIT %s " % (str((page - 1) * per_page), str(per_page)))
+
+        if search:
+            pickup_points_select_query = pickup_points_select_query.replace('__SEARCH_FILTER__', " AND (bb.warehouse_prefix ilike %__SEARCH__% OR bb.pickup_location ilike %__SEARCH__%) ".replace('__SEARCH__', search))
+        else:
+            pickup_points_select_query = pickup_points_select_query.replace('__SEARCH_FILTER__', "")
 
         if pickup_points_select_query:
             cur.execute(pickup_points_select_query)

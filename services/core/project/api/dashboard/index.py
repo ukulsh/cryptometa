@@ -492,3 +492,186 @@ def get_dashboard_delivery_timeline(resp):
         return jsonify(response), 200
     except Exception as e:
         return jsonify(response), 400
+
+
+@dashboard_blueprint.route('/dashboard/v1/staticData', methods=['GET'])
+@authenticate_restful
+def get_static_data(resp):
+    response = {"orders": {"today": 0, "yesterday": 0},
+                "revenue": {"today": 0, "yesterday": 0},
+                "picked": {"today": 0, "yesterday": 0},
+                "delivered": {"today": 0, "yesterday": 0}}
+    cur = conn.cursor()
+    try:
+        auth_data = resp.get('data')
+        if not auth_data:
+            return jsonify({"msg": "Authentication Failed"}), 400
+
+        if auth_data['user_group'] == 'warehouse':
+            response['data'] = {}
+            return jsonify(response), 200
+
+        date_today = datetime.utcnow()+timedelta(hours=5.5)
+        date_today = date_today.strftime('%Y-%m-%d')
+
+        date_yesterday = datetime.utcnow()+timedelta(hours=5.5)-timedelta(days=1)
+        date_yesterday = date_yesterday.strftime('%Y-%m-%d')
+
+        client_prefix = auth_data.get('client_prefix')
+
+        query_to_run_count = """select oc.order_date as req_date, oc.count as orders, ROUND(oc.sum) as revenue, 
+                                pc.count as picked_count, dc.count as delivered_count from
+                                (select order_date, count(id), sum(amount) from
+                                (select order_date::date, aa.id, amount from orders aa
+                                left join orders_payments bb on aa.id=bb.order_id
+                                where status in ('DELIVERED','DISPATCHED','NEW','IN TRANSIT','PENDING','PICKUP REQUESTED','READY TO SHIP','SHIPPED')
+                                and order_date>'__FROM_DATE__'
+                                __CLIENT_FILTER__) xx
+                                group by order_date) oc
+                                left join
+                                (select status_time, count(id) from
+                                (select bb.status_time::date, aa.id from orders aa
+                                left join (select * from order_status where status in ('Picked', 'Shipped')) bb on aa.id=bb.order_id
+                                where bb.status_time>'__FROM_DATE__'
+                                __CLIENT_FILTER__) xx
+                                group by status_time) pc
+                                on oc.order_date = pc.status_time
+                                left join
+                                (select status_time, count(id) from
+                                (select bb.status_time::date, aa.id from orders aa
+                                left join (select * from order_status where status in ('Delivered')) bb on aa.id=bb.order_id
+                                where bb.status_time>'__FROM_DATE__'
+                                __CLIENT_FILTER__) xx
+                                group by status_time) dc
+                                on oc.order_date = dc.status_time""".replace('__FROM_DATE__', date_yesterday)
+
+        all_vendors = None
+        if auth_data['user_group'] == 'multi-vendor':
+            all_vendors = db.session.query(MultiVendor).filter(MultiVendor.client_prefix == client_prefix).first()
+            all_vendors = all_vendors.vendor_list
+
+        if auth_data['user_group'] == 'client':
+            query_to_run_count = query_to_run_count.replace("__CLIENT_FILTER__",
+                                                            "AND aa.client_prefix='%s'" % auth_data['client_prefix'])
+        elif all_vendors:
+            query_to_run_count = query_to_run_count.replace("__CLIENT_FILTER__",
+                                                            "AND aa.client_prefix in %s" % str(tuple(all_vendors)))
+        else:
+            query_to_run_count = query_to_run_count.replace("__CLIENT_FILTER__", "")
+
+        cur.execute(query_to_run_count)
+        count_qs = cur.fetchall()
+
+        for cs in count_qs:
+            if cs[0].strftime('%Y-%m-%d')==date_today:
+                response['orders']['today']=cs[1]
+                response['revenue']['today']=round(cs[2]) if cs[2] else None
+                response['picked']['today']=cs[3]
+                response['delivered']['today']=cs[4]
+            elif cs[0].strftime('%Y-%m-%d')==date_yesterday:
+                response['orders']['yesterday'] = cs[1]
+                response['revenue']['yesterday'] = round(cs[2]) if cs[2] else None
+                response['picked']['yesterday'] = cs[3]
+                response['delivered']['yesterday'] = cs[4]
+
+    except Exception as e:
+        return jsonify(response), 400
+
+    return jsonify(response), 200
+
+
+@dashboard_blueprint.route('/dashboard/v1/graphData', methods=['GET'])
+@authenticate_restful
+def get_graph_data(resp):
+    response = {"graph": list()}
+    cur = conn.cursor()
+    try:
+        auth_data = resp.get('data')
+        if not auth_data:
+            return jsonify({"msg": "Authentication Failed"}), 400
+
+        if auth_data['user_group'] == 'warehouse':
+            response['data'] = {}
+            return jsonify(response), 200
+
+        from_date = request.args.get('from')
+        to_date = request.args.get('to')
+
+        if not from_date:
+            from_date = datetime.utcnow() + timedelta(hours=5.5) - timedelta(days=30)
+            from_date = from_date.strftime('%Y-%m-%d')
+
+        if to_date:
+            to_date = datetime.strptime(to_date, '%Y-%m-%d')
+            to_date = to_date + timedelta(days=1)
+            to_date = to_date.strftime('%Y-%m-%d')
+        else:
+            to_date = datetime.utcnow() + timedelta(hours=5.5) + timedelta(days=1)
+            to_date = to_date.strftime('%Y-%m-%d')
+
+        client_prefix = auth_data.get('client_prefix')
+
+        query_to_run_count = """select oc.order_date as req_date, oc.count as orders, ROUND(oc.sum) as revenue, 
+                                pc.count as picked_count, dc.count as delivered_count from
+                                (select order_date, count(id), sum(amount) from
+                                (select order_date::date, aa.id, amount from orders aa
+                                left join orders_payments bb on aa.id=bb.order_id
+                                where status in ('DELIVERED','DISPATCHED','NEW','IN TRANSIT','PENDING','PICKUP REQUESTED','READY TO SHIP','SHIPPED')
+                                and order_date between '__FROM_DATE__' and '__TO_DATE__'
+                                __CLIENT_FILTER__) xx
+                                group by order_date) oc
+                                left join
+                                (select status_time, count(id) from
+                                (select bb.status_time::date, aa.id from orders aa
+                                left join (select * from order_status where status in ('Picked', 'Shipped')) bb on aa.id=bb.order_id
+                                where bb.status_time between '__FROM_DATE__' and '__TO_DATE__'
+                                __CLIENT_FILTER__) xx
+                                group by status_time) pc
+                                on oc.order_date = pc.status_time
+                                left join
+                                (select status_time, count(id) from
+                                (select bb.status_time::date, aa.id from orders aa
+                                left join (select * from order_status where status in ('Delivered')) bb on aa.id=bb.order_id
+                                where bb.status_time between '__FROM_DATE__' and '__TO_DATE__'
+                                __CLIENT_FILTER__) xx
+                                group by status_time) dc
+                                on oc.order_date = dc.status_time""".replace('__FROM_DATE__', from_date).replace('__TO_DATE__', to_date)
+
+        all_vendors = None
+        if auth_data['user_group'] == 'multi-vendor':
+            all_vendors = db.session.query(MultiVendor).filter(MultiVendor.client_prefix == client_prefix).first()
+            all_vendors = all_vendors.vendor_list
+
+        if auth_data['user_group'] == 'client':
+            query_to_run_count = query_to_run_count.replace("__CLIENT_FILTER__",
+                                                            "AND aa.client_prefix='%s'" % auth_data['client_prefix'])
+        elif all_vendors:
+            query_to_run_count = query_to_run_count.replace("__CLIENT_FILTER__",
+                                                            "AND aa.client_prefix in %s" % str(tuple(all_vendors)))
+        else:
+            query_to_run_count = query_to_run_count.replace("__CLIENT_FILTER__", "")
+
+        cur.execute(query_to_run_count)
+        count_qs = cur.fetchall()
+
+        total_orders = 0
+        total_revenue = 0
+        total_picked = 0
+        total_delivered = 0
+        for cs in count_qs:
+            total_orders += cs[1] if cs[1] else 0
+            total_revenue += cs[2] if cs[2] else 0
+            total_picked += cs[3] if cs[3] else 0
+            total_delivered += cs[4] if cs[4] else 0
+            response['graph'].append({"date": cs[0].strftime('%Y-%m-%d'), "orders": cs[1],
+                                     "revenue": round(cs[2]) if cs[2] else None,
+                                     "picked": cs[3], "delivered": cs[4]})
+
+        response['total_orders'] = total_orders
+        response['total_revenue'] = round(total_revenue) if total_revenue else None
+        response['total_picked'] = total_picked
+        response['total_delivered'] = total_delivered
+    except Exception as e:
+        return jsonify(response), 400
+
+    return jsonify(response), 200

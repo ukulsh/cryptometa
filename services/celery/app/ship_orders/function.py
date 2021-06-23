@@ -1536,6 +1536,7 @@ def ship_bluedart_orders(cur, courier, courier_name, order_ids, order_id_tuple, 
                 services['CreditReferenceNo'] = str(order[0])
                 if courier[1]=='DHANIPHARMACY':
                     services['CreditReferenceNo'] = "dp" + str(order[0])
+                    services['PackType'] = "L"
 
                 if order[26].lower() == "cod":
                     services["SubProductCode"] = "C"
@@ -2065,6 +2066,9 @@ def ship_selfshp_orders(cur, courier, courier_name, order_ids, order_id_tuple, b
             data_tuple = tuple([("WIQ"+str(order[0]), "Success", order[0], pickup_point[1],
                 courier[9], json.dumps(dimensions), volumetric_weight, weight, "", pickup_point[2],
                 "", None, None)])
+
+            if order[46] == 7:
+                push_awb_easyecom(order[39], order[36], "WIQ"+str(order[0]), courier, cur, order[55], order[56])
 
             cur.execute(insert_shipments_data_query, data_tuple)
             ship_temp = cur.fetchone()

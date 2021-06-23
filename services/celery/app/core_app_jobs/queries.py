@@ -122,8 +122,8 @@ update_easyecom_inventory_query = """update products_quantity
                                     WHERE warehouse_prefix=%s
                                     and product_id in (select id from master_products where sku=%s and client_prefix=%s);"""
 
-insert_easyecom_inventory_query = """INSERT into products_quantity (product_id, available_quantity, warehouse_prefix, status, current_quantity, inline_quantity, total_quantity) 
-                                    select aa.id, %s, %s, 'APPROVED', %s, %s, %s from master_products aa 
+insert_easyecom_inventory_query = """INSERT into products_quantity (product_id, available_quantity, warehouse_prefix, status, current_quantity, inline_quantity, total_quantity, approved_quantity) 
+                                    select aa.id, %s, %s, 'APPROVED', %s, %s, %s, %s from master_products aa 
                                     where client_prefix=%s and sku=%s"""
 
 get_pickup_requests_query = """select aa.pickup_data_id,  bb.courier_id, dd.warehouse_prefix, aa.id, dd.id from orders aa

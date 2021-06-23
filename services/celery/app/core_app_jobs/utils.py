@@ -1,4 +1,4 @@
-import psycopg2, requests, os, json, logging, boto3
+import psycopg2, requests, os, json, logging, boto3, hmac, hashlib, base64
 from datetime import datetime, timedelta
 from time import sleep
 from email.mime.multipart import MIMEMultipart
@@ -90,6 +90,33 @@ def shopify_markpaid(order):
         }
     }
     req_ful = requests.post(get_transactions_url, data=json.dumps(transaction_data),
+                            headers=tra_header)
+
+
+def instamojo_push_awb(order):
+    push_awb_url = "https://api.instamojo.com/v2/store/orders/%s/"%str(order[5])
+    tra_header = {'Authorization': 'Bearer '+order[7]}
+    tracking_link = "https://webapp.wareiq.com/tracking/%s" % str(order[1])
+    push_awb_data = {
+        "shipping": {
+            "tracking_url": tracking_link,
+            "waybill": str(order[1]),
+            "courier_partner": "WareIQ"
+        }
+    }
+    req_ful = requests.patch(push_awb_url, data=json.dumps(push_awb_data),
+                            headers=tra_header)
+
+
+def instamojo_update_status(order, status, status_text):
+    push_awb_url = "https://api.instamojo.com/v2/store/orders/%s/update-order/"%str(order[5])
+    tra_header = {'Authorization': 'Bearer '+order[7]}
+    push_awb_data = {
+                      "order_status": status,
+                      "comments": status_text
+                    }
+
+    req_ful = requests.patch(push_awb_url, data=json.dumps(push_awb_data),
                             headers=tra_header)
 
 
@@ -307,6 +334,29 @@ def update_easyecom_status(order, status_id):
                             headers=ful_header)
 
 
+def update_bikayi_status(order, status):
+    bikayi_update_url = """https://asia-south1-bikai-d5ee5.cloudfunctions.net/platformPartnerFunctions-updateOrder"""
+    key = "3f638d4ff80defb82109951b9638fae3fe0ff8a2d6dc20ed8c493783"
+    secret = "6e130520777eb175c300aefdfc1270a4f9a57f2309451311ad3fdcfb"
+    timestamp = (datetime.utcnow()+timedelta(hours=5.5)).strftime("%s")
+    req_body = {"appId": "WAREIQ",
+                "merchantId": order[3].split("_")[1],
+                "timestamp": timestamp,
+                "orderId": str(order[12]),
+                "status": status,
+                "trackingLink":"https://webapp.wareiq.com/tracking/"+order[1],
+                "notes": status,
+                "wayBill": order[1]
+                }
+    signature = hmac.new(bytes(secret.encode()),
+                         (key.encode() + "|".encode() + base64.b64encode(
+                             json.dumps(req_body).replace(" ", "").encode())),
+                         hashlib.sha256).hexdigest()
+    headers = {"Content-Type": "application/json",
+               "authorization": signature}
+    data = requests.post(bikayi_update_url, headers=headers, data=json.dumps(req_body)).json()
+
+
 def update_ndr_shipment(order, cur, ndr_reason):
     insert_ndr_ver_tuple = (order[0], "", datetime.utcnow() + timedelta(hours=5.5))
     ndr_ship_tuple = (
@@ -356,6 +406,19 @@ def mark_picked_channel(order, cur, courier=None):
             except Exception as e:
                 logger.error("Couldn't update Easyecom for: " + str(order[0])
                              + "\nError: " + str(e.args))
+        elif order[14] == 8:  # Bikayi fulfilment
+            try:
+                update_bikayi_status(order, "IN_PROGRESS")
+            except Exception as e:
+                logger.error("Couldn't update Bikayi for: " + str(order[0])
+                             + "\nError: " + str(e.args))
+        elif order[14] == 13: #Instamojo fulfilment
+            try:
+                instamojo_push_awb(order)
+                instamojo_update_status(order, "dispatched", "Order picked up by courier")
+            except Exception as e:
+                logger.error("Couldn't update Instamojo for: " + str(order[0])
+                             + "\nError: " + str(e.args))
 
 
 def mark_delivered_channel(order):
@@ -392,6 +455,18 @@ def mark_delivered_channel(order):
             update_easyecom_status(order, 3)
         except Exception as e:
             logger.error("Couldn't update Easyecom for: " + str(order[0])
+                         + "\nError: " + str(e.args))
+    elif order[14] == 8:  # Bikayi delivered
+        try:
+            update_bikayi_status(order, "DELIVERED")
+        except Exception as e:
+            logger.error("Couldn't update Bikayi for: " + str(order[0])
+                         + "\nError: " + str(e.args))
+    elif order[14] == 13:  # Instamojo delivered
+        try:
+            instamojo_update_status(order, "completed", "Order delivered to customer")
+        except Exception as e:
+            logger.error("Couldn't update Instamojo for: " + str(order[0])
                          + "\nError: " + str(e.args))
 
 
@@ -431,7 +506,18 @@ def mark_rto_channel(order):
             except Exception as e:
                 logger.error("Couldn't update Easyecom for: " + str(order[0])
                              + "\nError: " + str(e.args))
-
+        elif order[14] == 8:  # Bikayi RTO
+            try:
+                update_bikayi_status(order, "RETURNED")
+            except Exception as e:
+                logger.error("Couldn't update Bikayi for: " + str(order[0])
+                             + "\nError: " + str(e.args))
+        elif order[14] == 13:  # Instamojo RTO
+            try:
+                instamojo_update_status(order, "completed", "Order returned to seller")
+            except Exception as e:
+                logger.error("Couldn't update instamojo for: " + str(order[0])
+                             + "\nError: " + str(e.args))
 
 def exotel_send_shipped_sms(order, courier):
     try:

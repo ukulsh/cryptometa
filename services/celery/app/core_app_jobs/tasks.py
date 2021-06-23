@@ -581,7 +581,7 @@ def sync_all_products_with_channel(client_prefix):
     cur = conn.cursor()
     cur.execute("""select shop_url, api_key, api_password, channel_name, bb.id from client_channel aa
                     left join master_channels bb on aa.channel_id=bb.id
-                    where connection_status=true and status=true and client_prefix='%s'"""%client_prefix)
+                    where connection_status=true and client_prefix='%s'"""%client_prefix)
     all_channels = cur.fetchall()
     for channel in all_channels:
         try:
@@ -1237,9 +1237,10 @@ def update_available_quantity():
                             quantity_dict[new_prod_id][warehouse]['inline_quantity'] += quan_values['inline_quantity'] * mul_fac
                             quantity_dict[new_prod_id][warehouse]['rto_quantity'] += quan_values['rto_quantity'] * mul_fac
 
-            cur.execute("""update products_quantity set available_quantity=approved_quantity, current_quantity=approved_quantity, 
-                            inline_quantity=0, rto_quantity=0;""")
-            conn.commit()
+            if datetime.utcnow().hour==22:
+                cur.execute("""update products_quantity set available_quantity=approved_quantity, current_quantity=approved_quantity, 
+                                inline_quantity=0, rto_quantity=0 WHERE approved_quantity is not null;""")
+                conn.commit()
 
             for prod_id, wh_dict in quantity_dict.items():
                 for warehouse, quan_values in wh_dict.items():
@@ -1302,7 +1303,7 @@ def update_available_quantity_from_easyecom():
                                             if cur.fetchall():
                                                 cur.execute(update_easyecom_inventory_query, (val_tuple[1], val_tuple[2], val_tuple[1]+val_tuple[2], warehouse_prefix, val_tuple[0], client[0]))
                                             else:
-                                                cur.execute(insert_easyecom_inventory_query, (val_tuple[1], warehouse_prefix, val_tuple[1]+val_tuple[2], val_tuple[2], val_tuple[1], client[0], val_tuple[0]))
+                                                cur.execute(insert_easyecom_inventory_query, (val_tuple[1], warehouse_prefix, val_tuple[1]+val_tuple[2], val_tuple[2], val_tuple[1], val_tuple[1], client[0], val_tuple[0]))
 
                                         conn.commit()
 

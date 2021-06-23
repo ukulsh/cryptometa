@@ -1168,7 +1168,7 @@ def cancel_order_on_channels(order):
 
         req = requests.post(url, headers=headers, data=data)
 
-    if order.client_channel and order.client_channel.mark_canceled and order.order_id_channel_unique:
+    if order.client_channel and order.client_channel.mark_canceled!=False and order.order_id_channel_unique:
         if order.client_channel.channel_id == 6: # cancel on magento
             cancel_header = {'Content-Type': 'application/json',
                              'Authorization': 'Bearer ' + order.client_channel.api_key}

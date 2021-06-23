@@ -42,6 +42,9 @@ def update_status(sync_ext=None):
             elif courier[1].startswith('Ecom'):
                 track_ecomxp_orders(courier, cur)
 
+            elif courier[1].startswith('Pidge'):
+                track_pidge_orders(courier, cur)
+
         except Exception as e:
             logger.error("Status update failed: " + str(e.args[0]))
 
@@ -219,6 +222,7 @@ def track_delhivery_orders(courier, cur):
                 send_delivered_event(customer_phone, orders_dict[current_awb], "Delhivery", tracking_link)
 
             if new_status == 'DTO':
+                webhook_updates(orders_dict[current_awb], cur, new_status, "Shipment delivered to origin", "", (datetime.utcnow()+timedelta(hours=5.5)).strftime("%Y-%m-%d %H:%M:%S"))
                 sms_to_key = "Messages[%s][To]" % str(exotel_idx)
                 sms_body_key = "Messages[%s][Body]" % str(exotel_idx)
                 exotel_sms_data[sms_to_key] = customer_phone
@@ -231,6 +235,7 @@ def track_delhivery_orders(courier, cur):
                 exotel_sms_data[sms_to_key] = customer_phone
                 exotel_sms_data[sms_body_key] = "Picked: Your %s order via Delhivery - https://webapp.wareiq.com/tracking/%s . Powered by WareIQ" % (client_name, current_awb)
                 exotel_idx += 1
+                webhook_updates(orders_dict[current_awb], cur, "DTO "+new_status, "Shipment picked from customer", "", (datetime.utcnow()+timedelta(hours=5.5)).strftime("%Y-%m-%d %H:%M:%S"))
 
             if new_status == 'RTO':
                 update_rto_on_channels(orders_dict[current_awb])
@@ -1182,6 +1187,162 @@ def track_ecomxp_orders(courier, cur):
     conn.commit()
 
 
+def track_pidge_orders(courier, cur):
+    cur.execute(get_status_update_orders_query % str(courier[0]))
+    all_orders = cur.fetchall()
+    pickup_count = 0
+    pickup_dict = dict()
+    headers = {"Authorization": "Bearer " + courier[2],
+               "Content-Type": "application/json",
+               "platform": "Postman",
+               "deviceId": "abc",
+               "buildNumber": "123"}
+    for order in all_orders:
+        try:
+            ret_order = requests.get("https://dev-release-v1.pidge.in/v2.0/vendor/order/"+str(order[0]), headers=headers).json()
+            payload = ret_order['data']['current_status']
+            reason_code_number = payload.get('trip_status')
+            if not reason_code_number:
+                continue
+
+            if payload.get("attempt_type") == 20:
+                continue
+
+            if reason_code_number in (20, 100, 120, 5):
+                continue
+
+            is_return = False
+            if payload.get("attempt_type") == 30:
+                is_return = True
+            status = ""
+
+            if reason_code_number in pidge_status_mapping:
+                status = pidge_status_mapping[reason_code_number][0]
+                status_type = "UD" if not is_return else "RT"
+
+            if not status or status == 'READY TO SHIP':
+                continue
+
+            scan_list = ret_order['data']['past_status']
+
+            new_status = status
+            current_awb = str(ret_order['data']['current_status']['PBID'])
+            status_detail = None
+
+            if new_status in ('READY TO SHIP', 'PICKUP REQUESTED'):
+                continue
+
+            try:
+                order_status_tuple = (order[0], order[10], courier[0])
+                cur.execute(select_statuses_query, order_status_tuple)
+                all_scans = cur.fetchall()
+                all_scans_dict = dict()
+                for temp_scan in all_scans:
+                    all_scans_dict[temp_scan[2]] = temp_scan
+                new_status_dict = dict()
+                for each_scan in scan_list:
+                    if each_scan.get("attempt_type") == 20:
+                        continue
+                    if each_scan.get("trip_status") in (20, 100, 120, 5) or each_scan.get("trip_status") not in pidge_status_mapping:
+                        continue
+
+                    status_time = each_scan['status_datetime']
+                    if status_time:
+                        status_time = datetime.strptime(status_time, "%Y-%m-%dT%H:%M:%S.%fZ")
+
+                    to_record_status = pidge_status_mapping[each_scan.get("trip_status")][2]
+
+                    if to_record_status not in new_status_dict:
+                        new_status_dict[to_record_status] = (order[0], courier[0],
+                                                             order[10],
+                                                             each_scan['trip_status'],
+                                                             to_record_status,
+                                                             each_scan['trip_status'],
+                                                             "",
+                                                             "",
+                                                             status_time)
+                    elif to_record_status == 'In Transit' and new_status_dict[to_record_status][
+                        8] < status_time:
+                        new_status_dict[to_record_status] = (order[0], courier[0],
+                                                             order[10],
+                                                             each_scan['trip_status'],
+                                                             to_record_status,
+                                                             each_scan['trip_status'],
+                                                             "",
+                                                             "",
+                                                             status_time)
+
+                for status_key, status_value in new_status_dict.items():
+                    if status_key not in all_scans_dict:
+                        cur.execute("INSERT INTO order_status (order_id, courier_id, shipment_id, "
+                                    "status_code, status, status_text, location, location_city, "
+                                    "status_time) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s);",
+                                    status_value)
+
+                    elif status_key == 'In Transit' and status_value[8] > all_scans_dict[status_key][5]:
+                        cur.execute("UPDATE order_status SET location=%s, location_city=%s, status_time=%s"
+                                    " WHERE id=%s;", (status_value[6], status_value[7], status_value[8],
+                                                      all_scans_dict[status_key][0]))
+
+            except Exception as e:
+                logger.error(
+                    "Open status failed for id: " + str(order[0]) + "\nErr: " + str(
+                        e.args[0]))
+
+            customer_phone = order[4].replace(" ", "")
+            customer_phone = "0" + customer_phone[-10:]
+
+            if new_status == 'DELIVERED':
+                update_delivered_on_channels(order)
+                webhook_updates(order, cur, new_status, "Shipment Delivered", "", (datetime.utcnow()+timedelta(hours=5.5)).strftime("%Y-%m-%d %H:%M:%S"))
+                tracking_link = "https://webapp.wareiq.com/tracking/" + current_awb
+                tracking_link = UrlShortner.get_short_url(tracking_link, cur)
+                send_delivered_event(customer_phone, order, "Pidge", tracking_link)
+
+            if new_status == 'RTO':
+                update_rto_on_channels(order)
+                webhook_updates(order, cur, new_status, "Shipment RTO", "", (datetime.utcnow()+timedelta(hours=5.5)).strftime("%Y-%m-%d %H:%M:%S"))
+
+            if order[2] in ('READY TO SHIP', 'PICKUP REQUESTED', 'NOT PICKED') and new_status == 'IN TRANSIT':
+                pickup_count += 1
+                if order[11] not in pickup_dict:
+                    pickup_dict[order[11]] = 1
+                else:
+                    pickup_dict[order[11]] += 1
+                time_now = datetime.utcnow() + timedelta(hours=5.5)
+                cur.execute("UPDATE order_pickups SET picked=%s, pickup_time=%s WHERE order_id=%s",
+                            (True, time_now, order[0]))
+
+                update_picked_on_channels(order, cur, courier=courier)
+                webhook_updates(order, cur, new_status, "Shipment Picked Up", "", (datetime.utcnow()+timedelta(hours=5.5)).strftime("%Y-%m-%d %H:%M:%S"))
+
+                tracking_link = "https://webapp.wareiq.com/tracking/" + current_awb
+                tracking_link = UrlShortner.get_short_url(tracking_link, cur)
+                send_shipped_event(customer_phone, order[19], order, "", "Pidge", tracking_link)
+
+            if order[2] != new_status:
+                status_update_tuple = (new_status, status_type, status_detail, order[0])
+                cur.execute(order_status_update_query, status_update_tuple)
+
+            conn.commit()
+
+        except Exception as e:
+            logger.error("status update failed for " + str(order[0]) + "    err:" + str(e.args[0]))
+
+    if pickup_count:
+        logger.info("Total Picked: " + str(pickup_count) + "  Time: " + str(datetime.utcnow()))
+        try:
+            for key, value in pickup_dict.items():
+                logger.info("picked for pickup_id " + str(key) + ": " + str(value))
+                date_today = datetime.now().strftime('%Y-%m-%d')
+                pickup_count_tuple = (value, courier[0], key, date_today)
+                cur.execute(update_pickup_count_query, pickup_count_tuple)
+        except Exception as e:
+            logger.error("Couldn't update pickup count for : " + str(e.args[0]))
+
+    conn.commit()
+
+
 def verification_text(current_order, cur, ndr_reason=None):
 
     ndr_confirmation_link = "http://track.wareiq.com/core/v1/passthru/ndr?CustomField=%s" % str(current_order[0])
@@ -1623,6 +1784,12 @@ ecom_express_ndr_reasons = {
                               "2445": 9,
                             }
 
+pidge_status_mapping = {130: ("IN TRANSIT", "UD", "Picked", "Shipment picked up"),
+                        150: ("IN TRANSIT", "UD", "In Transit", "Shipment in transit"),
+                        170: ("DISPATCHED", "UD", "Out for delivery", "Shipment out for delivery"),
+                        190: ("DELIVERED", "UD", "Delivered", "Shipment delivered"),
+                        0: ("CANCELED", "UD", "Cancelled", "order cancelled")}
+
 
 def woocommerce_fulfillment(order):
     wcapi = API(
@@ -1768,6 +1935,33 @@ def shopify_markpaid(order):
         }
     }
     req_ful = requests.post(get_transactions_url, data=json.dumps(transaction_data),
+                            headers=tra_header)
+
+
+def instamojo_push_awb(order):
+    push_awb_url = "https://api.instamojo.com/v2/store/orders/%s/"%str(order[5])
+    tra_header = {'Authorization': 'Bearer '+order[7]}
+    tracking_link = "https://webapp.wareiq.com/tracking/%s" % str(order[1])
+    push_awb_data = {
+        "shipping": {
+            "tracking_url": tracking_link,
+            "waybill": str(order[1]),
+            "courier_partner": "WareIQ"
+        }
+    }
+    req_ful = requests.patch(push_awb_url, data=json.dumps(push_awb_data),
+                            headers=tra_header)
+
+
+def instamojo_update_status(order, status, status_text):
+    push_awb_url = "https://api.instamojo.com/v2/store/orders/%s/update-order/"%str(order[5])
+    tra_header = {'Authorization': 'Bearer '+order[7]}
+    push_awb_data = {
+                      "order_status": status,
+                      "comments": status_text
+                    }
+
+    req_ful = requests.patch(push_awb_url, data=json.dumps(push_awb_data),
                             headers=tra_header)
 
 
@@ -1976,6 +2170,13 @@ def update_picked_on_channels(order, cur, courier=None):
             except Exception as e:
                 logger.error("Couldn't update Easyecom for: " + str(order[0])
                              + "\nError: " + str(e.args))
+        elif order[14] == 13: #Instamojo fulfilment
+            try:
+                instamojo_push_awb(order)
+                instamojo_update_status(order, "dispatched", "Order picked up by courier")
+            except Exception as e:
+                logger.error("Couldn't update Instamojo for: " + str(order[0])
+                             + "\nError: " + str(e.args))
 
 
 def update_delivered_on_channels(order):
@@ -2019,6 +2220,12 @@ def update_delivered_on_channels(order):
         except Exception as e:
             logger.error("Couldn't update Bikayi for: " + str(order[0])
                          + "\nError: " + str(e.args))
+    elif order[14] == 13:  # Instamojo delivered
+        try:
+            instamojo_update_status(order, "completed", "Order delivered to customer")
+        except Exception as e:
+            logger.error("Couldn't update Instamojo for: " + str(order[0])
+                         + "\nError: " + str(e.args))
 
 
 def update_rto_on_channels(order):
@@ -2050,19 +2257,23 @@ def update_rto_on_channels(order):
                 lotus_organics_update(order, "RTO")
             except Exception as e:
                 pass
-
         elif order[14] == 7:  # Easyecom RTO
             try:
                 update_easyecom_status(order, 9)
             except Exception as e:
                 logger.error("Couldn't update Easyecom for: " + str(order[0])
                              + "\nError: " + str(e.args))
-
         elif order[14] == 8:  # Bikayi RTO
             try:
                 update_bikayi_status(order, "RETURNED")
             except Exception as e:
                 logger.error("Couldn't update Bikayi for: " + str(order[0])
+                             + "\nError: " + str(e.args))
+        elif order[14] == 13:  # Instamojo RTO
+            try:
+                instamojo_update_status(order, "completed", "Order returned to seller")
+            except Exception as e:
+                logger.error("Couldn't update instamojo for: " + str(order[0])
                              + "\nError: " + str(e.args))
 
 

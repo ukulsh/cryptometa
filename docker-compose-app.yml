@@ -1,0 +1,78 @@
+version: '2.0'
+
+services:
+
+  users:
+    build:
+      context: ./services/users
+      dockerfile: Dockerfile-prod
+    expose:
+      - 5000
+    environment:
+      - FLASK_ENV=production
+      - APP_SETTINGS=project.config.ProductionConfig
+      - CORE_SERVICE_URL=http://core:5000
+      - CELERY_SERVICE_URL=http://celery:5000
+      - DATABASE_URL=postgresql://postgres:aSderRFgd23@wareiq-core-prod2.cvqssxsqruyc.us-east-1.rds.amazonaws.com:5432/users_prod  # new
+      - SECRET_KEY=${SECRET_KEY}
+
+  nginx:
+    build:
+      context: ./services/nginx
+      dockerfile: Dockerfile-prod
+    restart: always
+    ports:
+      - 80:80
+      - 443:443
+
+  core:
+    build:
+      context: ./services/core
+      dockerfile: Dockerfile-prod
+    expose:
+      - 5000
+    environment:
+      - FLASK_ENV=production
+      - APP_SETTINGS=project.config.ProductionConfig
+      - USERS_SERVICE_URL=http://users:5000
+      - CELERY_SERVICE_URL=http://celery:5000
+      - SECRET_KEY=my_precious
+      - DATABASE_URL=postgresql://postgres:aSderRFgd23@wareiq-core-prod2.cvqssxsqruyc.us-east-1.rds.amazonaws.com:5432/core_prod
+      - DATABASE_HOST=wareiq-core-prod2.cvqssxsqruyc.us-east-1.rds.amazonaws.com
+      - DATABASE_HOST_PINCODE=wareiq-core-prod.cvqssxsqruyc.us-east-1.rds.amazonaws.com
+      - DATABASE_NAME=core_prod
+      - DATABASE_USER=postgres
+      - DATABASE_PASSWORD=aSderRFgd23
+
+  celery:
+    build:
+      context: ./services/celery
+      dockerfile: Dockerfile-prod
+    ports:
+      - 5000
+    environment:
+      - FLASK_ENV=production
+      - USERS_SERVICE_URL=http://users:5000
+      - SECRET_KEY=my_precious
+      - DATABASE_URL=postgresql://postgres:aSderRFgd23@wareiq-core-prod2.cvqssxsqruyc.us-east-1.rds.amazonaws.com:5432/core_prod
+      - DATABASE_HOST=wareiq-core-prod2.cvqssxsqruyc.us-east-1.rds.amazonaws.com
+      - DATABASE_HOST_PINCODE=wareiq-core-prod.cvqssxsqruyc.us-east-1.rds.amazonaws.com
+      - DATABASE_NAME=core_prod
+      - DATABASE_NAME_USER=users_prod
+      - DATABASE_USER=postgres
+      - DATABASE_PASSWORD=aSderRFgd23
+
+  rabbitmq:
+    image: rabbitmq
+    build:
+      context: ./services/rabbitmq
+      dockerfile: Dockerfile-prod
+    ports:
+      - 5672:5672
+      - 15672:15672
+
+  flower:
+    image: mher/flower
+    command: ["flower", "--broker=amqp://ravi:Kad97711@rabbitmq:5672", "--port=8888", "--url-prefix=flower", "--basic_auth=ravi:Kad97711"]
+    ports:
+      - 8888:8888

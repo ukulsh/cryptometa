@@ -69,6 +69,14 @@ def fetch_orders(client_prefix=None, sync_all=None):
                 conn.commit()
                 logger.error("Couldn't fetch orders: " + str(channel[1]) + "\nError: " + str(e.args))
 
+        elif channel[11] == "Instamojo":
+            try:
+                fetch_instamojo_orders(cur, channel, manual=True if client_prefix or sync_30_days else None)
+            except Exception as e:
+                cur.execute("UPDATE client_channel SET connection_status=false, status=false WHERE id=%s;" % str(channel[0]))
+                conn.commit()
+                logger.error("Couldn't fetch orders: " + str(channel[1]) + "\nError: " + str(e.args))
+
     if not client_prefix:
         assign_pickup_points_for_unassigned(cur, cur_2)
         update_thirdwatch_data(cur)
@@ -1141,6 +1149,176 @@ def fetch_bikayi_orders(cur, channel, manual=None):
     conn.commit()
 
 
+def fetch_instamojo_orders(cur, channel, manual=None):
+
+    time_2_hours_ago = datetime.utcnow() + timedelta(hours=3.5)
+    if manual:
+        created_after = datetime.utcnow() - timedelta(days=30)
+        created_after = created_after.strftime("%Y-%m-%dT%X")
+    elif channel[7] and channel[7]<time_2_hours_ago:
+        created_after = channel[7].strftime("%Y-%m-%dT%X")
+    else:
+        created_after = time_2_hours_ago.strftime("%Y-%m-%dT%X")
+
+    data = list()
+    last_synced_time = datetime.utcnow() + timedelta(hours=5.5)
+    instamojo_orders_url = "%s/v2/store/orders/?created__gte=%s" % (channel[5], created_after)
+    headers = {"Authorization": "Bearer "+channel[3]}
+    while instamojo_orders_url:
+        req = requests.get(instamojo_orders_url, headers=headers)
+        if req.status_code==401:
+            req_auth = requests.post('https://api.instamojo.com/oauth2/token/', data={
+                'grant_type': 'refresh_token',
+                'client_id': "jF2ZO9CvSqBTyokDpr8WOKCyLaamLZwHH02tZ5NJ",
+                'client_secret': "cXqybX916HwH7xtymiZi5xqwiAofnSVtEANE9DfMYcPbGGHPSlTyiuUky0EndIptBMfatwAtFOOMve5CU25nC3jz1T3iRlAW4khmg8MDDeAK6awaTScg68EK3jrGku9Q",
+                'refresh_token': channel[4],
+            }).json()
+            cur.execute("""UPDATE client_channel set api_key=%s, api_password=%s WHERE id=%s""", (req_auth['access_token'],
+                                                                                                  req_auth['refresh_token'],
+                                                                                                  channel[0]))
+            conn.commit()
+            headers = {"Authorization": "Bearer " + req_auth['access_token']}
+            req = requests.get(instamojo_orders_url, headers=headers)
+        req = req.json()
+        if req['orders']:
+            data += req['orders']
+            instamojo_orders_url = req['next'] if req.get('next') else None
+        else:
+            instamojo_orders_url = None
+    if not data:
+        return None
+    for order in data:
+        try:
+            cur.execute("SELECT id from orders where order_id_channel_unique='%s' and client_prefix='%s'" % (
+            str(order['id']), channel[1]))
+            try:
+                existing_order = cur.fetchone()[0]
+            except Exception as e:
+                existing_order = False
+                pass
+            if existing_order:
+                continue
+
+            pickup_data_id=None
+
+            customer_name = order.get('firstname')
+            if order.get('lastname'):
+                customer_name += " " + order.get('lastname')
+
+            customer_phone = order['contact']
+            customer_phone = ''.join(e for e in str(customer_phone) if e.isalnum())
+            customer_phone = "0" + customer_phone[-10:]
+
+            shipping_tuple = (order.get('firstname'),
+                              order.get('lastname'),
+                              order['address'],
+                              "",
+                              order['city'],
+                              order['code'],
+                              order['state'],
+                              "India" if len(order['code'])==6 else "",
+                              customer_phone,
+                              None,
+                              None,
+                              "IN" if len(order['code'])==6 else ""
+                              )
+
+            billing_tuple = shipping_tuple
+
+            cur.execute(insert_shipping_address_query, shipping_tuple)
+            shipping_address_id = cur.fetchone()[0]
+
+            cur.execute(insert_billing_address_query, billing_tuple)
+            billing_address_id = cur.fetchone()[0]
+
+            channel_order_id = str(order['id'])
+
+            order_status="NEW"
+            master_channel_id=13
+
+            orders_tuple = (
+                channel_order_id, order['created'], customer_name, order['email'],
+                customer_phone if customer_phone else "", shipping_address_id, billing_address_id,
+                datetime.utcnow()+timedelta(hours=5.5), order_status, channel[1], channel[0], str(order['id']),
+                pickup_data_id, master_channel_id, datetime.utcnow()+timedelta(hours=5.5))
+
+            cur.execute(insert_orders_data_query, orders_tuple)
+            order_id = cur.fetchone()[0]
+
+            total_amount = float(order['total_order'])
+            shipping_amount = float(order['details'].get('shipping_charge')) if order['details'].get('shipping_charge') else 0
+
+            for prod in order['details']['items']:
+                product_sku = str(prod['id'])
+                prod_tuple = (product_sku, channel[1])
+                cur.execute(select_products_query, prod_tuple)
+                master_product_id = None
+                try:
+                    qry_obj = cur.fetchone()
+                    product_id = qry_obj[0]
+                    master_product_id = qry_obj[1]
+                except Exception:
+                    dimensions=None
+                    weight=None
+                    subcategory_id = None
+                    master_sku = prod['sku']
+                    if not master_sku:
+                        master_sku = product_sku
+                    if master_sku and not master_product_id:
+                        cur.execute(select_master_products_query, (master_sku, channel[1]))
+                        try:
+                            master_product_id = cur.fetchone()[0]
+                        except Exception:
+                            master_product_insert_tuple = (prod['title'], master_sku, True, channel[1], datetime.now(), dimensions,
+                                                    float(prod['final_price']) if prod['final_price'] else None, weight, subcategory_id)
+                            cur.execute(insert_master_product_query, master_product_insert_tuple)
+                            master_product_id = cur.fetchone()[0]
+
+                    product_insert_tuple = (prod['title'], product_sku, channel[2],
+                                            channel[1], datetime.now(), dimensions,
+                                            float(prod['final_price']) if prod['final_price'] else None, weight, master_sku, subcategory_id, master_product_id)
+                    cur.execute(insert_product_query, product_insert_tuple)
+                    product_id = cur.fetchone()[0]
+
+                tax_lines = list()
+                selling_price = prod.get('final_price', 0) if prod.get('final_price') != None else 0
+                if selling_price:
+                    selling_price = float(selling_price)
+
+                op_tuple = (product_id, order_id, prod['quantity'], float(prod['quantity'] * round(float(selling_price), 1) if selling_price else 0), None, json.dumps(tax_lines), master_product_id)
+                cur.execute(insert_op_association_query, op_tuple)
+
+            subtotal_amount = total_amount - shipping_amount
+
+            if str(order['payment_method']).lower() in ('cod', 'cashondelivery', 'cash-on-delivery'):
+                financial_status = 'COD'
+            elif order['payment_method'] is None:
+                financial_status = "Unknown"
+            else:
+                financial_status = 'Prepaid'
+
+            payments_tuple = (
+                financial_status, total_amount, subtotal_amount,
+                shipping_amount, "INR", order_id)
+
+            cur.execute(insert_payments_data_query, payments_tuple)
+            cur.execute("UPDATE failed_orders SET synced=true WHERE channel_order_id=%s and client_channel_id=%s", (str(order['id']), channel[0]))
+        except Exception as e:
+            conn.rollback()
+            cur.execute(insert_failed_order_query, (str(order['id']), order['created'], order.get('firstname'), order['email'],
+                                                    order['contact'], str(e.args[0]), False, channel[1], channel[0], 13,
+                                                    str(order['id']), datetime.utcnow()))
+            logger.error("order fetch failed for" + str(order['id']) + "\nError:" + str(e))
+
+        conn.commit()
+
+    if data:
+        last_sync_tuple = (str(data[-1]['id']), last_synced_time, channel[0])
+        cur.execute(update_last_fetched_data_query, last_sync_tuple)
+
+    conn.commit()
+
+
 def assign_pickup_points_for_unassigned(cur, cur_2, days=5):
     time_after = datetime.utcnow() - timedelta(days=days)
     cur.execute(get_orders_to_assign_pickups, (time_after,))
@@ -1492,7 +1670,6 @@ def push_kama_wondersoft(unique_id, cur=conn.cursor()):
                                 "LastName": order[1],
                                 "MobileNumber": int(order[2]),
                                 "EmailID": order[3] if order[3] else "test@gmail.com",
-                                "GSTIN": order[4],
                                 "CustomerAddressLine1": str(order[5])+str(order[6]),
                                 "CustomerAddressLine2": "",
                                 "CustomerAddressLine3": "",

@@ -1675,7 +1675,7 @@ def push_kama_wondersoft(unique_id, cur=conn.cursor()):
                                 "CustomerAddressLine3": "",
                                 "CustomerCityName": order[7],
                                 "CustomerStateName": order[8],
-                                "CustomerStateGSTCode": order[4],
+                                "CustomerStateGSTCode": "",
                                 "Pincode": order[9]
                             },
                             "Header": {

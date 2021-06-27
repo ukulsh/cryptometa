@@ -1949,7 +1949,7 @@ def instamojo_push_awb(order):
             "courier_partner": "WareIQ"
         }
     }
-    req_ful = requests.patch(push_awb_url, data=json.dumps(push_awb_data),
+    req_ful = requests.patch(push_awb_url, data=push_awb_data,
                             headers=tra_header)
 
 
@@ -1961,7 +1961,7 @@ def instamojo_update_status(order, status, status_text):
                       "comments": status_text
                     }
 
-    req_ful = requests.patch(push_awb_url, data=json.dumps(push_awb_data),
+    req_ful = requests.patch(push_awb_url, data=push_awb_data,
                             headers=tra_header)
 
 

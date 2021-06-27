@@ -653,6 +653,30 @@ def freshdesk_url_new(auth_data):
 @core_blueprint.route('/core/dev', methods=['POST'])
 def ping_dev():
     return 0
+    import requests, json
+    cur = conn.cursor()
+    cur.execute("""select aa.order_id_channel_unique, bb.api_key, cc.awb, aa.id from orders aa
+                    left join client_channel bb on aa.client_channel_id=bb.id
+                    left join shipments cc on aa.id=cc.order_id
+                    where bb.channel_id=7 and aa.status in ('READY TO SHIP', 'PICKUP REQUESTED')""")
+
+    all_orders = cur.fetchall()
+    for order in all_orders:
+        try:
+            order_details = requests.get("https://api.easyecom.io/orders/V2/getAllOrders?api_token=%s&invoice_id=%s"%(order[1], order[0]))
+            if order_details.status_code==200:
+                order_details = order_details.json()
+                if order_details['data']['orders']:
+                    if order_details['data']['orders'][0]['awb_number'] and order_details['data']['orders'][0]['awb_number']!=order[2]:
+                        cur.execute("UPDATE shipments SET awb=%s WHERE order_id=%s", (order_details['data']['orders'][0]['awb_number'], order[3]))
+                        if order_details['data']['orders'][0]['order_status']=="Shipped":
+                            cur.execute("UPDATE orders SET status=%s WHERE id=%s",("SHIPPED", order[3]))
+                        conn.commit()
+        except Exception as e:
+            pass
+
+
+    return 0
     import requests
     cur = conn.cursor()
     cur.execute("""select bb.api_key, aa.order_id_channel_unique, ee.courier_name, dd.awb, bb.unique_parameter from orders aa

@@ -635,7 +635,8 @@ def get_graph_data(resp):
                                 where bb.status_time between '__FROM_DATE__' and '__TO_DATE__'
                                 __CLIENT_FILTER__) xx
                                 group by status_time) dc
-                                on oc.order_date = dc.status_time""".replace('__FROM_DATE__', from_date).replace('__TO_DATE__', to_date)
+                                on oc.order_date = dc.status_time
+                                order by req_date""".replace('__FROM_DATE__', from_date).replace('__TO_DATE__', to_date)
 
         all_vendors = None
         if auth_data['user_group'] == 'multi-vendor':

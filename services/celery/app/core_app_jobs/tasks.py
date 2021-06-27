@@ -1369,7 +1369,7 @@ def update_available_quantity_on_channel():
     with psycopg2.connect(host=os.environ.get('DATABASE_HOST'), database=os.environ.get('DATABASE_NAME'),
                           user=os.environ.get('DATABASE_USER'), password=os.environ.get('DATABASE_PASSWORD')) as conn:
         cur = conn.cursor()
-        cur.execute("""SELECT client_prefix, channel_id, api_key, api_password, shop_url, unique_parameter FROM client_channel WHERE sync_inventory=true and connection_status=true and status=true;""")
+        cur.execute("""SELECT client_prefix, channel_id, api_key, api_password, shop_url, unique_parameter FROM client_channel WHERE sync_inventory=true and connection_status=true;""")
         all_channels = cur.fetchall()
         for channel in all_channels:
             try:
@@ -1415,8 +1415,9 @@ def update_available_quantity_on_channel():
                                         left join products cc on cc.master_product_id=bb.id
                                         where bb.client_prefix='__CLIENT_PREFIX__'
                                         and cc.sku is not null
+                                        and cc.channel_id=%s
                                         group by cc.sku
-                                        order by available_quantity""".replace('__CLIENT_PREFIX__', channel[0]))
+                                        order by available_quantity""".replace('__CLIENT_PREFIX__', channel[0]), (channel[1], ))
 
                     all_quan = cur.fetchall()
                     if not channel[5]:

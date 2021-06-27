@@ -310,7 +310,9 @@ def fill_shiplabel_data_thermal(c, order, client_name=None):
 
     try:
         order_id_string = order.channel_order_id
-        c.drawString(1.75 * inch, 1.25 * inch, order_id_string)
+        c.drawString(1 * inch, 1.0 * inch, "OrderId: "+order_id_string)
+        orderid_barcode = code128.Code128(order_id_string, barHeight=0.4 * inch, barWidth=0.3 * mm)
+        orderid_barcode.drawOn(c, 0.8*inch, 1.2*inch)
         if order.orders_invoice:
             qr_url = order.orders_invoice[-1].qr_url
             qr_code = qr.QrCodeWidget(qr_url)
@@ -319,7 +321,7 @@ def fill_shiplabel_data_thermal(c, order, client_name=None):
             height = bounds[3] - bounds[1]
             d = Drawing(60, 60, transform=[60. / width, 0, 0, 60. / height, 0, 0])
             d.add(qr_code)
-            d.drawOn(c, 1.8 * inch, 1.4 * inch)
+            d.drawOn(c, 1.9 * inch, 1.8 * inch)
     except Exception:
         pass
 
@@ -327,7 +329,34 @@ def fill_shiplabel_data_thermal(c, order, client_name=None):
     routing_code = "N/A"
     if order.shipments[0].routing_code:
         routing_code = str(order.shipments[0].routing_code)
-    c.drawString(2.1 * inch, 3.30*inch, routing_code)
+    if order.shipments[0].courier.courier_name.startswith("FedEx"):
+        c.drawString(2.1 * inch, 3.30 * inch, routing_code.split('|')[0])
+    else:
+        c.drawString(2.1 * inch, 3.30*inch, routing_code)
+
+    if order.shipments[0].courier.courier_name.startswith("FedEx"):
+        try:
+            c.drawString(0.2 * inch, 3.60 * inch, "TRK:")
+            c.setFont('Helvetica', 10)
+            c.drawString(-0.8 * inch, 3.30 * inch, "PRIORITY OVERNIGHT    FORM ID: "+routing_code.split('|')[1])
+            c.setFont('Helvetica', 7)
+            c.drawString(-0.8 * inch, 4.3 * inch, "Bill T/C:")
+            c.drawString(-0.8 * inch, 4.2 * inch, "SENDER")
+            c.drawString(-0.8 * inch, 4.05 * inch, "Bill D/T")
+            c.drawString(-0.8 * inch, 3.95 * inch, "SENDER")
+            c.drawString(-0.8 * inch, 3.6 * inch, routing_code.split('|')[2])
+            c.drawString(2.3 * inch, 4.5 * inch, "Meter:")
+            c.drawString(2.3 * inch, 4.4 * inch, order.shipments[0].courier.api_password.split('|')[1])
+            time_now = datetime.utcnow()+timedelta(hours=5.5)
+            c.drawString(2.3 * inch, 3.75 * inch, "Ship date:")
+            c.drawString(2.3 * inch, 3.65 * inch, time_now.strftime('%Y-%m-%d'))
+            if order.orders_invoice:
+                c.drawString(2.3 * inch, 4.25 * inch, "Invoice date:")
+                c.drawString(2.3 * inch, 4.15 * inch, order.orders_invoice[0].date_created.strftime('%Y-%m-%d'))
+                c.drawString(2.3 * inch, 4.0 * inch, "Invoice No:")
+                c.drawString(2.3 * inch, 3.9 * inch, str(order.orders_invoice[0].invoice_no_text))
+        except Exception:
+            pass
 
     c.setFont('Helvetica', 9)
     c.drawString(0*inch, 4.75 * inch, order.shipments[0].courier.courier_name)
@@ -342,13 +371,16 @@ def fill_shiplabel_data_thermal(c, order, client_name=None):
         y_axis -= 0.15
 
     try:
+        if order.shipments[0].courier.courier_name.startswith("FedEx"):
+            c.drawString(-0.75 * inch, 1.40 * inch, "Phone: "+str(order.delivery_address.phone))
         c.drawString(-0.75 * inch, 1.20 * inch, order.delivery_address.city+", "+order.delivery_address.state)
         c.drawString(-0.75 * inch, 1.00 * inch, order.delivery_address.country+", PIN: "+order.delivery_address.pincode)
     except Exception:
         pass
 
     c.setFont('Helvetica', 8)
-    if not client_name.hide_address or str(order.shipments[0].courier.courier_name).startswith("Bluedart"):
+    if not client_name.hide_address or str(order.shipments[0].courier.courier_name).startswith("Bluedart") \
+            or str(order.shipments[0].courier.courier_name).startswith("FedEX"):
         try:
             if order.pickup_data:
                 return_point = order.pickup_data.return_point
@@ -357,6 +389,12 @@ def fill_shiplabel_data_thermal(c, order, client_name=None):
             return_address = return_point.address
             if return_point.address_two:
                 return_address += " "+ return_point.address_two
+
+            if order.shipments[0].courier.courier_name.startswith("FedEx"):
+                return_address += ", "+str(return_point.city)
+                return_address += ", "+str(return_point.state)
+                return_address += ", "+str(return_point.pincode)
+                return_address += ", Phone: "+str(return_point.phone)
 
             return_point_name = client_name.client_name if client_name else str(return_point.name)
             return_address = return_point_name + " |  " + return_address
@@ -1208,4 +1246,11 @@ def cancel_order_on_channels(order):
                 "invoice_id": order.order_id_channel_unique
             }
             req_ful = requests.post(cancel_order_url, data=json.dumps(fulfil_data),
+                                    headers=ful_header)
+
+        if order.client_channel.channel_id == 13: # cancel on Instamojo
+            cancel_order_url = "%s/v2/store/orders/%s/cancel/" % (order.client_channel.shop_url, order.order_id_channel_unique)
+            ful_header = {'Authorization': 'Bearer '+order.client_channel.api_key}
+            fulfil_data = {"cancellation_reason": "Mark cancel"}
+            req_ful = requests.patch(cancel_order_url, data=fulfil_data,
                                     headers=ful_header)

@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 from requests_oauthlib.oauth1_session import OAuth1Session
 from zeep import Client
 from app.db_utils import DbConnection, UrlShortner
-#from fedex.config import FedexConfig
+from fedex.config import FedexConfig
 
 from .queries import *
 
@@ -28,8 +28,9 @@ def ship_orders(courier_name=None, order_ids=None, force_ship=None, client_prefi
             order_id_tuple = "('" + str(order_ids[0]) + "')"
         else:
             order_id_tuple = str(tuple(order_ids))
-        cur.execute("""DELETE FROM 	order_status where shipment_id in (select id from shipments where order_id in %s);
-                           DELETE FROM shipments where order_id in %s;""" % (order_id_tuple, order_id_tuple))
+        cur.execute("""DELETE FROM order_scans where shipment_id in (select id from shipments where order_id in %s);
+                        DELETE FROM order_status where shipment_id in (select id from shipments where order_id in %s);
+                           DELETE FROM shipments where order_id in %s;""" % (order_id_tuple, order_id_tuple, order_id_tuple))
         conn.commit()
         cur.execute("SELECT DISTINCT(client_prefix) from orders where id in %s" % order_id_tuple)
         client_list = cur.fetchall()
@@ -79,8 +80,8 @@ def ship_orders(courier_name=None, order_ids=None, force_ship=None, client_prefi
             # elif courier[10].startswith('SDD'):
             #     ship_sdd_orders(cur, courier, courier_name, order_ids, order_id_tuple, force_ship=force_ship)
 
-            # elif courier[10].startswith('FedEx'):
-            #     ship_fedex_orders(cur, courier, courier_name, order_ids, order_id_tuple, force_ship=force_ship)
+            elif courier[10].startswith('FedEx'):
+                ship_fedex_orders(cur, courier, courier_name, order_ids, order_id_tuple, force_ship=force_ship)
 
         except Exception as e:
             logger.error("couldn't ship orders: " + str(courier[10]) + "\nError: " + str(e))
@@ -1435,7 +1436,7 @@ def ship_bluedart_orders(cur, courier, courier_name, order_ids, order_id_tuple, 
             if courier[1] == "ZLADE" and zone in ('A', ) and not force_ship:
                 continue
 
-            if order[26].lower() == "prepaid" and courier[1] in ("ACTIFIBER", "BEHIR", "SHAHIKITCHEN", "SUKHILIFE", "ORGANICRIOT", "SUCCESSCRAFT", "HOMELY") and not force_ship:
+            if order[26].lower() == "prepaid" and courier[1] in ("ACTIFIBER", "BEHIR", "SHAHIKITCHEN", "SUKHILIFE", "ORGANICRIOT", "SUCCESSCRAFT", "HOMELY", "BEHIR2") and not force_ship:
                 continue
 
             time_2_days = datetime.utcnow() + timedelta(hours=5.5) - timedelta(days=1)
@@ -1795,12 +1796,14 @@ def ship_fedex_orders(cur, courier, courier_name, order_ids, order_id_tuple, bac
                 shipment.RequestedShipment.ShippingChargesPayment.Payor.ResponsibleParty.AccountNumber \
                     = CONFIG_OBJ.account_number
 
-                # if order_type=='COD':
-                #     shipment.RequestedShipment.SpecialServiceTypes = 'COD'
-                #     shipment.RequestedShipment.SpecialServicesRequested.CodDetail.CodCollectionAmount.Currency = 'INR'
-                #     shipment.RequestedShipment.SpecialServicesRequested.CodDetail.CodCollectionAmount.Amount = order[27]
-                #     shipment.RequestedShipment.SpecialServicesRequested.CodDetail.RemitToName = 'Remitter'
-
+                if order_type=='COD':
+                    shipment.RequestedShipment.SpecialServicesRequested.CodDetail.CodCollectionAmount.Currency = 'INR'
+                    shipment.RequestedShipment.SpecialServicesRequested.CodDetail.CodCollectionAmount.Amount = order[27]
+                    shipment.RequestedShipment.SpecialServicesRequested.CodDetail.RemitToName = 'Remitter'
+                    shipment.RequestedShipment.SpecialServicesRequested.SpecialServiceTypes = ['COD']
+                    shipment.RequestedShipment.SpecialServicesRequested.CodDetail.CollectionType.value = 'GUARANTEED_FUNDS'
+                    shipment.RequestedShipment.SpecialServicesRequested.CodDetail.FinancialInstitutionContactAndAddress.Contact.CompanyName = 'WareIQ'
+                    shipment.RequestedShipment.SpecialServicesRequested.CodDetail.FinancialInstitutionContactAndAddress.Address.City = 'Bengaluru'
                 package_string = ""
                 package_quantity = 0
                 for idx, prod in enumerate(order[40]):
@@ -1873,11 +1876,15 @@ def ship_fedex_orders(cur, courier, courier_name, order_ids, order_id_tuple, bac
                 if awb_no:
                     awb_no = str(awb_no)
                     order_status_change_ids.append(order[0])
-                    #routing_code = str(req['DestinationArea']) + "-" + str(req['DestinationLocation'])
+                    routing_code = str(shipment.response.CompletedShipmentDetail.OperationalDetail.UrsaPrefixCode) \
+                                   + " " + str(shipment.response.CompletedShipmentDetail.OperationalDetail.UrsaSuffixCode)
+                    routing_code += "|"+str(shipment.response.CompletedShipmentDetail.MasterTrackingId.FormId)
+                    routing_code += "|"+str(shipment.response.CompletedShipmentDetail.OperationalDetail.DestinationServiceArea) \
+                                    + " " + str(shipment.response.CompletedShipmentDetail.OperationalDetail.AirportId)
                     data_tuple = tuple([(
                         awb_no, "", order[0], pickup_point[1], courier[9], json.dumps(dimensions),
                         volumetric_weight, weight,
-                        "", pickup_point[2], None, None, None, zone)])
+                        "", pickup_point[2], routing_code, None, None, zone)])
 
                     if order[46] == 7:
                         push_awb_easyecom(order[39],order[36], awb_no, courier, cur, order[55], order[56])
@@ -2733,6 +2740,14 @@ def push_awb_easyecom(invoice_id, api_token, awb, courier, cur, companyCarrierId
                       "companyCarrierId": int(companyCarrierId)
                     }
         req = requests.post(post_url, data=post_body)
+        if req.status_code!=200:
+            try:
+                error = str(req.json())
+            except Exception:
+                error = None
+            if error:
+                cur.execute("UPDATE orders SET status_detail=%s WHERE order_id_channel_unique=%s and client_channel_id=%s",
+                            (str(req.json()), invoice_id, client_channel_id))
     except Exception as e:
         logger.error("Easyecom not updated.")
 

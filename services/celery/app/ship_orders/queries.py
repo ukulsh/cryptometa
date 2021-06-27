@@ -24,7 +24,7 @@ get_pickup_points_query = """select aa.id, aa.pickup_id, aa.return_point_id,
                                 on aa.return_point_id=cc.id
                                 where aa.id=%s"""
 
-get_orders_to_ship_query = """select aa.id,aa.channel_order_id,aa.order_date,aa.customer_name,aa.customer_email,aa.customer_phone,
+get_orders_to_ship_query = """select distinct on (aa.id) aa.id,aa.channel_order_id,aa.order_date,aa.customer_name,aa.customer_email,aa.customer_phone,
                                 aa.date_created,aa.date_updated,aa.status,aa.client_prefix,aa.client_channel_id,aa.delivery_address_id,
                                 cc.id,cc.first_name,cc.last_name,cc.address_one,cc.address_two,cc.city,cc.pincode,cc.state,cc.country,cc.phone,
                                 cc.latitude,cc.longitude,cc.country_code,dd.id,dd.payment_mode,dd.amount,dd.currency,dd.order_id,dd.shipping_charges,
@@ -69,7 +69,7 @@ get_orders_to_ship_query = """select aa.id,aa.channel_order_id,aa.order_date,aa.
                                 and NOT EXISTS (SELECT 1 FROM unnest(ee.weights) x WHERE x IS NULL)
                                 and (xx.id is null or (xx.id is not null and xx.cod_verified = true) 
                                      or (yy.cod_ship_unconfirmed=true and aa.order_date<(NOW() - interval '1 day')))
-                                order by order_date"""
+                                order by aa.id"""
 
 update_last_shipped_order_query = """UPDATE client_couriers SET last_shipped_order_id=%s, last_shipped_time=%s WHERE client_prefix=%s"""
 

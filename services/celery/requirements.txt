@@ -24,6 +24,7 @@ defusedxml==0.6.0
 dicttoxml==1.7.4
 docutils==0.15.2
 entrypoints==0.3
+fedex==2.4.1
 flake8==3.7.7
 Flask==1.0.2
 Flask-Bcrypt==0.7.1

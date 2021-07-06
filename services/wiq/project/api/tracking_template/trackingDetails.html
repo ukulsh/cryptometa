@@ -33,7 +33,7 @@
                 <label for="orderId">Order ID</label>
               </div>
               <div class="track-radio-btn">
-                <input type="radio" id="awbNumber" name="trackRadio" value="{% if data and data.tracking_id %}{{ data.tracking_id }}{% endif %}" checked>
+                <input type="radio" id="awbNumber" name="trackRadio" value="awbNumber" checked>
                 <label for="awbNumber">AWB Number</label>
               </div>
             </div>
@@ -53,7 +53,7 @@
                 </div>
                 <div class="col-xl-10 col-12 hide" id="awb-search-container">
                   <div class="sub-text">AWB Number<span class="required-field">*</span></div>
-                  <input class="tracking_input" name="awb" id="awb_number_input" value='sadadas'/>
+                  <input class="tracking_input" name="awb" id="awb_number_input" value="{% if data and data.tracking_id %}{{ data.tracking_id }}{% endif %}"/>
                 </div>
                 <span class="col-xl-2 col-12" style="text-align: center">
                   <span class="track-btn" id="trackSubmitBtn">Track</span>

@@ -126,7 +126,7 @@
                         {% if item.city %}
                           <span>{{ item.city }}</span>
                         {% elif item.status == 'Delivered' and data.destination_city %}
-                          <span>{{ item.destination_city }}</span>
+                          <span>{{ data.destination_city }}</span>
                         {% endif %}
                         {% if item.time %}
                           <span>{{ item.time }}</span>

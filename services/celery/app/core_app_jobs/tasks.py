@@ -217,7 +217,7 @@ def consume_pidge_scan_util(payload):
             if not reason_code_number:
                 return "Skipped: no reason code"
 
-            if payload.get("attempt_type") == 20:
+            if payload.get("attempt_type") in (20, 21, 22, 23, 24):
                 return "Skipped: no status to update"
 
             if reason_code_number in (20, 100, 120, 5):
@@ -1324,7 +1324,7 @@ def update_available_quantity_from_easyecom():
                                 left join pickup_points bb on aa.pickup_id=bb.id
                                 where aa.client_prefix='KAMAAYURVEDA'
                                 and aa.enable_sdd=true
-                                and bb.warehouse_prefix in ('TLLTRO', 'MHCHRO', 'MHJTRO', 'HRDGRO', 'RJMIRO', 'TNPMRO')""")
+                                and bb.warehouse_prefix in ('TLLTRO', 'MHCHRO', 'MHJTRO', 'HRDGRO', 'RJMIRO', 'TNPMRO', 'GJAORO', 'UPPMRO')""")
 
             pickup_points = cur.fetchall()
             token_headers = {"Username": "WareIQ",

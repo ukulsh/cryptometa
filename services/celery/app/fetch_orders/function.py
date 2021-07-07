@@ -5,7 +5,7 @@ from woocommerce import API
 import logging
 from app.db_utils import DbConnection
 from app.ship_orders.function import kama_chn_sdd_pincodes, kama_TLLTRO_sdd_pincodes, kama_MHCHRO_sdd_pincodes, \
-    kama_MHJTRO_sdd_pincodes, kama_HRDGRO_sdd_pincodes, kama_RJMIRO_sdd_pincodes
+    kama_MHJTRO_sdd_pincodes, kama_HRDGRO_sdd_pincodes, kama_RJMIRO_sdd_pincodes, kama_UPPMRO_sdd_pincodes, kama_GJAORO_sdd_pincodes
 
 from .queries import *
 
@@ -116,8 +116,8 @@ def fetch_shopify_orders(cur, channel, manual=None):
         count = len(req.json()['orders'])
     for order in data:
         try:
-            cur.execute("SELECT id from orders where order_id_channel_unique='%s' and client_prefix='%s'" % (
-            str(order['id']), channel[1]))
+            cur.execute("SELECT id from orders where order_id_channel_unique='%s' and client_channel_id=%s" % (
+            str(order['id']), channel[0]))
             try:
                 existing_order = cur.fetchone()[0]
             except Exception as e:
@@ -392,8 +392,8 @@ def fetch_woocommerce_orders(cur, channel, manual=None):
         return None
     for order in data:
         try:
-            cur.execute("SELECT id from orders where order_id_channel_unique='%s' and client_prefix='%s'" % (
-                str(order['id']), channel[1]))
+            cur.execute("SELECT id from orders where order_id_channel_unique='%s' and client_channel_id=%s" % (
+                str(order['id']), channel[0]))
             try:
                 existing_order = cur.fetchone()[0]
             except Exception as e:
@@ -597,7 +597,7 @@ def fetch_magento_orders(cur, channel, manual=None):
         return None
     for order in data['items']:
         try:
-            cur.execute("SELECT id from orders where channel_order_id='%s' and client_prefix='%s'"%(str(order['increment_id']), channel[1]))
+            cur.execute("SELECT id from orders where channel_order_id='%s' and client_channel_id=%s"%(str(order['increment_id']), channel[0]))
             try:
                 existing_order = cur.fetchone()[0]
             except Exception as e:
@@ -791,8 +791,8 @@ def fetch_easyecom_orders(cur, channel, manual=None):
         return None
     for order in data:
         try:
-            cur.execute("SELECT id from orders where order_id_channel_unique='%s' and client_prefix='%s'" % (
-            str(order['invoice_id']), channel[1]))
+            cur.execute("SELECT id from orders where order_id_channel_unique='%s' and client_channel_id=%s" % (
+            str(order['invoice_id']), channel[0]))
             try:
                 existing_order = cur.fetchone()[0]
             except Exception as e:
@@ -1024,7 +1024,7 @@ def fetch_bikayi_orders(cur, channel, manual=None):
         return None
     for order in data['orders']:
         try:
-            cur.execute("SELECT id from orders where order_id_channel_unique='%s' and client_prefix='%s'"%(str(order['orderId']), channel[1]))
+            cur.execute("SELECT id from orders where order_id_channel_unique='%s' and client_channel_id=%s"%(str(order['orderId']), channel[0]))
             try:
                 existing_order = cur.fetchone()[0]
             except Exception as e:
@@ -1189,8 +1189,8 @@ def fetch_instamojo_orders(cur, channel, manual=None):
         return None
     for order in data:
         try:
-            cur.execute("SELECT id from orders where order_id_channel_unique='%s' and client_prefix='%s'" % (
-            str(order['id']), channel[1]))
+            cur.execute("SELECT id from orders where order_id_channel_unique='%s' and client_channel_id=%s" % (
+            str(order['id']), channel[0]))
             try:
                 existing_order = cur.fetchone()[0]
             except Exception as e:
@@ -1388,6 +1388,10 @@ def assign_pickup_points_for_unassigned(cur, cur_2, days=5):
                     continue
                 if key == 'RJMIRO' and order[2] not in kama_RJMIRO_sdd_pincodes: #todo generalise this
                     continue
+                if key == 'UPPMRO' and order[2] not in kama_UPPMRO_sdd_pincodes: #todo generalise this
+                    continue
+                if key == 'GJAORO' and order[2] not in kama_GJAORO_sdd_pincodes: #todo generalise this
+                    continue
                 if value['count'] == no_sku:
                     warehouse_pincode_str += "('" + key + "','" + str(value['pincode']) + "'),"
 
@@ -1443,7 +1447,7 @@ def assign_pickup_points_for_unassigned(cur, cur_2, days=5):
             cur.execute("""UPDATE orders SET pickup_data_id = %s WHERE id=%s""", (pickup_id[0], order[0]))
             conn.commit()
 
-            if final_wh[0] in ('TNPMRO', 'TLLTRO', 'MHCHRO', 'MHJTRO', 'HRDGRO', 'RJMIRO'):
+            if final_wh[0] in ('TNPMRO', 'TLLTRO', 'MHCHRO', 'MHJTRO', 'HRDGRO', 'RJMIRO', 'GJAORO', 'UPPMRO'):
                 push_kama_wondersoft(order[0], cur)
 
         except Exception as e:

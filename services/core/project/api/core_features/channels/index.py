@@ -135,5 +135,52 @@ def get_channel(resp):
         return jsonify(response_object), 400
 
 
+class InstamojoIntegration(Resource):
+    method_decorators = {'post': [authenticate_restful], 'patch': [authenticate_restful], 'get': [authenticate_restful]}
+
+    def post(self, resp):
+        response_object = {'status': 'fail'}
+        try:
+            authz_data = resp.get('data')
+            client_prefix = authz_data.get('client_prefix')
+            post_data = request.get_json()
+            code = post_data.get('code')
+            state = post_data.get('state')
+            headers = {"Content-Type": "application/x-www-form-urlencoded"}
+            body = {"code": f"{code}",
+                    "client_id": f"jF2ZO9CvSqBTyokDpr8WOKCyLaamLZwHH02tZ5NJ",
+                    "client_secret": f"cXqybX916HwH7xtymiZi5xqwiAofnSVtEANE9DfMYcPbGGHPSlTyiuUky0EndIptBMfatwAtFOOMve5CU25nC3jz1T3iRlAW4khmg8MDDeAK6awaTScg68EK3jrGku9Q",
+                    "redirect_uri": f"https://webapp.wareiq.com/integrate/instamojo?grant_type=authorization_code"}
+            payload = "code=%s&client_id=jF2ZO9CvSqBTyokDpr8WOKCyLaamLZwHH02tZ5NJ&client_secret=cXqybX916HwH7xtymiZi5xqwiAofnSVtEANE9DfMYcPbGGHPSlTyiuUky0EndIptBMfatwAtFOOMve5CU25nC3jz1T3iRlAW4khmg8MDDeAK6awaTScg68EK3jrGku9Q&redirect_uri=https://webapp.wareiq.com/integrate/instamojo?grant_type=authorization_code"%code
+            req = requests.post("https://api.instamojo.com/oauth2/token/", headers=headers, data=payload)
+            if req.status_code!=200:
+                return response_object, 400
+            access_token=req.json()['access_token']
+            refresh_token=req.json()['refresh_token']
+            channel = ClientChannel.query.filter_by(client_prefix=client_prefix, channel_id=13).first()
+            if not channel:
+                channel = ClientChannel(client_prefix=client_prefix,
+                                        channel_id=13,
+                                        store_name='Instamojo',
+                                        shop_url="https://api.instamojo.com",
+                                        shipped_status=None,
+                                        canceled_status=None,
+                                        returned_status=None,
+                                        delivered_status=None,
+                                        invoiced_status=None)
+                db.session.add(channel)
+            channel.api_key=access_token
+            channel.api_password=refresh_token
+            db.session.commit()
+            response_object['status'] = 'success'
+            return response_object, 200
+        except Exception as e:
+            db.session.rollback()
+            logger.error('Failed while integrating with respective channel', e)
+            response_object['message'] = 'failed while integrating with channel'
+            return response_object, 400
+
+
 api.add_resource(ClientChannelIntegration, '/core/v1/integrateChannel')
+api.add_resource(InstamojoIntegration, '/core/integrate/instamojo')
 

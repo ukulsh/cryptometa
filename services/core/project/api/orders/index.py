@@ -44,7 +44,7 @@ ORDERS_DOWNLOAD_HEADERS = ["Order ID", "Customer Name", "Customer Email", "Custo
                            "Courier", "Weight", "awb", "Expected Delivery Date", "Status", "Address_one", "Address_two",
                            "City", "State", "Country", "Pincode", "Pickup Point", "Product", "SKU", "Quantity", "Order Type", "OrderAmount", "Manifest Time", "Pickup Date", "Delivered Date", "COD Verfication",
                            "COD Verified Via", "NDR Verfication", "NDR Verified Via", "PDD", "ShippingCharges", "InvoiceNo", "InvoiceDate", "OrderDiscount", "ProductAmount", "CGST",
-                           "SGST", "IGST"]
+                           "SGST", "IGST", "WareIQ ID"]
 
 ORDERS_UPLOAD_HEADERS = ["order_id", "customer_name", "customer_email", "customer_phone", "address_one", "address_two",
                          "city", "state", "country", "pincode", "sku", "sku_quantity", "payment_mode", "subtotal", "shipping_charges", "warehouse", "Error"]
@@ -3167,7 +3167,9 @@ def get_pickup_points(resp):
         cur = conn.cursor()
         auth_data = resp.get('data')
         page = request.args.get("page", 1)
-        per_page = request.args.get("per_page", 50)
+        page = int(page)
+        per_page = request.args.get("per_page", 100)
+        per_page = int(per_page)
         search = request.args.get("search", "")
         client_prefix = auth_data.get('client_prefix')
         pickup_points_select_query = """select array_agg(warehouse_prefix) from
@@ -3193,7 +3195,7 @@ def get_pickup_points(resp):
         pickup_points_select_query = pickup_points_select_query.replace('__PAGINATION__', " OFFSET %s LIMIT %s " % (str((page - 1) * per_page), str(per_page)))
 
         if search:
-            pickup_points_select_query = pickup_points_select_query.replace('__SEARCH_FILTER__', " AND (bb.warehouse_prefix ilike %__SEARCH__% OR bb.pickup_location ilike %__SEARCH__%) ".replace('__SEARCH__', search))
+            pickup_points_select_query = pickup_points_select_query.replace('__SEARCH_FILTER__', " AND (bb.warehouse_prefix ilike '%__SEARCH__%' OR bb.pickup_location ilike '%__SEARCH__%') ".replace('__SEARCH__', search))
         else:
             pickup_points_select_query = pickup_points_select_query.replace('__SEARCH_FILTER__', "")
 

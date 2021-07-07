@@ -65,6 +65,9 @@ def ship_orders(courier_name=None, order_ids=None, force_ship=None, client_prefi
             elif courier[10].startswith('Xpressbees'):
                 ship_xpressbees_orders(cur, courier, courier_name, order_ids, order_id_tuple, force_ship=force_ship)
 
+            elif courier[10].startswith('Expressbees'):
+                ship_expressbees_orders(cur, courier, courier_name, order_ids, order_id_tuple, force_ship=force_ship)
+
             elif courier[10].startswith('Bluedart'):
                 ship_bluedart_orders(cur, courier, courier_name, order_ids, order_id_tuple, force_ship=force_ship)
 
@@ -1064,6 +1067,381 @@ def ship_xpressbees_orders(cur, courier, courier_name, order_ids, order_id_tuple
         conn.commit()
 
 
+def ship_expressbees_orders(cur, courier, courier_name, order_ids, order_id_tuple, backup_param=True, force_ship=None):
+    if courier_name and order_ids:
+        orders_to_ship_query = get_orders_to_ship_query.replace("__ORDER_SELECT_FILTERS__",
+                                                                """and aa.id in %s""" % order_id_tuple)
+    else:
+        orders_to_ship_query = get_orders_to_ship_query.replace("__ORDER_SELECT_FILTERS__", """and aa.status='NEW'
+                                                                                                and ll.id is null""")
+    get_orders_data_tuple = (courier[1], courier[1])
+
+    cur.execute(orders_to_ship_query, get_orders_data_tuple)
+    all_orders = cur.fetchall()
+    pickup_point_order_dict = dict()
+    for order in all_orders:
+        if order[41]:
+            if order[41] not in pickup_point_order_dict:
+                pickup_point_order_dict[order[41]] = [order]
+            else:
+                pickup_point_order_dict[order[41]].append(order)
+
+    last_assigned_awb = 0
+    try:
+        cur.execute("select max(awb) from shipments where courier_id=%s;" % str(courier[9]))
+        fet_res = cur.fetchone()
+        if fet_res:
+            last_assigned_awb = int(fet_res[0])
+    except Exception:
+        pass
+
+    for pickup_id, all_new_orders in pickup_point_order_dict.items():
+        last_shipped_order_id = 0
+        headers = {"Content-Type": "application/json"}
+        pickup_points_tuple = (pickup_id,)
+        cur.execute(get_pickup_points_query, pickup_points_tuple)
+        order_status_change_ids = list()
+
+        pickup_point = cur.fetchone()  # change this as we get to dynamic pickups
+
+        last_invoice_no = pickup_point[22] if pickup_point[22] else 0
+        for order in all_new_orders:
+            if not order[54]:
+                last_invoice_no = invoice_order(cur, last_invoice_no, pickup_point[23], order[0], pickup_id)
+            if order[26].lower() == 'cod' and not order[27] and not force_ship:
+                continue
+            if force_ship and order[26].lower() == 'pickup':
+                continue
+            if order[26].lower() == 'pickup':
+                try:
+                    cur.execute("""SELECT id, courier_name, logo_url, date_created, date_updated, api_key, 
+                                                                        api_password, api_url FROM master_couriers
+                                                                        WHERE courier_name='%s'""" % "Delhivery Surface Standard")
+                    courier_data = cur.fetchone()
+                    courier_new = list(courier)
+                    courier_new[2] = courier_data[0]
+                    courier_new[3] = 1
+                    courier_new[9] = courier_data[0]
+                    courier_new[10] = courier_data[1]
+                    courier_new[11] = courier_data[2]
+                    courier_new[12] = courier_data[3]
+                    courier_new[13] = courier_data[4]
+                    courier_new[14] = courier_data[5]
+                    courier_new[15] = courier_data[6]
+                    courier_new[16] = courier_data[7]
+                    ship_delhivery_orders(cur, tuple(courier_new), "Delhivery Surface Standard", [order[0]],
+                                          "(" + str(order[0]) + ")", backup_param=False)
+                except Exception as e:
+                    logger.error("Couldn't assign backup courier for: " + str(order[0]) + "\nError: " + str(e.args))
+                    pass
+
+                continue
+
+            weight = float(order[52]) if order[52] else 0
+            volumetric_weight = float(order[52]) if order[52] else 0
+
+            if not order[52]:
+                try:
+                    weight = order[34][0] * order[35][0]
+                    volumetric_weight = (order[33][0]['length'] * order[33][0]['breadth'] * order[33][0]['height']) * \
+                                        order[35][0] / 5000
+                    for idx, dim in enumerate(order[33]):
+                        if idx == 0:
+                            continue
+                        volumetric_weight += (dim['length'] * dim['breadth'] * dim['height']) * order[35][idx] / 5000
+                        weight += order[34][idx] * (order[35][idx])
+                except Exception:
+                    pass
+
+            if courier[10] == "Xpressbees Surface" and weight and volumetric_weight and not force_ship:
+                weight_counted = weight if weight > volumetric_weight else volumetric_weight
+                new_courier_name = None
+                if weight_counted > 3:
+                    new_courier_name = "Xpressbees 5 KG"
+                if new_courier_name:
+                    try:
+                        cur.execute("""SELECT id, courier_name, logo_url, date_created, date_updated, api_key, 
+                                                                            api_password, api_url FROM master_couriers
+                                                                            WHERE courier_name='%s'""" % new_courier_name)
+                        courier_data = cur.fetchone()
+                        courier_new = list(courier)
+                        courier_new[2] = courier_data[0]
+                        courier_new[3] = 1
+                        courier_new[9] = courier_data[0]
+                        courier_new[10] = courier_data[1]
+                        courier_new[11] = courier_data[2]
+                        courier_new[12] = courier_data[3]
+                        courier_new[13] = courier_data[4]
+                        courier_new[14] = courier_data[5]
+                        courier_new[15] = courier_data[6]
+                        courier_new[16] = courier_data[7]
+                        ship_xpressbees_orders(cur, tuple(courier_new), new_courier_name, [order[0]],
+                                               "(" + str(order[0]) + ")", backup_param=False)
+                    except Exception as e:
+                        logger.error("Couldn't assign backup courier for: " + str(order[0]) + "\nError: " + str(e.args))
+                        pass
+
+                    continue
+
+            zone = None
+            try:
+                zone = get_delivery_zone(pickup_point[8], order[18])
+            except Exception as e:
+                logger.error("couldn't find zone: " + str(order[0]) + "\nError: " + str(e))
+
+            time_2_days = datetime.utcnow() + timedelta(hours=5.5) - timedelta(days=1)
+            if order[47] and not (order[50] and order[2] < time_2_days) and not force_ship:
+                if order[26].lower() == 'cod' and not order[42] and order[43]:
+                    continue
+                if order[26].lower() == 'cod' and not order[43]:
+                    if order[26].lower() == 'cod' and not order[43]:
+                        try:  ## Cod confirmation  text
+                            cod_verification_text(order, cur)
+                        except Exception as e:
+                            logger.error(
+                                "Cod confirmation not sent. Order id: " + str(order[0]))
+                        continue
+
+            if order[0] > last_shipped_order_id:
+                last_shipped_order_id = order[0]
+
+            fulfillment_id = None
+            tracking_link = None
+            try:
+                package_string = ""
+                package_quantity = 0
+                for idx, prod in enumerate(order[40]):
+                    package_string += prod + " (" + str(order[35][idx]) + ") + "
+                    package_quantity += order[35][idx]
+                package_string += "Shipping"
+
+                dimensions = order[33][0]
+                dimensions['length'] = dimensions['length'] * order[35][0]
+                weight = order[34][0] * order[35][0]
+                volumetric_weight = (dimensions['length'] * dimensions['breadth'] * dimensions['height']) / 5000
+                for idx, dim in enumerate(order[33]):
+                    if idx == 0:
+                        continue
+                    dim['length'] = dim['length'] * (order[35][idx])
+                    volumetric_weight += (dim['length'] * dim['breadth'] * dim['height']) / 5000
+                    weight += order[34][idx] * (order[35][idx])
+                if dimensions['length'] and dimensions['breadth']:
+                    dimensions['height'] = round(
+                        (volumetric_weight * 5000) / (dimensions['length'] * dimensions['breadth']))
+
+                shipping_phone = order[21] if order[21] else order[5]
+                shipping_phone = ''.join(e for e in str(shipping_phone) if e.isalnum())
+                shipping_phone = "0" + shipping_phone[-10:]
+
+                customer_name = order[13]
+                if order[14]:
+                    customer_name += " " + order[14]
+
+                pickup_address = pickup_point[4]
+                if pickup_point[5]:
+                    pickup_address += pickup_point[5]
+
+                customer_address = order[15]
+                if order[16]:
+                    customer_address += order[16]
+
+                rto_address = pickup_point[13]
+                if pickup_point[14]:
+                    rto_address += pickup_point[14]
+                last_assigned_awb += 1
+                username = courier[14].split("|")[0]
+                password = courier[14].split("|")[1]
+                bus_acc_name = courier[14].split("|")[2]
+                expressbees_shipment_body = {"AirWayBillNO": str(last_assigned_awb),
+                                            "BusinessAccountName": str(bus_acc_name),
+                                            "OrderNo": order[1],
+                                            "OrderType": order[26],
+                                            "DeclaredValue": str(order[27]),
+                                            "PickupType": "Warehouse",
+                                            "Quantity": "1",
+                                            "ServiceType": "SD",
+                                            "DropDetails": {
+                                                "Addresses": [
+                                                    {
+                                                        "Address": customer_address,
+                                                        "City": order[17],
+                                                        "EmailID": "",
+                                                        "Name": customer_name,
+                                                        "PinCode": str(order[18]),
+                                                        "State": order[19],
+                                                        "Type": "Primary"
+                                                    }
+                                                ],
+                                                "ContactDetails": [
+                                                    {
+                                                        "PhoneNo": shipping_phone,
+                                                        "Type": "Primary",
+                                                    }
+                                                ]
+                                            },
+                                            "PickupDetails": {
+                                                "Addresses": [
+                                                    {
+                                                        "Address": pickup_address,
+                                                        "City": pickup_point[6],
+                                                        "EmailID": "",
+                                                        "Name": pickup_point[11],
+                                                        "PinCode": str(pickup_point[8]),
+                                                        "State": pickup_point[10],
+                                                        "Type": "Primary"
+                                                    }
+                                                ],
+                                                "ContactDetails": [
+                                                    {
+                                                        "PhoneNo":  pickup_point[3],
+                                                        "Type": "Primary"
+                                                    }
+                                                ],
+                                                "PickupVendorCode": pickup_point[9]
+                                            },
+                                            "RTODetails": {
+                                                "Addresses": [
+                                                    {
+                                                        "Address": rto_address,
+                                                        "City": pickup_point[15],
+                                                        "EmailID": "",
+                                                        "Name": pickup_point[20],
+                                                        "PinCode": pickup_point[17],
+                                                        "State": pickup_point[19],
+                                                        "Type": "Primary"
+                                                    }
+                                                ],
+                                                "ContactDetails": [
+                                                    {
+                                                        "PhoneNo": pickup_point[12],
+                                                        "Type": "Primary"
+                                                    }
+                                                ]
+                                            },
+                                            "ManifestID": str(order[0]),
+                                            "PackageDetails": {
+                                                "Dimensions": {
+                                                    "Height": str(dimensions['length']),
+                                                    "Length": str(dimensions['breadth']),
+                                                    "Width": str(dimensions['height'])
+                                                },
+                                                "Weight": {
+                                                    "BillableWeight": str(sum(order[34])),
+                                                    "PhyWeight": str(sum(order[34])),
+                                                    "VolWeight": str(volumetric_weight)
+                                                }
+                                            },
+                                            "GSTMultiSellerInfo": [
+                                                {
+                                                    "SellerName": str(pickup_point[11]),
+                                                    "SellerPincode": str(pickup_point[8]),
+                                                    "SellerAddress": pickup_address,
+                                                    "HSNDetails": [
+                                                        {
+                                                            "ProductCategory": "E-commerce",
+                                                            "ProductDesc": package_string,
+                                                            "HSNCode": ""
+                                                        }
+                                                    ]
+                                                }
+                                            ]
+                                        }
+
+                if order[26].lower() == "cod":
+                    expressbees_shipment_body["CollectibleAmount"] = order[27]
+
+                xbees_auth_url = "http://stageusermanagementapi.xbees.in/api/auth/generateToken"
+                req_auth = requests.post(xbees_auth_url, headers=headers, data=json.dumps({"username": username, "password": password,
+                                                                                           "secretkey": courier[15]}))
+                headers['token'] = req_auth.json()['token']
+                headers['versionnumber'] = "v1"
+                xpressbees_url = "http://api.staging.shipmentmanifestation.xbees.in/shipmentmanifestation/forward"
+                req = requests.post(xpressbees_url, headers=headers, data=json.dumps(expressbees_shipment_body))
+                while req.json()['ReturnMessage'] == 'AWB Already Exists':
+                    last_assigned_awb += 1
+                    expressbees_shipment_body['AirWayBillNO'] = str(last_assigned_awb)
+                    req = requests.post(xpressbees_url, headers=headers,
+                                        data=json.dumps(expressbees_shipment_body))
+
+                if req.json()['ReturnMessage'] == 'Invalid AWB Prefix' or req.json()['ReturnMessage'].startswith('Invalid AirWayBillNO'):
+                    headers['XBkey'] = courier[14]
+                    batch_create_req = requests.post("http://xbclientapi.xbees.in/POSTShipmentService.svc/AWBNumberSeriesGeneration", headers=headers, json={"BusinessUnit": "ECOM", "ServiceType":"FORWARD", "DeliveryType": "COD"})
+                    batch_req = requests.post("http://xbclientapi.xbees.in/TrackingService.svc/GetAWBNumberGeneratedSeries", headers=headers, json={"BusinessUnit": "ECOM", "ServiceType":"FORWARD", "BatchID": batch_create_req.json()['BatchID']})
+                    expressbees_shipment_body['AirWayBillNO'] = str(batch_req.json()['AWBNoSeries'][0])
+                    req = requests.post(xpressbees_url, headers=headers, data=json.dumps(expressbees_shipment_body))
+                    last_assigned_awb = int(batch_req.json()['AWBNoSeries'][0])
+
+                return_data_raw = req.json()
+                insert_shipments_data_query = """INSERT INTO SHIPMENTS (awb, status, order_id, pickup_id, courier_id, 
+                                                                                                    dimensions, volumetric_weight, weight, remark, return_point_id, routing_code, 
+                                                                                                    channel_fulfillment_id, tracking_link, zone)
+                                                                                                    VALUES  %s RETURNING id;"""
+                if return_data_raw['ReturnMessage'] == 'successful':
+
+                    order_status_change_ids.append(order[0])
+                    data_tuple = tuple([(
+                        return_data_raw['AWBNo'], return_data_raw['ReturnMessage'],
+                        order[0], pickup_point[1], courier[9], json.dumps(dimensions), volumetric_weight, weight,
+                        "", pickup_point[2], "", fulfillment_id, tracking_link, zone)])
+
+                    if order[46] == 7:
+                        push_awb_easyecom(order[39],order[36], return_data_raw['AWBNo'], courier, cur, order[55], order[56])
+
+                    client_name = str(order[51])
+                    customer_phone = order[5].replace(" ", "")
+                    customer_phone = "0" + customer_phone[-10:]
+
+                    try:
+                        tracking_link_wareiq = "https://webapp.wareiq.com/tracking/" + str(return_data_raw['AWBNo'])
+                        tracking_link_wareiq = UrlShortner.get_short_url(tracking_link_wareiq, cur)
+                        if courier[1] != 'DHANIPHARMACY':
+                            send_received_event(client_name, customer_phone, tracking_link_wareiq)
+                    except Exception:
+                        pass
+
+                else:
+                    cur.execute("select * from client_couriers where client_prefix=%s and priority=%s;",
+                                (courier[1], courier[3] + 1))
+                    qs = cur.fetchone()
+                    if not (qs and backup_param) or force_ship:
+                        insert_shipments_data_query = """INSERT INTO SHIPMENTS (awb, status, order_id, pickup_id, courier_id, 
+                                                                    dimensions, volumetric_weight, weight, remark, return_point_id, routing_code, zone)
+                                                                    VALUES  %s"""
+                        insert_shipments_data_tuple = list()
+                        insert_shipments_data_tuple.append(("", "Fail", order[0], None,
+                                                            None, None, None, None, "Pincode not serviceable", None,
+                                                            None, zone), )
+                        cur.execute(insert_shipments_data_query, tuple(insert_shipments_data_tuple))
+                    continue
+
+                cur.execute(insert_shipments_data_query, data_tuple)
+                ship_temp = cur.fetchone()
+                order_status_add_query = """INSERT INTO order_status (order_id, courier_id, shipment_id, 
+                                                status_code, status, status_text, location, location_city, 
+                                                status_time) VALUES %s"""
+
+                order_status_add_tuple = [(order[0], courier[9],
+                                           ship_temp[0], "UD", "Received", "Consignment Manifested",
+                                           pickup_point[6], pickup_point[6], datetime.utcnow() + timedelta(hours=5.5))]
+
+                cur.execute(order_status_add_query, tuple(order_status_add_tuple))
+                cur.execute("UPDATE orders SET status='READY TO SHIP' WHERE id=%s;" % str(order[0]))
+                conn.commit()
+
+            except Exception as e:
+                conn.rollback()
+                print("couldn't assign order: " + str(order[1]) + "\nError: " + str(e))
+
+        if last_shipped_order_id:
+            last_shipped_data_tuple = (
+                last_shipped_order_id, datetime.now(tz=pytz.timezone('Asia/Calcutta')), courier[1])
+            cur.execute(update_last_shipped_order_query, last_shipped_data_tuple)
+
+        cur.execute("UPDATE client_pickups SET invoice_last=%s WHERE id=%s;", (last_invoice_no, pickup_id))
+
+        conn.commit()
+
+
 def ship_ecom_orders(cur, courier, courier_name, order_ids, order_id_tuple, backup_param=True, force_ship=None):
     if courier_name and order_ids:
         orders_to_ship_query = get_orders_to_ship_query.replace("__ORDER_SELECT_FILTERS__",
@@ -1525,9 +1903,16 @@ def ship_bluedart_orders(cur, courier, courier_name, order_ids, order_id_tuple, 
 
                 package_string = ""
                 package_quantity = 0
+                break_loop = None
                 for idx, prod in enumerate(order[40]):
+                    if "tiles gap filler" in prod.lower():
+                        break_loop=True
                     package_string += prod + " (" + str(order[35][idx]) + ") + "
                     package_quantity += order[35][idx]
+
+                if break_loop and courier[1]=='NEWYOURCHOICE':
+                    continue
+
                 package_string += "Shipping"
 
                 services['ProductCode'] = 'A'
@@ -2044,6 +2429,12 @@ def ship_selfshp_orders(cur, courier, courier_name, order_ids, order_id_tuple, b
             if pickup_point[0] == 1495 and order[18] not in kama_RJMIRO_sdd_pincodes:
                 continue
 
+            if pickup_point[0] == 1526 and order[18] not in kama_UPPMRO_sdd_pincodes:
+                continue
+
+            if pickup_point[0] == 1527 and order[18] not in kama_GJAORO_sdd_pincodes:
+                continue
+
             # kama ayurveda assign delhi orders pincode check
             if pickup_point[0] == 142 and order[18] not in pidge_del_sdd_pincodes:
                 continue
@@ -2483,7 +2874,7 @@ def ship_pidge_orders(cur, courier, courier_name, order_ids, order_id_tuple, bac
                     str(return_data_raw['data']['PBID']),
                     return_data_raw['message'],
                     order[0], pickup_point[1], courier[9], json.dumps(dimensions), volumetric_weight, weight,
-                    "", pickup_point[2], "", None, "https://webapp.wareiq.com/tracking/"+str(return_data_raw['data']['PBID']), zone)])
+                    "", pickup_point[2], "", None, "https://t.pidge.in/?t="+return_data_raw['data']['track_code'], zone)])
 
                 if order[46] == 7:
                     push_awb_easyecom(order[39], order[36], str(return_data_raw['data']['PBID']), courier,
@@ -2492,7 +2883,7 @@ def ship_pidge_orders(cur, courier, courier_name, order_ids, order_id_tuple, bac
                 client_name = str(order[51])
 
                 try:
-                    tracking_link_wareiq = "https://webapp.wareiq.com/tracking/"+str(return_data_raw['data']['PBID'])
+                    tracking_link_wareiq = "https://t.pidge.in/?t="+return_data_raw['data']['track_code']
                     tracking_link_wareiq = UrlShortner.get_short_url(tracking_link_wareiq, cur)
                     send_received_event(client_name, customer_phone, tracking_link_wareiq)
                 except Exception:
@@ -2741,6 +3132,7 @@ def push_awb_easyecom(invoice_id, api_token, awb, courier, cur, companyCarrierId
                     }
         req = requests.post(post_url, data=post_body)
         if req.status_code!=200:
+            requests.post(post_url, data=post_body)
             try:
                 error = str(req.json())
             except Exception:
@@ -2898,6 +3290,7 @@ bluedart_area_code_mapping = {"110015":"DEL",
                                 "440027":"BOM",
                                 "400064":"BOM",
                                 "400097":"BOM",
+                                "400050":"BOM",
                                 "400705":"NBM",
                                 "401107":"BOM",
                                 "403001":"PNJ",
@@ -2905,7 +3298,7 @@ bluedart_area_code_mapping = {"110015":"DEL",
                                 "411001":"PNQ",
                                 "411005":"PNQ",
                                 "413501":"OBD",
-                                "421302":"BCT",
+                                "421302":"BOM",
                                 "422002":"NSK",
                                 "431001":"AUR",
                                 "440005":"NGP",
@@ -3200,3 +3593,5 @@ kama_MHCHRO_sdd_pincodes = ('400601','400602','400603','400604','400605','400606
 kama_MHJTRO_sdd_pincodes = ('400082','400080','400081','400078','400042','400076','400083','400079','400072','400084','400086','400075','400077','400089','400070','400071','400024','400059','400053','400069','400096','400093','400099','400074','400022','400043','400088','400085','400094','400030','400031','400032','400033','400034','400035','400036','400037','400039','400042','400043','400047','400049','400050','400051','400052','400053','400054','400055','400056','400057','400058','400059','400060','400062','400063','400064','400065','400067','400069','400070','400071','400072','400074','400075','400076','400077','400078','400079','400080','400081','400082','400083','400084','400085','400086','400087','400088','400089','400090','400093','400094','400096','400097','400098','400099','400101','400102','400104')
 kama_HRDGRO_sdd_pincodes = ('110037','122001','122002','122004','122005','122006','122007','122008','122009','122010','122015','122016','122017','122018','122021','122022','122101','122102','122003','122011')
 kama_RJMIRO_sdd_pincodes = ()
+kama_UPPMRO_sdd_pincodes = ('226010','226016','226014','226005','226001','226006','226024','226012','226011','226017','226004','226020','226021')
+kama_GJAORO_sdd_pincodes = ('380052','380059','380054','382455','380015','380058','380009','382210','380007','380005')

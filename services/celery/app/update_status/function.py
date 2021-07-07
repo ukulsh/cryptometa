@@ -1205,7 +1205,7 @@ def track_pidge_orders(courier, cur):
             if not reason_code_number:
                 continue
 
-            if payload.get("attempt_type") == 20:
+            if payload.get("attempt_type") in (20, 21, 22, 23, 24):
                 continue
 
             if reason_code_number in (20, 100, 120, 5):

@@ -219,6 +219,7 @@ def download_flag_func(query_to_run, get_selected_product_details, auth_data, OR
                         new_row.append(str(cgst))
                         new_row.append(str(sgst))
                         new_row.append(str(igst))
+                        new_row.append(str(order[1]))
                         not_shipped = None
                         if not product_data[4][idx]:
                             not_shipped = "Weight/dimensions not entered for product(s)"

@@ -353,12 +353,13 @@ def get_dashboard_ndr(resp):
 
         client_prefix = auth_data.get('client_prefix')
 
-        query_to_run_count = """select bb.status, count(*) from ndr_shipments aa
+        query_to_run_count = """select status, count(count) from 
+                            (select distinct on (bb.id) bb.id, bb.status, count(*) from ndr_shipments aa
                             left join orders bb on bb.id=aa.order_id
                             where aa.date_created+interval '5.5 hours'>'%s' 
                             and aa.date_created+interval '5.5 hours'<'%s'
                             __CLIENT_FILTER__
-                            group by bb.status"""%(from_date, to_date)
+                            group by bb.id, bb.status) xx group by status"""%(from_date, to_date)
 
         query_to_run_reason = """select cc.reason, count(*) from ndr_shipments aa
                                 left join orders bb on bb.id=aa.order_id

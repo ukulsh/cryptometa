@@ -893,7 +893,10 @@ class ProductUpdate(Resource):
             if data.get('price'):
                 product.price = float(data.get('price'))
             if data.get('dimensions'):
-                product.dimensions = data.get('dimensions')
+                dims = {"length": data.get('dimensions')["length"],
+                        "breadth": data.get('dimensions')["breadth"],
+                        "height": data.get('dimensions')["height"]}
+                product.dimensions = dims
             if data.get('weight'):
                 product.weight = data.get('weight')
             if data.get('hsn'):

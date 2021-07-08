@@ -202,9 +202,13 @@ def upload_master_products(resp):
         row_data = row[1]
         try:
             dimensions = None
+            weight = None
             if row_data.LengthCM == row_data.LengthCM and row_data.BreadthCM == row_data.BreadthCM and row_data.HeightCM == row_data.HeightCM:
-                dimensions = {"length": float(row_data.LengthCM), "breadth": float(row_data.BreadthCM),
-                              "height": float(row_data.HeightCM)}
+                dimensions = {"length": float(row_data.LengthCM) if float(row_data.LengthCM)>1 else 1,
+                              "breadth": float(row_data.BreadthCM) if float(row_data.BreadthCM)>1 else 1,
+                              "height": float(row_data.HeightCM) if float(row_data.HeightCM)>1 else 1}
+            if row_data.WeightKG == row_data.WeightKG:
+                weight = float(row_data.WeightKG) if float(row_data.WeightKG)>0.01 else 0.01
             prod_obj = db.session.query(MasterProducts).filter(MasterProducts.sku==str(row_data.SKU).rstrip(), MasterProducts.client_prefix==client_prefix).first()
             if prod_obj:
                 if row_data.Name==row_data.Name:
@@ -214,7 +218,7 @@ def upload_master_products(resp):
                 if row_data.Price==row_data.Price:
                     prod_obj.price=float(row_data.Price)
                 if row_data.WeightKG==row_data.WeightKG:
-                    prod_obj.weight=float(row_data.WeightKG)
+                    prod_obj.weight=weight
                 if dimensions:
                     prod_obj.dimensions=dimensions
                 if row_data.HSN==row_data.HSN:
@@ -225,15 +229,12 @@ def upload_master_products(resp):
                 db.session.commit()
                 return
 
-            dimensions = None
-            if row_data.LengthCM==row_data.LengthCM and row_data.BreadthCM==row_data.BreadthCM and row_data.HeightCM==row_data.HeightCM:
-                dimensions  = {"length": float(row_data.LengthCM), "breadth": float(row_data.BreadthCM), "height": float(row_data.HeightCM)}
             prod_obj = MasterProducts(name=str(row_data.Name),
                                                sku=str(row_data.SKU),
                                                product_image=str(row_data.ImageURL) if row_data.ImageURL == row_data.ImageURL else None,
                                                client_prefix=client_prefix,
                                                price=float(row_data.Price) if row_data.Price == row_data.Price else None,
-                                               weight=float(row_data.WeightKG) if row_data.WeightKG==row_data.WeightKG else None,
+                                               weight=weight,
                                                dimensions=dimensions,
                                                active=True,
                                                hsn_code=str(row_data.HSN) if row_data.HSN==row_data.HSN else None,
@@ -893,12 +894,12 @@ class ProductUpdate(Resource):
             if data.get('price'):
                 product.price = float(data.get('price'))
             if data.get('dimensions'):
-                dims = {"length": data.get('dimensions')["length"],
-                        "breadth": data.get('dimensions')["breadth"],
-                        "height": data.get('dimensions')["height"]}
+                dims = {"length": float(data.get('dimensions')["length"]) if float(data.get('dimensions')["length"])>1 else 1,
+                        "breadth": float(data.get('dimensions')["breadth"]) if float(data.get('dimensions')["breadth"])>1 else 1,
+                        "height": float(data.get('dimensions')["height"]) if float(data.get('dimensions')["height"])>1 else 1}
                 product.dimensions = dims
             if data.get('weight'):
-                product.weight = data.get('weight')
+                product.weight = float(data.get('weight')) if float(data.get('weight'))>0.01 else 0.01
             if data.get('hsn'):
                 product.hsn_code = data.get('hsn')
             if data.get('tax_rate'):
@@ -2159,8 +2160,12 @@ class AddSKU(Resource):
             sku = data.get('sku')
             dimensions = data.get('dimensions')
             if dimensions:
-                dimensions = {"length": float(dimensions['length']), "breadth": float(dimensions['breadth']), "height":  float(dimensions['height'])}
+                dimensions = {"length": float(dimensions['length']) if float(dimensions['length'])>1 else 1,
+                              "breadth": float(dimensions['breadth']) if float(dimensions['breadth'])>1 else 1,
+                              "height":  float(dimensions['height']) if float(dimensions['height'])>1 else 1}
             weight = data.get('weight')
+            if weight:
+                weight = float(weight) if float(weight)>0.01 else 0.01
             price = float(data.get('price', 0))
             client = data.get('client')
             hsn = data.get('hsn')

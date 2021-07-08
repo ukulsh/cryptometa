@@ -1814,7 +1814,7 @@ def ship_bluedart_orders(cur, courier, courier_name, order_ids, order_id_tuple, 
             if courier[1] == "ZLADE" and zone in ('A', ) and not force_ship:
                 continue
 
-            if order[26].lower() == "prepaid" and courier[1] in ("ACTIFIBER", "BEHIR", "SHAHIKITCHEN", "SUKHILIFE", "ORGANICRIOT", "SUCCESSCRAFT", "HOMELY", "BEHIR2") and not force_ship:
+            if order[26].lower() == "prepaid" and courier[1] in ("ACTIFIBER", "BEHIR", "SHAHIKITCHEN", "SUKHILIFE", "ORGANICRIOT", "SUCCESSCRAFT", "HOMELY", "BEHIR2", "BEHIR3") and not force_ship:
                 continue
 
             time_2_days = datetime.utcnow() + timedelta(hours=5.5) - timedelta(days=1)

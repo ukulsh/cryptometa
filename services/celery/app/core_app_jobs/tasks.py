@@ -565,6 +565,7 @@ def consume_xpressbees_scan_util(payload):
 def mark_order_delivered_channels(data):
     cur = conn.cursor()
     order_ids = data.get("order_ids")
+    mark_op = data.get("mark_op")
     if len(order_ids) == 1:
         order_tuple = "(" + str(order_ids[0]) + ")"
     else:
@@ -572,7 +573,34 @@ def mark_order_delivered_channels(data):
     cur.execute(get_order_details_query.replace('__FILTER_ORDER__', "aa.id in %s" % order_tuple))
     all_orders = cur.fetchall()
     for order in all_orders:
-        mark_delivered_channel(order)
+        if mark_op=="shipped":
+            mark_picked_channel(order, cur, courier="Self Ship")
+        if mark_op=="rto":
+            mark_rto_channel(order)
+        else:
+            mark_delivered_channel(order)
+
+        try:
+            status_type = "UD" if mark_op == "shipped" else "DL"
+            tracking_status = "Delivered"
+            status_text = "Shipment Delivered"
+            if mark_op=='shipped':
+                tracking_status = "Shipped"
+                status_text = "Order Shipped"
+            if mark_op=='rto':
+                tracking_status = "RTO"
+                status_text = "Order Returned to Origin"
+            cur.execute(insert_status_query, (
+                order[0], order[40], order[10], status_type, tracking_status, status_text, "", "",
+                datetime.utcnow()+timedelta(hours=5.5)))
+
+            if order[42] in ('TNPMRO', 'TLLTRO', 'MHCHRO', 'MHJTRO', 'HRDGRO', 'RJMIRO', 'GJAORO', 'UPPMRO'):
+                push_kama_wondersoft(order[0], cur, type=mark_op)
+
+        except Exception:
+            pass
+
+        conn.commit()
 
     return ""
 
@@ -1390,9 +1418,10 @@ def update_available_quantity_on_channel():
                         update_quan = quan[1]
                         try:
                             if update_quan>0:
-                                reserved_quan = requests.get("%s/V1/reserved-products/get/sku/%s"%(channel[4], quan[0]), headers=headers).json()
-                                reserved_quan = reserved_quan['quantity']
-                                update_quan -= reserved_quan if reserved_quan<0 else 0
+                                if channel[0]=='KAMAAYURVEDA':
+                                    reserved_quan = requests.get("%s/V1/reserved-products/get/sku/%s"%(channel[4], quan[0]), headers=headers).json()
+                                    reserved_quan = reserved_quan['quantity']
+                                    update_quan -= reserved_quan if reserved_quan<0 else 0
                             else:
                                 update_quan=0
                             source_items.append({
@@ -1704,3 +1733,114 @@ def update_pincode_serviceability_table():
 
         except Exception as e:
             logger.error("Couldn't create csv for serviceability"+ "\nError: " + str(e.args[0]))
+
+
+def push_kama_wondersoft(unique_id, cur=conn.cursor(), type="shipped"):
+    try:
+        cur.execute(wondersoft_push_query, (int(unique_id), ))
+        order = cur.fetchone()
+        line_items = []
+        line_no = 1
+        for idx, sku in enumerate(order[15]):
+            line_items.append({"LineNumber": line_no,
+                                "ItemCode": sku,
+                                "Quantity": order[16][idx],
+                                "Rate": order[17][idx]})
+            line_no += 1
+        if type=='rto':
+            json_body = {"ReturnOrder": {
+                                "Customer": {
+                                    "FirstName": order[0],
+                                    "LastName": order[1],
+                                    "MobileNumber": int(order[2]),
+                                    "EmailID": order[3] if order[3] else "test@gmail.com",
+                                    "CustomerAddressLine1": str(order[5]) + str(order[6]),
+                                    "CustomerAddressLine2": "",
+                                    "CustomerAddressLine3": "",
+                                    "CustomerCityName": order[7],
+                                    "CustomerStateName": order[8],
+                                    "CustomerStateGSTCode": "",
+                                    "Pincode": order[9]
+                                },
+                                "Header": {
+                                    "ReturnOrderDate": (datetime.utcnow()+timedelta(hours=5.5)).strftime('%Y%m%d'),
+                                    "ReturnOrderNumber": "RET"+order[11],
+                                    "RefOrderDate": order[10].strftime('%Y%m%d'),
+                                    "RefOrderNumber": order[11],
+                                    "RefOrderLocation": order[12],
+                                    "TotalReturnOrderValue": order[13],
+                                    "SourceChannel": "WareIQ"
+                                },
+                                "Items": {
+                                    "Item": line_items
+                                },
+                                "Payments": {
+                                    "Payment": [
+                                        {
+                                            "PaymentMode": order[14],
+                                            "PaymentValue": order[13],
+                                            "ModeType": "nan",
+                                            "PaymentReference": "****"
+                                        }
+                                    ]
+                                }
+                            }
+                            }
+        else:
+            json_body = {"Order": {
+                                "Customer": {
+                                    "FirstName": order[0],
+                                    "LastName": order[1],
+                                    "MobileNumber": int(order[2]),
+                                    "EmailID": order[3] if order[3] else "test@gmail.com",
+                                    "CustomerAddressLine1": str(order[5])+str(order[6]),
+                                    "CustomerAddressLine2": "",
+                                    "CustomerAddressLine3": "",
+                                    "CustomerCityName": order[7],
+                                    "CustomerStateName": order[8],
+                                    "CustomerStateGSTCode": "",
+                                    "Pincode": order[9]
+                                },
+                                "Header": {
+                                    "OrderDate": order[10].strftime('%Y%m%d'),
+                                    "OrderNumber": order[11],
+                                    "OrderLocation": order[12],
+                                    "DeliveryAddressLine1": str(order[5])+str(order[6]),
+                                    "DeliveryAddressLine2": "",
+                                    "DeliveryAddressLine3": "",
+                                    "DeliveryCityName": order[7],
+                                    "DeliveryStateName": order[8],
+                                    "DeliveryStateGSTCode": order[4],
+                                    "DeliveryPincode": order[9],
+                                    "TotalOrderValue": order[13],
+                                    "ExpectedDeliveryDate": order[10].strftime('%Y%m%d'),
+                                    "SourceChannel": "WareIQ"
+                                },
+                                "Items": {
+                                    "Item": line_items
+                                },
+                                "Payments": {
+                                    "Payment": [
+                                        {
+                                            "PaymentMode": order[14],
+                                            "PaymentValue": order[13],
+                                            "ModeType": "nan",
+                                            "PaymentReference": "****"
+                                        }
+                                    ]
+                                }
+                            }
+                        }
+
+        token_headers = {"Username": "WareIQ",
+                         "Password": "Wondersoft#12",
+                         "SERVICE_METHODNAME": "GetToken"}
+        token_url = "http://103.25.172.69:7006/eShopaidAPI/eShopaidService.svc/Token"
+        token_req = requests.post(token_url, headers=token_headers, json={})
+        auth_token = token_req.json()['Response']['Access_Token'].strip()
+        gi_headers = {"SERVICE_METHODNAME": "CreateSalesOrder" if type!='rto' else "PushReturnOrder",
+                      "AUTHORIZATION": auth_token}
+        gi_url = "http://103.25.172.69:7006/eShopaidAPI/eShopaidService.svc/ProcessData"
+        so_req = requests.post(gi_url, headers=gi_headers, json=json_body)
+    except Exception:
+        pass

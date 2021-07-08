@@ -5,7 +5,7 @@ get_order_details_query = """select aa.id, bb.awb, aa.status, aa.client_prefix, 
                                     nn.client_name, nn.client_logo, nn.custom_email_subject, bb.courier_id, nn.theme_color, cc.unique_parameter,
                                     cc.mark_shipped, cc.shipped_status, cc.mark_invoiced, cc.invoiced_status, cc.mark_delivered, 
                                     cc.delivered_status, cc.mark_returned, cc.returned_status, cc.id, ee.amount, oo.warehouse_prefix, nn.verify_ndr, pp.webhook_id,
-                                    nn.client_name, bb.courier_id, oo.city
+                                    nn.client_name, bb.courier_id, oo.city, oo.warehouse_prefix
                                     from orders aa
                                     left join shipments bb
                                     on aa.id=bb.order_id
@@ -168,3 +168,27 @@ create_pincode_serv_file_query = """select aa.pincode, city, state, bool_or(serv
                                                 and length(aa.pincode)=6
                                                 group by aa.pincode, city, state
                                                 order by aa.pincode"""
+
+wondersoft_push_query = """select cc.first_name, cc.last_name, aa.customer_phone, aa.customer_email, ff.gstin, 
+                            cc.address_one,cc.address_two, cc.city, cc.state, cc.pincode, aa.order_date, 
+                            aa.channel_order_id, gg.warehouse_prefix, dd.amount, dd.payment_mode, ee.products_sku,
+                            ee.quan, ee.prod_amount from orders aa
+                            left join shipping_address cc
+                            on aa.delivery_address_id=cc.id
+                            left join orders_payments dd
+                            on dd.order_id=aa.id
+                            left join 
+                            (select order_id, array_agg(quantity) as quan, array_agg(pp.sku) as products_sku, 
+                             array_agg(amount) as prod_amount
+                             from op_association opa 
+                             left join master_products pp
+                             on opa.master_product_id = pp.id
+                             group by order_id) ee
+                            on aa.id=ee.order_id
+                            left join shipments ll
+                            on ll.order_id=aa.id
+                            left join client_pickups ff
+                            on ff.id=aa.pickup_data_id
+                            left join pickup_points gg
+                            on gg.id=ff.pickup_id
+                            where aa.id=%s"""

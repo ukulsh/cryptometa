@@ -1998,7 +1998,7 @@ def magento_fulfillment(order, cur, courier=None):
         "notify": False,
         "tracks": [
             {
-                "extension_attributes": {"warehouse_name": str(order[36])},
+                "extension_attributes": {"warehouse_name": str(order[36])} if order[3]=='KAMAAYURVEDA' else {},
                 "track_number": str(order[1]),
                 "title": courier[1],
                 "carrier_code": courier[1]

@@ -7,7 +7,7 @@ import csv
 from datetime import timedelta
 from celery.schedules import crontab
 from .update_status.function import update_status
-from .fetch_orders.function import fetch_orders
+from .fetch_orders.function import fetch_orders, assign_pickup_points_for_unassigned
 from .fetch_orders.sync_channel_status import sync_channel_status
 from .ship_orders.function import ship_orders
 from .core_app_jobs.tasks import *
@@ -212,7 +212,14 @@ def celery_dev():
 @celery_app.task(name='fetch_orders')
 def orders_fetch(client_prefix=None, sync_all=None):
     fetch_orders(client_prefix, sync_all)
+    assign_pickup_points.apply_async(queue='assign_pickup_points')
     return 'successfully completed fetch_orders'
+
+
+@celery_app.task(name='assign_pickup_points')
+def assign_pickup_points():
+    assign_pickup_points_for_unassigned()
+    return 'successfully completed assign_pickup_points'
 
 
 @celery_app.task(name='sync_channel_status')

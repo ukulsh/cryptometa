@@ -1688,9 +1688,9 @@ def bulk_cancel_orders(resp):
     return jsonify({"success": True, "msg": "Cancelled orders successfully"}), 200
 
 
-@orders_blueprint.route('/orders/v1/bulkdelivered', methods=['POST'])
+@orders_blueprint.route('/orders/v1/bulkupdate/<mark_op>', methods=['POST'])
 @authenticate_restful
-def bulk_delivered_orders(resp):
+def bulk_delivered_orders(resp, mark_op):
     cur = conn.cursor()
     auth_data = resp.get('data')
     if not auth_data:
@@ -1740,12 +1740,17 @@ def bulk_delivered_orders(resp):
 
     try:
         req = requests.post('{0}/scans/v1/mark_delivered_channel'.format(current_app.config['CELERY_SERVICE_URL']), json={"token": "b4r74rn3r84rn4ru84hr",
-                                                                                                                "order_ids": order_ids})
+                                                                                                                "order_ids": order_ids, "mark_op": mark_op})
         msg = str(req.json())
     except Exception as e:
         msg = str(e.args[0])
 
-    cur.execute("UPDATE orders SET status='DELIVERED' WHERE id in %s"%order_tuple_str)
+    mark_status = "DELIVERED"
+    if mark_op=="shipped":
+        mark_status = "SHIPPED"
+    if mark_op=="rto":
+        mark_status = "RTO"
+    cur.execute("UPDATE orders SET status='__STATUS__' WHERE id in __ORDER_IDS__".replace('__STATUS__', mark_status).replace('__ORDER_IDS__', order_tuple_str))
 
     conn.commit()
 

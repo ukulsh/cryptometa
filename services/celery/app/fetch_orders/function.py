@@ -78,7 +78,6 @@ def fetch_orders(client_prefix=None, sync_all=None):
                 logger.error("Couldn't fetch orders: " + str(channel[1]) + "\nError: " + str(e.args))
 
     if not client_prefix:
-        assign_pickup_points_for_unassigned(cur, cur_2)
         update_thirdwatch_data(cur)
     elif sync_all:
         assign_pickup_points_for_unassigned(cur, cur_2, days=30)
@@ -1319,7 +1318,7 @@ def fetch_instamojo_orders(cur, channel, manual=None):
     conn.commit()
 
 
-def assign_pickup_points_for_unassigned(cur, cur_2, days=5):
+def assign_pickup_points_for_unassigned(cur=conn.cursor(), cur_2=conn_2.cursor(), days=5):
     time_after = datetime.utcnow() - timedelta(days=days)
     cur.execute(get_orders_to_assign_pickups, (time_after,))
     all_orders = cur.fetchall()
@@ -1375,6 +1374,30 @@ def assign_pickup_points_for_unassigned(cur, cur_2, days=5):
                         wh_dict[prod_wh[0]]['prod_list'].append(prod_wh[1])
 
             warehouse_pincode_str = ""
+
+            if order[1]=='24ORGANIC':
+                for key, value in wh_dict.items():
+                    warehouse_pincode_str += "('" + key + "','" + str(value['pincode']) + "'),"
+                warehouse_pincode_str = warehouse_pincode_str.rstrip(',')
+                try:
+                    cur_2.execute(fetch_warehouse_to_pick_from.replace('__WAREHOUSE_PINCODES__', warehouse_pincode_str).replace(
+                            '__COURIER_ID__', str(courier_id)).replace('__DELIVERY_PINCODE__', str(order[2])).replace('limit 1', ''))
+                except Exception as e:
+                    conn_2.rollback()
+                    logger.info(str(order[0]) + ": " + str(e.args[0]))
+                    continue
+                final_wh = cur_2.fetchall()
+                prod_list = list()
+                set_list = list()
+                for wh in final_wh:
+                    append_list = list(set(wh_dict[wh[0]]['prod_list']) - set(set_list))
+                    set_list = list(set(set_list) | set(wh_dict[wh[0]]['prod_list']))
+                    if append_list:
+                        prod_list.append(append_list)
+
+                prod_list.sort(key=len, reverse=True)
+                split_order(cur, order[0], prod_list, remainder=True)
+
             for key, value in wh_dict.items():
                 if key == 'TNPMRO' and order[2] not in kama_chn_sdd_pincodes: #todo generalise this
                     continue
@@ -1404,7 +1427,7 @@ def assign_pickup_points_for_unassigned(cur, cur_2, days=5):
                     set_list = list(set(set_list)|set(value['prod_list']))
                     if append_list:
                         prod_list.append(append_list)
-                if len(set_list) == no_sku and order[5]!=False:
+                if len(set_list) == no_sku and order[5]:
                     prod_list.sort(key=len, reverse=True)
                     split_order(cur, order[0], prod_list)
                 elif order[6]:
@@ -1447,9 +1470,6 @@ def assign_pickup_points_for_unassigned(cur, cur_2, days=5):
             cur.execute("""UPDATE orders SET pickup_data_id = %s WHERE id=%s""", (pickup_id[0], order[0]))
             conn.commit()
 
-            if final_wh[0] in ('TNPMRO', 'TLLTRO', 'MHCHRO', 'MHJTRO', 'HRDGRO', 'RJMIRO', 'GJAORO', 'UPPMRO'):
-                push_kama_wondersoft(order[0], cur)
-
         except Exception as e:
             if order[6]:
                 assign_default_wh(cur, order)
@@ -1471,8 +1491,24 @@ def assign_default_wh(cur, order):
         cur.execute("""UPDATE orders SET pickup_data_id = %s WHERE id=%s""", (pickup_id[0], order[0]))
 
 
-def split_order(cur, order_id, prod_list):
+def split_order(cur, order_id, prod_list, remainder=None):
     try:
+        all_products = list()
+        for prod_new in prod_list:
+            all_products += prod_new
+
+        if remainder:
+            cur.execute("SELECT master_product_id FROM op_association WHERE order_id=%s and master_product_id not in %s" % (
+            str(order_id), str(tuple(all_products))))
+            rem_prods_qs = cur.fetchall()
+            rem_prod_list = []
+            if rem_prods_qs:
+                for rem_prod in rem_prods_qs:
+                    rem_prod_list.append(rem_prod[0])
+
+                all_products+=rem_prod_list
+            prod_list.append(rem_prod_list)
+
         sub_id = 'A'
         cur.execute("SELECT shipping_charges, payment_mode, currency, amount from orders_payments WHERE order_id=%s" % str(order_id))
         fetched_tuple = cur.fetchone()
@@ -1483,9 +1519,6 @@ def split_order(cur, order_id, prod_list):
         if fetched_tuple[0]:
             order_total -= int(fetched_tuple[0])
 
-        all_products = list()
-        for prod_new in prod_list:
-            all_products+=prod_new
         cur.execute("SELECT sum(amount) FROM op_association WHERE order_id=%s and master_product_id in %s" % (str(order_id), str(tuple(all_products))))
         products_total = cur.fetchone()[0]
         for idx, prods in enumerate(prod_list):
@@ -1505,10 +1538,10 @@ def split_order(cur, order_id, prod_list):
             sub_id_str = '-' + sub_id
             duplicate_order_query = """INSERT INTO orders (channel_order_id, order_date, customer_name, customer_email, 
                                 customer_phone, delivery_address_id, date_created, status, client_prefix, client_channel_id, 
-                                order_id_channel_unique, pickup_data_id)
+                                order_id_channel_unique, pickup_data_id, master_channel_id)
                                 SELECT CONCAT(channel_order_id, '%s'), order_date, customer_name, customer_email, 
                                 customer_phone, delivery_address_id, date_created, status, client_prefix, client_channel_id, 
-                                order_id_channel_unique, pickup_data_id FROM orders WHERE id=%s 
+                                order_id_channel_unique, pickup_data_id, master_channel_id FROM orders WHERE id=%s 
                                 RETURNING id;"""%(sub_id_str, str(order_id))
             cur.execute(duplicate_order_query)
             new_order_id = cur.fetchone()[0]
@@ -1652,77 +1685,5 @@ def invoice_easyecom_order(cur, inv_text, inv_time, order_id, pickup_data_id):
         cur.execute("""INSERT INTO orders_invoice (order_id, pickup_data_id, invoice_no_text, invoice_no, date_created, qr_url) 
                         VALUES (%s, %s, %s, %s, %s, %s);""", (order_id, pickup_data_id, inv_text, inv_no, inv_time_new, qr_url))
     except Exception as e:
-        pass
-
-
-def push_kama_wondersoft(unique_id, cur=conn.cursor()):
-    try:
-        cur.execute(wondersoft_push_query, (int(unique_id), ))
-        order = cur.fetchone()
-        line_items = []
-        line_no = 1
-        for idx, sku in enumerate(order[15]):
-            line_items.append({"LineNumber": line_no,
-                                "ItemCode": sku,
-                                "Quantity": order[16][idx],
-                                "Rate": order[17][idx]})
-            line_no += 1
-
-        json_body = {"Order": {
-                            "Customer": {
-                                "FirstName": order[0],
-                                "LastName": order[1],
-                                "MobileNumber": int(order[2]),
-                                "EmailID": order[3] if order[3] else "test@gmail.com",
-                                "CustomerAddressLine1": str(order[5])+str(order[6]),
-                                "CustomerAddressLine2": "",
-                                "CustomerAddressLine3": "",
-                                "CustomerCityName": order[7],
-                                "CustomerStateName": order[8],
-                                "CustomerStateGSTCode": "",
-                                "Pincode": order[9]
-                            },
-                            "Header": {
-                                "OrderDate": order[10].strftime('%Y%m%d'),
-                                "OrderNumber": order[11],
-                                "OrderLocation": order[12],
-                                "DeliveryAddressLine1": str(order[5])+str(order[6]),
-                                "DeliveryAddressLine2": "",
-                                "DeliveryAddressLine3": "",
-                                "DeliveryCityName": order[7],
-                                "DeliveryStateName": order[8],
-                                "DeliveryStateGSTCode": order[4],
-                                "DeliveryPincode": order[9],
-                                "TotalOrderValue": order[13],
-                                "ExpectedDeliveryDate": order[10].strftime('%Y%m%d'),
-                                "SourceChannel": "WareIQ"
-                            },
-                            "Items": {
-                                "Item": line_items
-                            },
-                            "Payments": {
-                                "Payment": [
-                                    {
-                                        "PaymentMode": order[14],
-                                        "PaymentValue": order[13],
-                                        "ModeType": "nan",
-                                        "PaymentReference": "****"
-                                    }
-                                ]
-                            }
-                        }
-                    }
-
-        token_headers = {"Username": "WareIQ",
-                         "Password": "Wondersoft#12",
-                         "SERVICE_METHODNAME": "GetToken"}
-        token_url = "http://103.25.172.69:7006/eShopaidAPI/eShopaidService.svc/Token"
-        token_req = requests.post(token_url, headers=token_headers, json={})
-        auth_token = token_req.json()['Response']['Access_Token'].strip()
-        gi_headers = {"SERVICE_METHODNAME": "CreateSalesOrder",
-                      "AUTHORIZATION": auth_token}
-        gi_url = "http://103.25.172.69:7006/eShopaidAPI/eShopaidService.svc/ProcessData"
-        so_req = requests.post(gi_url, headers=gi_headers, json=json_body)
-    except Exception:
         pass
 

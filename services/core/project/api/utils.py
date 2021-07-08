@@ -399,7 +399,7 @@ def fill_shiplabel_data_thermal(c, order, client_name=None):
             return_point_name = client_name.client_name if client_name else str(return_point.name)
             return_address = return_point_name + " |  " + return_address
 
-            return_address = split_string(return_address, 75)
+            return_address = split_string(return_address, 65)
 
             y_axis = -0.65
             for retn in return_address:

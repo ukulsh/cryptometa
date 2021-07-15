@@ -986,7 +986,7 @@ def pagination_validator(page_size, page_number):
 
 def tracking_get_xpressbees_details(shipment, awb):
     xpressbees_url = "http://xbclientapi.xbees.in/TrackingService.svc/GetShipmentSummaryDetails"
-    body = {"AWBNo": awb, "XBkey": shipment.courier.api_key}
+    body = {"AWBNo": awb, "XBkey": shipment.courier.api_password.split("|")[1]}
     return_details = dict()
     req = requests.post(xpressbees_url, json=body).json()
     for each_scan in req[0]['ShipmentSummary']:
@@ -1149,7 +1149,7 @@ def cancel_order_on_couriers(order):
                        "Content-Type": "application/json"}
             req_can = requests.post("https://track.delhivery.com/api/p/edit", headers=headers, data=cancel_body)
         if order.shipments[0].courier.courier_name.startswith('Xpressbees'):  # Cancel on Xpressbees
-            cancel_body = json.dumps({"AWBNumber": order.shipments[0].awb, "XBkey": order.shipments[0].courier.api_key,
+            cancel_body = json.dumps({"AWBNumber": order.shipments[0].awb, "XBkey": order.shipments[0].courier.api_password.split("|")[1],
                                       "RTOReason": "Cancelled by seller"})
             headers = {"Authorization": "Basic " + order.shipments[0].courier.api_key,
                        "Content-Type": "application/json"}

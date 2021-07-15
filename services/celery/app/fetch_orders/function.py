@@ -790,8 +790,8 @@ def fetch_easyecom_orders(cur, channel, manual=None):
         return None
     for order in data:
         try:
-            cur.execute("SELECT id from orders where order_id_channel_unique='%s' and client_channel_id=%s" % (
-            str(order['invoice_id']), channel[0]))
+            cur.execute("SELECT id from orders where order_id_channel_unique='%s' and client_prefix='%s'" % (
+            str(order['invoice_id']), channel[1]))
             try:
                 existing_order = cur.fetchone()[0]
             except Exception as e:

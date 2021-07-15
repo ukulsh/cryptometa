@@ -217,10 +217,10 @@ def consume_pidge_scan_util(payload):
             if not reason_code_number:
                 return "Skipped: no reason code"
 
-            if payload.get("attempt_type") in (20, 21, 22, 23, 24):
+            if payload.get("attempt_type") not in (10, 30, 40, 70):
                 return "Skipped: no status to update"
 
-            if reason_code_number in (20, 100, 120, 5):
+            if reason_code_number not in (130, 150, 170, 190, 5):
                 return "No status to update"
 
             vendor_order_id = payload.get('vendor_order_id')
@@ -1352,7 +1352,8 @@ def update_available_quantity_from_easyecom():
                                 left join pickup_points bb on aa.pickup_id=bb.id
                                 where aa.client_prefix='KAMAAYURVEDA'
                                 and aa.enable_sdd=true
-                                and bb.warehouse_prefix in ('TLLTRO', 'MHCHRO', 'MHJTRO', 'HRDGRO', 'RJMIRO', 'TNPMRO', 'GJAORO', 'UPPMRO')""")
+                                and bb.warehouse_prefix in ('TLLTRO', 'MHCHRO', 'MHJTRO', 'HRDGRO', 'RJMIRO', 'TNPMRO', 
+                                'GJAORO', 'UPPMRO', 'TNEARO', 'KAVRRO', 'MHPMRO', 'WBQMRO')""")
 
             pickup_points = cur.fetchall()
             token_headers = {"Username": "WareIQ",
@@ -1530,7 +1531,7 @@ def ndr_push_reattempts_util():
 
             if order[1].startswith('Xpressbees'):  # Xpressbees
                 headers = {"Content-Type": "application/json",
-                           "XBKey": order[3]}
+                           "XBKey": order[4].split("|")[1]}
                 body = {"ShippingID": order[0]}
                 if order[5]:
                     body['DeferredDeliveryDate'] = order[5].strftime('%Y-%m-%d %X')
@@ -1745,7 +1746,7 @@ def push_kama_wondersoft(unique_id, cur=conn.cursor(), type="shipped"):
             line_items.append({"LineNumber": line_no,
                                 "ItemCode": sku,
                                 "Quantity": order[16][idx],
-                                "Rate": order[17][idx]})
+                                "Rate": float(order[17][idx])/order[16][idx]})
             line_no += 1
         if type=='rto':
             json_body = {"ReturnOrder": {

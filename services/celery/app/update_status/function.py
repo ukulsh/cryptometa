@@ -510,7 +510,7 @@ def track_xpressbees_orders(courier, cur):
             orders_dict[order[1]] = order
             awb_string += order[1] + ","
 
-        xpressbees_body = {"AWBNo": awb_string.rstrip(","), "XBkey": courier[2]}
+        xpressbees_body = {"AWBNo": awb_string.rstrip(","), "XBkey": courier[3].split("|")[1]}
 
         check_status_url = "http://xbclientapi.xbees.in/TrackingService.svc/GetShipmentSummaryDetails"
         req = requests.post(check_status_url, headers=headers, data=json.dumps(xpressbees_body)).json()
@@ -1205,10 +1205,10 @@ def track_pidge_orders(courier, cur):
             if not reason_code_number:
                 continue
 
-            if payload.get("attempt_type") in (20, 21, 22, 23, 24):
+            if payload.get("attempt_type") not in (10, 30, 40, 70):
                 continue
 
-            if reason_code_number in (20, 100, 120, 5):
+            if reason_code_number not in (130, 150, 170, 190, 5):
                 continue
 
             is_return = False
@@ -1356,15 +1356,14 @@ def verification_text(current_order, cur, ndr_reason=None):
             current_order[0], current_order[10], ndr_reason, "required", datetime.utcnow() + timedelta(hours=5.5))
         cur.execute("INSERT INTO ndr_shipments (order_id, shipment_id, reason_id, current_status, date_created) VALUES (%s,%s,%s,%s,%s);",
             ndr_ship_tuple)
-        if current_order[37] != False:
+        if current_order[37] != False and ndr_reason in (1, 3, 9, 11):
             cur.execute("SELECT * FROM ndr_verification where order_id=%s;"%str(current_order[0]))
             if not cur.fetchone():
                 cur.execute("INSERT INTO ndr_verification (order_id, verification_link, date_created) VALUES (%s,%s,%s);",
                     insert_cod_ver_tuple)
                 customer_phone = current_order[4].replace(" ", "")
                 customer_phone = "0" + customer_phone[-10:]
-                if ndr_reason in (1, 3, 9, 11):
-                    send_ndr_event(customer_phone, current_order, ndr_confirmation_link)
+                send_ndr_event(customer_phone, current_order, ndr_confirmation_link)
 
 
 delhivery_status_code_mapping_dict = {
@@ -1788,6 +1787,7 @@ pidge_status_mapping = {130: ("IN TRANSIT", "UD", "Picked", "Shipment picked up"
                         150: ("IN TRANSIT", "UD", "In Transit", "Shipment in transit"),
                         170: ("DISPATCHED", "UD", "Out for delivery", "Shipment out for delivery"),
                         190: ("DELIVERED", "UD", "Delivered", "Shipment delivered"),
+                        5: ("PENDING", "UD", "In Transit", "Shipment not delivered"),
                         0: ("CANCELED", "UD", "Cancelled", "order cancelled")}
 
 

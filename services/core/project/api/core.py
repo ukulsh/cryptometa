@@ -93,13 +93,14 @@ class CodVerificationGather(Resource):
                                      client_name,
                                      order.channel_order_id)
                 elif ver_type=="ndr":
-                    gather_prompt_text = "Hello %s, You recently cancelled your order from %s with amount %s." \
-                                         " Press 1 to confirm cancellation or, 0 to re-attempt." % (order.customer_name,
+                    gather_prompt_text = "Hello %s, delivery for your order from %s with amount %s was attempted today " \
+                                         "but could not be delivered." \
+                                         " Press 0 to re-attempt delivery or, press 1 to cancel order." % (order.customer_name,
                                                                                              client_name,
                                                                                              str(order.payments[0].amount))
 
                     repeat_prompt_text = "It seems that you have not provided any input, please try again. Order from %s, " \
-                                         "Order ID %s. Press 1 to confirm cancellation or, 0 to re-attempt." % (
+                                         "Order ID %s. Press 0 to re-attempt delivery or, press 1 to cancel order." % (
                                              client_name,
                                              order.channel_order_id)
                 else:

@@ -63,7 +63,7 @@ def ship_orders(courier_name=None, order_ids=None, force_ship=None, client_prefi
                 ship_shadowfax_orders(cur, courier, courier_name, order_ids, order_id_tuple, force_ship=force_ship)
 
             elif courier[10].startswith('Xpressbees'):
-                ship_xpressbees_orders(cur, courier, courier_name, order_ids, order_id_tuple, force_ship=force_ship)
+                ship_expressbees_orders(cur, courier, courier_name, order_ids, order_id_tuple, force_ship=force_ship)
 
             elif courier[10].startswith('Expressbees'):
                 ship_expressbees_orders(cur, courier, courier_name, order_ids, order_id_tuple, force_ship=force_ship)
@@ -318,9 +318,9 @@ def ship_delhivery_orders(cur, courier, courier_name, order_ids, order_id_tuple,
                     if order[40]:
                         for idx, prod in enumerate(order[40]):
                             package_string += prod + " (" + str(order[35][idx]) + ") + "
-                        package_string += "Shipping"
+                        package_string += "Shipping essential"
                     else:
-                        package_string += "WareIQ package"
+                        package_string += "WareIQ package essential"
 
                     shipping_phone = order[21] if order[21] else order[5]
                     shipping_phone = ''.join(e for e in str(shipping_phone) if e.isalnum())
@@ -332,6 +332,7 @@ def ship_delhivery_orders(cur, courier, courier_name, order_ids, order_id_tuple,
                     if order[16]:
                         shipment_data['add'] += '\n' + order[16]
                     shipment_data['phone'] = shipping_phone
+                    shipment_data['category_of_goods'] = "essential"
                     shipment_data['payment_mode'] = order[26]
                     shipment_data['name'] = order[13]
                     if order[14]:
@@ -1350,21 +1351,21 @@ def ship_expressbees_orders(cur, courier, courier_name, order_ids, order_id_tupl
                 if order[26].lower() == "cod":
                     expressbees_shipment_body["CollectibleAmount"] = order[27]
 
-                xbees_auth_url = "http://stageusermanagementapi.xbees.in/api/auth/generateToken"
+                xbees_auth_url = "http://userauthapis.xbees.in/api/auth/generateToken"
                 req_auth = requests.post(xbees_auth_url, headers=headers, data=json.dumps({"username": username, "password": password,
-                                                                                           "secretkey": courier[15]}))
+                                                                                           "secretkey": courier[15].split("|")[0]}))
                 headers['token'] = req_auth.json()['token']
                 headers['versionnumber'] = "v1"
-                xpressbees_url = "http://api.staging.shipmentmanifestation.xbees.in/shipmentmanifestation/forward"
+                xpressbees_url = "http://api.shipmentmanifestation.xbees.in/shipmentmanifestation/Forward"
                 req = requests.post(xpressbees_url, headers=headers, data=json.dumps(expressbees_shipment_body))
-                while req.json()['ReturnMessage'] == 'AWB Already Exists':
+                while req.json()['ReturnMessage'] == 'AWB Already Exists' or req.json()['ReturnMessage']=='AirWayBillNO Already exists':
                     last_assigned_awb += 1
                     expressbees_shipment_body['AirWayBillNO'] = str(last_assigned_awb)
                     req = requests.post(xpressbees_url, headers=headers,
                                         data=json.dumps(expressbees_shipment_body))
 
                 if req.json()['ReturnMessage'] == 'Invalid AWB Prefix' or req.json()['ReturnMessage'].startswith('Invalid AirWayBillNO'):
-                    headers['XBkey'] = courier[14]
+                    headers['XBkey'] = courier[15].split("|")[1]
                     batch_create_req = requests.post("http://xbclientapi.xbees.in/POSTShipmentService.svc/AWBNumberSeriesGeneration", headers=headers, json={"BusinessUnit": "ECOM", "ServiceType":"FORWARD", "DeliveryType": "COD"})
                     batch_req = requests.post("http://xbclientapi.xbees.in/TrackingService.svc/GetAWBNumberGeneratedSeries", headers=headers, json={"BusinessUnit": "ECOM", "ServiceType":"FORWARD", "BatchID": batch_create_req.json()['BatchID']})
                     expressbees_shipment_body['AirWayBillNO'] = str(batch_req.json()['AWBNoSeries'][0])
@@ -1376,7 +1377,8 @@ def ship_expressbees_orders(cur, courier, courier_name, order_ids, order_id_tupl
                                                                                                     dimensions, volumetric_weight, weight, remark, return_point_id, routing_code, 
                                                                                                     channel_fulfillment_id, tracking_link, zone)
                                                                                                     VALUES  %s RETURNING id;"""
-                if return_data_raw['ReturnMessage'] == 'successful':
+
+                if return_data_raw['ReturnMessage'] == 'successful' or return_data_raw['ReturnMessage']=='Successfull':
 
                     order_status_change_ids.append(order[0])
                     data_tuple = tuple([(
@@ -1910,7 +1912,7 @@ def ship_bluedart_orders(cur, courier, courier_name, order_ids, order_id_tuple, 
                     package_string += prod + " (" + str(order[35][idx]) + ") + "
                     package_quantity += order[35][idx]
 
-                if break_loop and courier[1]=='NEWYOURCHOICE':
+                if break_loop:
                     continue
 
                 package_string += "Shipping"
@@ -2074,11 +2076,11 @@ def ship_fedex_orders(cur, courier, courier_name, order_ids, order_id_tuple, bac
     api_pass = courier[14].split('|')[1]
     account_number = courier[15].split('|')[0]
     meter_number = courier[15].split('|')[1]
+    shipment_type = courier[15].split('|')[2]
     CONFIG_OBJ = FedexConfig(key=api_key,
                              password=api_pass,
                              account_number=account_number,
-                             meter_number=meter_number,
-                             use_test_server=True)
+                             meter_number=meter_number)
 
     for pickup_id, all_new_orders in pickup_point_order_dict.items():
 
@@ -2157,7 +2159,7 @@ def ship_fedex_orders(cur, courier, courier_name, order_ids, order_id_tuple, bac
 
                 shipment.RequestedShipment.ShipTimestamp = datetime.now().replace(microsecond=0).isoformat()
                 shipment.RequestedShipment.DropoffType = 'REGULAR_PICKUP'
-                shipment.RequestedShipment.ServiceType = 'STANDARD_OVERNIGHT'
+                shipment.RequestedShipment.ServiceType = shipment_type
                 shipment.RequestedShipment.PackagingType = 'YOUR_PACKAGING'
 
                 shipment.RequestedShipment.Shipper.Contact.PersonName = pickup_point[11]

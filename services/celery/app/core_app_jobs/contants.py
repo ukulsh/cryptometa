@@ -82,6 +82,7 @@ pidge_status_mapping = {130: ("IN TRANSIT", "UD", "Picked", "Shipment picked up"
                         150: ("IN TRANSIT", "UD", "In Transit", "Shipment in transit"),
                         170: ("DISPATCHED", "UD", "Out for delivery", "Shipment out for delivery"),
                         190: ("DELIVERED", "UD", "Delivered", "Shipment delivered"),
+                        5: ("PENDING", "UD", "In Transit", "Shipment not delivered"),
                         0: ("CANCELED", "UD", "Cancelled", "order cancelled")}
 
 ecom_express_ndr_reasons = {

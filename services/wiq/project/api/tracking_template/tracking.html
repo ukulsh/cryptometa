@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1,shrink-to-fit=no">
+    <link rel="icon" href="https://wareiq-assets.s3.amazonaws.com/WareIQ-ico.png">
+    <link rel="preconnect" href="https://fonts.gstatic.com">
+    <meta name="description" content="Modern e-commerce fulfilment, built for speed">
+    <title>Order Tracking</title>
+    {% load static %}
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:ital,wght@0,300;0,400;0,500;0,700;1,300&amp;display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.4.1/css/bootstrap.min.css" integrity="sha384-Vkoo8x4CGsO3+Hhxv8T/Q5PaXtkKtu6ug5TOeNV6gBiFeWPGFN9MuhOf23Q9Ifjh" crossorigin="anonymous">
+    <link rel="stylesheet" href="{% static '/tracking.css' %}">
+  </head>
+  <body>
+    <div class="root">
+      <div class="tracking">
+        <div class='company-top-bar' style="background-color: {% if data and data.theme_color %}{{ data.theme_color }}{% else %}#e0e0e0{% endif %}">
+          <img class="company-logo" src="{% if data and data.logo_url %}{{ data.logo_url }}{% else %}https://wareiq-assets.s3.amazonaws.com/wareiq-logo.svg{% endif %}" />
+        </div>
+        <div class="tracking-page-container" style="width: 80%">
+          <div class="search-wrapper">
+            <img src="https://wareiq-assets.s3.amazonaws.com/wareiq-logo.svg" style="width: 80px"/>
+            <div class="title">Track your shipment</div>
+            <div class="track-radio-btns-container">
+              <div class="track-radio-btn">
+                <input type="radio" id="orderId" name="trackRadio" value="orderId" checked>
+                <label for="orderId">Order ID</label>
+              </div>
+              <div class="track-radio-btn">
+                <input type="radio" id="awbNumber" name="trackRadio" value="awbNumber">
+                <label for="awbNumber">AWB Number</label>
+              </div>
+            </div>
+            <div class="id-search-container">
+              <div class="search-box row">
+                <div class="col-xl-10 col-12" id="orderid-search-container">
+                  <div class="row">
+                    <div class="col-sm-6 col-12">
+                      <div class="sub-text">Order ID<span class="required-field">*</span></div>
+                      <input class="tracking_input" name="orderId" id="order_id_input"/>
+                    </div>
+                    <div class="col-sm-6 col-12">
+                      <div class="sub-text">Mobile Number<span class="required-field">*</span></div>
+                      <input class="tracking_input" type="number" name="mobile" id="mobile_number_input"/>
+                    </div>
+                  </div>
+                </div>
+                <div class="col-xl-10 col-12 hide" id="awb-search-container">
+                  <div class="sub-text">AWB Number<span class="required-field">*</span></div>
+                  <input class="tracking_input" name="awb" id="awb_number_input"/>
+                </div>
+                <span class="col-xl-2 col-12" style="text-align: center">
+                  <span class="track-btn disabled" id="trackSubmitBtn">Track</span>
+                </span>
+              </div>
+            </div>
+            <div class="tracking-error hide"></div>
+          </div>
+        </div>
+        <div class="footer">
+          <p>&copy; WareIQ</p>
+        </div>
+      </div>
+    </div>
+    <script src="https://code.jquery.com/jquery-3.4.1.slim.min.js" integrity="sha384-J6qa4849blE2+poT4WnyKhv5vZF5SrPo0iEjwBvKU7imGFAV0wwj1yYfoRSJoZ+n" crossorigin="anonymous"></script>
+    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.4.1/js/bootstrap.min.js" integrity="sha384-wfSDF2E50Y2D1uUdj0O3uMBJnjuUD4Ih7YwaYd1iqfktj0Uod8GCExl3Og8ifwB6" crossorigin="anonymous"></script>
+    <script src="{% static '/tracking.js' %}"></script>
+  </body>
+</html>

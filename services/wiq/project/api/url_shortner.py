@@ -1,6 +1,6 @@
-# services/wiq/project/api/url_shortner.py
+# services/wiq/project/api/tracking.py
 
-from flask import Blueprint, jsonify, redirect
+from flask import Blueprint, jsonify, redirect, send_from_directory
 import os, psycopg2
 from hashids import Hashids
 
@@ -27,3 +27,8 @@ def url_redirect(id):
         return redirect(original_url)
     else:
         return jsonify({"msg": "Invalid URL"}), 400
+
+
+@shortner_blueprint.route('/static/<path:path>')
+def serve_static_files(path):
+    return send_from_directory('static', path)

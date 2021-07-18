@@ -5,6 +5,8 @@ from .queries import *
 from .update_status_utils import *
 from woocommerce import API
 from app.db_utils import DbConnection, UrlShortner
+from fedex.config import FedexConfig
+from fedex.services.track_service import FedexTrackRequest
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -44,6 +46,9 @@ def update_status(sync_ext=None):
 
             elif courier[1].startswith('Pidge'):
                 track_pidge_orders(courier, cur)
+
+            # elif courier[1].startswith('FedEx'):
+            #     track_fedex_orders(courier, cur)
 
         except Exception as e:
             logger.error("Status update failed: " + str(e.args[0]))
@@ -1328,6 +1333,223 @@ def track_pidge_orders(courier, cur):
 
         except Exception as e:
             logger.error("status update failed for " + str(order[0]) + "    err:" + str(e.args[0]))
+
+    if pickup_count:
+        logger.info("Total Picked: " + str(pickup_count) + "  Time: " + str(datetime.utcnow()))
+        try:
+            for key, value in pickup_dict.items():
+                logger.info("picked for pickup_id " + str(key) + ": " + str(value))
+                date_today = datetime.now().strftime('%Y-%m-%d')
+                pickup_count_tuple = (value, courier[0], key, date_today)
+                cur.execute(update_pickup_count_query, pickup_count_tuple)
+        except Exception as e:
+            logger.error("Couldn't update pickup count for : " + str(e.args[0]))
+
+    conn.commit()
+
+
+def track_fedex_orders(courier, cur):
+    cur.execute(get_status_update_orders_query % str(courier[0]))
+    all_orders = cur.fetchall()
+    pickup_count = 0
+    exotel_idx = 0
+    exotel_sms_data = {
+        'From': 'LM-WAREIQ'
+    }
+    orders_dict = dict()
+    pickup_dict = dict()
+    req_ship_data = list()
+    api_key = courier[2].split('|')[0]
+    api_pass = courier[2].split('|')[1]
+    account_number = courier[3].split('|')[0]
+    meter_number = courier[3].split('|')[1]
+    shipment_type = courier[3].split('|')[2]
+    CONFIG_OBJ = FedexConfig(key=api_key,
+                             password=api_pass,
+                             account_number=account_number,
+                             meter_number=meter_number)
+    customer_transaction_id = "*** TrackService Request v10 using Python ***"  # Optional transaction_id
+    track = FedexTrackRequest(CONFIG_OBJ, customer_transaction_id=customer_transaction_id)
+    track.SelectionDetails.PackageIdentifier.Type = 'TRACKING_NUMBER_OR_DOORTAG'
+    for ret_order in all_orders:
+        try:
+            track.SelectionDetails.PackageIdentifier.Value = ret_order[1]
+            del track.SelectionDetails.OperatingCompany
+            track.send_request()
+            if ret_order['StatusType']=='NF':
+                continue
+            try:
+                scan_group = ret_order['Scans']['ScanDetail'][0]['ScanGroupType']
+                scan_code = ret_order['Scans']['ScanDetail'][0]['ScanCode']
+                scan_list = ret_order['Scans']['ScanDetail']
+            except Exception as e:
+                scan_group = ret_order['Scans']['ScanDetail']['ScanGroupType']
+                scan_code = ret_order['Scans']['ScanDetail']['ScanCode']
+                scan_list = [ret_order['Scans']['ScanDetail']]
+
+            if scan_group not in bluedart_status_mapping or scan_code not in bluedart_status_mapping[scan_group]:
+                continue
+
+            new_status = bluedart_status_mapping[scan_group][scan_code][0]
+            current_awb = ret_order['@WaybillNo']
+            is_return = False
+            if '@RefNo' in ret_order and str(ret_order['@RefNo']).startswith("074"):
+                current_awb = str(str(ret_order['@RefNo']).split("-")[1]).strip()
+                is_return = True
+
+            if is_return and new_status!='DELIVERED':
+                continue
+
+            try:
+                order_status_tuple = (orders_dict[current_awb][0], orders_dict[current_awb][10], courier[0])
+                cur.execute(select_statuses_query, order_status_tuple)
+                all_scans = cur.fetchall()
+                all_scans_dict = dict()
+                for temp_scan in all_scans:
+                    all_scans_dict[temp_scan[2]] = temp_scan
+                new_status_dict = dict()
+                for each_scan in scan_list:
+                    status_time = each_scan['ScanDate']+"T"+each_scan['ScanTime']
+                    if status_time:
+                        status_time = datetime.strptime(status_time, '%d-%b-%YT%H:%M')
+
+                    to_record_status = ""
+                    if each_scan['ScanCode']=="015" and not is_return:
+                        to_record_status = "Picked"
+                    elif each_scan['ScanCode']=="001" and not is_return:
+                        to_record_status = "Picked"
+                    elif new_status=="IN TRANSIT" and each_scan['ScanType'] == "UD" and not is_return:
+                        to_record_status = "In Transit"
+                    elif each_scan['ScanCode'] in ("002", "092") and not is_return:
+                        to_record_status = "Out for delivery"
+                    elif each_scan['ScanCode'] in ("000", "090", "099") and not is_return:
+                        to_record_status = "Delivered"
+                    elif each_scan['ScanType'] == "RT" and not is_return:
+                        to_record_status = "Returned"
+                    elif each_scan['ScanCode'] == '000' and is_return:
+                        to_record_status = "RTO"
+                    elif each_scan['ScanCode'] == '188' and each_scan['ScanType'] == "RT":
+                        to_record_status = "RTO"
+
+                    if not to_record_status:
+                        continue
+
+                    if to_record_status not in new_status_dict:
+                        new_status_dict[to_record_status] = (orders_dict[current_awb][0], courier[0],
+                                                             orders_dict[current_awb][10],
+                                                             each_scan['ScanType'],
+                                                             to_record_status,
+                                                             each_scan['Scan'],
+                                                             each_scan['ScannedLocation'],
+                                                             each_scan['ScannedLocation'],
+                                                             status_time)
+                    elif to_record_status == 'In Transit' and new_status_dict[to_record_status][
+                        8] < status_time and not is_return:
+                        new_status_dict[to_record_status] = (orders_dict[current_awb][0], courier[0],
+                                                             orders_dict[current_awb][10],
+                                                             each_scan['ScanType'],
+                                                             to_record_status,
+                                                             each_scan['Scan'],
+                                                             each_scan['ScannedLocation'],
+                                                             each_scan['ScannedLocation'],
+                                                             status_time)
+
+                for status_key, status_value in new_status_dict.items():
+                    if status_key not in all_scans_dict:
+                        cur.execute("INSERT INTO order_status (order_id, courier_id, shipment_id, "
+                                    "status_code, status, status_text, location, location_city, "
+                                    "status_time) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s);",
+                                    status_value)
+
+                    elif status_key == 'In Transit' and status_value[8] > all_scans_dict[status_key][5]:
+                        cur.execute("UPDATE order_status SET location=%s, location_city=%s, status_time=%s"
+                                    " WHERE id=%s;", (status_value[6], status_value[7], status_value[8],
+                                                      all_scans_dict[status_key][0]))
+
+            except Exception as e:
+                logger.error(
+                    "Open status failed for id: " + str(orders_dict[current_awb][0]) + "\nErr: " + str(
+                        e.args[0]))
+
+            if is_return and new_status=='DELIVERED':
+                new_status='RTO'
+
+            status_type = ret_order['StatusType']
+            if new_status in ('NOT PICKED', 'READY TO SHIP', 'PICKUP REQUESTED'):
+                continue
+            status_detail = None
+            status_code = scan_code
+
+            if orders_dict[current_awb][2]=='CANCELED' and new_status!='IN TRANSIT':
+                continue
+
+            edd = ret_order['ExpectedDeliveryDate'] if 'ExpectedDeliveryDate' in ret_order else None
+            if edd:
+                edd = datetime.strptime(edd, '%d %B %Y')
+                if datetime.utcnow().hour < 4:
+                    cur.execute("UPDATE shipments SET edd=%s WHERE awb=%s", (edd, current_awb))
+                    cur.execute("UPDATE shipments SET pdd=%s WHERE awb=%s and pdd is null", (edd, current_awb))
+
+            customer_phone = orders_dict[current_awb][4].replace(" ", "")
+            customer_phone = "0" + customer_phone[-10:]
+
+            if new_status == 'DELIVERED':
+                update_delivered_on_channels(orders_dict[current_awb])
+                webhook_updates(orders_dict[current_awb], cur, new_status, "Shipment Delivered", "", (datetime.utcnow()+timedelta(hours=5.5)).strftime("%Y-%m-%d %H:%M:%S"))
+                tracking_link = "https://webapp.wareiq.com/tracking/" + current_awb
+                tracking_link = UrlShortner.get_short_url(tracking_link, cur)
+                send_delivered_event(customer_phone, orders_dict[current_awb], "Bluedart", tracking_link)
+
+            if new_status == 'RTO':
+                update_rto_on_channels(orders_dict[current_awb])
+                webhook_updates(orders_dict[current_awb], cur, new_status, "Shipment RTO", "", (datetime.utcnow()+timedelta(hours=5.5)).strftime("%Y-%m-%d %H:%M:%S"))
+
+            if orders_dict[current_awb][2] in (
+                    'READY TO SHIP', 'PICKUP REQUESTED', 'NOT PICKED') and new_status == 'IN TRANSIT':
+                pickup_count += 1
+                if orders_dict[current_awb][11] not in pickup_dict:
+                    pickup_dict[orders_dict[current_awb][11]] = 1
+                else:
+                    pickup_dict[orders_dict[current_awb][11]] += 1
+                time_now = datetime.utcnow() + timedelta(hours=5.5)
+                cur.execute("UPDATE order_pickups SET picked=%s, pickup_time=%s WHERE order_id=%s",
+                            (True, time_now, orders_dict[current_awb][0]))
+                update_picked_on_channels(orders_dict[current_awb], cur, courier=courier)
+                webhook_updates(orders_dict[current_awb], cur, new_status, "Shipment Picked Up", "", (datetime.utcnow()+timedelta(hours=5.5)).strftime("%Y-%m-%d %H:%M:%S"))
+
+                cur.execute("UPDATE shipments SET pdd=%s WHERE awb=%s", (edd, current_awb))
+                tracking_link = "https://webapp.wareiq.com/tracking/" + current_awb
+                tracking_link = UrlShortner.get_short_url(tracking_link, cur)
+                send_shipped_event(customer_phone, orders_dict[current_awb][19], orders_dict[current_awb],
+                                   edd.strftime('%-d %b') if edd else "", "Bluedart", tracking_link)
+
+            if orders_dict[current_awb][2] != new_status:
+                status_update_tuple = (new_status, status_type, status_detail, orders_dict[current_awb][0])
+                cur.execute(order_status_update_query, status_update_tuple)
+
+                if new_status == 'PENDING' and status_code in bluedart_status_mapping[scan_group]:
+                    try:  # NDR check text
+                        ndr_reason = bluedart_status_mapping[scan_group][status_code][3]
+                        verification_text(orders_dict[current_awb], cur, ndr_reason=ndr_reason)
+                        webhook_updates(orders_dict[current_awb], cur, new_status, "", "",(datetime.utcnow() + timedelta(hours=5.5)).strftime("%Y-%m-%d %H:%M:%S"), ndr_id=ndr_reason)
+                    except Exception as e:
+                        logger.error(
+                            "NDR confirmation not sent. Order id: " + str(orders_dict[current_awb][0]))
+
+            conn.commit()
+
+        except Exception as e:
+            logger.error("status update failed for " + str(current_awb) + "    err:" + str(
+                e.args[0]))
+
+    if exotel_idx:
+        logger.info("Sending messages...count:" + str(exotel_idx))
+        try:
+            lad = requests.post(
+                'https://ff2064142bc89ac5e6c52a6398063872f95f759249509009:783fa09c0ba1110309f606c7411889192335bab2e908a079@api.exotel.com/v1/Accounts/wareiq1/Sms/bulksend',
+                data=exotel_sms_data)
+        except Exception as e:
+            logger.error("messages not sent." + "   Error: " + str(e.args[0]))
 
     if pickup_count:
         logger.info("Total Picked: " + str(pickup_count) + "  Time: " + str(datetime.utcnow()))

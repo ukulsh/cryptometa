@@ -773,7 +773,7 @@ def fetch_easyecom_orders(cur, channel, manual=None):
     else:
         created_after = time_2_hours_ago.strftime("%Y-%m-%d %X")
 
-    fetch_status="1,2,3"
+    fetch_status="1,2,3,5"
     if channel[15]:
         fetch_status = ','.join(str(x) for x in channel[15])
     data = list()
@@ -1654,7 +1654,8 @@ easyecom_wareiq_channel_map = {"Amazon.in": 2,
                                "MenXP":11,
                                "PayTM":12,
                                "Snapdeal":10,
-                               "Woocommerce":5
+                               "Woocommerce":5,
+                               "MyGate":14
                                }
 
 easyecom_wareiq_courier_map = {"eKart": 7}

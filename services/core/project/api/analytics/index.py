@@ -31,7 +31,7 @@ RTO_DELAY_DOWNLOAD_HEADERS = ["OrderID", "Status", "AWB", "Courier", "ReturnMark
                                   "Zone", "LastScan", "CustomerName", "CustomerPhone", "CustomerEmail"]
 
 NDR_ORDERS_DOWNLOAD_HEADERS = ["OrderID", "Status", "AWB", "Courier", "Action", "ActionBy", "AttemptCount", "LatestReason",
-                               "DeferredDeliveryDate", "UpdatedAddress", "UpdatedPhone"]
+                               "DeferredDeliveryDate", "UpdatedAddress", "UpdatedPhone", "OriginalPhone"]
 
 
 @analytics_blueprint.route('/analytics/v1/shipping/statePerformance', methods=['GET'])
@@ -722,6 +722,7 @@ def get_ndr_reasons(resp):
                         new_row.append(order[8].strftime('%-d %b') if order[8] else "")
                         new_row.append(order[9] if order[9] else "")
                         new_row.append(order[10] if order[10] else "")
+                        new_row.append(order[11] if order[11] else "")
                         cw.writerow(new_row)
                     except Exception as e:
                         pass

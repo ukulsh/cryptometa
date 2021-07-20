@@ -2,14 +2,21 @@
 
 from flask import Blueprint, jsonify, redirect, render_template, current_app, \
     send_from_directory, request
-import os, psycopg2
+import os, psycopg2, requests,logging
 from hashids import Hashids
+from datetime import datetime
 
-CORE_SERVICE_URL = os.environ.get('CORE_SERVICE_URL') or 'http://localhost:5010'
+CORE_SERVICE_URL = os.environ.get('CORE_SERVICE_URL') or 'https://track.wareiq.com'
 
 tracking_blueprint = Blueprint('tracking', __name__)
 
 hashids = Hashids(min_length=6, salt="thoda namak shamak daalte hai")
+
+conn = psycopg2.connect(host="wareiq-core-prod2.cvqssxsqruyc.us-east-1.rds.amazonaws.com", database="core_prod",
+                                user="postgres", password="aSderRFgd23")
+
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
 
 
 @tracking_blueprint.route('/', methods=['GET'])
@@ -17,16 +24,14 @@ def tracking_page():
     try:
         url = request.url
         if '5000' not in url:
-            client_track = url.split('.')[0].strip('https://')
+            client_track = url.split('.')[0].replace('https://', "")
+            client_track = client_track.replace('http://', "")
         else:
             client_track = 'wareiq'
-        conn = psycopg2.connect(host="wareiq-core-prod2.cvqssxsqruyc.us-east-1.rds.amazonaws.com", database="core_prod",
-                                user="postgres", password="aSderRFgd23")
-        cur = conn.cursor()
 
-        cur.execute("SELECT client_prefix, client_logo, theme_color FROM client_mapping WHERE lower(client_prefix)=%s", (client_track, ))
+        cur = conn.cursor()
+        cur.execute("SELECT client_prefix, client_logo, theme_color FROM client_mapping WHERE tracking_url=%s", (client_track, ))
         client_details = cur.fetchone()
-        conn.close()
         if not client_details:
             return jsonify({"msg": "Invalid URL"}), 404
 
@@ -36,6 +41,7 @@ def tracking_page():
 
         return render_template("tracking.html", data=data_obj)
     except Exception as e:
+        conn.rollback()
         return jsonify({"msg": "Invalid URL"}), 400
 
 
@@ -45,27 +51,118 @@ def serve_static_files(path):
 
 
 @tracking_blueprint.route('/tracking/<awb>', methods=['GET'])
-def tracking_page(awb):
+def tracking_page_detials(awb):
     try:
         url = request.url
         if '5000' not in url:
-            client_track = url.split('.')[0].strip('https://')
+            client_track = url.split('.')[0].replace('https://', "")
+            client_track = client_track.replace('http://', "")
         else:
             client_track = 'wareiq'
-        conn = psycopg2.connect(host="wareiq-core-prod2.cvqssxsqruyc.us-east-1.rds.amazonaws.com", database="core_prod",
-                                user="postgres", password="aSderRFgd23")
         cur = conn.cursor()
-
-        cur.execute("SELECT client_prefix, client_logo, theme_color FROM client_mapping WHERE lower(client_prefix)=%s", (client_track, ))
+        cur.execute("""SELECT aa.client_prefix, client_logo, theme_color, cc.id FROM client_mapping aa 
+                        LEFT JOIN orders bb on aa.client_prefix=bb.client_prefix 
+                        LEFT JOIN shipments cc on bb.id=cc.order_id
+                        WHERE tracking_url=%s 
+                        and cc.awb=%s""", (client_track, awb))
         client_details = cur.fetchone()
-        conn.close()
-        if not client_details:
-            return jsonify({"msg": "Invalid URL"}), 404
+        if not client_details or not client_details[3]:
+            return redirect(url.split("tracking")[0]+"?invalid=Tracking ID not found.")
 
-        data_obj = {"client_prefix": client_details[0],
-                     "logo_url": client_details[1],
-                     "theme_color": client_details[2]}
+        req1 = requests.get(CORE_SERVICE_URL + '/orders/v1/track/%s'%awb)
+        req2 = requests.get(CORE_SERVICE_URL + '/orders/v1/track/%s?details=true'%awb)
 
-        return render_template("tracking.html", data=data_obj)
+        if not req1.status_code==200:
+            data_obj = {"client_prefix": client_details[0],
+                        "logo_url": client_details[1],
+                        "theme_color": client_details[2]}
+
+            return render_template("tracking.html", data=data_obj)
+
+        data = req1.json()['data']
+        last_update_time = None
+        for entry in data['order_track']:
+            if entry['time']:
+                last_update_time = entry['time']
+
+        if last_update_time:
+            last_update_time = datetime.strptime(last_update_time, '%d %b %Y, %I:%M %p')
+            last_update_time = last_update_time.strftime('%A, %d %b %Y at %I:%M %p')
+
+        data['latest_update_time'] = last_update_time
+        if req2.status_code==200:
+            data['details_data'] = req2.json()['data']
+            for key, value in data['details_data'].items():
+                for each_scan in value:
+                    scan_time = datetime.strptime(each_scan['time'], '%d %b %Y, %H:%M:%S')
+                    scan_time = scan_time.strftime('%I:%M %p')
+                    each_scan['time'] = scan_time
+
+        return render_template("trackingDetails.html", data=data, enumerate=enumerate)
     except Exception as e:
+        conn.rollback()
         return jsonify({"msg": "Invalid URL"}), 400
+
+
+@tracking_blueprint.route('/tracking', methods=['GET'])
+def tracking_page_details_id():
+    try:
+        url = request.url
+        if '5000' not in url:
+            client_track = url.split('.')[0].replace('https://', "")
+            client_track = client_track.replace('http://', "")
+        else:
+            client_track = 'justherbs'
+
+        orderId = request.args.get('orderId')
+        mobile = request.args.get('mobile')
+        if not orderId or not mobile:
+            return redirect(url.split("tracking")[0] + "?invalid=Order ID and phone number required.")
+
+        mobile = ''.join(e for e in str(mobile) if e.isalnum())
+        mobile = "0" + mobile[-10:]
+
+        cur = conn.cursor()
+        cur.execute("""SELECT aa.client_prefix, client_logo, theme_color, cc.id, cc.awb FROM client_mapping aa 
+                        LEFT JOIN orders bb on aa.client_prefix=bb.client_prefix 
+                        LEFT JOIN shipments cc on bb.id=cc.order_id
+                        WHERE tracking_url=%s 
+                        and bb.channel_order_id=%s and bb.customer_phone=%s""", (client_track, orderId, mobile))
+        client_details = cur.fetchone()
+        if not client_details or not client_details[3] or not client_details[4]:
+            return redirect(url.split("tracking")[0]+"?invalid=No record found for given ID and phone number.")
+
+        req1 = requests.get(CORE_SERVICE_URL + '/orders/v1/track/%s'%client_details[4])
+        req2 = requests.get(CORE_SERVICE_URL + '/orders/v1/track/%s?details=true'%client_details[4])
+
+        if not req1.status_code==200:
+            data_obj = {"client_prefix": client_details[0],
+                        "logo_url": client_details[1],
+                        "theme_color": client_details[2]}
+
+            return render_template("tracking.html", data=data_obj)
+
+        data = req1.json()['data']
+        last_update_time = None
+        for entry in data['order_track']:
+            if entry['time']:
+                last_update_time = entry['time']
+
+        if last_update_time:
+            last_update_time = datetime.strptime(last_update_time, '%d %b %Y, %I:%M %p')
+            last_update_time = last_update_time.strftime('%A, %d %b %Y at %I:%M %p')
+
+        data['latest_update_time'] = last_update_time
+        if req2.status_code==200:
+            data['details_data'] = req2.json()['data']
+            for key, value in data['details_data'].items():
+                for each_scan in value:
+                    scan_time = datetime.strptime(each_scan['time'], '%d %b %Y, %H:%M:%S')
+                    scan_time = scan_time.strftime('%I:%M %p')
+                    each_scan['time'] = scan_time
+
+        return render_template("trackingDetails.html", data=data, enumerate=enumerate)
+    except Exception as e:
+        conn.rollback()
+        return jsonify({"msg": "Invalid URL"}), 400
+

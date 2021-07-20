@@ -1845,3 +1845,29 @@ def push_kama_wondersoft(unique_id, cur=conn.cursor(), type="shipped"):
         so_req = requests.post(gi_url, headers=gi_headers, json=json_body)
     except Exception:
         pass
+
+
+def push_awbs_easyecom_util():
+    cur = conn.cursor()
+    cur.execute("""select order_id_channel_unique, awb, courier_name, dd.api_key, dd.unique_parameter from orders aa
+                 left join shipments bb on aa.id=bb.order_id
+                 left join master_couriers cc on bb.courier_id=cc.id 
+                 left join client_channel dd on dd.id=aa.client_channel_id
+                 where dd.channel_id=7 and aa.status in ('READY TO SHIP', 'PICKUP REQUESTED')
+                 and dd.unique_parameter is not null
+                 and dd.unique_parameter !=''""")
+    all_orders = cur.fetchall()
+
+    for order in all_orders:
+        try:
+            post_url = "https://api.easyecom.io/Carrier/assignAWB?api_token=%s" % order[3]
+            post_body = {
+                "invoiceId": order[0],
+                "api_token": order[3],
+                "courier": order[2],
+                "awbNum": order[1],
+                "companyCarrierId": int(order[4])
+            }
+            req = requests.post(post_url, data=post_body)
+        except Exception as e:
+            pass

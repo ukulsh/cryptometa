@@ -656,10 +656,13 @@ def ping_dev():
     return 0
     import requests
     cur = conn.cursor()
-    cur.execute("select order_id_channel_unique, awb, courier_name from orders aa"
-                " left join shipments bb on aa.id=bb.order_id"
-                " left join master_couriers cc on bb.courier_id=cc.id"
-                " where aa.client_prefix='SETU' and aa.status in ('READY TO SHIP', 'PICKUP REQUESTED')")
+    cur.execute("""select order_id_channel_unique, awb, courier_name, dd.api_key, dd.unique_parameter from orders aa
+                 left join shipments bb on aa.id=bb.order_id
+                 left join master_couriers cc on bb.courier_id=cc.id 
+                 left join client_channel dd on dd.id=aa.client_channel_id
+                 where dd.channel_id=7 and aa.status in ('READY TO SHIP', 'PICKUP REQUESTED')
+                 and dd.unique_parameter is not null
+                 and dd.unique_parameter !=''""")
 
     all_orders = cur.fetchall()
 

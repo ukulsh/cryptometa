@@ -748,7 +748,7 @@ select_ndr_reason_query = """select bb.reason, count(*) as total_count, sum(case
                             order by total_count DESC"""
 
 select_ndr_reason_orders_query = """select cc.channel_order_id, cc.status, dd.awb, ee.courier_name, aa.current_status, 
-                                    ff.verified_via, attempt_count, bb.reason, defer_dd, updated_add, updated_phone from
+                                    ff.verified_via, attempt_count, bb.reason, defer_dd, updated_add, updated_phone, cc.customer_phone from
                                     (select distinct on (order_id) order_id, reason_id, current_status, defer_dd, updated_add, updated_phone from ndr_shipments
                                     order by order_id DESC, id DESC) aa
                                     left join (select order_id, count(*) as attempt_count from ndr_shipments group by order_id) gg on gg.order_id=aa.order_id

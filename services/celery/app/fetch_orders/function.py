@@ -764,21 +764,21 @@ def fetch_magento_orders(cur, channel, manual=None):
 
 def fetch_easyecom_orders(cur, channel, manual=None):
 
-    time_2_hours_ago = datetime.utcnow() + timedelta(hours=3.5)
+    time_1_hours_ago = datetime.utcnow() + timedelta(hours=4)
     if manual:
-        created_after = datetime.utcnow() - timedelta(days=30)
-        created_after = created_after.strftime("%Y-%m-%d %X")
-    elif channel[7] and channel[7]<time_2_hours_ago:
-        created_after = channel[7].strftime("%Y-%m-%d %X")
-    else:
-        created_after = time_2_hours_ago.strftime("%Y-%m-%d %X")
+        time_1_hours_ago = datetime.utcnow() - timedelta(days=30)
+    elif channel[7] and channel[7]<time_1_hours_ago:
+        time_1_hours_ago = channel[7]
+
+    updated_after = time_1_hours_ago.strftime("%Y-%m-%d %X")
+    updated_before = (datetime.utcnow()+timedelta(hours=5.5)).strftime("%Y-%m-%d %X")
 
     fetch_status="1,2,3,5"
     if channel[15]:
         fetch_status = ','.join(str(x) for x in channel[15])
     data = list()
     last_synced_time = datetime.utcnow() + timedelta(hours=5.5)
-    easyecom_orders_url = "%s/orders/V2/getAllOrders?api_token=%s&created_after=%s&status_id=%s" % (channel[5], channel[3], created_after, fetch_status)
+    easyecom_orders_url = "%s/orders/V2/getAllOrders?api_token=%s&updated_after=%s&updated_before=%s&status_id=%s" % (channel[5], channel[3], updated_after, updated_before, fetch_status)
     while easyecom_orders_url:
         req = requests.get(easyecom_orders_url).json()
         if req['data']:

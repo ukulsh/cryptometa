@@ -6,6 +6,8 @@ from sqlalchemy.dialects.postgresql import JSON
 from sqlalchemy import UniqueConstraint, Index
 from datetime import datetime
 from sqlalchemy.dialects.postgresql import ARRAY
+from sqlalchemy.ext.mutable import MutableDict
+from sqlalchemy.dialects.postgresql import JSONB
 
 
 class Products(db.Model):
@@ -1108,6 +1110,39 @@ class ClientMapping(db.Model):
             'auto_pur_time': self.auto_pur_time,
             'account_type': self.account_type,
             'current_balance': self.current_balance
+        }
+
+
+class ClientCustomization(db.Model):
+    __tablename__ = "client_customization"
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    client_prefix = db.Column(db.String, nullable=False)
+    subdomain = db.Column(db.String, nullable=True)
+    client_logo_url = db.Column(db.String, nullable=True)
+    theme_color = db.Column(db.String, nullable=True)
+    background_image_url = db.Column(db.String, nullable=True)
+    client_name = db.Column(db.String, nullable=False)
+    client_url = db.Column(db.String, nullable=True)
+    nav_links = db.Column(MutableDict.as_mutable(JSONB), default=[])
+    support_url = db.Column(db.String, nullable=True)
+    privacy_url = db.Column(db.String, nullable=True)
+    nps_enabled = db.Column(db.BOOLEAN, nullable=False, default=False)
+    banners = db.Column(MutableDict.as_mutable(JSONB), default=[])
+
+    def to_json(self):
+        return {
+            'client_prefix': self.client_prefix,
+            'subdomain': self.subdomain,
+            'client_logo_url': self.client_logo_url,
+            'theme_color': self.theme_color,
+            'background_image_url': self.background_image_url,
+            'client_name': self.client_name,
+            'client_url': self.client_url,
+            'nav_links': self.nav_links,
+            'support_url': self.support_url,
+            'privacy_url': self.privacy_url,
+            'nps_enabled': self.nps_enabled,
+            'banners': self.banners,
         }
 
 

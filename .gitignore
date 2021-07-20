@@ -2,3 +2,6 @@ __pycache__
 env
 htmlcov
 node_modules
+
+# Mac specific
+*/.DS_Store

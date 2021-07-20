@@ -130,6 +130,12 @@ def ndr_push_reattempts():
     return 'successfully completed ndr_push_reattempts'
 
 
+@celery_app.task(name='push_awbs_easyecom')
+def push_awbs_easyecom():
+    push_awbs_easyecom_util()
+    return 'successfully completed push_awbs_easyecom'
+
+
 @celery_app.task(name='update_pincode_serviceability')
 def update_pincode_serviceability():
     update_pincode_serviceability_table()
@@ -205,7 +211,7 @@ def bulkship_orders(resp):
 
 @app.route('/scans/v1/dev', methods = ['GET'])
 def celery_dev():
-    orders_fetch.apply_async(queue='mark_channel_delivered', args=("WAREIQ", 30))
+    push_awbs_easyecom.apply_async(queue='mark_channel_delivered')
     return jsonify({"msg": "Task received"}), 200
 
 

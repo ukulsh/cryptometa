@@ -161,10 +161,15 @@ class MasterCouriers(db.Model):
     api_key = db.Column(db.String, nullable=True)
     api_password = db.Column(db.String, nullable=True)
     api_url = db.Column(db.String, nullable=True)
+    api_credential_1 = db.Column(db.String, nullable=True)
+    api_credential_2 = db.Column(db.String, nullable=True)
     logo_url = db.Column(db.String, nullable=True)
     integrated = db.Column(db.BOOLEAN, nullable=True, default=None)
     weight_offset = db.Column(db.FLOAT, default=0.0, server_default="0.0")
     additional_weight_offset = db.Column(db.FLOAT, default=0.0, server_default="0.0")
+    courier_view_name = db.Column(db.String, nullable=True)
+    client_code = db.Column(db.String, nullable=True)
+    type = db.Column(db.String, nullable=True)
     date_created = db.Column(db.DateTime, default=datetime.now)
     date_updated = db.Column(db.DateTime, onupdate=datetime.now)
 
@@ -256,6 +261,9 @@ class OPAssociation(db.Model):
     order = db.relationship("Orders")
     product = db.relationship("Products")
     master_product = db.relationship("MasterProducts")
+    discount_amount = db.Column(db.FLOAT, nullable=True)
+    discount_type = db.Column(db.String, nullable=True)
+    discount_code = db.Column(db.String, nullable=True)
 
 
 class Orders(db.Model):
@@ -337,6 +345,9 @@ class OrdersPayments(db.Model):
     currency = db.Column(db.String, nullable=False, default='INR')
     order_id = db.Column(db.Integer, db.ForeignKey('orders.id'), unique=True, index=True)
     order = db.relationship("Orders", backref=db.backref("payments", uselist=True))
+    discount_amount = db.Column(db.FLOAT, nullable=True)
+    discount_type = db.Column(db.String, nullable=True)
+    discount_code = db.Column(db.String, nullable=True)
 
 
 class OrdersExtraDetails(db.Model):
@@ -1062,6 +1073,7 @@ class ClientMapping(db.Model):
     cod_ship_unconfirmed = db.Column(db.BOOLEAN, nullable=True, default=True)
     hide_weights = db.Column(db.BOOLEAN, nullable=True, default=None)
     order_split = db.Column(db.BOOLEAN, nullable=True, server_default='false', default=False)
+    order_split_type = db.Column(db.Integer, nullable=True)
     default_warehouse = db.Column(db.String, nullable=True)
     hide_products = db.Column(db.BOOLEAN, nullable=True, default=False)
     hide_address = db.Column(db.BOOLEAN, nullable=True, default=False)
@@ -1077,6 +1089,7 @@ class ClientMapping(db.Model):
     thirdwatch_cod_only = db.Column(db.BOOLEAN, nullable=True, default=None)
     thirdwatch_activate_time = db.Column(db.DateTime, default=None)
     remittance_cycle = db.Column(db.Integer, nullable=True)
+    tracking_url = db.Column(db.String, nullable=True, unique=True)
 
     def __init__(self, client_name, client_prefix, account_type, client_logo=None, theme_color=None):
         self.client_name = client_name
@@ -1259,3 +1272,12 @@ class PincodeServiceability(db.Model):
     last_updated = db.Column(db.DateTime, onupdate=datetime.now)
     __table_args__ = (UniqueConstraint('pincode', 'courier_id', name='pin_courier_id_unique'),
                       )
+
+
+class RemittanceOrderMap(db.Model):
+    __tablename__ = 'remittance_order_map'
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    order_id = db.Column('order_id', db.Integer, db.ForeignKey('orders.id'), index=True)
+    remittance_id = db.Column('remittance_id', db.Integer, db.ForeignKey('cod_remittance.id'))
+    order = db.relationship("Orders")
+    remittance = db.relationship("CODRemittance")

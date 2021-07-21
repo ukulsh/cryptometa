@@ -12,6 +12,7 @@ from datetime import datetime, timedelta
 from project.api.utils import authenticate_restful
 from project.api.utilities.s3_utils import process_upload_logo_file
 from project.api.core_features.client_management.utils import get_cost_to_clients
+from sqlalchemy import null
 import json
 import logging
 
@@ -250,7 +251,6 @@ class ClientCustomizations(Resource):
                 return response_object, 201
 
             posted_data = request.form
-            print(posted_data)
             customization_object.subdomain = posted_data.get("subdomain")
             customization_object.theme_color = posted_data.get("theme_color")
             customization_object.background_image_url = posted_data.get(
@@ -269,13 +269,14 @@ class ClientCustomizations(Resource):
 
             # Handling logo files
             # * S3 bucket is version enabled
-            if isinstance(posted_data.get("client_logo_url"), str):
+            if not json.loads(posted_data.get("client_logo_url").lower()):
+                # If logo is removed by the user
+                customization_object.client_logo_url = null()
+            elif isinstance(posted_data.get("client_logo_url"), str):
                 # If logo object is already available in S3
                 customization_object.client_logo_url = posted_data.get(
                     "client_logo_url"
                 )
-            elif not json.loads(posted_data.get("client_logo_url").lower()):
-                customization_object.client_logo_url = None
             else:
                 customization_object.client_logo_url = process_upload_logo_file(
                     client_prefix,
@@ -384,11 +385,11 @@ def check_subdomain_availability(resp):
         )
         response_object["message"] = is_available
         response_object["status"] = "success"
-        return response_object, 200
+        return jsonify(response_object), 200
     except Exception as e:
         logger.error("Failed while checking subdomain availability", e)
         response_object["message"] = "Failed while checking subdomain availability"
-        return response_object, 400
+        return jsonify(response_object), 400
 
 
 @client_management_blueprint.route("/core/v1/getDefaultCost", methods=["GET"])

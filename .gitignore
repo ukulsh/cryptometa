@@ -9,6 +9,7 @@ node_modules
 # Local venv
 venv
 **/qa.env
+**/qa_run.py
 
 #VSCode
 .vscode

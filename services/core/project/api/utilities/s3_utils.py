@@ -20,7 +20,6 @@ env = "prod" if env == "production" else "qa"
 def process_upload_logo_file(
     client_prefix, file_ref, bucket="client_logos", file_name=None, master_bucket=None
 ):
-    # TODO Add file update logic to this function
     if not file_ref:
         return None
 

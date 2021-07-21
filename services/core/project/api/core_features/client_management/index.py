@@ -262,10 +262,10 @@ class ClientCustomizations(Resource):
             customization_object.nps_enabled = posted_data.get("nps_enabled")
 
             # Handling logo files
+            #* S3 bucket is version enabled
             if isinstance(posted_data.get("logo"), str):
                 customization_object.client_logo_url = posted_data.get("logo")
             else:
-                #? Is s3 bucket versioning enabled?
                 customization_object.client_logo_url = process_upload_logo_file(
                     client_prefix,
                     posted_data.get("logo"),
@@ -285,7 +285,6 @@ class ClientCustomizations(Resource):
                 if isinstance(banner.get("banner_image"), str):
                     banner_object["banner_image"] = banner.get("banner_image")
                 else:
-                    #? Is s3 bucket versioning enabled?
                     banner_object["banner_image_url"] = process_upload_logo_file(
                         client_prefix,
                         banner.get("banner_image_url"),
@@ -300,6 +299,7 @@ class ClientCustomizations(Resource):
 
             db.session.commit()
         except Exception as e:
+            db.session.rollback()
             logger.error("Failed while posting client customization info", e)
             response_object[
                 "message"
@@ -319,14 +319,21 @@ class ClientCustomizations(Resource):
         try:
             auth_data = resp.get("data")
             client_prefix = auth_data.get("client_prefix")
-            response_object["data"] = (
-                ClientCustomization.query.filter_by(client_prefix=client_prefix)
-                .first()
-                .to_json()
-            )
+            customization_object = ClientCustomization.query.filter_by(client_prefix=client_prefix).first()
+
+            if customization_object:
+                response_object["data"] = customization_object.to_json()
+            else:
+                new_customization_object = ClientCustomization(client_prefix=client_prefix)
+                db.session.add(new_customization_object)
+                db.session.commit()
+                customization_object = ClientCustomization.query.filter_by(client_prefix=client_prefix).first()
+                response_object["data"] = customization_object.to_json()
+            
             response_object["status"] = "success"
             return response_object, 200
         except Exception as e:
+            db.session.rollback()
             logger.error("Failed while getting client customization info", e)
             response_object[
                 "message"
@@ -334,7 +341,7 @@ class ClientCustomizations(Resource):
             return response_object, 400
 
 
-api.add_resource(ClientCustomizations, "core/v1/clientCustomizations")
+api.add_resource(ClientCustomizations, "/core/v1/clientCustomizations")
 
 
 @client_management_blueprint.route("/core/v1/getDefaultCost", methods=["GET"])

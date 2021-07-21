@@ -249,7 +249,8 @@ class ClientCustomizations(Resource):
             if not customization_object:
                 return response_object, 201
 
-            posted_data = request.get_json()
+            posted_data = request.form
+            print(posted_data)
             customization_object.subdomain = posted_data.get("subdomain")
             customization_object.theme_color = posted_data.get("theme_color")
             customization_object.background_image_url = posted_data.get(
@@ -257,46 +258,55 @@ class ClientCustomizations(Resource):
             )
             customization_object.client_name = posted_data.get("client_name")
             customization_object.client_url = posted_data.get("client_url")
-            customization_object.nav_links = posted_data.get("nav_links")
+            customization_object.nav_links = json.dumps(
+                json.loads(posted_data.get("nav_links"))
+            )
             customization_object.support_url = posted_data.get("support_url")
             customization_object.privacy_url = posted_data.get("privacy_url")
-            customization_object.nps_enabled = posted_data.get("nps_enabled")
+            customization_object.nps_enabled = json.loads(
+                posted_data.get("nps_enabled").lower()
+            )
 
             # Handling logo files
             # * S3 bucket is version enabled
-            if isinstance(posted_data.get("logo"), str):
-                customization_object.client_logo_url = posted_data.get("logo")
+            if isinstance(posted_data.get("client_logo_url"), str):
+                # If logo object is already available in S3
+                customization_object.client_logo_url = posted_data.get(
+                    "client_logo_url"
+                )
             else:
                 customization_object.client_logo_url = process_upload_logo_file(
                     client_prefix,
-                    posted_data.get("logo"),
+                    request.files.get("client_logo_url"),
                 )
 
             # Handling banner files
-            banners = posted_data.get("banners")
+            banners = json.loads(posted_data.get("banners"))
             updated_banners = []
-            for banner in banners:
+            for idx, banner in enumerate(banners):
                 banner_object = {}
 
                 # If banner_image is removed
-                if not banner.get("banner_image"):
+                if not banner.get("banner_image_url"):
                     continue
 
-                # If banner_image is url or a file type
-                if isinstance(banner.get("banner_image"), str):
-                    banner_object["banner_image"] = banner.get("banner_image")
-                else:
+                # If banner_image is url or attached as a file
+                if "https://" not in banner.get("banner_image_url"):
                     banner_object["banner_image_url"] = process_upload_logo_file(
                         client_prefix,
-                        banner.get("banner_image_url"),
-                        bucket="",
-                        file_name="_banner_file",
+                        request.files.get(banner["banner_image_url"]),
+                        bucket="wareiqcustomization",
+                        file_name="_banner_file_{0}".format(idx + 1),
                         master_bucket=None,
                     )
-                banner_object["image_redirect_url"] = banner.get("image_redirect_url")
+                else:
+                    banner_object["banner_image_url"] = banner.get("banner_image_url")
+                banner_object["image_redirect_url"] = json.dumps(
+                    banner.get("image_redirect_url")
+                )
 
                 updated_banners.append(banner_object)
-            customization_object.banners = updated_banners
+            customization_object.banners = json.dumps(updated_banners)
 
             db.session.commit()
             response_object["status"] = "success"
@@ -329,11 +339,17 @@ class ClientCustomizations(Resource):
             if customization_object:
                 response_object["data"] = customization_object.to_json()
             else:
-                new_customization_object = ClientCustomization(
+                # If ClientCustomization entry is not available, create one.
+                # This is for the clients already on the platform before this feature went live.
+                client_object = ClientMapping.query.filter_by(
                     client_prefix=client_prefix
+                ).first()
+                new_customization_object = ClientCustomization(
+                    client_prefix=client_prefix, client_name=client_object.client_name
                 )
                 db.session.add(new_customization_object)
                 db.session.commit()
+
                 customization_object = ClientCustomization.query.filter_by(
                     client_prefix=client_prefix
                 ).first()

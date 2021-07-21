@@ -274,6 +274,8 @@ class ClientCustomizations(Resource):
                 customization_object.client_logo_url = posted_data.get(
                     "client_logo_url"
                 )
+            elif not json.loads(posted_data.get("client_logo_url").lower()):
+                customization_object.client_logo_url = None
             else:
                 customization_object.client_logo_url = process_upload_logo_file(
                     client_prefix,

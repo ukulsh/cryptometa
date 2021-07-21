@@ -219,10 +219,11 @@ api.add_resource(ClientGeneralInfo, "/core/v1/clientGeneralSetting")
 
 class ClientCustomizations(Resource):
     """This class handles api end points for client custom tracking page settings.
-    :class:`models.ClientCustomization` entry is created by default when 
+    :class:`models.ClientCustomization` entry is created by default when
     :class:`models.ClientMapping` entry is created. Hence fields that are not
     updated by the user contain exisiting data in post requests.
     """
+
     method_decorators = {"post": [authenticate_restful], "get": [authenticate_restful]}
 
     def post(self, resp):
@@ -262,7 +263,7 @@ class ClientCustomizations(Resource):
             customization_object.nps_enabled = posted_data.get("nps_enabled")
 
             # Handling logo files
-            #* S3 bucket is version enabled
+            # * S3 bucket is version enabled
             if isinstance(posted_data.get("logo"), str):
                 customization_object.client_logo_url = posted_data.get("logo")
             else:
@@ -271,7 +272,7 @@ class ClientCustomizations(Resource):
                     posted_data.get("logo"),
                 )
 
-            #Handling banner files
+            # Handling banner files
             banners = posted_data.get("banners")
             updated_banners = []
             for banner in banners:
@@ -319,17 +320,23 @@ class ClientCustomizations(Resource):
         try:
             auth_data = resp.get("data")
             client_prefix = auth_data.get("client_prefix")
-            customization_object = ClientCustomization.query.filter_by(client_prefix=client_prefix).first()
+            customization_object = ClientCustomization.query.filter_by(
+                client_prefix=client_prefix
+            ).first()
 
             if customization_object:
                 response_object["data"] = customization_object.to_json()
             else:
-                new_customization_object = ClientCustomization(client_prefix=client_prefix)
+                new_customization_object = ClientCustomization(
+                    client_prefix=client_prefix
+                )
                 db.session.add(new_customization_object)
                 db.session.commit()
-                customization_object = ClientCustomization.query.filter_by(client_prefix=client_prefix).first()
+                customization_object = ClientCustomization.query.filter_by(
+                    client_prefix=client_prefix
+                ).first()
                 response_object["data"] = customization_object.to_json()
-            
+
             response_object["status"] = "success"
             return response_object, 200
         except Exception as e:
@@ -342,6 +349,25 @@ class ClientCustomizations(Resource):
 
 
 api.add_resource(ClientCustomizations, "/core/v1/clientCustomizations")
+
+
+@client_management_blueprint.route(
+    "/core/v1/clientCustomizations/check_subdomain", methods=["GET"]
+)
+@authenticate_restful
+def check_subdomain_availability(resp):
+    response_object = {"status": "fail"}
+    try:
+        subdomain = request.args.get("subdomain")
+        is_available = (
+            ClientCustomization.query.filter_by(subdomain=subdomain).first() is None
+        )
+        response_object["message"] = is_available
+        return jsonify(response_object), 200
+    except Exception as e:
+        logger.error("Failed while checking subdomain availability", e)
+        response_object["message"] = "Failed while checking subdomain availability"
+        return jsonify(response_object), 400
 
 
 @client_management_blueprint.route("/core/v1/getDefaultCost", methods=["GET"])

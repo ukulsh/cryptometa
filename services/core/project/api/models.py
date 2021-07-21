@@ -1129,8 +1129,8 @@ class ClientMapping(db.Model):
 class ClientCustomization(db.Model):
     __tablename__ = "client_customization"
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    client_prefix = db.Column(db.String, nullable=False)
-    subdomain = db.Column(db.String, nullable=True)
+    client_prefix = db.Column(db.String, nullable=False, unique=True)
+    subdomain = db.Column(db.String, nullable=True, unique=True)
     client_logo_url = db.Column(db.String, nullable=True)
     theme_color = db.Column(db.String, nullable=True)
     background_image_url = db.Column(db.String, nullable=True)

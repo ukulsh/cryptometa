@@ -299,6 +299,8 @@ class ClientCustomizations(Resource):
             customization_object.banners = updated_banners
 
             db.session.commit()
+            response_object["status"] = "success"
+            return response_object, 200
         except Exception as e:
             db.session.rollback()
             logger.error("Failed while posting client customization info", e)
@@ -363,11 +365,12 @@ def check_subdomain_availability(resp):
             ClientCustomization.query.filter_by(subdomain=subdomain).first() is None
         )
         response_object["message"] = is_available
-        return jsonify(response_object), 200
+        response_object["status"] = "success"
+        return response_object, 200
     except Exception as e:
         logger.error("Failed while checking subdomain availability", e)
         response_object["message"] = "Failed while checking subdomain availability"
-        return jsonify(response_object), 400
+        return response_object, 400
 
 
 @client_management_blueprint.route("/core/v1/getDefaultCost", methods=["GET"])

@@ -764,7 +764,7 @@ def fetch_magento_orders(cur, channel, manual=None):
 
 def fetch_easyecom_orders(cur, channel, manual=None):
 
-    time_1_hours_ago = datetime.utcnow() + timedelta(hours=4)
+    time_1_hours_ago = datetime.utcnow()
     if manual:
         time_1_hours_ago = datetime.utcnow() - timedelta(days=30)
     elif channel[7] and channel[7]<time_1_hours_ago:

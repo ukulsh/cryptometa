@@ -606,81 +606,29 @@ def mark_order_delivered_channels(data):
 
 
 def sync_all_products_with_channel(client_prefix):
-    cur = conn.cursor()
-    cur.execute("""select shop_url, api_key, api_password, channel_name, bb.id from client_channel aa
-                    left join master_channels bb on aa.channel_id=bb.id
-                    where connection_status=true and client_prefix='%s'"""%client_prefix)
-    all_channels = cur.fetchall()
-    for channel in all_channels:
-        try:
-            if channel[3] == "Shopify":
-                since_id = "1"
-                count = 250
-                while count == 250:
-                    create_fulfillment_url = "https://%s:%s@%s/admin/api/2020-07/products.json?limit=250&since_id=%s" % (channel[1], channel[2], channel[0], since_id)
-                    qs = requests.get(create_fulfillment_url)
-                    for prod in qs.json()['products']:
-                        for prod_obj in prod['variants']:
-                            cur.execute("""select id from products where sku='%s' and client_prefix='%s';"""%(str(prod_obj['id']), client_prefix))
-                            prod_obj_x = cur.fetchone()
-                            prod_name = prod['title']
-                            if prod_obj['title'] != 'Default Title':
-                                prod_name += " - " + prod_obj['title']
-
-                            cur.execute("""select id from master_products where sku='%s' and client_prefix='%s';""" % (str(prod_obj['sku']), client_prefix))
-                            try:
-                                master_obj_x = cur.fetchone()[0]
-                            except Exception:
-                                cur.execute("""INSERT INTO master_products (name, sku, active, client_prefix, date_created, 
-                                                dimensions, price, weight, subcategory_id) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id;""",
-                                            (prod_name, prod_obj['sku'] if prod_obj['sku'] else str(prod_obj['id']), True, client_prefix, datetime.now(), None,
-                                                float(prod_obj['price']), None, None))
-                                master_obj_x = cur.fetchone()[0]
-
-                            if prod_obj_x:
-                                cur.execute("""UPDATE products SET master_sku=%s, price=%s, name=%s WHERE id=%s""", (prod_obj['sku'], float(prod_obj['price']), prod_name, prod_obj_x[0]))
-                            else:
-                                cur.execute("""INSERT INTO products (name, sku, channel_id, date_created, price, master_sku, client_prefix, master_product_id) VALUES 
-                                                (%s,%s,%s,%s,%s,%s,%s,%s);""", (prod_name, str(prod_obj['id']), channel[4], datetime.now(),
-                                                                             float(prod_obj['price']), prod_obj['sku'] if prod_obj['sku'] else str(prod_obj['id']), client_prefix, master_obj_x))
-
-                        conn.commit()
-
-                    count = len(qs.json()['products'])
-                    since_id = str(qs.json()['products'][-1]['id'])
-                    conn.commit()
-
-            elif channel[3] == "WooCommerce":
-                try:
-                    auth_session = API(
-                        url=channel[0],
-                        consumer_key=channel[1],
-                        consumer_secret=channel[2],
-                        version="wc/v3"
-                    )
-                    r = auth_session.get("products")
-                except Exception:
-                    auth_session = API(
-                        url=channel[5],
-                        consumer_key=channel[3],
-                        consumer_secret=channel[4],
-                        version="wc/v3",
-                        verify_ssl=False
-                    )
-                    r = auth_session.get("products")
-                page = 1
-                count = 100
-                while count == 100:
-                    qs = auth_session.get("products?per_page=100&page=%s"%str(page))
-                    all_prods = qs.json()
-                    for prod in all_prods:
-                        prod_name = prod['name']
-                        if prod['variations']:
-                            qs = auth_session.get("products/%s/variations" % str(prod['id']))
-                            all_variants = qs.json()
-                            for prod_obj in all_variants:
+    with psycopg2.connect(host=os.environ.get('DATABASE_HOST'), database=os.environ.get('DATABASE_NAME'),
+                          user=os.environ.get('DATABASE_USER'), password=os.environ.get('DATABASE_PASSWORD')) as conn:
+        cur = conn.cursor()
+        cur.execute("""select shop_url, api_key, api_password, channel_name, bb.id from client_channel aa
+                        left join master_channels bb on aa.channel_id=bb.id
+                        where connection_status=true and client_prefix='%s'"""%client_prefix)
+        all_channels = cur.fetchall()
+        for channel in all_channels:
+            try:
+                if channel[3] == "Shopify":
+                    since_id = "1"
+                    count = 250
+                    while count == 250:
+                        create_fulfillment_url = "https://%s:%s@%s/admin/api/2020-07/products.json?limit=250&since_id=%s" % (channel[1], channel[2], channel[0], since_id)
+                        qs = requests.get(create_fulfillment_url)
+                        for prod in qs.json()['products']:
+                            for prod_obj in prod['variants']:
                                 cur.execute("""select id from products where sku='%s' and client_prefix='%s';"""%(str(prod_obj['id']), client_prefix))
                                 prod_obj_x = cur.fetchone()
+                                prod_name = prod['title']
+                                if prod_obj['title'] != 'Default Title':
+                                    prod_name += " - " + prod_obj['title']
+
                                 cur.execute("""select id from master_products where sku='%s' and client_prefix='%s';""" % (str(prod_obj['sku']), client_prefix))
                                 try:
                                     master_obj_x = cur.fetchone()[0]
@@ -688,8 +636,9 @@ def sync_all_products_with_channel(client_prefix):
                                     cur.execute("""INSERT INTO master_products (name, sku, active, client_prefix, date_created, 
                                                     dimensions, price, weight, subcategory_id) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id;""",
                                                 (prod_name, prod_obj['sku'] if prod_obj['sku'] else str(prod_obj['id']), True, client_prefix, datetime.now(), None,
-                                                 float(prod_obj['price']), None, None))
+                                                    float(prod_obj['price']), None, None))
                                     master_obj_x = cur.fetchone()[0]
+
                                 if prod_obj_x:
                                     cur.execute("""UPDATE products SET master_sku=%s, price=%s, name=%s WHERE id=%s""", (prod_obj['sku'], float(prod_obj['price']), prod_name, prod_obj_x[0]))
                                 else:
@@ -698,74 +647,127 @@ def sync_all_products_with_channel(client_prefix):
                                                                                  float(prod_obj['price']), prod_obj['sku'] if prod_obj['sku'] else str(prod_obj['id']), client_prefix, master_obj_x))
 
                             conn.commit()
-                        else:
-                            cur.execute("""select id from products where sku='%s' and client_prefix='%s';""" % (
-                            str(prod['id']), client_prefix))
-                            prod_obj_x = cur.fetchone()
-                            master_obj_x = None
-                            if prod['sku']:
-                                cur.execute("""select id from master_products where sku='%s' and client_prefix='%s';""" % (str(prod['sku']), client_prefix))
-                                try:
-                                    master_obj_x = cur.fetchone()[0]
-                                except Exception:
-                                    cur.execute("""INSERT INTO master_products (name, sku, active, client_prefix, date_created, 
-                                                    dimensions, price, weight, subcategory_id) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id;""",
-                                                (prod_name, prod['sku'], True, client_prefix, datetime.now(), None,
-                                                 float(prod['price']), None, None))
-                                    master_obj_x = cur.fetchone()[0]
-                            if prod_obj_x:
-                                cur.execute("""UPDATE products SET master_sku=%s, price=%s, name=%s WHERE id=%s""",
-                                            (prod['sku'], float(prod['price']), prod_name, prod_obj_x[0]))
-                            else:
-                                cur.execute("""INSERT INTO products (name, sku, channel_id, date_created, price, master_sku, client_prefix, master_product_id) VALUES 
-                                                                                (%s,%s,%s,%s,%s,%s,%s,%s);""",
-                                            (prod_name, str(prod['id']), channel[4], datetime.now(),
-                                             float(prod['price']) if prod['price'] else None, prod['sku'], client_prefix, master_obj_x))
-                            conn.commit()
 
-                    count = len(all_prods)
-                    page += 1
-                    conn.commit()
+                        count = len(qs.json()['products'])
+                        since_id = str(qs.json()['products'][-1]['id'])
+                        conn.commit()
 
-            elif channel[3] == "EasyEcom":
-                create_fulfillment_url = "%s/Products/getProductData?api_token=%s" % (channel[0], channel[1])
-                qs = requests.get(create_fulfillment_url)
-                for key, prod in qs.json()['data'].items():
-                    cur.execute("""select id from products where sku='%s' and client_prefix='%s';"""%(str(prod['productId']), client_prefix))
-                    prod_obj_x = cur.fetchone()
-                    prod_name = prod['name']
-                    dimensions = None
-                    weight = None
-                    if prod['length'] and prod['width'] and prod['height']:
-                        dimensions = {"length": float(prod['length']), "breadth": float(prod['width']),
-                                      "height": float(prod['height'])}
-                    if prod['weight']:
-                        weight = float(prod['weight']) / 1000
-                    cur.execute("""select id from master_products where sku='%s' and client_prefix='%s';""" % (str(prod['sku']), client_prefix))
+                elif channel[3] == "WooCommerce":
                     try:
-                        master_obj_x = cur.fetchone()[0]
+                        auth_session = API(
+                            url=channel[0],
+                            consumer_key=channel[1],
+                            consumer_secret=channel[2],
+                            version="wc/v3"
+                        )
+                        r = auth_session.get("products")
                     except Exception:
-                        cur.execute("""INSERT INTO master_products (name, sku, active, client_prefix, date_created, 
-                                        dimensions, price, weight, subcategory_id) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id;""",
-                                    (prod_name, prod['sku'] if prod['sku'] else str(prod['productId']), True, client_prefix, datetime.now(), json.dumps(dimensions),
-                                     float(prod['mrp']), weight, None))
-                        master_obj_x = cur.fetchone()[0]
+                        auth_session = API(
+                            url=channel[5],
+                            consumer_key=channel[3],
+                            consumer_secret=channel[4],
+                            version="wc/v3",
+                            verify_ssl=False
+                        )
+                        r = auth_session.get("products")
+                    page = 1
+                    count = 100
+                    while count == 100:
+                        qs = auth_session.get("products?per_page=100&page=%s"%str(page))
+                        all_prods = qs.json()
+                        for prod in all_prods:
+                            prod_name = prod['name']
+                            if prod['variations']:
+                                qs = auth_session.get("products/%s/variations" % str(prod['id']))
+                                all_variants = qs.json()
+                                for prod_obj in all_variants:
+                                    cur.execute("""select id from products where sku='%s' and client_prefix='%s';"""%(str(prod_obj['id']), client_prefix))
+                                    prod_obj_x = cur.fetchone()
+                                    cur.execute("""select id from master_products where sku='%s' and client_prefix='%s';""" % (str(prod_obj['sku']), client_prefix))
+                                    try:
+                                        master_obj_x = cur.fetchone()[0]
+                                    except Exception:
+                                        cur.execute("""INSERT INTO master_products (name, sku, active, client_prefix, date_created, 
+                                                        dimensions, price, weight, subcategory_id) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id;""",
+                                                    (prod_name, prod_obj['sku'] if prod_obj['sku'] else str(prod_obj['id']), True, client_prefix, datetime.now(), None,
+                                                     float(prod_obj['price']), None, None))
+                                        master_obj_x = cur.fetchone()[0]
+                                    if prod_obj_x:
+                                        cur.execute("""UPDATE products SET master_sku=%s, price=%s, name=%s WHERE id=%s""", (prod_obj['sku'], float(prod_obj['price']), prod_name, prod_obj_x[0]))
+                                    else:
+                                        cur.execute("""INSERT INTO products (name, sku, channel_id, date_created, price, master_sku, client_prefix, master_product_id) VALUES 
+                                                        (%s,%s,%s,%s,%s,%s,%s,%s);""", (prod_name, str(prod_obj['id']), channel[4], datetime.now(),
+                                                                                     float(prod_obj['price']), prod_obj['sku'] if prod_obj['sku'] else str(prod_obj['id']), client_prefix, master_obj_x))
 
-                    if prod_obj_x:
-                        cur.execute("""UPDATE products SET master_sku=%s, price=%s, name=%s, weight=%s, dimensions=%s WHERE id=%s""",
-                                    (prod['sku'], float(prod['mrp']), prod_name, weight, json.dumps(dimensions), prod_obj_x[0]))
-                    else:
-                        cur.execute("""INSERT INTO products (name, sku, channel_id, date_created, price, master_sku, weight, dimensions, client_prefix, master_product_id) VALUES 
-                                        (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s);""", (prod_name, str(prod['productId']), channel[4], datetime.now(),
-                                                                     float(prod['mrp']), prod['sku'] if prod['sku'] else str(prod['productId']), weight, json.dumps(dimensions), client_prefix, master_obj_x))
+                                conn.commit()
+                            else:
+                                cur.execute("""select id from products where sku='%s' and client_prefix='%s';""" % (
+                                str(prod['id']), client_prefix))
+                                prod_obj_x = cur.fetchone()
+                                master_obj_x = None
+                                if prod['sku']:
+                                    cur.execute("""select id from master_products where sku='%s' and client_prefix='%s';""" % (str(prod['sku']), client_prefix))
+                                    try:
+                                        master_obj_x = cur.fetchone()[0]
+                                    except Exception:
+                                        cur.execute("""INSERT INTO master_products (name, sku, active, client_prefix, date_created, 
+                                                        dimensions, price, weight, subcategory_id) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id;""",
+                                                    (prod_name, prod['sku'], True, client_prefix, datetime.now(), None,
+                                                     float(prod['price']), None, None))
+                                        master_obj_x = cur.fetchone()[0]
+                                if prod_obj_x:
+                                    cur.execute("""UPDATE products SET master_sku=%s, price=%s, name=%s WHERE id=%s""",
+                                                (prod['sku'], float(prod['price']), prod_name, prod_obj_x[0]))
+                                else:
+                                    cur.execute("""INSERT INTO products (name, sku, channel_id, date_created, price, master_sku, client_prefix, master_product_id) VALUES 
+                                                                                    (%s,%s,%s,%s,%s,%s,%s,%s);""",
+                                                (prod_name, str(prod['id']), channel[4], datetime.now(),
+                                                 float(prod['price']) if prod['price'] else None, prod['sku'], client_prefix, master_obj_x))
+                                conn.commit()
 
-                    conn.commit()
+                        count = len(all_prods)
+                        page += 1
+                        conn.commit()
 
-        except Exception as e:
-            logger.error("Product sync failed for: "+client_prefix+" "+channel[3])
+                elif channel[3] == "EasyEcom":
+                    create_fulfillment_url = "%s/Products/getProductData?api_token=%s" % (channel[0], channel[1])
+                    qs = requests.get(create_fulfillment_url)
+                    for key, prod in qs.json()['data'].items():
+                        cur.execute("""select id from products where sku='%s' and client_prefix='%s';"""%(str(prod['productId']), client_prefix))
+                        prod_obj_x = cur.fetchone()
+                        prod_name = prod['name']
+                        dimensions = None
+                        weight = None
+                        if prod['length'] and prod['width'] and prod['height']:
+                            dimensions = {"length": float(prod['length']), "breadth": float(prod['width']),
+                                          "height": float(prod['height'])}
+                        if prod['weight']:
+                            weight = float(prod['weight']) / 1000
+                        cur.execute("""select id from master_products where sku='%s' and client_prefix='%s';""" % (str(prod['sku']), client_prefix))
+                        try:
+                            master_obj_x = cur.fetchone()[0]
+                        except Exception:
+                            cur.execute("""INSERT INTO master_products (name, sku, active, client_prefix, date_created, 
+                                            dimensions, price, weight, subcategory_id) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id;""",
+                                        (prod_name, prod['sku'] if prod['sku'] else str(prod['productId']), True, client_prefix, datetime.now(), json.dumps(dimensions),
+                                         float(prod['mrp']), weight, None))
+                            master_obj_x = cur.fetchone()[0]
 
-    conn.commit()
-    return "Synced channel products for " + client_prefix
+                        if prod_obj_x:
+                            cur.execute("""UPDATE products SET master_sku=%s, price=%s, name=%s, weight=%s, dimensions=%s WHERE id=%s""",
+                                        (prod['sku'], float(prod['mrp']), prod_name, weight, json.dumps(dimensions), prod_obj_x[0]))
+                        else:
+                            cur.execute("""INSERT INTO products (name, sku, channel_id, date_created, price, master_sku, weight, dimensions, client_prefix, master_product_id) VALUES 
+                                            (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s);""", (prod_name, str(prod['productId']), channel[4], datetime.now(),
+                                                                         float(prod['mrp']), prod['sku'] if prod['sku'] else str(prod['productId']), weight, json.dumps(dimensions), client_prefix, master_obj_x))
+
+                        conn.commit()
+
+            except Exception as e:
+                logger.error("Product sync failed for: "+client_prefix+" "+channel[3])
+
+        conn.commit()
+        return "Synced channel products for " + client_prefix
 
 
 def create_cod_remittance_entry():

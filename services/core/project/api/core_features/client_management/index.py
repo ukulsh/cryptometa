@@ -348,7 +348,10 @@ class ClientCustomizations(Resource):
                     client_prefix=client_prefix
                 ).first()
                 new_customization_object = ClientCustomization(
-                    client_prefix=client_prefix, client_name=client_object.client_name
+                    client_prefix=client_prefix,
+                    client_name=client_object.client_name,
+                    theme_color=client_object.theme_color,
+                    client_logo_url=client_object.client_logo,
                 )
                 db.session.add(new_customization_object)
                 db.session.commit()

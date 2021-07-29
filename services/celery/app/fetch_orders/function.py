@@ -1656,7 +1656,8 @@ easyecom_wareiq_channel_map = {"Amazon.in": 2,
                                "Snapdeal":10,
                                "Woocommerce":5,
                                "MyGate":14,
-                               "Myntra PPMP":15
+                               "Myntra PPMP":15,
+                               "Magento2.0":6,
                                }
 
 easyecom_wareiq_courier_map = {"eKart": 7}

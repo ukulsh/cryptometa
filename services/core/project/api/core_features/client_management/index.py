@@ -250,7 +250,7 @@ class ClientCustomizations(Resource):
             if not customization_object:
                 return response_object, 201
 
-            posted_data = request.form
+            posted_data = json.loads(request.form.get("data"))
             customization_object.subdomain = posted_data.get("subdomain")
             customization_object.theme_color = posted_data.get("theme_color")
             customization_object.background_image_url = posted_data.get(

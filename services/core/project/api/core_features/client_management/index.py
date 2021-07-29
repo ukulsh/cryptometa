@@ -263,9 +263,7 @@ class ClientCustomizations(Resource):
             )
             customization_object.support_url = posted_data.get("support_url")
             customization_object.privacy_url = posted_data.get("privacy_url")
-            customization_object.nps_enabled = json.loads(
-                posted_data.get("nps_enabled").lower()
-            )
+            customization_object.nps_enabled = posted_data.get("nps_enabled")
 
             # Handling logo files
             # * S3 bucket is version enabled

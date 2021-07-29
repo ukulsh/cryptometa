@@ -1354,8 +1354,7 @@ def update_available_quantity_from_easyecom():
                                 left join pickup_points bb on aa.pickup_id=bb.id
                                 where aa.client_prefix='KAMAAYURVEDA'
                                 and aa.enable_sdd=true
-                                and bb.warehouse_prefix in ('TLLTRO', 'MHCHRO', 'MHJTRO', 'HRDGRO', 'RJMIRO', 'TNPMRO', 
-                                'GJAORO', 'UPPMRO', 'TNEARO', 'KAVRRO', 'MHPMRO', 'WBQMRO')""")
+                                and bb.warehouse_prefix in ('TNPMRO', 'MHJTRO')""")
 
             pickup_points = cur.fetchall()
             token_headers = {"Username": "WareIQ",

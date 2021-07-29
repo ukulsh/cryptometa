@@ -269,19 +269,18 @@ class ClientCustomizations(Resource):
 
             # Handling logo files
             # * S3 bucket is version enabled
-            if not json.loads(posted_data.get("client_logo_url").lower()):
-                # If logo is removed by the user
-                customization_object.client_logo_url = null()
-            elif isinstance(posted_data.get("client_logo_url"), str):
-                # If logo object is already available in S3
-                customization_object.client_logo_url = posted_data.get(
-                    "client_logo_url"
-                )
-            else:
+            if request.files.get("client_logo_url"):
+                # If a file has been uploaded
                 customization_object.client_logo_url = process_upload_logo_file(
                     client_prefix,
                     request.files.get("client_logo_url"),
                 )
+            elif not posted_data.get("client_logo_url"):
+                # If no text and no logo file
+                customization_object.client_logo_url = null()
+            else:
+                # If no file but text is there
+                customization_object.client_logo_url = posted_data.get("client_logo_url")
 
             # Handling banner files
             banners = json.loads(posted_data.get("banners"))

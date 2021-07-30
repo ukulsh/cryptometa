@@ -9,7 +9,7 @@ from flask import (
     send_from_directory,
     request,
 )
-import os, psycopg2, requests, logging
+import os, psycopg2, requests, logging, json
 from hashids import Hashids
 from datetime import datetime
 
@@ -35,15 +35,15 @@ def tracking_page():
     try:
         url = request.url
         if "5000" not in url:
-            client_track = url.split(".")[0].replace("https://", "")
-            client_track = client_track.replace("http://", "")
+            subdomain = url.split(".")[0].replace("https://", "")
+            subdomain = subdomain.replace("http://", "")
         else:
-            client_track = "wareiq"
+            subdomain = "wareiq"
 
         cur = conn.cursor()
         cur.execute(
             "SELECT client_prefix, client_logo_url, theme_color FROM client_customization WHERE subdomain=%s",
-            (client_track,),
+            (subdomain,),
         )
         client_details = cur.fetchone()
         if not client_details:
@@ -71,36 +71,50 @@ def tracking_page_detials(awb):
     try:
         url = request.url
         if "5000" not in url:
-            client_track = url.split(".")[0].replace("https://", "")
-            client_track = client_track.replace("http://", "")
+            subdomain = url.split(".")[0].replace("https://", "")
+            subdomain = subdomain.replace("http://", "")
         else:
-            client_track = "wareiq"
+            subdomain = "wareiq"
         cur = conn.cursor()
         cur.execute(
-            """SELECT aa.client_prefix, client_logo, theme_color, cc.id FROM client_mapping aa 
-                        LEFT JOIN orders bb on aa.client_prefix=bb.client_prefix 
-                        LEFT JOIN shipments cc on bb.id=cc.order_id
-                        WHERE tracking_url=%s 
-                        and cc.awb=%s""",
-            (client_track, awb),
+            """
+            SELECT 
+                aa.client_prefix, client_logo_url, theme_color, cc.id, background_image_url, 
+                client_name, client_url, nav_links, support_url, privacy_url, nps_enabled, 
+                banners 
+            FROM client_customization aa 
+            LEFT JOIN orders bb on aa.client_prefix=bb.client_prefix 
+            LEFT JOIN shipments cc on bb.id=cc.order_id
+            WHERE subdomain=%s and cc.awb=%s""",
+            (subdomain, awb),
         )
         client_details = cur.fetchone()
-        if not client_details or not client_details[3]:
+        if not client_details:
+            return jsonify({"msg": "Invalid URL"}), 404
+        if not client_details[3]:
             return redirect(
                 url.split("tracking")[0] + "?invalid=Tracking ID not found."
             )
+
+        customization_details = {
+            "client_prefix": client_details[0],
+            "client_logo_url": client_details[1],
+            "theme_color": client_details[2],
+            "background_image_url": client_details[4],
+            "client_name": client_details[5],
+            "client_url": client_details[6],
+            "nav_links": json.loads(client_details[7]),
+            "support_url": client_details[2],
+            "privacy_url": client_details[2],
+            "nps_enabled": client_details[2],
+            "banners": json.loads(client_details[2]),
+        }
 
         req1 = requests.get(CORE_SERVICE_URL + "/orders/v1/track/%s" % awb)
         req2 = requests.get(CORE_SERVICE_URL + "/orders/v1/track/%s?details=true" % awb)
 
         if not req1.status_code == 200:
-            data_obj = {
-                "client_prefix": client_details[0],
-                "logo_url": client_details[1],
-                "theme_color": client_details[2],
-            }
-
-            return render_template("tracking.html", data=data_obj)
+            return render_template("tracking.html", data=customization_details)
 
         data = req1.json()["data"]
         last_update_time = None
@@ -123,6 +137,7 @@ def tracking_page_detials(awb):
                     scan_time = scan_time.strftime("%I:%M %p")
                     each_scan["time"] = scan_time
 
+        data.update(customization_details)
         return render_template("trackingDetails.html", data=data, enumerate=enumerate)
     except Exception as e:
         conn.rollback()

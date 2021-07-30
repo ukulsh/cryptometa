@@ -278,7 +278,9 @@ class ClientCustomizations(Resource):
                 customization_object.client_logo_url = null()
             else:
                 # If no file but text is there
-                customization_object.client_logo_url = posted_data.get("client_logo_url")
+                customization_object.client_logo_url = posted_data.get(
+                    "client_logo_url"
+                )
 
             # Handling banner files
             banners = json.loads(posted_data.get("banners"))
@@ -301,9 +303,7 @@ class ClientCustomizations(Resource):
                     )
                 else:
                     banner_object["banner_image_url"] = banner.get("banner_image_url")
-                banner_object["image_redirect_url"] = json.dumps(
-                    banner.get("image_redirect_url")
-                )
+                banner_object["image_redirect_url"] = banner.get("image_redirect_url")
 
                 updated_banners.append(banner_object)
             customization_object.banners = json.dumps(updated_banners)
@@ -349,6 +349,7 @@ class ClientCustomizations(Resource):
                     client_name=client_object.client_name,
                     theme_color=client_object.theme_color,
                     client_logo_url=client_object.client_logo,
+                    subdomain=client_object.tracking_url,
                 )
                 db.session.add(new_customization_object)
                 db.session.commit()

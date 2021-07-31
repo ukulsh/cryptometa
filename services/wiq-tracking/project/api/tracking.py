@@ -1,5 +1,3 @@
-# services/wiq/project/api/tracking.py
-
 from flask import (
     Blueprint,
     jsonify,
@@ -12,6 +10,7 @@ from flask import (
 import os, psycopg2, requests, logging, json
 from hashids import Hashids
 from datetime import datetime
+from . import helper as helper
 
 CORE_SERVICE_URL = os.environ.get("CORE_SERVICE_URL") or "https://track.wareiq.com"
 
@@ -42,20 +41,35 @@ def tracking_page():
 
         cur = conn.cursor()
         cur.execute(
-            "SELECT client_prefix, client_logo_url, theme_color FROM client_customization WHERE subdomain=%s",
+            """
+            SELECT 
+                client_prefix, client_logo_url, theme_color, background_image_url, 
+                client_name, client_url, nav_links, support_url, privacy_url, nps_enabled, 
+                banners  
+            FROM client_customization 
+            WHERE subdomain=%s
+            """,
             (subdomain,),
         )
         client_details = cur.fetchone()
         if not client_details:
             return jsonify({"msg": "Invalid URL"}), 404
 
-        data_obj = {
+        customization_details = {
             "client_prefix": client_details[0],
             "client_logo_url": client_details[1],
             "theme_color": client_details[2],
+            "background_image_url": client_details[3],
+            "client_name": client_details[4],
+            "client_url": client_details[5],
+            "nav_links": json.loads(client_details[6]),
+            "support_url": client_details[7],
+            "privacy_url": client_details[8],
+            "nps_enabled": client_details[9],
+            "banners": json.loads(client_details[10]),
         }
 
-        return render_template("tracking.html", data=data_obj)
+        return render_template("tracking.html", data=customization_details)
     except Exception as e:
         conn.rollback()
         return jsonify({"msg": "Invalid URL"}), 400
@@ -133,16 +147,7 @@ def tracking_page_detials(awb):
         if req2.status_code == 200:
             data["details_data"] = req2.json()["data"]
 
-        cur.execute(
-            """
-            SELECT bb.courier_name, bb.logo_url
-            FROM shipments aa
-            LEFT JOIN master_couriers bb on aa.courier_id=bb.id
-            WHERE aa.awb=%s
-            """,
-            (awb,),
-        )
-        courier = cur.fetchone()
+        courier = helper.get_courier_details(awb)
         customization_details["courier_name"] = courier[0]
         customization_details["courier_logo_url"] = courier[1]
 
@@ -242,16 +247,7 @@ def tracking_page_details_id():
                     scan_time = scan_time.strftime("%I:%M %p")
                     each_scan["time"] = scan_time
 
-        cur.execute(
-            """
-            SELECT bb.courier_name, bb.logo_url
-            FROM shipments aa
-            LEFT JOIN master_couriers bb on aa.courier_id=bb.id
-            WHERE aa.awb=%s
-            """,
-            (customization_details["awb"],),
-        )
-        courier = cur.fetchone()
+        courier = helper.get_courier_details(customization_details['awb'])
         customization_details["courier_name"] = courier[0]
         customization_details["courier_logo_url"] = courier[1]
 

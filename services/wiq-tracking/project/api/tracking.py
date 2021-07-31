@@ -74,7 +74,8 @@ def tracking_page_detials(awb):
             subdomain = url.split(".")[0].replace("https://", "")
             subdomain = subdomain.replace("http://", "")
         else:
-            subdomain = "wareiq"
+            subdomain = "kyo"
+
         cur = conn.cursor()
         cur.execute(
             """
@@ -88,6 +89,7 @@ def tracking_page_detials(awb):
             WHERE subdomain=%s and cc.awb=%s""",
             (subdomain, awb),
         )
+
         client_details = cur.fetchone()
         if not client_details:
             return jsonify({"msg": "Invalid URL"}), 404
@@ -100,14 +102,15 @@ def tracking_page_detials(awb):
             "client_prefix": client_details[0],
             "client_logo_url": client_details[1],
             "theme_color": client_details[2],
+            "id": client_details[3],
             "background_image_url": client_details[4],
             "client_name": client_details[5],
             "client_url": client_details[6],
             "nav_links": json.loads(client_details[7]),
-            "support_url": client_details[2],
-            "privacy_url": client_details[2],
-            "nps_enabled": client_details[2],
-            "banners": json.loads(client_details[2]),
+            "support_url": client_details[8],
+            "privacy_url": client_details[9],
+            "nps_enabled": client_details[10],
+            "banners": json.loads(client_details[11]),
         }
 
         req1 = requests.get(CORE_SERVICE_URL + "/orders/v1/track/%s" % awb)
@@ -129,13 +132,19 @@ def tracking_page_detials(awb):
         data["latest_update_time"] = last_update_time
         if req2.status_code == 200:
             data["details_data"] = req2.json()["data"]
-            for key, value in data["details_data"].items():
-                for each_scan in value:
-                    scan_time = datetime.strptime(
-                        each_scan["time"], "%d %b %Y, %H:%M:%S"
-                    )
-                    scan_time = scan_time.strftime("%I:%M %p")
-                    each_scan["time"] = scan_time
+
+        cur.execute(
+            """
+            SELECT bb.courier_name, bb.logo_url
+            FROM shipments aa
+            LEFT JOIN master_couriers bb on aa.courier_id=bb.id
+            WHERE aa.awb=%s
+            """,
+            (awb,),
+        )
+        courier = cur.fetchone()
+        customization_details["courier_name"] = courier[0]
+        customization_details["courier_logo_url"] = courier[1]
 
         data.update(customization_details)
         return render_template("trackingDetails.html", data=data, enumerate=enumerate)
@@ -167,19 +176,40 @@ def tracking_page_details_id():
 
         cur = conn.cursor()
         cur.execute(
-            """SELECT aa.client_prefix, client_logo, theme_color, cc.id, cc.awb FROM client_mapping aa 
-                        LEFT JOIN orders bb on aa.client_prefix=bb.client_prefix 
-                        LEFT JOIN shipments cc on bb.id=cc.order_id
-                        WHERE tracking_url=%s 
-                        and bb.channel_order_id=%s and bb.customer_phone=%s""",
+            """
+            SELECT 
+                aa.client_prefix, client_logo_url, theme_color, cc.id, cc.awb background_image_url, 
+                client_name, client_url, nav_links, support_url, privacy_url, nps_enabled, 
+                banners 
+            FROM client_customization aa 
+            LEFT JOIN orders bb on aa.client_prefix=bb.client_prefix 
+            LEFT JOIN shipments cc on bb.id=cc.order_id
+            WHERE tracking_url=%s and bb.channel_order_id=%s and bb.customer_phone=%s""",
             (client_track, orderId, mobile),
         )
         client_details = cur.fetchone()
+
         if not client_details or not client_details[3] or not client_details[4]:
             return redirect(
                 url.split("tracking")[0]
                 + "?invalid=No record found for given ID and phone number."
             )
+
+        customization_details = {
+            "client_prefix": client_details[0],
+            "client_logo_url": client_details[1],
+            "theme_color": client_details[2],
+            "id": client_details[3],
+            "awb": client_details[4],
+            "background_image_url": client_details[5],
+            "client_name": client_details[6],
+            "client_url": client_details[7],
+            "nav_links": json.loads(client_details[8]),
+            "support_url": client_details[9],
+            "privacy_url": client_details[10],
+            "nps_enabled": client_details[11],
+            "banners": json.loads(client_details[12]),
+        }
 
         req1 = requests.get(
             CORE_SERVICE_URL + "/orders/v1/track/%s" % client_details[4]
@@ -189,13 +219,7 @@ def tracking_page_details_id():
         )
 
         if not req1.status_code == 200:
-            data_obj = {
-                "client_prefix": client_details[0],
-                "logo_url": client_details[1],
-                "theme_color": client_details[2],
-            }
-
-            return render_template("tracking.html", data=data_obj)
+            return render_template("tracking.html", data=customization_details)
 
         data = req1.json()["data"]
         last_update_time = None
@@ -218,6 +242,20 @@ def tracking_page_details_id():
                     scan_time = scan_time.strftime("%I:%M %p")
                     each_scan["time"] = scan_time
 
+        cur.execute(
+            """
+            SELECT bb.courier_name, bb.logo_url
+            FROM shipments aa
+            LEFT JOIN master_couriers bb on aa.courier_id=bb.id
+            WHERE aa.awb=%s
+            """,
+            (customization_details["awb"],),
+        )
+        courier = cur.fetchone()
+        customization_details["courier_name"] = courier[0]
+        customization_details["courier_logo_url"] = courier[1]
+
+        data.update(customization_details)
         return render_template("trackingDetails.html", data=data, enumerate=enumerate)
     except Exception as e:
         conn.rollback()

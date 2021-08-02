@@ -140,6 +140,7 @@ def xpressbees_ndr_mapper(requested_order):
 config = {
     "Delhivery": {
         'status_url': "https://track.delhivery.com/api/status/packages/json/?waybill=%s&token=%s",
+        'api_type': 'bulk',
         'status_mapper_fn': delhivery_status_mapper,
         'status_time_format': '%Y-%m-%dT%H:%M:%S',
         'edd_time_format': '%Y-%m-%dT%H:%M:%S',
@@ -166,6 +167,7 @@ config = {
     },
     "Xpressbees": {
         'status_url': "http://xbclientapi.xbees.in/TrackingService.svc/GetShipmentSummaryDetails",
+        'api_type': 'bulk',
         'status_mapper_fn': xpressbees_status_mapper,
         'ndr_mapper_fn': xpressbees_ndr_mapper,
         'status_time_format': '%d-%m-%YT%H%M',
@@ -209,7 +211,9 @@ config = {
     },
     "Bluedart": {
         'status_url': "https://api.bluedart.com/servlet/RoutingServlet?handler=tnt&action=custawbquery&loginid=HYD50082&awb=awb&numbers=%s&format=xml&lickey=eguvjeknglfgmlsi5ko5hn3vvnhoddfs&verno=1.3&scan=1",
+        'api_type': 'bulk',
         'status_mapper_fn': bluedart_status_mapper,
+        'status_time_format': '%d-%b-%YT%H:%M',
         'edd_time_format': '%d %B %Y',
         'exotel_url': 'https://ff2064142bc89ac5e6c52a6398063872f95f759249509009:783fa09c0ba1110309f606c7411889192335bab2e908a079@api.exotel.com/v1/Accounts/wareiq1/Sms/bulksend',
         'status_mapping': {
@@ -450,7 +454,9 @@ config = {
     },
     'Ecom Express': {
         'status_url': "https://plapi.ecomexpress.in/track_me/api/mawbd/?awb=%s&username=%s&password=%s",
+        'api_type': 'bulk',
         'status_mapper_fn': ecom_status_mapper,
+        'status_time_format': '%d %b, %Y, %H:%M',
         'edd_time_format': '%d-%b-%Y',
         'exotel_url': 'https://ff2064142bc89ac5e6c52a6398063872f95f759249509009:783fa09c0ba1110309f606c7411889192335bab2e908a079@api.exotel.com/v1/Accounts/wareiq1/Sms/bulksend',
         'status_mapping': {
@@ -559,5 +565,18 @@ config = {
             "22901": 5,
             "2445": 9,
         }
+    },
+    'Pidge': {
+        'status_url': "https://dev-release-v1.pidge.in/v2.0/vendor/order/",
+        'api_type': 'individual',
+        'status_time_format': "%Y-%m-%dT%H:%M:%S.%fZ",
+        'status_mapping': {
+            130: ("IN TRANSIT", "UD", "Picked", "Shipment picked up"),
+            150: ("IN TRANSIT", "UD", "In Transit", "Shipment in transit"),
+            170: ("DISPATCHED", "UD", "Out for delivery", "Shipment out for delivery"),
+            190: ("DELIVERED", "UD", "Delivered", "Shipment delivered"),
+            5: ("PENDING", "UD", "In Transit", "Shipment not delivered"),
+            0: ("CANCELED", "UD", "Cancelled", "order cancelled")
+        },
     },
 }

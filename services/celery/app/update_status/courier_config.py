@@ -1,3 +1,5 @@
+from datetime import datetime, timedelta
+
 def delhivery_status_mapper(scan):
     to_record_status = ""
     if scan['ScanDetail']['Scan'] == "Manifested" \
@@ -83,6 +85,32 @@ def bluedart_status_mapper(scan, new_status, flags):
     
     return to_record_status, flags
 
+def ecom_status_mapper(scan, new_data, requested_order, status_time):
+    to_record_status = ""
+    if scan['reason_code_number']=="0011":
+        to_record_status = "Picked"
+    elif scan['reason_code_number']=="002":
+        to_record_status = "Picked"
+    elif scan['reason_code_number']=="003":
+        to_record_status = "In Transit"
+    elif scan['reason_code_number']=="006":
+        to_record_status = "Out for delivery"
+    elif scan['reason_code_number']=="999":
+        to_record_status = "Delivered"
+    elif scan['reason_code_number']=="777":
+        to_record_status = "Returned"
+    elif requested_order.get('rts_reason_code_number') and requested_order.get('rts_last_update') and requested_order.get('rts_reason_code_number')=='999':
+        to_record_status = "RTO"
+        if requested_order['rts_last_update']:
+            status_time = requested_order['rts_last_update']
+            status_time = datetime.strptime(status_time, '%d %b, %Y, %H:%M')
+        else:
+            status_time = datetime.utcnow()+timedelta(hours=5.5)
+        new_data['new_status']='RTO'
+        new_data['status_type']='DL'
+    
+    return to_record_status, status_time
+
 def xpressbees_ndr_mapper(requested_order):
     ndr_reason = None
     if requested_order['ShipmentSummary'][0]['Status'].lower() in config['Xpressbees']['ndr_reasons']:
@@ -108,13 +136,14 @@ def xpressbees_ndr_mapper(requested_order):
     
     return ndr_reason
 
-#TODO Add ndr_status_mapper to Delhivery as well
+#TODO Make all keys in config uniform across delivery partners
 config = {
     "Delhivery": {
         'status_url': "https://track.delhivery.com/api/status/packages/json/?waybill=%s&token=%s",
         'status_mapper_fn': delhivery_status_mapper,
         'status_time_format': '%Y-%m-%dT%H:%M:%S',
         'edd_time_format': '%Y-%m-%dT%H:%M:%S',
+        'exotel_url': 'https://ff2064142bc89ac5e6c52a6398063872f95f759249509009:783fa09c0ba1110309f606c7411889192335bab2e908a079@api.exotel.com/v1/Accounts/wareiq1/Sms/bulksend',
         'status_mapping': {
             "DLYDC-107": 6,
             "DLYDC-110": 4,
@@ -141,6 +170,7 @@ config = {
         'ndr_mapper_fn': xpressbees_ndr_mapper,
         'status_time_format': '%d-%m-%YT%H%M',
         'edd_time_format': '%m/%d/%Y %I:%M:%S %p',
+        'exotel_url': 'https://ff2064142bc89ac5e6c52a6398063872f95f759249509009:783fa09c0ba1110309f606c7411889192335bab2e908a079@api.exotel.com/v1/Accounts/wareiq1/Sms/bulksend',
         'status_mapping': {
             "DRC": ("READY TO SHIP", "UD", ""),
             "PUC": ("READY TO SHIP", "UD", ""),
@@ -180,6 +210,8 @@ config = {
     "Bluedart": {
         'status_url': "https://api.bluedart.com/servlet/RoutingServlet?handler=tnt&action=custawbquery&loginid=HYD50082&awb=awb&numbers=%s&format=xml&lickey=eguvjeknglfgmlsi5ko5hn3vvnhoddfs&verno=1.3&scan=1",
         'status_mapper_fn': bluedart_status_mapper,
+        'edd_time_format': '%d %B %Y',
+        'exotel_url': 'https://ff2064142bc89ac5e6c52a6398063872f95f759249509009:783fa09c0ba1110309f606c7411889192335bab2e908a079@api.exotel.com/v1/Accounts/wareiq1/Sms/bulksend',
         'status_mapping': {
             'S': {
                 '002':('DISPATCHED','UD','SHIPMENT OUTSCAN',),
@@ -415,5 +447,117 @@ config = {
                 '188':('RTO','RT','DELIVERED BACK TO SHIPPER',)
             }
         },
+    },
+    'Ecom Express': {
+        'status_url': "https://plapi.ecomexpress.in/track_me/api/mawbd/?awb=%s&username=%s&password=%s",
+        'status_mapper_fn': ecom_status_mapper,
+        'edd_time_format': '%d-%b-%Y',
+        'exotel_url': 'https://ff2064142bc89ac5e6c52a6398063872f95f759249509009:783fa09c0ba1110309f606c7411889192335bab2e908a079@api.exotel.com/v1/Accounts/wareiq1/Sms/bulksend',
+        'status_mapping': {
+            "303": ("IN TRANSIT", "UD", "In Transit", "Shipment In Transit"),
+            "400": ("IN TRANSIT", "UD", "Picked", "Shipment picked up"),
+            "003": ("IN TRANSIT", "UD", "In Transit", "Bag scanned at DC"),
+            "002": ("IN TRANSIT", "UD", "In Transit", "Shipment in-scan"),
+            "004": ("IN TRANSIT", "UD", "In Transit", "Shipment in-scan"),
+            "005": ("IN TRANSIT", "UD", "In Transit", "Shipment in-scan at DC"),
+            "0011": ("IN TRANSIT", "UD", "Picked", "Shipment picked up"),
+            "21601": ("IN TRANSIT", "UD", "In Transit", "Late arrival-Misconnection/After cut off"),
+            "006": ("DISPATCHED", "UD", "Out for delivery", "Shipment out for delivery"),
+            "888": ("DAMAGED", "UD", "", "Transit Damage"),
+            "302": ("DAMAGED", "UD", "", "Transit Damage"),
+            "555": ("DESTROYED", "UD", "", "Destroyed Red Bus Shipment"),
+            "88802": ("DESTROYED", "UD", "", "Shipment destroyed - contains liquid item"),
+            "88803": ("DESTROYED", "UD", "", "Shipment destroyed - contains fragile item"),
+            "88804": ("DESTROYED", "UD", "", "Shipment destroyed - empty packet"),
+            "31701": ("DESTROYED", "UD", "", "Shipment destroyed - food item"),
+            "311": ("SHORTAGE", "UD", "", "Shortage"),
+            "313": ("SHORTAGE", "UD", "", "Shortage"),
+            "314": ("DAMAGED", "UD", "", "DMG Lock - Damage"),
+            "999": ("DELIVERED", "DL", "Delivered", "Shipment delivered"),
+            "204": ("DELIVERED", "DL", "Delivered", "Shipment delivered"),
+            "777": ("IN TRANSIT", "RT", "Returned", "Returned"),
+            "333": ("LOST", "UD", "", "Shipment Lost"),
+            "33306": ("LOST", "UD", "", "Shipment Lost"),
+            "33307": ("LOST", "UD", "", "Shipment Lost"),
+            "228": ("PENDING", "UD", "In Transit", "Out of Delivery Area"),
+            "227": ("PENDING", "UD", "In Transit", "Residence/Office Closed"),
+            "226": ("PENDING", "UD", "In Transit", "Holiday/Weekly off - Delivery on Next Working Day"),
+            "224": ("PENDING", "UD", "In Transit", "Address Unlocatable"),
+            "223": ("PENDING", "UD", "In Transit", "Address Incomplete"),
+            "222": ("PENDING", "UD", "In Transit", "Address Incorrect"),
+            "220": ("PENDING", "UD", "In Transit", "No Such Consignee At Given Address"),
+            "418": ("PENDING", "UD", "In Transit", "Consignee Shifted, phone num wrong"),
+            "417": ("PENDING", "UD", "In Transit", "PHONE NUMBER NOT ANSWERING/ADDRESS NOT LOCATABLE"),
+            "219": ("PENDING", "UD", "In Transit", "Consignee Not Available"),
+            "218": ("PENDING", "UD", "In Transit", "Consignee Shifted from the Given Address"),
+            "231": ("PENDING", "UD", "In Transit", "Shipment attempted - Customer not available"),
+            "212": ("PENDING", "UD", "In Transit", "Consignee Out Of Station"),
+            "217": ("PENDING", "UD", "In Transit", "Delivery Area Not Accessible"),
+            "213": ("PENDING", "UD", "In Transit", "Scheduled for Next Day Delivery"),
+            "331": ("PENDING", "UD", "In Transit", "Consignee requested for future delivery "),
+            "210": ("PENDING", "UD", "Cancelled", "Shipment attempted - Customer refused to accept"),
+            "209": ("PENDING", "UD", "In Transit", "Consignee Refusing to Pay COD Amount"),
+            "419": ("PENDING", "UD", "In Transit", "Three attempts made, follow up closed"),
+            "401": ("PENDING", "UD", "In Transit", "CUSTOMER RES/OFF CLOSED"),
+            "421": ("PENDING", "UD", "In Transit", "Customer Number not reachable/Switched off"),
+            "23101": ("PENDING", "UD", "In Transit", "Customer out of station"),
+            "23102": ("PENDING", "UD", "In Transit", "Customer not in office"),
+            "23103": ("PENDING", "UD", "In Transit", "Customer not in residence"),
+            "22701": ("PENDING", "UD", "In Transit", "Case with Legal team"),
+            "20002": ("PENDING", "UD", "In Transit", "Forcefully opened by customer and returned"),
+            "21002": ("PENDING", "UD", "Cancelled", "Order already cancelled"),
+            "22301": ("PENDING", "UD", "In Transit", "Customer out of station"),
+            "22303": ("PENDING", "UD", "In Transit", "No Such Consignee At Given Address"),
+            "23401": ("PENDING", "UD", "In Transit", "Address pincode mismatch - Serviceable area"),
+            "23402": ("PENDING", "UD", "In Transit", "Address pincode mismatch - Non Serviceable area"),
+            "22702": ("PENDING", "UD", "In Transit", "Shipment attempted - Office closed"),
+            "22801": ("PENDING", "UD", "In Transit", "Customer Address out of delivery area"),
+            "22901": ("PENDING", "UD", "In Transit", "Customer requested for self collection"),
+            "2447": ("PENDING", "UD", "In Transit", "No such addressee in the given address"),
+            "2445": ("PENDING", "UD", "In Transit", "Cash amount Mismatch"),
+            "12247": ("PENDING", "UD", "In Transit", "Delivery Attempt to be made - Escalations"),
+            "12245": ("PENDING", "UD", "In Transit", "Delivery attempt to be made - FE Instructions"),
+            "20701": ("PENDING", "UD", "In Transit", "Misroute due to wrong pincode given by customer"),
+        },
+        'ndr_reasons': {
+            "228": 8,
+            "227": 6,
+            "226": 4,
+            "224": 2,
+            "223": 2,
+            "222": 2,
+            "220": 2,
+            "418": 2,
+            "417": 2,
+            "219": 1,
+            "218": 1,
+            "231": 1,
+            "212": 1,
+            "217": 7,
+            "213": 4,
+            "331": 4,
+            "210": 3,
+            "209": 9,
+            "419": 13,
+            "401": 6,
+            "421": 1,
+            "23101": 1,
+            "23102": 1,
+            "23103": 1,
+            "232": 2,
+            "234": 2,
+            "22701": 6,
+            "20002": 11,
+            "21002": 3,
+            "22301": 2,
+            "22303": 2,
+            "23401": 2,
+            "23402": 2,
+            "2447": 2,
+            "22702": 6,
+            "22801": 8,
+            "22901": 5,
+            "2445": 9,
+        }
     },
 }

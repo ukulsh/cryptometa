@@ -411,6 +411,21 @@ class Webhooks(db.Model):
     date_created = db.Column(db.DateTime, default=datetime.now)
     date_updated = db.Column(db.DateTime, onupdate=datetime.now)
 
+    def to_json(self):
+        return {
+            'id': self.id,
+            'client_prefix': self.client_prefix,
+            'webhook_url': self.webhook_url,
+            'webhook_name': self.webhook_name,
+            'header_key': self.header_key,
+            'header_value': self.header_value,
+            'webhook_secret': self.webhook_secret,
+            'status': self.status,
+            'fail_count': self.fail_count,
+            'date_created': self.date_created,
+            'date_updated': self.date_updated,
+        }
+
 
 class Shipments(db.Model):
     __tablename__ = "shipments"

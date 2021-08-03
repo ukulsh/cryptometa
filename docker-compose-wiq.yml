@@ -24,3 +24,21 @@ services:
     ports:
       - 80:80
       - 443:443
+
+  wiq-tracking:
+    build:
+      context: ./services/wiq-tracking
+      dockerfile: Dockerfile-prod
+    expose:
+      - 5000
+    environment:
+      - FLASK_ENV=production
+      - USERS_SERVICE_URL=https://track.wareiq.com
+      - SECRET_KEY=my_precious
+      - DATABASE_URL=postgresql://postgres:aSderRFgd23@wareiq-core-prod2.cvqssxsqruyc.us-east-1.rds.amazonaws.com:5432/core_prod
+      - DATABASE_HOST=wareiq-core-prod2.cvqssxsqruyc.us-east-1.rds.amazonaws.com
+      - DATABASE_HOST_PINCODE=wareiq-core-prod.cvqssxsqruyc.us-east-1.rds.amazonaws.com
+      - DATABASE_NAME=core_prod
+      - DATABASE_NAME_USER=users_prod
+      - DATABASE_USER=postgres
+      - DATABASE_PASSWORD=aSderRFgd23

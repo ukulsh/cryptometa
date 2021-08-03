@@ -133,6 +133,11 @@ def resync_easyecom_orders(cur, channel, manual=None):
 
             if pickup_data_id and pickup_data_id!=existing_order[2]:
                 cur.execute("UPDATE orders SET pickup_data_id=%s WHERE id=%s"%(pickup_data_id, existing_order[0]))
+                cur.execute("""DELETE FROM order_scans where shipment_id in (select id from shipments where order_id = %s);
+                               DELETE FROM order_status where shipment_id in (select id from shipments where order_id = %s);
+                               DELETE FROM shipments where order_id = %s;
+                               UPDATE orders SET client_prefix='NEW' where id=%s;""", (str(existing_order[0]),str(existing_order[0]),
+                                                                                       str(existing_order[0]),str(existing_order[0])))
 
         except Exception as e:
             conn.rollback()

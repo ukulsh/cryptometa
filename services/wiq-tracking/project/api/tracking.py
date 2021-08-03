@@ -18,12 +18,10 @@ tracking_blueprint = Blueprint("tracking", __name__)
 
 hashids = Hashids(min_length=6, salt="thoda namak shamak daalte hai")
 
-conn = psycopg2.connect(
-    host="wareiq-core-prod2.cvqssxsqruyc.us-east-1.rds.amazonaws.com",
-    database="core_prod",
-    user="postgres",
-    password="aSderRFgd23",
-)
+conn = psycopg2.connect(host=os.environ.get('DATABASE_HOST'),
+                        database=os.environ.get('DATABASE_NAME'),
+                        user=os.environ.get('DATABASE_USER'),
+                        password=os.environ.get('DATABASE_PASSWORD'))
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -62,11 +60,11 @@ def tracking_page():
             "background_image_url": client_details[3],
             "client_name": client_details[4],
             "client_url": client_details[5],
-            "nav_links": json.loads(client_details[6]),
+            "nav_links": json.loads(client_details[6]) if client_details[6] else [],
             "support_url": client_details[7],
             "privacy_url": client_details[8],
             "nps_enabled": client_details[9],
-            "banners": json.loads(client_details[10]),
+            "banners": json.loads(client_details[10]) if client_details[10] else [],
         }
 
         return render_template("tracking.html", data=customization_details)
@@ -88,7 +86,7 @@ def tracking_page_detials(awb):
             subdomain = url.split(".")[0].replace("https://", "")
             subdomain = subdomain.replace("http://", "")
         else:
-            subdomain = "kyo"
+            subdomain = "wareiq"
 
         cur = conn.cursor()
         cur.execute(
@@ -120,11 +118,11 @@ def tracking_page_detials(awb):
             "background_image_url": client_details[4],
             "client_name": client_details[5],
             "client_url": client_details[6],
-            "nav_links": json.loads(client_details[7]),
+            "nav_links": json.loads(client_details[7]) if client_details[7] else [],
             "support_url": client_details[8],
             "privacy_url": client_details[9],
             "nps_enabled": client_details[10],
-            "banners": json.loads(client_details[11]),
+            "banners": json.loads(client_details[11]) if client_details[11] else [],
         }
 
         req1 = requests.get(CORE_SERVICE_URL + "/orders/v1/track/%s" % awb)
@@ -147,7 +145,7 @@ def tracking_page_detials(awb):
         if req2.status_code == 200:
             data["details_data"] = req2.json()["data"]
 
-        courier = helper.get_courier_details(awb)
+        courier = helper.get_courier_details(awb, cur)
         customization_details["courier_name"] = courier[0]
         customization_details["courier_logo_url"] = courier[1]
 
@@ -166,7 +164,7 @@ def tracking_page_details_id():
             client_track = url.split(".")[0].replace("https://", "")
             client_track = client_track.replace("http://", "")
         else:
-            client_track = "justherbs"
+            client_track = "wareiq"
 
         orderId = request.args.get("orderId")
         mobile = request.args.get("mobile")
@@ -209,11 +207,11 @@ def tracking_page_details_id():
             "background_image_url": client_details[5],
             "client_name": client_details[6],
             "client_url": client_details[7],
-            "nav_links": json.loads(client_details[8]),
+            "nav_links": json.loads(client_details[8]) if client_details[8] else [],
             "support_url": client_details[9],
             "privacy_url": client_details[10],
             "nps_enabled": client_details[11],
-            "banners": json.loads(client_details[12]),
+            "banners": json.loads(client_details[12]) if client_details[12] else [],
         }
 
         req1 = requests.get(
@@ -247,7 +245,7 @@ def tracking_page_details_id():
                     scan_time = scan_time.strftime("%I:%M %p")
                     each_scan["time"] = scan_time
 
-        courier = helper.get_courier_details(customization_details['awb'])
+        courier = helper.get_courier_details(customization_details['awb'], cur)
         customization_details["courier_name"] = courier[0]
         customization_details["courier_logo_url"] = courier[1]
 

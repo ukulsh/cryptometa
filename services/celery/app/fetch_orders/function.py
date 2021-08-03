@@ -764,7 +764,7 @@ def fetch_magento_orders(cur, channel, manual=None):
 
 def fetch_easyecom_orders(cur, channel, manual=None):
 
-    time_1_hours_ago = datetime.utcnow() + timedelta(hours=4)
+    time_1_hours_ago = datetime.utcnow()
     if manual:
         time_1_hours_ago = datetime.utcnow() - timedelta(days=30)
     elif channel[7] and channel[7]<time_1_hours_ago:
@@ -1655,7 +1655,9 @@ easyecom_wareiq_channel_map = {"Amazon.in": 2,
                                "PayTM":12,
                                "Snapdeal":10,
                                "Woocommerce":5,
-                               "MyGate":14
+                               "MyGate":14,
+                               "Myntra PPMP":15,
+                               "Magento2.0":6,
                                }
 
 easyecom_wareiq_courier_map = {"eKart": 7}

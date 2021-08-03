@@ -1481,11 +1481,9 @@ class PincodeServiceability(db.Model):
 
 
 class RemittanceOrderMap(db.Model):
-    __tablename__ = "remittance_order_map"
+    __tablename__ = 'remittance_order_map'
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    order_id = db.Column("order_id", db.Integer, db.ForeignKey("orders.id"), index=True)
-    remittance_id = db.Column(
-        "remittance_id", db.Integer, db.ForeignKey("cod_remittance.id")
-    )
+    order_id = db.Column('order_id', db.Integer, db.ForeignKey('orders.id'), index=True)
+    remittance_id = db.Column('remittance_id', db.Integer, db.ForeignKey('cod_remittance.id'))
     order = db.relationship("Orders")
     remittance = db.relationship("CODRemittance")

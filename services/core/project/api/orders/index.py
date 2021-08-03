@@ -3524,13 +3524,12 @@ def ivr_call(resp):
 
         ivr_url = "https://ff2064142bc89ac5e6c52a6398063872f95f759249509009:783fa09c0ba1110309f606c7411889192335bab2e908a079@api.exotel.com/v1/Accounts/wareiq1/Calls/connect"
         call_data = {
-            "From": from_no,
-            "To": str(order.customer_phone),
-            "CallerId": "08047188642",
-            "CallType": "trans",
-            "StatusCallback": "http://track.wareiq.com/orders/v1/ivrcalls/passthru/%s"
-            % str(ivr_id),
-            "MaxRetries": 1,
+            'From': from_no,
+            'To': str(order.customer_phone),
+            'CallerId': '02248930167',
+            'CallType': 'trans',
+            'StatusCallback': 'http://track.wareiq.com/orders/v1/ivrcalls/passthru/%s'%str(ivr_id),
+            'MaxRetries': 1
         }
 
         req = requests.post(ivr_url, data=call_data)

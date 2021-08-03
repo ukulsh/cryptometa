@@ -205,7 +205,18 @@ class WebhookDetails(Resource):
         try:
             auth_data = resp.get("data")
             client_prefix = auth_data.get("client_prefix")
-            posted_data = json.loads(request.form.get("data"))
+            posted_data = request.form.get("data")
+
+            webhook_object = Webhooks.query.filter_by(
+                client_prefix=client_prefix
+            ).first()
+
+            if webhook_object:
+                response_object[
+                    "message"
+                ] = "Webhook entry for this client prefix lready exists"
+                return response_object, 409
+
             webhook_object = Webhooks(
                 client_prefix=client_prefix,
                 webhook_url=posted_data.get("webhook_url"),
@@ -239,8 +250,9 @@ class WebhookDetails(Resource):
         try:
             auth_data = resp.get("data")
             client_prefix = auth_data.get("client_prefix")
-            posted_data = json.loads(request.form.get("data"))
-            webhook_object = Webhooks.query.filterby(
+            posted_data = request.form.get("data")
+
+            webhook_object = Webhooks.query.filter_by(
                 client_prefix=client_prefix
             ).first()
 
@@ -280,7 +292,8 @@ class WebhookDetails(Resource):
         try:
             auth_data = resp.get("data")
             client_prefix = auth_data.get("client_prefix")
-            webhook_object = Webhooks.query.filterby(
+
+            webhook_object = Webhooks.query.filter_by(
                 client_prefix=client_prefix
             ).first()
 
@@ -297,3 +310,6 @@ class WebhookDetails(Resource):
             logger.error("Failed while getting webhook info", e)
             response_object["message"] = "Failed while getting webhook info"
             return response_object, 400
+
+
+api.add_resource(WebhookDetails, "/core/v1/clientWebhooks")

@@ -422,8 +422,8 @@ class Webhooks(db.Model):
             'webhook_secret': self.webhook_secret,
             'status': self.status,
             'fail_count': self.fail_count,
-            'date_created': self.date_created,
-            'date_updated': self.date_updated,
+            'date_created': self.date_created.timestamp(),
+            'date_updated': self.date_updated.timestamp(),
         }
 
 

@@ -460,7 +460,7 @@ def ship_delhivery_orders(cur, courier, courier_name, order_ids, order_id_tuple,
                             insert_shipments_data_query += "%s,"
                             insert_shipments_data_tuple.append(("", "Fail", orders_dict[package['refnum']][0], None,
                                                                 None, None, None, None, "Pincode not serviceable", None,
-                                                                None, orders_dict[package['refnum']][14]), )
+                                                                None, orders_dict[package['refnum']][14], None, None), )
                         continue
 
                     if 'COD' in remark or 'blocked' in remark:
@@ -611,7 +611,7 @@ def ship_shadowfax_orders(cur, courier, courier_name, order_ids, order_id_tuple,
                         insert_shipments_data_tuple = list()
                         insert_shipments_data_tuple.append(("", "Fail", order[0], None,
                                                             None, None, None, None, "Pincode not serviceable", None,
-                                                            None, zone), )
+                                                            None, zone, None, None), )
                         cur.execute(insert_shipments_data_query, tuple(insert_shipments_data_tuple))
                     continue
 
@@ -1038,7 +1038,7 @@ def ship_xpressbees_orders(cur, courier, courier_name, order_ids, order_id_tuple
                         insert_shipments_data_tuple = list()
                         insert_shipments_data_tuple.append(("", "Fail", order[0], None,
                                                             None, None, None, None, "Pincode not serviceable", None,
-                                                            None, zone), )
+                                                            None, zone, None, None), )
                         cur.execute(insert_shipments_data_query, tuple(insert_shipments_data_tuple))
                     continue
 
@@ -1414,7 +1414,7 @@ def ship_expressbees_orders(cur, courier, courier_name, order_ids, order_id_tupl
                         insert_shipments_data_tuple = list()
                         insert_shipments_data_tuple.append(("", "Fail", order[0], None,
                                                             None, None, None, None, "Pincode not serviceable", None,
-                                                            None, zone), )
+                                                            None, zone, None, None), )
                         cur.execute(insert_shipments_data_query, tuple(insert_shipments_data_tuple))
                     continue
 
@@ -1724,7 +1724,7 @@ def ship_ecom_orders(cur, courier, courier_name, order_ids, order_id_tuple, back
                         insert_shipments_data_tuple = list()
                         insert_shipments_data_tuple.append(("", "Fail", order[0], None,
                                                             None, None, None, None, "Pincode not serviceable", None,
-                                                            None, zone), )
+                                                            None, zone, None, None), )
                         cur.execute(insert_shipments_data_query, tuple(insert_shipments_data_tuple))
                     continue
 
@@ -2020,7 +2020,7 @@ def ship_bluedart_orders(cur, courier, courier_name, order_ids, order_id_tuple, 
                         insert_shipments_data_tuple = list()
                         insert_shipments_data_tuple.append(("", "Fail", order[0], None,
                                                             None, None, None, None, "Pincode not serviceable", None,
-                                                            None, zone), )
+                                                            None, zone, None, None), )
                         cur.execute(insert_shipments_data_query, tuple(insert_shipments_data_tuple))
                     continue
 
@@ -2307,7 +2307,7 @@ def ship_fedex_orders(cur, courier, courier_name, order_ids, order_id_tuple, bac
                         insert_shipments_data_tuple = list()
                         insert_shipments_data_tuple.append(("", "Fail", order[0], None,
                                                             None, None, None, None, "Pincode not serviceable", None,
-                                                            None, zone), )
+                                                            None, zone, None, None), )
                         cur.execute(insert_shipments_data_query, tuple(insert_shipments_data_tuple))
                     continue
 
@@ -2687,7 +2687,7 @@ def ship_sdd_orders(cur, courier, courier_name, order_ids, order_id_tuple, backu
                     insert_shipments_data_tuple = list()
                     insert_shipments_data_tuple.append(("", "Fail", order[0], None,
                                                         None, None, None, None, "Pincode not serviceable", None,
-                                                        None, zone), )
+                                                        None, zone, None, None), )
                     cur.execute(insert_shipments_data_query, tuple(insert_shipments_data_tuple))
                 continue
 
@@ -2911,7 +2911,7 @@ def ship_pidge_orders(cur, courier, courier_name, order_ids, order_id_tuple, bac
                     insert_shipments_data_tuple = list()
                     insert_shipments_data_tuple.append(("", "Fail", order[0], None,
                                                         None, None, None, None, "Pincode not serviceable", None,
-                                                        None, zone), )
+                                                        None, zone, None, None), )
                     cur.execute(insert_shipments_data_query, tuple(insert_shipments_data_tuple))
                 continue
 

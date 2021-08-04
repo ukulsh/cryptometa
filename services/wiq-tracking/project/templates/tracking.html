@@ -123,11 +123,7 @@
         <div class="footer-container">
           <div class="footer-links">
             {% if data and data.support_url %}
-              {% set support_url = data.support_url %}
-              {% if 'https://' not in support_url and 'http://' not in support_url %}
-                {% set support_url = 'https://' + support_url %}
-              {% endif %}
-              <a class="footer-link" href="{{ support_url }}">{{ data.support_url }}</a>
+              <a class="footer-link" href="mailto:{{ data.support_url }}">{{ data.support_url }}</a>
             {% endif %}
             {% if data and data.privacy_url %}
               {% set privacy_url = data.privacy_url %}

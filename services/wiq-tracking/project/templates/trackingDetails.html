@@ -3,258 +3,217 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1,shrink-to-fit=no">
-    <title>{% if data and data.client_name %}{{ data.client_name }}: {% endif %}Order Tracking</title>
-    <meta name="description" content="{% if data and data.client_name %}{{ data.client_name }}: {% endif %}Order Tracking">
-    <link rel="preload" href="{{ url_for('static', filename='tracking.css', _scheme='https', _external=True) }}" as="style">
-    <link rel="preload" href="{{ url_for('static', filename='tracking.js', _scheme='https', _external=True) }}" as="script">
-    {% if data and data.banners and data.banners|length > 0 %}
-      <link rel="preload" href="//cdn.jsdelivr.net/npm/slick-carousel@1.8.1/slick/slick.min.js" as="script">
-    {% endif %}
     <link rel="icon" href="https://wareiq-assets.s3.amazonaws.com/WareIQ-ico.png">
     <link rel="preconnect" href="https://fonts.gstatic.com">
+    <meta name="description" content="Modern e-commerce fulfilment, built for speed">
+    <title>Order Tracking</title>
     <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Roboto:ital,wght@0,300;0,400;0,500;0,700;1,300&amp;display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.4.1/css/bootstrap.min.css" integrity="sha384-Vkoo8x4CGsO3+Hhxv8T/Q5PaXtkKtu6ug5TOeNV6gBiFeWPGFN9MuhOf23Q9Ifjh" crossorigin="anonymous">
     <link rel="stylesheet" href="{{ url_for('static', filename='tracking.css', _scheme='https', _external=True) }}">
-    {% if data and data.banners and data.banners|length > 0 %}
-      <link rel="stylesheet" type="text/css" href="//cdn.jsdelivr.net/npm/slick-carousel@1.8.1/slick/slick.css"/>
-      <link rel="stylesheet" type="text/css" href="//cdn.jsdelivr.net/npm/slick-carousel@1.8.1/slick/slick-theme.css"/>
-    {% endif %}
-    {% set status_color = '#34C674' %}
-    {% if data and data.status %}
-      {% if data.status == 'Received' %}
-        {% set status_color = '#45B7FF' %}
-      {% elif data.status == 'Picked' %}
-        {% set status_color = '#D9CD34' %}
-      {% elif data.status == 'In Transit' %}
-        {% set status_color = '#FD9741' %}
-      {% elif data.status == 'Out for delivery' %}
-        {% set status_color = '#9FD543' %}
-      {% elif data.status == 'Delivered' %}
-        {% set status_color = '#34C674' %}
-      {% elif data.status == 'Cancelled' %}
-        {% set status_color = '#EF4663' %}
-      {% elif data.status == 'Returned' %}
-        {% set status_color = '#A051C3' %}
-      {% elif data.status == 'RTO Delivered' %}
-        {% set status_color = '#1FB184' %}
-      {% endif %}
-    {% endif %}
   </head>
-  <body class="tracking-page-body">
-    <header class="tracking-header">
-      <div class="container-fluid">
-        <nav class="navbar navbar-expand-md">
-          {% if data and data.client_url %}
-            <a class="navbar-brand navbar-brand--logo" href="{{ data.client_url }}" target="_blank">
-              <img class="company-logo" src="{% if data and data.client_logo_url %}{{ data.client_logo_url }}{% else %}https://wareiq-assets.s3.amazonaws.com/wareiq-logo.svg{% endif %}" alt="{% if data and data.client_name %}{{ data.client_name }}{% else %}WareIQ{% endif %}" />
-            </a>
-          {% else %}
-            <div class="navbar-brand navbar-brand--logo">
-              <img class="company-logo" src="{% if data and data.client_logo_url %}{{ data.client_logo_url }}{% else %}https://wareiq-assets.s3.amazonaws.com/wareiq-logo.svg{% endif %}" alt="{% if data and data.client_name %}{{ data.client_name }}{% else %}WareIQ{% endif %}" />
-            </div>
-          {% endif %}
-          {% if data and data.nav_links and data.nav_links|length > 0 %}
-            <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
-              <span class="navbar-toggler-icon"></span>
-            </button>
-            <div class="collapse navbar-collapse justify-content-end" id="navbarNav">
-              <ul class="navbar-nav">
-                {% for links in data.nav_links %}
-                  <li class="nav-item">
-                    <a class="nav-link" href="{{ links.link_url }}">{{ links.link_text }}</a>
-                  </li>
-                {% endfor %}
-              </ul>
-            </div>
-          {% endif %}
-        </nav>
-      </div>
-    </header>
-    <main class="tracking-main-content" style="{% if data and data.background_image_url %}background-image: url('{{ data.background_image_url }}'){% endif %}">
-      <div class="tracking-details-page-content">
-        <div class="tracking-details-info-container">
-          <div class="tracking-details-info-top-container">
-            <div class="order-details">
-              <h1 style="color: {{ status_color }}">{% if data and data.status%}{{ data.status }}{% endif %}</h1>
-              <div class="order-detail-item">
-                <label>Order ID:</label>
-                <span>{% if data and data.order_id %}{{ data.order_id }}{% endif %}</span>
-              </div>
-              <div class="order-detail-item">
-                <label>Order Date:</label>
-                <span>{% if data and data.placed_on %}{{ data.placed_on }}{% endif %}</span>
-              </div>
-            </div>
-            <div class="awb-details">
-              <div class="courier-info">
-                {% if data and data.courier_logo %}
-                  <img src="{{ data.courier_logo }}" alt="{% if data and data.courier_name %}{{ data.courier_name }}{% endif %}" class="courier-image"/>
-                {% elif data and data.courier_name %}
-                  <div class="courier-name">{{ data.courier_name }}</div>
-                {% endif %}
-                <div class="awb-number">{% if data and data.tracking_id %}{{ data.tracking_id }}{% endif %}</div>
-              </div>
-              <div class="eta-info">
-                {% if data.status == 'Delivered' or data.status == 'Returned' or data.status == 'Cancelled'%}
-                  <label>Remarks</label>
-                  <h2>{% if data and data.remark %}{{ data.remark }}{% endif %}</h2>
-                {% else %}
-                  <label>ETA</label>
-                  <h2>{% if data and data.arriving_on %}{{ data.arriving_on }}{% endif %}</h2>
-                {% endif %}
-              </div>
-            </div>
-          </div>
-          <div class="shipping-tracker-container">
-            <div class="tracker-title">Shipment Tracking</div>
-            {% if data and data.order_track and data.order_track|length > 0 %}
-              <div class="status-tracker-list">
-                {% for item in data.order_track: %}
-                  {% set status_icon = 'delivered' %}
-                  {% if item.status %}
-                    {% if item.status == 'Received' %}
-                      {% set status_icon = 'received' %}
-                    {% elif item.status == 'Picked' %}
-                      {% set status_icon = 'picked' %}
-                    {% elif item.status == 'In Transit' %}
-                      {% set status_icon = 'in-transit' %}
-                    {% elif item.status == 'Out for delivery' %}
-                      {% set status_icon = 'out-for-delivery' %}
-                    {% elif item.status == 'Delivered' %}
-                      {% set status_icon = 'delivered' %}
-                    {% elif item.status == 'Cancelled' %}
-                      {% set status_icon = 'cancelled' %}
-                    {% elif item.status == 'Returned' %}
-                      {% set status_icon = 'returned' %}
-                    {% elif item.status == 'RTO Delivered' %}
-                      {% set status_icon = 'rto-delivered' %}
-                    {% endif %}
-                  {% endif %}
-                  <div class="status-tracker-item">
-                    <div class="status-tracker-item-left">
-                      <div class="status-icon" style="{% if item.time %}background: {{ status_color }}{% endif %}">
-                        <img src="{{ url_for('static', filename=status_icon+'.svg', _scheme='https', _external=True) }}" alt="{% if item.status %}{{ item.status }}{% endif %}"/>
-                      </div>
-                      {% if loop.index0 != data.order_track|length - 1 %}
-                        <div class="status-line" style="{% if item.time and data.order_track[loop.index0 + 1] and data.order_track[loop.index0 + 1].time %}background: {{ status_color }}{% endif %}"></div>
-                      {% endif %}
-                    </div>
-                    <div class="status-tracker-item-right {% if not item.time %}disabled {% if item.status != 'Delivered' or not data.destination_city %}without-time{% endif %}{% endif %}">
-                      {% if item.status %}
-                        <div class="status-text">{{ item.status }}</div>
-                      {% endif %}
-                      {% if item.city %}
-                        <div class="status-city">{{ item.city }}</div>
-                      {% elif item.status == 'Delivered' and data.destination_city %}
-                        <div class="status-city">{{ data.destination_city }}</div>
-                      {% endif %}
-                      {% if item.time %}
-                        <div class="status-city">{{ item.time }}</div>
-                      {% endif %}
-                    </div>
-                  </div>
-                {% endfor %}
-              </div>
-            {% endif %}
-            {% if data and data.details_data %}
-              <div class="view-all-updates-btn" data-toggle="modal" data-target="#updates-modal">View all updates</div>
-            {% endif %}
-          </div>
+  <body>
+    <div class="root">
+      <div class="tracking {% if data and data.client_prefix and data.client_prefix == 'KAMAAYURVEDA' %}kama{% endif %}">
+        <div class='company-top-bar' style="background-color: {% if data and data.theme_color %}{{ data.theme_color }}{% else %}#e0e0e0{% endif %}">
+          <img class="company-logo" src="{% if data and data.logo_url %}{{ data.logo_url }}{% else %}https://wareiq-assets.s3.amazonaws.com/wareiq-logo.svg{% endif %}" />
         </div>
-        {% if data and data.banners and data.banners|length > 0 %}
-          <div class="tracking-banners-container">
-            <div class="tracking-banners-carousel" id="tracking-banners-carousel">
-              {% for banner in data.banners %}
-                {% if banner.image_redirect_url %}
-                  <a href="{{ banner.image_redirect_url }}" target="_blank" class="banner-carousel-item">
-                {% else %}
-                  <div class="banner-carousel-item">
-                {% endif %}
-                    <div class="banner-carousel-image">
-                      <img src="{{ banner.banner_image_url }}" alt="" />
+        <div class="tracking-page-container" style="width: 80%">
+          <div class="search-wrapper">
+            <div class="title">Track your shipment</div>
+            <div class="track-radio-btns-container">
+              <div class="track-radio-btn">
+                <input type="radio" id="orderId" name="trackRadio" value="orderId">
+                <label for="orderId">Order ID</label>
+              </div>
+              <div class="track-radio-btn">
+                <input type="radio" id="awbNumber" name="trackRadio" value="awbNumber" checked>
+                <label for="awbNumber">AWB Number</label>
+              </div>
+            </div>
+            <div class="id-search-container">
+              <div class="search-box row">
+                <div class="col-xl-10 col-12" id="orderid-search-container">
+                  <div class="row">
+                    <div class="col-sm-6 col-12">
+                      <div class="sub-text">Order ID<span class="required-field">*</span></div>
+                      <input class="tracking_input" name="orderId" id="order_id_input"/>
                     </div>
-                {% if banner.image_redirect_url %}
-                  </a>
-                {% else %}
+                    <div class="col-sm-6 col-12">
+                      <div class="sub-text">Mobile Number<span class="required-field">*</span></div>
+                      <input class="tracking_input" type="number" name="mobile" id="mobile_number_input"/>
+                    </div>
                   </div>
+                </div>
+                <div class="col-xl-10 col-12 hide" id="awb-search-container">
+                  <div class="sub-text">AWB Number<span class="required-field">*</span></div>
+                  <input class="tracking_input" name="awb" id="awb_number_input" value="{% if data and data.tracking_id %}{{ data.tracking_id }}{% endif %}"/>
+                </div>
+                <span class="col-xl-2 col-12" style="text-align: center">
+                  <span class="track-btn" id="trackSubmitBtn">Track</span>
+                </span>
+              </div>
+            </div>
+            <div class="tracking-error hide"></div>
+          </div>
+          <div class="content">
+            <div class="content1">
+              <h2 class="status">{% if data and data.status%}{{ data.status }}{% endif %}</h2>
+              {% if data and data.latest_update_time %}
+                <h2 class="latest-date">{{ data.latest_update_time }}</h2>
+              {% endif %}
+            </div>
+            <div class="content3">
+              <div class="order-tracker-container">
+                {% if data and data.order_track and data.order_track|length > 0 %}
+                  {% for index, item in enumerate(data.order_track): %}
+                    <div class="status-container {% if item.time %}done{% endif %}" style="width: {{ 1.5*100/((2.5*data.order_track|length)-1) }}%;">
+                      <div class="status-circle">
+                        <i class="material-icons icon">
+                          {% if item.status == 'Received' %}
+                            done
+                          {% elif item.status == 'Picked'%}
+                            add_shopping_cart
+                          {% elif item.status == 'In Transit'%}
+                            airplanemode_active
+                          {% elif item.status == 'Out for delivery'%}
+                            motorcycle
+                          {% elif item.status == 'Delivered'%}
+                            done_all
+                          {% elif item.status == 'Cancelled'%}
+                            remove_shopping_cart
+                          {% elif item.status == 'Returned'%}
+                            assignment_return
+                          {% elif item.status == 'RTO Delivered'%}
+                            check_circle_outline
+                          {% else %}
+                            shopping_cart
+                          {% endif %}
+                        </i>
+                      </div>
+                      <div class="status-info">
+                        <span class="status-text">{{ item.status }}</span>
+                        {% if item.city %}
+                          <span>{{ item.city }}</span>
+                        {% elif item.status == 'Delivered' and data.destination_city %}
+                          <span>{{ data.destination_city }}</span>
+                        {% endif %}
+                        {% if item.time %}
+                          <span>{{ item.time }}</span>
+                        {% endif %}
+                      </div>
+                    </div>
+                    {% if index != data.order_track|length - 1 %}
+                      <div class="track-line {% if item.time %}done-line{% endif %}" style="width: {{ 100/((2.5*data.order_track|length)-1) }}%;">
+                        <div class="line"></div>
+                      </div>
+                    {% endif %}
+                  {% endfor %}
+                {% endif %}
+              </div>
+              <div class="order-tracker-container mobile">
+                {% if data and data.order_track and data.order_track|length > 0 %}
+                  {% for index, item in enumerate(data.order_track): %}
+                    <div class="mobile-status-container {% if item.time %}done{% endif %}">
+                      <div class="status-info">
+                        <span class="status-text">{{ item.status }}</span>
+                        {% if item.city %}
+                          <span>{{ item.city }}</span>
+                        {% elif item.status == 'Delivered' and data.destination_city %}
+                          <span>{{ data.destination_city }}</span>
+                        {% endif %}
+                        {% if item.time %}
+                          <span>{{ item.time }}</span>
+                        {% endif %}
+                      </div>
+                      <div class="status-right">
+                        <div class="status-circle">
+                          <i class="material-icons icon">
+                            {% if item.status == 'Received' %}
+                              done
+                            {% elif item.status == 'Picked'%}
+                              add_shopping_cart
+                            {% elif item.status == 'In Transit'%}
+                              airplanemode_active
+                            {% elif item.status == 'Out for delivery'%}
+                              motorcycle
+                            {% elif item.status == 'Delivered'%}
+                              done_all
+                            {% elif item.status == 'Cancelled'%}
+                              remove_shopping_cart
+                            {% elif item.status == 'Returned'%}
+                              assignment_return
+                            {% elif item.status == 'RTO Delivered'%}
+                              check_circle_outline
+                            {% else %}
+                              shopping_cart
+                            {% endif %}
+                          </i>
+                        </div>
+                        {% if index != data.order_track|length - 1 %}
+                          <div class="mobile-track-line {% if item.time %}done-line{% endif %}">
+                            <div class="line"></div>
+                          </div>
+                        {% endif %}
+                      </div>
+                    </div>
+                  {% endfor %}
+                {% endif %}
+              </div>
+            </div>
+            <div class="extra-info">
+              <span class="order-placed-info">
+                <div class="title">Order Id</div>
+                <div class="value">{% if data and data.order_id %}{{ data.order_id }}{% endif %}</div>
+              </span>
+              <span class="order-placed-info">
+                <div class="title">Placed on</div>
+                <div class="value">{% if data and data.placed_on %}{{ data.placed_on }}{% endif %}</div>
+              </span>
+              <span class="order-placed-info">
+                {% if data %}
+                  <div class="title">
+                    {% if data.status == 'Delivered' or data.status == 'Returned' or data.status == 'Cancelled'%}
+                      Remarks
+                    {% else %}
+                      ETA
+                    {% endif %}
+                  </div>
+                  <div class="value">
+                    {% if data.status == 'Delivered' or data.status == 'Returned' or data.status == 'Cancelled'%}
+                      {{ data.remark }}
+                    {% else %}
+                      {{ data.arriving_on }}
+                    {% endif %}
+                  </div>
+                {% endif %}
+              </span>
+            </div>
+          </div>
+          {% if data and data.details_data %}
+            <div class="order-details">
+              {% for key, value in data.details_data.items() %}
+                <div class="date-section">{{ key }}</div>
+                {% if value and value|length > 0 %}
+                  {% for item in value %}
+                    <div class="statusInfo">
+                      <span class="info-time">{{ item.time }}</span>
+                      <span class="info-city">{{ item.city }}</span>
+                      <span class="info-status">{{ item.status }}</span>
+                    </div>
+                  {% endfor %}
                 {% endif %}
               {% endfor %}
             </div>
-            <div class="banner-carousel-dots-container"></div>
-          </div>
-        {% endif %}
-      </div>
-    </main>
-    <footer class="tracking-footer">
-      <div class="container-fluid">
-        <nav class="navbar">
-        <div class="footer-container">
-          <div class="footer-links">
-            {% if data and data.support_url %}
-              <a class="footer-link" href="{{ data.support_url }}">{{ data.support_url }}</a>
-            {% endif %}
-            {% if data and data.privacy_url %}
-              <a class="footer-link" href="{{ data.privacy_url }}">Privacy Policy</a>
-            {% endif %}
-          </div>
-          <div class="wareiq-branding">
-            <span>Powered by</span>
-            <img src="https://wareiq-assets.s3.amazonaws.com/wareiq-logo.svg" alt="WareIQ" class="wareiq-logo"/>
-          </div>
-        </div>
-        </nav>
-      </div>
-    </footer>
-    {% if data and data.details_data %}
-      <div id="updates-modal" tabindex="-1" role="dialog" aria-labelledby="updates-modal" aria-hidden="true" class="modal popup-modal updates-modal fade">
-        <div role="document" class="modal-dialog">
-          <div class="modal-content">
-            <div class="modal-body">
-              <div class="modal-header-container">
-                <div class="latest-status-info">
-                  {% if data and data.status%}
-                    <div class="latest-status" style="color: {{ status_color }}">{{ data.status }}</div>
-                  {% endif %}
-                  {% if data and data.latest_update_time %}
-                    <div class="latest-status-date">{{ data.latest_update_time }}</div>
-                  {% endif %}
-                </div>
-                <div type="button" data-dismiss="modal" aria-label="Close" class="close-btn">&times;</div>
-              </div>
-              <div class="updates-table-container">
-                <table>
-                  <tr class="updates-table-header">
-                    <th><div class="table-header-text">Date</div></th>
-                    <th><div class="table-header-text">Location</div></th>
-                    <th><div class="table-header-text">Remarks</div></th>
-                  </tr>
-                  {% for key, value in data.details_data.items() %}
-                    {% if value and value|length > 0 %}
-                      {% for item in value %}
-                        <tr>
-                          <td>{{ item.time }}</td>
-                          <td>{{ item.city }}</td>
-                          <td>{{ item.status }}</td>
-                        </tr>
-                      {% endfor %}
-                    {% endif %}
-                  {% endfor %}
-                </table>
-              </div>
-            </div>
+          {% endif %}
+          <div class="footer">
+            <p>&copy; WareIQ</p>
           </div>
         </div>
       </div>
-    {% endif %}
+    </div>
     <script src="https://code.jquery.com/jquery-3.4.1.slim.min.js" integrity="sha384-J6qa4849blE2+poT4WnyKhv5vZF5SrPo0iEjwBvKU7imGFAV0wwj1yYfoRSJoZ+n" crossorigin="anonymous"></script>
-    {% if data and data.banners and data.banners|length > 0 %}
-      <script type="text/javascript" src="//cdn.jsdelivr.net/npm/slick-carousel@1.8.1/slick/slick.min.js"></script>
-    {% endif %}
     <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.4.1/js/bootstrap.min.js" integrity="sha384-wfSDF2E50Y2D1uUdj0O3uMBJnjuUD4Ih7YwaYd1iqfktj0Uod8GCExl3Og8ifwB6" crossorigin="anonymous"></script>
-    {% if data and data.details_data %}
-      <script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.12.9/umd/popper.min.js" integrity="sha384-ApNbgh9B+Y1QKtv3Rn7W3mgPxhU9K/ScQsAP7hUibX39j7fakFPskvXusvfa0b4Q" crossorigin="anonymous"></script>
-    {% endif %}
     <script src="{{ url_for('static', filename='tracking.js', _scheme='https', _external=True) }}"></script>
   </body>
 </html>

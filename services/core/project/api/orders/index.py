@@ -392,7 +392,7 @@ class OrderList(Resource):
 api.add_resource(OrderList, "/orders/<type>")
 
 
-@orders_blueprint.route("/orders/<type>/get_count", methods=["GET"])
+@orders_blueprint.route("/orders/<type>/get_count", methods=["POST"])
 @authenticate_restful
 def get_count(resp, type):
     try:

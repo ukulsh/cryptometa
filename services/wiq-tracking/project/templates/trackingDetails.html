@@ -200,14 +200,14 @@
         <div class="footer-container">
           <div class="footer-links">
             {% if data and data.support_url %}
-              <a class="footer-link" href="mailto:{{ data.support_url }}">{{ data.support_url }}</a>
+              <a class="footer-link" href="mailto:{{ data.support_url }}" target="_blank">{{ data.support_url }}</a>
             {% endif %}
             {% if data and data.privacy_url %}
               {% set privacy_url = data.privacy_url %}
               {% if 'https://' not in privacy_url and 'http://' not in privacy_url %}
                 {% set privacy_url = 'https://' + privacy_url %}
               {% endif %}
-              <a class="footer-link" href="{{ privacy_url }}">Privacy Policy</a>
+              <a class="footer-link" href="{{ privacy_url }}" target="_blank">Privacy Policy</a>
             {% endif %}
           </div>
           <div class="wareiq-branding">

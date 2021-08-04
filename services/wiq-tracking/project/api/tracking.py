@@ -181,13 +181,13 @@ def tracking_page_details_id():
         cur.execute(
             """
             SELECT 
-                aa.client_prefix, client_logo_url, theme_color, cc.id, cc.awb background_image_url, 
+                aa.client_prefix, client_logo_url, theme_color, cc.id, cc.awb, background_image_url, 
                 client_name, client_url, nav_links, support_url, privacy_url, nps_enabled, 
                 banners 
             FROM client_customization aa 
             LEFT JOIN orders bb on aa.client_prefix=bb.client_prefix 
             LEFT JOIN shipments cc on bb.id=cc.order_id
-            WHERE tracking_url=%s and bb.channel_order_id=%s and bb.customer_phone=%s""",
+            WHERE subdomain=%s and bb.channel_order_id=%s and bb.customer_phone=%s""",
             (client_track, orderId, mobile),
         )
         client_details = cur.fetchone()
@@ -247,7 +247,7 @@ def tracking_page_details_id():
 
         courier = helper.get_courier_details(customization_details['awb'], cur)
         customization_details["courier_name"] = courier[0]
-        customization_details["courier_logo_url"] = courier[1]
+        customization_details["courier_logo"] = courier[1]
 
         data.update(customization_details)
         return render_template("trackingDetails.html", data=data, enumerate=enumerate)

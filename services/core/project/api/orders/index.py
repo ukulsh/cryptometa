@@ -398,7 +398,7 @@ def get_count(resp, type):
     try:
         auth_data = resp.get("data")
         if not auth_data:
-            return {"success": False, "msg": "Auth Failed"}, 404
+            return jsonify({"success": False, "msg": "Auth Failed"}), 404
 
         response = {"status": "success", "data": dict()}
         cur = conn.cursor()
@@ -446,11 +446,11 @@ def get_count(resp, type):
             "current_page": page,
             "total_pages": total_pages,
         }
-        return response, 200
+        return jsonify(response), 200
 
     except Exception as e:
         conn.rollback()
-        return {"success": False, "error": str(e)}, 400
+        return jsonify({"success": False, "error": str(e)}), 400
 
 
 @orders_blueprint.route("/orders/<type>/download", methods=["POST"])
@@ -459,7 +459,7 @@ def download_orders(resp, type):
     try:
         auth_data = resp.get("data")
         if not auth_data:
-            return {"success": False, "msg": "Auth Failed"}, 404
+            return jsonify({"success": False, "msg": "Auth Failed"}), 404
 
         cur = conn.cursor()
 
@@ -537,11 +537,11 @@ def download_orders(resp, type):
                 ),
                 json=request_data,
             )
-            return {"success": True, "status": "queued"}, 202
+            return jsonify({"success": True, "status": "queued"}), 202
 
     except Exception as e:
         conn.rollback()
-        return {"success": False, "error": str(e)}, 400
+        return jsonify({"success": False, "error": str(e)}), 400
 
 
 @orders_blueprint.route("/orders/get_filters", methods=["GET"])

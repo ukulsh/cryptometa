@@ -437,7 +437,7 @@ def download_flag_func(
         % (invoice_url, file_size, report_id)
     )
     conn.commit()
-    return {"url": invoice_url, "success": True}, 200
+    return jsonify({"url": invoice_url, "success": True}), 200
 
 
 def user_group_filter(query_to_run, auth_data):

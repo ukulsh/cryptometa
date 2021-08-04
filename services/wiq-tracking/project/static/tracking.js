@@ -10,10 +10,10 @@ $(document).ready(function() {
   let orderIdRadio = document.querySelector('#orderId');
   let awbRadio = document.querySelector('#awbNumber');
 
-  var selectedRadio = orderIdRadio && orderIdRadio.checked ? 'orderId' : 'awbNumber';
+  var selectedRadio = orderIdRadio.checked ? 'orderId' : 'awbNumber';
 
-  let orderIdSearch = document.querySelectorAll('.orderid-search-container');
-  let awbSearch = document.querySelectorAll('.awb-search-container');
+  let orderIdSearch = document.querySelector('#orderid-search-container');
+  let awbSearch = document.querySelector('#awb-search-container');
 
   let trackBtn = document.querySelector('#trackSubmitBtn');
 
@@ -22,53 +22,37 @@ $(document).ready(function() {
   let awbInput = document.querySelector('#awb_number_input');
 
   let inputs = {
-    orderId: orderInput && orderInput.value || '',
-    mobile: mobileInput && mobileInput.value || '',
-    awb: awbInput && awbInput.value || ''
+    orderId: orderInput.value || '',
+    mobile: mobileInput.value || '',
+    awb: awbInput.value || ''
   }
 
-  orderIdRadio && orderIdRadio.addEventListener('change',onRadioChange,false);
-  awbRadio && awbRadio.addEventListener('change',onRadioChange,false);
+  orderIdRadio.addEventListener('change',onRadioChange,false);
+  awbRadio.addEventListener('change',onRadioChange,false);
 
   onRadioChange({target: {value: selectedRadio}});
 
   function onRadioChange(e) {
     let value = e.target.value;
     if(value == 'orderId') {
-      if(orderIdSearch && orderIdSearch.length > 0) {
-        for(let i = 0; i < orderIdSearch.length; i++) {
-          orderIdSearch[i].classList.remove('hide');
-        }
-      }
-      if(awbSearch && awbSearch.length > 0) {
-        for(let i = 0; i < awbSearch.length; i++) {
-          awbSearch[i].classList.add('hide');
-        }
-      }
+      orderIdSearch.classList.remove('hide');
+      awbSearch.classList.add('hide');
       selectedRadio = 'orderId';
-      orderIdRadio && orderIdRadio.setAttribute('checked','');
-      awbRadio && awbRadio.removeAttribute('checked');
+      orderIdRadio.setAttribute('checked','');
+      awbRadio.removeAttribute('checked');
     } else if(value == 'awbNumber') {
-      if(orderIdSearch && orderIdSearch.length > 0) {
-        for(let i = 0; i < orderIdSearch.length; i++) {
-          orderIdSearch[i].classList.add('hide');
-        }
-      }
-      if(awbSearch && awbSearch.length > 0) {
-        for(let i = 0; i < awbSearch.length; i++) {
-          awbSearch[i].classList.remove('hide');
-        }
-      }
+      orderIdSearch.classList.add('hide');
+      awbSearch.classList.remove('hide');
       selectedRadio = 'awbNumber';
-      awbRadio && awbRadio.setAttribute('checked','');
-      orderIdRadio && orderIdRadio.removeAttribute('checked');
+      awbRadio.setAttribute('checked','');
+      orderIdRadio.removeAttribute('checked');
     }
     checkTrackBtn();
   }
 
-  orderInput && orderInput.addEventListener('keyup',inputChange,false);
-  mobileInput && mobileInput.addEventListener('keyup',inputChange,false);
-  awbInput && awbInput.addEventListener('keyup',inputChange,false);
+  orderInput.addEventListener('keyup',inputChange,false);
+  mobileInput.addEventListener('keyup',inputChange,false);
+  awbInput.addEventListener('keyup',inputChange,false);
 
   function inputChange(e) {
     let name = e.target.name;
@@ -88,10 +72,10 @@ $(document).ready(function() {
         formComplete = true
       }
     }
-    trackBtn && trackBtn.classList[formComplete ? 'remove' : 'add']('disabled');
+    trackBtn.classList[formComplete ? 'remove' : 'add']('disabled');
   }
 
-  trackBtn && trackBtn.addEventListener('click',onTrackClick,false);
+  trackBtn.addEventListener('click',onTrackClick,false);
 
   function onTrackClick() {
     let url = `${window.origin}/tracking`;
@@ -101,32 +85,5 @@ $(document).ready(function() {
       url += `/${inputs['awb']}`;
     }
     window.location.href = url;
-  }
-  if(document.querySelector('#tracking-banners-carousel')) {
-    $('#tracking-banners-carousel').slick({
-      slidesToShow: 3,
-      arrows: false,
-      autoplay: true,
-      dots: true,
-      appendDots: $('.banner-carousel-dots-container'),
-      dotsClass: 'banner-carousel-dots',
-      infinite: true,
-      autoplay: true,
-      autoplaySpeed: 4000,
-      responsive: [
-        {
-          breakpoint: 1024,
-          settings: {
-            slidesToShow: 2,
-          }
-        },
-        {
-          breakpoint: 577,
-          settings: {
-            slidesToShow: 1,
-          }
-        }
-      ]
-    });
   }
 })

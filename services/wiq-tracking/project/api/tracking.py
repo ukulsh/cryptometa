@@ -147,7 +147,7 @@ def tracking_page_detials(awb):
 
         courier = helper.get_courier_details(awb, cur)
         customization_details["courier_name"] = courier[0]
-        customization_details["courier_logo_url"] = courier[1]
+        customization_details["courier_logo"] = courier[1]
 
         data.update(customization_details)
         return render_template("trackingDetails.html", data=data, enumerate=enumerate)

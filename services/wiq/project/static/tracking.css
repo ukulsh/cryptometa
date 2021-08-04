@@ -363,6 +363,7 @@ input[type=number] {
 .tracking-details-page-content {
   max-width: 100%;
   padding: 0 15px;
+  width: 100%;
 }
 
 .tracking-details-page-content .tracking-details-info-container {

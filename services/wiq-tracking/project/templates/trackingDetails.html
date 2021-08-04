@@ -3,8 +3,8 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1,shrink-to-fit=no">
-    <title>{% if data and data.client_name %}{{ data.client_name }}: {% endif %}Order Tracking</title>
-    <meta name="description" content="{% if data and data.client_name %}{{ data.client_name }}: {% endif %}Order Tracking">
+    <title>{% if data and data.client_name %}{{ data.client_name }} | {% endif %}Order Tracking</title>
+    <meta name="description" content="{% if data and data.client_name %}{{ data.client_name }} | {% endif %}Order Tracking">
     <link rel="preload" href="{{ url_for('static', filename='tracking.css', _scheme='https', _external=True) }}" as="style">
     <link rel="preload" href="{{ url_for('static', filename='tracking.js', _scheme='https', _external=True) }}" as="script">
     {% if data and data.banners and data.banners|length > 0 %}
@@ -46,7 +46,11 @@
       <div class="container-fluid">
         <nav class="navbar navbar-expand-md">
           {% if data and data.client_url %}
-            <a class="navbar-brand navbar-brand--logo" href="{{ data.client_url }}" target="_blank">
+            {% set client_url = data.client_url %}
+            {% if 'https://' not in client_url and 'http://' not in client_url %}
+              {% set client_url = 'https://' + data.client_url %}
+            {% endif %}
+            <a class="navbar-brand navbar-brand--logo" href="{{ client_url }}" target="_blank">
               <img class="company-logo" src="{% if data and data.client_logo_url %}{{ data.client_logo_url }}{% else %}https://wareiq-assets.s3.amazonaws.com/wareiq-logo.svg{% endif %}" alt="{% if data and data.client_name %}{{ data.client_name }}{% else %}WareIQ{% endif %}" />
             </a>
           {% else %}
@@ -62,7 +66,11 @@
               <ul class="navbar-nav">
                 {% for links in data.nav_links %}
                   <li class="nav-item">
-                    <a class="nav-link" href="{{ links.link_url }}">{{ links.link_text }}</a>
+                    {% set link_url = links.link_url %}
+                    {% if 'https://' not in link_url and 'http://' not in link_url %}
+                      {% set link_url = 'https://' + link_url %}
+                    {% endif %}
+                    <a class="nav-link" href="{{ link_url }}">{{ links.link_text }}</a>
                   </li>
                 {% endfor %}
               </ul>
@@ -101,7 +109,7 @@
                   <h2>{% if data and data.remark %}{{ data.remark }}{% endif %}</h2>
                 {% else %}
                   <label>ETA</label>
-                  <h2>{% if data and data.arriving_on %}{{ data.arriving_on }}{% endif %}</h2>
+                  <h2>{% if data and data.arriving_on %}{{ data.arriving_on }}{% else %}Arriving Soon{% endif %}</h2>
                 {% endif %}
               </div>
             </div>
@@ -192,10 +200,18 @@
         <div class="footer-container">
           <div class="footer-links">
             {% if data and data.support_url %}
-              <a class="footer-link" href="{{ data.support_url }}">{{ data.support_url }}</a>
+              {% set support_url = data.support_url %}
+              {% if 'https://' not in support_url and 'http://' not in support_url %}
+                {% set support_url = 'https://' + support_url %}
+              {% endif %}
+              <a class="footer-link" href="{{ support_url }}">{{ data.support_url }}</a>
             {% endif %}
             {% if data and data.privacy_url %}
-              <a class="footer-link" href="{{ data.privacy_url }}">Privacy Policy</a>
+              {% set privacy_url = data.privacy_url %}
+              {% if 'https://' not in privacy_url and 'http://' not in privacy_url %}
+                {% set privacy_url = 'https://' + privacy_url %}
+              {% endif %}
+              <a class="footer-link" href="{{ privacy_url }}">Privacy Policy</a>
             {% endif %}
           </div>
           <div class="wareiq-branding">

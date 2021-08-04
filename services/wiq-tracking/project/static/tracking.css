@@ -363,6 +363,7 @@ input[type=number] {
 .tracking-details-page-content {
   max-width: 100%;
   padding: 0 15px;
+  width: 100%;
 }
 
 .tracking-details-page-content .tracking-details-info-container {
@@ -1011,6 +1012,7 @@ input[type=number] {
     padding-bottom: 0;
     margin-top: 25px;
     padding-top: 0 !important;
+    padding-right: 15px;
   }
   .tracking-details-page-content .tracking-details-info-container .shipping-tracker-container .status-tracker-list .status-tracker-item .status-text {
     font-size: 14px;

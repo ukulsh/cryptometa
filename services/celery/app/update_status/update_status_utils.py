@@ -39,6 +39,9 @@ def update_status(sync_ext=None):
     cur.close()
 
 class OrderUpdateCourier:
+    """
+    This class takes care of updating the status of active orders for a courier.
+    """
     def __init__(self, courier, cursor):
         self.id = courier[0]
         if courier[1].startswith('Delhivery'):
@@ -59,12 +62,16 @@ class OrderUpdateCourier:
         return {"id": self.id, "name": self.name, "api_key": self.api_key, "api_password": self.api_password}
     
     def update_status(self):
+        """
+        Main function that checks and updates status of all active orders for a courier
+        """
         pickup_count = 0 
         pickup_dict = dict()
 
         self.cursor.execute(get_status_update_orders_query % str(self.id))
         active_orders = self.cursor.fetchall()
 
+        # 1. In case the courier APIs need bulk AWBs for update, use this logic
         if config[self.name]['api_type'] == 'bulk':
             requested_ship_data, orders_dict, exotel_idx, exotel_sms_data = self.request_bulk_status_from_courier(active_orders)
             logger.info("Count of {0} packages: ".format(self.name) + str(len(requested_ship_data)))
@@ -73,19 +80,23 @@ class OrderUpdateCourier:
 
         for requested_order in requested_ship_data:
             try:
+                # 1. In case the courier APIs need individual AWBs for update, use this logic
                 if config[self.name]['api_type'] == 'individual':
                     requested_individual_order, exotel_idx, exotel_sms_data = self.request_individual_status_from_courier(requested_order)
                 else:
                     requested_individual_order = requested_order
 
+                # 2. Perform any courier specific sanity checks on data recieved in this section
                 check_obj = self.check_if_data_exists(requested_individual_order)
                 if check_obj['type'] == 'continue':
                     continue
                 
+                # 3. Based on the API design, extract relevant information from API response
                 new_data = self.get_courier_specific_order_data(requested_individual_order)
                 if new_data['type'] == 'continue':
                     continue
                 
+                # 4. In this section, generate any courier specific flags to be used later in their corresponding logic
                 flags, new_data = self.set_courier_specific_flags(requested_individual_order, new_data, orders_dict, check_obj)
                 if flags['type'] == 'continue':
                     continue
@@ -96,6 +107,7 @@ class OrderUpdateCourier:
                     order = orders_dict[new_data['current_awb']]
                 
                 try:
+                    # 5. Get current scans information for an order
                     #Tuple of (id (orders), id (shipments), id (courier))
                     order_status_tuple = (order[0], order[10], self.id)
                     self.cursor.execute(select_statuses_query, order_status_tuple)
@@ -106,7 +118,10 @@ class OrderUpdateCourier:
                     for scan in all_scans:
                         all_scans_dict[scan[2]] = scan
 
+                    # 6. Convert courier specific order status into a uniform WareIQ standard
                     new_status_dict, flags = self.convert_courier_status_to_wareiq_status(requested_individual_order, new_data, order, flags)
+
+                    # 7. Update the status of the orders under certain conditions only
                     if new_status_dict:
                         for status_key, status_value in new_status_dict.items():
                             if status_key not in all_scans_dict:
@@ -125,6 +140,7 @@ class OrderUpdateCourier:
                     logger.error(
                         "Open status failed for id: " + str(order[0]) + "\nErr: " + str(e.args[0]))
                 
+                # 8. Update shipment status of the order
                 status_obj, new_data = self.update_shipment_data(requested_individual_order, new_data, order, new_data['current_awb'], flags, check_obj)
                 if status_obj['type'] == 'continue':
                     continue
@@ -132,28 +148,34 @@ class OrderUpdateCourier:
                 customer_phone = order[4].replace(" ", "")
                 customer_phone = "0" + customer_phone[-10:]
 
+                # 9. Update webhooks if the new status is delivered
                 if new_data['new_status'] == 'DELIVERED':
                     self.send_delivered_update(new_data, order, customer_phone)
                 
+                # 10. Update webhooks if the new status is RTO
                 if new_data['new_status'] == 'RTO':
                     self.send_rto_update(new_data['new_status'], order)
                 
+                # 11. Update webhooks if the new status is in transit and previous status is not in transit
                 if order[2] in ('READY TO SHIP', 'PICKUP REQUESTED', 'NOT PICKED') and new_data['new_status'] == 'IN TRANSIT':
                     pickup_count, pickup_dict, status_obj = self.send_new_to_transit_update(pickup_count, pickup_dict, new_data, order, status_obj, customer_phone, flags)
                     if status_obj["type"] == "continue":
                         continue
-                    
+                
+                # 12. Update webhooks if the new status is pending
                 if order[2] != new_data['new_status']:
                     status_update_tuple = (new_data['new_status'], status_obj['data']['status_type'], status_obj['data']['status_detail'], order[0])
                     self.cursor.execute(order_status_update_query, status_update_tuple)
                     self.send_pending_update(new_data, status_obj['data']['status_code'], order, requested_order)
                 
+                # 13. Update webhooks for courier specific updates
                 exotel_idx, exotel_sms_data = self.courier_specific_status_updates(new_data['new_status'], order, exotel_idx, exotel_sms_data, customer_phone, new_data['current_awb'])
                 conn.commit()
             except Exception as e:
                 logger.error("Status update failed for " + str(order[0]) + "    err:" + str(
                     e.args[0]))
         
+        # 14. Send SMS if necessary
         self.send_exotel_messages(exotel_idx, exotel_sms_data)
         if pickup_count:
             logger.info("Total Picked: " + str(pickup_count) + "  Time: " + str(datetime.utcnow()))
@@ -169,6 +191,9 @@ class OrderUpdateCourier:
         conn.commit()
     
     def try_check_status_url(self, check_status_url, api_type, headers, data):
+        """
+        This function executes courier API dependent request pattern
+        """
         try:
             if api_type == 'GET':
                 req = requests.get(check_status_url)
@@ -190,6 +215,9 @@ class OrderUpdateCourier:
         return req
 
     def alert_wareiq_team(self, exotel_idx, exotel_sms_data):
+        """
+        Alert WareIQ team on errors with usage of courier APIs
+        """
         sms_to_key = "Messages[%s][To]" % str(exotel_idx)
         sms_body_key = "Messages[%s][Body]" % str(exotel_idx)
         sms_body_key_data = "Status Update Fail Alert"
@@ -201,6 +229,10 @@ class OrderUpdateCourier:
         return exotel_idx, exotel_sms_data
     
     def request_bulk_status_from_courier(self, orders):
+        """
+        Function for couriers who require sending AWBs in bulk to their API.
+        Depending on the API design of each courier, logic is segregated.
+        """
         orders_dict = dict()
         requested_ship_data = list()
         exotel_idx = 0
@@ -304,6 +336,10 @@ class OrderUpdateCourier:
         return requested_ship_data, orders_dict, exotel_idx, exotel_sms_data
     
     def request_individual_status_from_courier(self, order):
+        """
+        Function for couriers who require sending AWBs individually to their API.
+        Depending on the API design of each courier, logic is segregated.
+        """
         exotel_idx = 0
         exotel_sms_data = {
             'From': 'LM-WAREIQ'
@@ -320,6 +356,10 @@ class OrderUpdateCourier:
         return requested_order, exotel_idx, exotel_sms_data
 
     def check_if_data_exists(self, requested_order):
+        """
+        Once the data is recieved from the courier API, sanity checks are
+        performed wherever necessary.
+        """
         return_object = {"type": None}
         if self.name == 'Xpressbees':
             if not requested_order['ShipmentSummary']:
@@ -347,6 +387,11 @@ class OrderUpdateCourier:
         return return_object
     
     def get_courier_specific_order_data(self, order):
+        """
+        This function has logic to pickup right keys to extract information
+        from the courier API response. Different couriers provide different
+        kinds of information. Accordingly logic is segregated.
+        """
         new_data = {'type': 'continue'}
         if self.name == 'Delhivery':
             new_data['new_status'] = order['Shipment']['Status']['Status']
@@ -388,6 +433,10 @@ class OrderUpdateCourier:
         return new_data
     
     def set_courier_specific_flags(self, requested_order, new_data, orders_dict, check_obj):
+        """
+        Courier specific sanity checks and custom flags to be used later in their logic are
+        performed here.
+        """
         flags = {'type': 'continue'}
         if self.name == 'Xpressbees':
             flags['order_picked_check'] = False
@@ -422,6 +471,9 @@ class OrderUpdateCourier:
         return flags, new_data
     
     def convert_courier_status_to_wareiq_status(self, requested_order, new_data, existing_order, flags):
+        """
+        Convert terinology of order details in courier API to a uniform WareIQ format.
+        """
         new_status = dict()
         if self.name == 'Delhivery':
             for each_scan in requested_order['Shipment']['Scans']:
@@ -589,6 +641,10 @@ class OrderUpdateCourier:
         return new_status, flags
     
     def update_shipment_data(self, requested_order, new_data, existing_order, current_awb, flags, check_obj):
+        """
+        Once order status data is converted to uniform WareIQ format,
+        update them in DB accordingly.
+        """
         return_object = {"type": "continue", "data": {"status_type": None, "status_detail": None, "status_code": None, "edd": None}}
         if self.name == 'Delhivery':
             if new_data['new_status'] == "Manifested":
@@ -660,6 +716,9 @@ class OrderUpdateCourier:
         return return_object, new_data
     
     def send_delivered_update(self, new_data, existing_order, customer_phone):
+        """
+        Send updates for the orders with new status as delivered.
+        """
         update_delivered_on_channels(existing_order)
         webhook_updates(existing_order, self.cursor, new_data['new_status'], "Shipment Delivered", "", (datetime.utcnow()+timedelta(hours=5.5)).strftime("%Y-%m-%d %H:%M:%S"))
         tracking_link = "https://webapp.wareiq.com/tracking/" + new_data['current_awb']
@@ -667,10 +726,16 @@ class OrderUpdateCourier:
         send_delivered_event(customer_phone, existing_order, self.name, tracking_link)
     
     def send_rto_update(self, new_status, existing_order):
+        """
+        Send updates for the orders with new status as RTO.
+        """
         update_rto_on_channels(existing_order)
         webhook_updates(existing_order, self.cursor, new_status, "Shipment RTO", "", (datetime.utcnow()+timedelta(hours=5.5)).strftime("%Y-%m-%d %H:%M:%S"))
     
     def send_new_to_transit_update(self, pickup_count, pickup_dict, new_data, existing_order, status_obj, customer_phone, flags):
+        """
+        Send updates for the orders with new status as picked up for delivery.
+        """
         if self.name == 'Xpressbees':
             if not flags['order_picked_check']:
                 status_obj["type"] = 'continue'
@@ -700,6 +765,10 @@ class OrderUpdateCourier:
         return pickup_count, pickup_dict, status_obj
 
     def send_pending_update(self, new_data, status_code, existing_order, requested_order):
+        """
+        Send updates for the orders with new status as pending. 
+        Also perform verifications for NDR.
+        """
         try:
             ndr_reason = None
             if self.name == 'Delhivery':
@@ -723,6 +792,9 @@ class OrderUpdateCourier:
                 "NDR confirmation not sent. Order id: " + str(existing_order[0]))
     
     def courier_specific_status_updates(self, new_status, existing_order, exotel_idx, exotel_sms_data, customer_phone, current_awb):
+        """
+        Send updates for the orders with new status specific to couriers.
+        """
         if self.name == 'Delhivery':
             if new_status == 'DTO':
                 webhook_updates(existing_order, self.cursor, new_status, "Shipment delivered to origin", "", (datetime.utcnow()+timedelta(hours=5.5)).strftime("%Y-%m-%d %H:%M:%S"))
@@ -743,6 +815,9 @@ class OrderUpdateCourier:
         return exotel_idx, exotel_sms_data
     
     def send_exotel_messages(self, exotel_idx, exotel_sms_data):
+        """
+        Once order status has been updated, send updates via Exotel to end customers.
+        """
         if exotel_idx:
             logger.info("Sending messages...count:" + str(exotel_idx))
             try:

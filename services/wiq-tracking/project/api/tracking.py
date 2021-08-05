@@ -103,9 +103,7 @@ def tracking_page_detials(awb):
         )
 
         client_details = cur.fetchone()
-        if not client_details:
-            return jsonify({"msg": "Invalid URL"}), 404
-        if not client_details[3]:
+        if not client_details or not client_details[3]:
             return redirect(
                 url.split("tracking")[0] + "?invalid=Tracking ID not found."
             )

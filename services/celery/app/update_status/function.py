@@ -11,10 +11,10 @@ from fedex.services.track_service import FedexTrackRequest
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 """
-host = os.environ('DTATBASE_HOST')
-database = os.environ('DTATBASE_NAME')
-user = os.environ('DTATBASE_USER')
-password = os.environ('DTATBASE_PASSWORD')
+host = os.environ.get('DATABASE_HOST')
+database = os.environ.get('DATABASE_NAME')
+user = os.environ.get('DATABASE_USER')
+password = os.environ.get('DATABASE_PASSWORD')
 conn = psycopg2.connect(host=host, database=database, user=user, password=password)
 """
 

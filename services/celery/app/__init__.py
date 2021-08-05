@@ -7,6 +7,7 @@ import csv
 from datetime import timedelta
 from celery.schedules import crontab
 from .update_status.function import update_status
+from .update_status.update_status_utils import update_status as update_status_new
 from .fetch_orders.function import fetch_orders, assign_pickup_points_for_unassigned
 from .fetch_orders.sync_channel_status import sync_channel_status
 from .ship_orders.function import ship_orders
@@ -211,7 +212,7 @@ def bulkship_orders(resp):
 
 @app.route('/scans/v1/dev', methods = ['GET'])
 def celery_dev():
-    push_awbs_easyecom.apply_async(queue='mark_channel_delivered')
+    update_status_new()
     return jsonify({"msg": "Task received"}), 200
 
 

@@ -3,12 +3,12 @@ import logging, boto3, requests, json, xmltodict
 from datetime import datetime, timedelta
 from time import sleep
 from .queries import *
-from courier_config import config 
+from .courier_config import config 
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from .order_shipped import order_shipped
 from .function import update_delivered_on_channels, update_rto_on_channels, update_picked_on_channels, verification_text, ecom_express_convert_xml_dict
-from app.db_utils import UrlShortner
+from app.db_utils import DbConnection, UrlShortner
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -19,14 +19,41 @@ RAVEN_HEADERS = {"Content-Type": "application/json", "Authorization": "AuthKey K
 email_client = boto3.client('ses', region_name="us-east-1", aws_access_key_id='AKIAWRT2R3KC3YZUBFXY',
     aws_secret_access_key='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')
 
+conn = DbConnection.get_db_connection_instance()
+
+def update_status(sync_ext=None):
+    cur = conn.cursor()
+    #Fetch courier objects - [id, courier_name, api_key, api_password]
+    if not sync_ext:
+        cur.execute(get_courier_id_and_key_query + " where integrated is true and id=27;")
+    else:
+        cur.execute(get_courier_id_and_key_query + " where integrated is not true;")
+    
+    for courier in cur.fetchall():
+        try:
+            update_obj = OrderUpdateCourier(courier, cur)
+            update_obj.update_status()
+        except Exception as e:
+            logger.error("Status update failed: " + str(e.args[0]))
+
+    cur.close()
+
 class OrderUpdateCourier:
-    def __init__(self, courier, connection):
-        self.id = courier.id
-        self.name = courier.courier_name
-        self.api_key = courier.api_key
-        self.api_password = courier.api_password
-        self.connection = connection,
-        self.cursor = connection.cursor()
+    def __init__(self, courier, cursor):
+        self.id = courier[0]
+        if courier[1].startswith('Delhivery'):
+            self.name = 'Delhivery'
+        elif courier[1].startswith('Xpressbees'):
+            self.name = 'Xpressbees'
+        elif courier[1].startswith('Bluedart'):
+            self.name = 'Bluedart'
+        elif courier[1].startswith('Ecom Express'):
+            self.name = 'Ecom Express'
+        elif courier[1].startswith('Pidge'):
+            self.name = 'Pidge'
+        self.api_key = courier[2]
+        self.api_password = courier[3]
+        self.cursor = cursor
     
     def get_dict(self):
         return {"id": self.id, "name": self.name, "api_key": self.api_key, "api_password": self.api_password}
@@ -38,19 +65,19 @@ class OrderUpdateCourier:
         self.cursor.execute(get_status_update_orders_query % str(self.id))
         active_orders = self.cursor.fetchall()
 
-        if config[self.name].api_type == 'bulk':
-            requested_ship_data, orders_dict, exotel_idx, exotel_sms_data = self.request_bulk_status_from_courier(self.id, active_orders)
+        if config[self.name]['api_type'] == 'bulk':
+            requested_ship_data, orders_dict, exotel_idx, exotel_sms_data = self.request_bulk_status_from_courier(active_orders)
             logger.info("Count of {0} packages: ".format(self.name) + str(len(requested_ship_data)))
         else:
             requested_ship_data = active_orders
 
         for requested_order in requested_ship_data:
             try:
-                if config[self.name].api_type == 'individual':
+                if config[self.name]['api_type'] == 'individual':
                     requested_individual_order, exotel_idx, exotel_sms_data = self.request_individual_status_from_courier(requested_order)
                 else:
                     requested_individual_order = requested_order
-                
+
                 check_obj = self.check_if_data_exists(requested_individual_order)
                 if check_obj['type'] == 'continue':
                     continue
@@ -62,12 +89,12 @@ class OrderUpdateCourier:
                 flags, new_data = self.set_courier_specific_flags(requested_individual_order, new_data, orders_dict, check_obj)
                 if flags['type'] == 'continue':
                     continue
-
-                if config[self.name].api_type == 'individual':
+                
+                if config[self.name]['api_type'] == 'individual':
                     order = requested_order
                 else:
                     order = orders_dict[new_data['current_awb']]
-
+                
                 try:
                     #Tuple of (id (orders), id (shipments), id (courier))
                     order_status_tuple = (order[0], order[10], self.id)
@@ -80,17 +107,20 @@ class OrderUpdateCourier:
                         all_scans_dict[scan[2]] = scan
 
                     new_status_dict, flags = self.convert_courier_status_to_wareiq_status(requested_individual_order, new_data, order, flags)
-                    for status_key, status_value in new_status_dict.items():
-                        if status_key not in all_scans_dict:
-                            self.cursor.execute("INSERT INTO order_status (order_id, courier_id, shipment_id, "
-                                        "status_code, status, status_text, location, location_city, "
-                                        "status_time) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s);",
-                                        status_value)
+                    if new_status_dict:
+                        for status_key, status_value in new_status_dict.items():
+                            if status_key not in all_scans_dict:
+                                self.cursor.execute("INSERT INTO order_status (order_id, courier_id, shipment_id, "
+                                            "status_code, status, status_text, location, location_city, "
+                                            "status_time) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s);",
+                                            status_value)
 
-                        elif status_key == 'In Transit' and status_value[8] > all_scans_dict[status_key][5]:
-                            self.cursor.execute("UPDATE order_status SET location=%s, location_city=%s, status_time=%s"
-                                        " WHERE id=%s;", (status_value[6], status_value[7], status_value[8],
-                                                        all_scans_dict[status_key][0]))
+                            elif status_key == 'In Transit' and status_value[8] > all_scans_dict[status_key][5]:
+                                self.cursor.execute("UPDATE order_status SET location=%s, location_city=%s, status_time=%s"
+                                            " WHERE id=%s;", (status_value[6], status_value[7], status_value[8],
+                                                            all_scans_dict[status_key][0]))
+                    else:
+                        continue
                 except Exception as e:
                     logger.error(
                         "Open status failed for id: " + str(order[0]) + "\nErr: " + str(e.args[0]))
@@ -99,7 +129,6 @@ class OrderUpdateCourier:
                 if status_obj['type'] == 'continue':
                     continue
 
-                client_name = order[20]
                 customer_phone = order[4].replace(" ", "")
                 customer_phone = "0" + customer_phone[-10:]
 
@@ -120,7 +149,7 @@ class OrderUpdateCourier:
                     self.send_pending_update(new_data, status_obj['data']['status_code'], order, requested_order)
                 
                 exotel_idx, exotel_sms_data = self.courier_specific_status_updates(new_data['new_status'], order, exotel_idx, exotel_sms_data, customer_phone, new_data['current_awb'])
-                self.connection.commit()
+                conn.commit()
             except Exception as e:
                 logger.error("Status update failed for " + str(order[0]) + "    err:" + str(
                     e.args[0]))
@@ -137,7 +166,7 @@ class OrderUpdateCourier:
             except Exception as e:
                 logger.error("Couldn't update pickup count for : " + str(e.args[0]))
         
-        self.connection.commit()
+        conn.commit()
     
     def try_check_status_url(self, check_status_url, api_type, headers, data):
         try:
@@ -188,7 +217,7 @@ class OrderUpdateCourier:
                     awb_string += order[1] + ","
                 
                 awb_string = awb_string.rstrip(',')
-                check_status_url = config[self.name].status_url % (awb_string, self.api_key)
+                check_status_url = config[self.name]['status_url'] % (awb_string, self.api_key)
                 req = self.try_check_status_url(check_status_url, 'GET', {}, {})
 
                 if req:
@@ -213,7 +242,7 @@ class OrderUpdateCourier:
 
                 xpressbees_body = {"AWBNo": awb_string.rstrip(","), "XBkey": self.api_password.split("|")[1]}
 
-                check_status_url = config[self.name].status_url
+                check_status_url = config[self.name]['status_url']
                 req = self.try_check_status_url(check_status_url, 'POST', headers, json.dumps(xpressbees_body))
                 req = requests.post(check_status_url, headers=headers, data=json.dumps(xpressbees_body)).json()
                 requested_ship_data += req
@@ -228,7 +257,7 @@ class OrderUpdateCourier:
 
                 awb_string = awb_string.rstrip(',')
                 req = None
-                check_status_url = config[self.name].status_url % awb_string
+                check_status_url = config[self.name]['status_url'] % awb_string
                 req = self.try_check_status_url(check_status_url, 'GET', {}, {})
                 
                 if req:
@@ -253,7 +282,7 @@ class OrderUpdateCourier:
 
                 awb_string = awb_string.rstrip(',')
 
-                check_status_url = config[self.name].status_url % (awb_string, self.api_key, self.api_password)
+                check_status_url = config[self.name]['status_url'] % (awb_string, self.api_key, self.api_password)
                 req = self.try_check_status_url(check_status_url, 'GET', {}, {})
                 try:
                     req = xmltodict.parse(req.content)
@@ -286,7 +315,7 @@ class OrderUpdateCourier:
                "platform": "Postman",
                "deviceId": "abc",
                "buildNumber": "123"}
-            requested_order = requests.get(config[self.name].status_url + str(order[0]), headers=headers).json()
+            requested_order = requests.get(config[self.name]['status_url'] + str(order[0]), headers=headers).json()
         
         return requested_order, exotel_idx, exotel_sms_data
 
@@ -346,10 +375,10 @@ class OrderUpdateCourier:
         
         if self.name == 'Ecom Express':
             new_data['scan_code'] = order['reason_code_number']
-            if new_data['scan_code'] not in config[self.name].status_mapping:
+            if new_data['scan_code'] not in config[self.name]['status_mapping']:
                 return new_data
-            
-            new_data['new_status'] = config[self.name][new_data['scan_code']][0]
+
+            new_data['new_status'] = config[self.name]['status_mapping'][new_data['scan_code']][0]
             new_data['current_awb'] = order['awb_number']
         
         if self.name == 'Pidge':
@@ -383,8 +412,8 @@ class OrderUpdateCourier:
                 flags['is_return'] = True
             new_data['new_status'] = ""
 
-            if check_obj['reason_code_number'] in config[self.name].status_mapping:
-                new_data['new_status'] = config[self.name].status_mapping[check_obj['reason_code_number']][0]
+            if check_obj['reason_code_number'] in config[self.name]['status_mapping']:
+                new_data['new_status'] = config[self.name]['status_mapping'][check_obj['reason_code_number']][0]
 
             if not new_data['new_status'] or new_data['new_status'] in ('READY TO SHIP', 'PICKUP REQUESTED'):
                 return flags, new_data
@@ -529,14 +558,14 @@ class OrderUpdateCourier:
             for each_scan in requested_order['data']['past_status']:
                 if each_scan.get("attempt_type") == 20:
                     continue
-                if each_scan.get("trip_status") in (20, 100, 120, 5) or each_scan.get("trip_status") not in config[self.name].status_mapping:
+                if each_scan.get("trip_status") in (20, 100, 120, 5) or each_scan.get("trip_status") not in config[self.name]['status_mapping']:
                     continue
 
                 status_time = each_scan['status_datetime']
                 if status_time:
                     status_time = datetime.strptime(status_time, config[self.name]['status_time_format'])
 
-                to_record_status = config[self.name].status_mapping[each_scan.get("trip_status")][2]
+                to_record_status = config[self.name]['status_mapping'][each_scan.get("trip_status")][2]
 
                 if to_record_status not in new_status:
                     new_status[to_record_status] = (existing_order[0], self.id,
@@ -609,12 +638,12 @@ class OrderUpdateCourier:
         
         if self.name == 'Ecom Express':
             return_object['edd'] = requested_order['expected_date'] if 'expected_date' in requested_order else None
-            return_object['status_type'] = config[self.name][new_data['scan_code']][1]
+            return_object['status_type'] = config[self.name]['status_mapping'][new_data['scan_code']][1]
             return_object['status_detail'] = None
             return_object['status_code'] = new_data['scan_code']
         
         if self.name == 'Pidge':
-            if check_obj['reason_code_number'] in config[self.name].status_mapping:
+            if check_obj['reason_code_number'] in config[self.name]['status_mapping']:
                 return_object['status_type'] = "UD" if not flags['is_return'] else "RT"
         
         if return_object['edd']:
@@ -718,7 +747,7 @@ class OrderUpdateCourier:
             logger.info("Sending messages...count:" + str(exotel_idx))
             try:
                 lad = requests.post(
-                    config[self.name].exotel_url,
+                    config[self.name]['exotel_url'],
                     data=exotel_sms_data)
             except Exception as e:
                 logger.error("messages not sent." + "   Error: " + str(e.args[0]))

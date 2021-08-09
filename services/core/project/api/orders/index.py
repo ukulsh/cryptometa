@@ -4412,6 +4412,14 @@ def get_pickup_points(resp):
     try:
         cur = conn.cursor()
         auth_data = resp.get("data")
+        #KAMA customization
+        if auth_data.get('warehouse_prefix') in ('MHJTRO','MHCHRO','KAVRRO','GJAORO','MHPMRO','HRDGRO','TLLTRO','RJMIRO',
+                                                 'UPPMRO', 'WBQMRO','TNEARO','CBWHECB2C','MHWHECB2C','DLWHEC','PLB2C01',
+                                                 'HOLISOLBL','TNPMRO'):
+
+            response["pickup_points"] = ['CBWHECB2C', 'MHWHECB2C', 'DLWHEC']
+            return jsonify(response), 200
+
         page = request.args.get("page", 1)
         page = int(page)
         per_page = request.args.get("per_page", 100)

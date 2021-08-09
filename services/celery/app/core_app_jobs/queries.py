@@ -172,7 +172,7 @@ create_pincode_serv_file_query = """select aa.pincode, city, state, bool_or(serv
 wondersoft_push_query = """select cc.first_name, cc.last_name, aa.customer_phone, aa.customer_email, ff.gstin, 
                             cc.address_one,cc.address_two, cc.city, cc.state, cc.pincode, aa.order_date, 
                             aa.channel_order_id, gg.warehouse_prefix, dd.amount, dd.payment_mode, ee.products_sku,
-                            ee.quan, ee.prod_amount from orders aa
+                            ee.quan, ee.prod_amount, dd.discount_amount, dd.discount_code, dd.discount_type  from orders aa
                             left join shipping_address cc
                             on aa.delivery_address_id=cc.id
                             left join orders_payments dd

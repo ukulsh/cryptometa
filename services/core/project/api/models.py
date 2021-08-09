@@ -1475,15 +1475,60 @@ class PincodeServiceability(db.Model):
     pickup = db.Column(db.BOOLEAN, nullable=True, default=None)
     sortcode = db.Column(db.String, nullable=True)
     last_updated = db.Column(db.DateTime, onupdate=datetime.now)
-    __table_args__ = (
-        UniqueConstraint("pincode", "courier_id", name="pin_courier_id_unique"),
-    )
+    __table_args__ = (UniqueConstraint('pincode', 'courier_id', name='pin_courier_id_unique'),
+                      )
 
 
 class RemittanceOrderMap(db.Model):
-    __tablename__ = 'remittance_order_map'
+    __tablename__ = "remittance_order_map"
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    order_id = db.Column('order_id', db.Integer, db.ForeignKey('orders.id'), index=True)
-    remittance_id = db.Column('remittance_id', db.Integer, db.ForeignKey('cod_remittance.id'))
+    order_id = db.Column("order_id", db.Integer, db.ForeignKey("orders.id"), index=True)
+    remittance_id = db.Column(
+        "remittance_id", db.Integer, db.ForeignKey("cod_remittance.id")
+    )
     order = db.relationship("Orders")
     remittance = db.relationship("CODRemittance")
+
+
+class ShippingRules(db.Model):
+    __tablename__ = "shipping_rules"
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    client_prefix = db.Column(db.String, nullable=False)
+    rule_name = db.Column(db.String, nullable=False)
+    priority = db.Column(db.Integer, nullable=False)
+    condition_type = db.Column(db.String, nullable=False)
+    conditions = db.Column(JSON, nullable=False)
+    active = db.Column(db.BOOLEAN, nullable=False, default=True)
+    courier_1_id = db.Column(db.Integer, db.ForeignKey("master_couriers.id"))
+    courier_1 = db.relationship("MasterCouriers", foreign_keys=[courier_1_id], backref=db.backref("shipping_rules_1"))
+    courier_2_id = db.Column(db.Integer, db.ForeignKey("master_couriers.id"))
+    courier_2 = db.relationship("MasterCouriers", foreign_keys=[courier_2_id], backref=db.backref("shipping_rules_2"))
+    courier_3_id = db.Column(db.Integer, db.ForeignKey("master_couriers.id"))
+    courier_3 = db.relationship("MasterCouriers", foreign_keys=[courier_3_id], backref=db.backref("shipping_rules_3"))
+    courier_4_id = db.Column(db.Integer, db.ForeignKey("master_couriers.id"))
+    courier_4 = db.relationship("MasterCouriers", foreign_keys=[courier_4_id], backref=db.backref("shipping_rules_4"))
+    date_created = db.Column(db.DateTime, default=datetime.now)
+    date_updated = db.Column(db.DateTime, onupdate=datetime.now)
+
+    def __init__(self, client_prefix, rule_name, priority, condition_type, conditions=[], active=True):
+        self.client_prefix = client_prefix
+        self.rule_name = rule_name
+        self.priority = priority
+        self.condition_type = condition_type
+        self.conditions = conditions
+        self.active = active
+
+    def to_json(self):
+        return {
+            "client_prefix": self.client_prefix,
+            "rule_id": self.id,
+            "rule_name": self.rule_name,
+            "priority": self.priority,
+            "condition_type": self.condition_type,
+            "conditions": self.conditions,
+            "active": self.active,
+            "courier_1": self.courier_1.courier_name if self.courier_1 else None,
+            "courier_2": self.courier_2.courier_name if self.courier_2 else None,
+            "courier_3": self.courier_3.courier_name if self.courier_3 else None,
+            "courier_4": self.courier_4.courier_name if self.courier_4 else None,
+        }

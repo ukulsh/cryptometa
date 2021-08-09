@@ -31,7 +31,8 @@ get_orders_to_ship_query = """select distinct on (aa.id) aa.id,aa.channel_order_
                                 dd.subtotal,dd.order_id,ee.dimensions,ee.weights,ee.quan, ff.api_key, ff.api_password, 
                                 ff.shop_url, aa.order_id_channel_unique, ee.products_name, aa.pickup_data_id, xx.cod_verified, 
                                 xx.id, ee.ship_courier, gg.location_id, ff.channel_id, yy.verify_cod, yy.essential, ee.subcategories, 
-                                yy.cod_ship_unconfirmed, yy.client_name, aa.chargeable_weight, yy.cod_man_ver, zz.id, ff.unique_parameter, ff.id
+                                yy.cod_ship_unconfirmed, yy.client_name, aa.chargeable_weight, yy.cod_man_ver, zz.id, 
+                                ff.unique_parameter, ff.id, ppa.warehouse_prefix, ppa.pincode, ee.products_sku
                                 from orders aa
                                 left join shipping_address cc
                                 on aa.delivery_address_id=cc.id
@@ -41,7 +42,8 @@ get_orders_to_ship_query = """select distinct on (aa.id) aa.id,aa.channel_order_
                                 (select order_id, array_agg(dimensions) as dimensions, array_agg(weight) as weights, 
                                 array_agg(quantity) as quan, array_agg(pp.name) as products_name, 
                                 array_agg(1) as ship_courier,
-                                array_agg(qq.name ORDER BY pp.weight DESC) as subcategories
+                                array_agg(qq.name ORDER BY pp.weight DESC) as subcategories,
+                                array_agg(pp.sku) as products_sku
                                  from op_association opa 
                                  left join master_products pp
                                  on opa.master_product_id = pp.id
@@ -61,6 +63,10 @@ get_orders_to_ship_query = """select distinct on (aa.id) aa.id,aa.channel_order_
                                 on aa.id=xx.order_id
                                 left join client_mapping yy
                                 on aa.client_prefix=yy.client_prefix
+                                left join client_pickups cpa
+                                on cpa.id=aa.pickup_data_id
+                                left join pickup_points ppa
+                                on ppa.id=cpa.pickup_id
                                 left join (select * from orders_invoice where cancelled is not true) zz
                                 on zz.order_id=aa.id
                                 where aa.client_prefix=%s
@@ -90,3 +96,23 @@ update_same_state_query = """update shipments aa
                                 where bb.id=aa.order_id
                                 and aa.same_state is null 
                                 and ff.state=gg.state"""
+
+fetch_client_shipping_rules_query = """select aa.id,aa.client_prefix,aa.rule_name,aa.priority,aa.condition_type,
+                                        aa.conditions,aa.courier_1_id,aa.courier_2_id,aa.courier_3_id,aa.courier_4_id,
+                                        bb.courier_name as courier_1_name, dd.courier_name as courier_2_name,
+                                        ee.courier_name as courier_3_name, ff.courier_name as courier_4_name
+                                        from shipping_rules aa
+                                        left join master_couriers bb
+                                        on aa.courier_1_id=bb.id
+                                        left join master_couriers dd
+                                        on aa.courier_2_id=dd.id
+                                        left join master_couriers ee
+                                        on aa.courier_3_id=ee.id
+                                        left join master_couriers ff
+                                        on aa.courier_4_id=ff.id
+                                        left join client_mapping cc
+                                        on aa.client_prefix=cc.client_prefix
+                                        where aa.active=true
+                                        and (cc.account_type != 'prepaid' or cc.current_balance>=500) 
+                                        __CLIENT_FILTER__ 
+                                        order by aa.client_prefix, priority;"""

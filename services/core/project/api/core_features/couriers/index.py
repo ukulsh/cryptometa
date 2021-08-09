@@ -1,4 +1,4 @@
-from project.api.models import MasterCouriers, ClientCouriers
+from project.api.models import MasterCouriers, ClientCouriers, ShippingRules
 from flask_restful import Api, Resource
 from flask import Blueprint, request, jsonify
 from project import db
@@ -100,4 +100,87 @@ def update_courier_status(resp):
         return jsonify(response_object), 400
 
 
+class ShippingRulesAPI(Resource):
+
+    method_decorators = [authenticate_restful]
+
+    def post(self, resp):
+        response_object = {'status': 'fail'}
+        try:
+            auth_data = resp.get('data')
+            client_prefix = auth_data.get('client_prefix')
+            post_data = request.get_json()
+            rule_name = post_data.get('rule_name')
+            priority = post_data.get('priority')
+            priority = int(priority)
+            condition_type = post_data.get('condition_type')
+            conditions = post_data.get('conditions')
+            courier_1 = MasterCouriers.query.filter_by(courier_name=post_data.get('courier_1')).first()
+            courier_2 = MasterCouriers.query.filter_by(courier_name=post_data.get('courier_2')).first()
+            courier_3 = MasterCouriers.query.filter_by(courier_name=post_data.get('courier_3')).first()
+            courier_4 = MasterCouriers.query.filter_by(courier_name=post_data.get('courier_4')).first()
+            rule_obj = ShippingRules(client_prefix, rule_name, priority, condition_type, conditions, True)
+            rule_obj.courier_1=courier_1
+            rule_obj.courier_2=courier_2
+            rule_obj.courier_3=courier_3
+            rule_obj.courier_4=courier_4
+            db.session.add(rule_obj)
+            db.session.commit()
+            response_object['status'] = 'success'
+            return response_object, 200
+        except Exception as e:
+            db.session.rollback()
+            logger.error('Failed while creating the rule', e)
+            response_object['message'] = 'Failed while creating the rule'
+            return response_object, 400
+
+    def patch(self, resp):
+        response_object = {'status': 'fail'}
+        try:
+            auth_data = resp.get('data')
+            client_prefix = auth_data.get('client_prefix')
+            post_data = request.get_json()
+            rule_id = post_data.get('rule_id')
+            if not rule_id:
+                response_object['message'] = 'rule_id is needed to update'
+                return response_object, 400
+
+            rule_obj = ShippingRules.query.filter_by(id=int(rule_id), client_prefix=client_prefix).first()
+            if not rule_obj:
+                response_object['message'] = 'shipping rule not found'
+                return response_object, 400
+
+            rule_obj.rule_name = post_data.get('rule_name')
+            rule_obj.priority = post_data.get('priority')
+            rule_obj.condition_type = post_data.get('condition_type')
+            rule_obj.conditions = post_data.get('conditions')
+            rule_obj.courier_1 = MasterCouriers.query.filter_by(courier_name=post_data.get('courier_1')).first()
+            rule_obj.courier_2 = MasterCouriers.query.filter_by(courier_name=post_data.get('courier_2')).first()
+            rule_obj.courier_3 = MasterCouriers.query.filter_by(courier_name=post_data.get('courier_3')).first()
+            rule_obj.courier_4 = MasterCouriers.query.filter_by(courier_name=post_data.get('courier_4')).first()
+            db.session.commit()
+            response_object['status'] = 'success'
+            return response_object, 200
+        except Exception as e:
+            db.session.rollback()
+            logger.error('Failed while creating the rule', e)
+            response_object['message'] = 'Failed while creating the rule'
+            return response_object, 400
+
+    def get(self, resp):
+        response_object = {'status': 'fail'}
+        try:
+            auth_data = resp.get('data')
+            client_prefix = auth_data.get('client_prefix')
+            client_couriers = ShippingRules.query.filter_by(client_prefix=client_prefix).order_by(ShippingRules.priority)
+            response_object['data'] = [iterator.to_json() for iterator in client_couriers]
+            response_object['status'] = 'success'
+            return response_object, 200
+        except Exception as e:
+            logger.error('Failed while getting couriers..', e)
+            response_object['message'] = 'failed while getting shipping rules'
+            return response_object, 400
+
+
 api.add_resource(CourierIntegration, '/core/v1/integrateCourier')
+api.add_resource(ShippingRulesAPI, '/core/v1/shippingRules')

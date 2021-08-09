@@ -686,11 +686,14 @@ def fetch_magento_orders(cur, channel, manual=None):
 
             total_amount = float(order['grand_total'])
 
-            payments_tuple = (
-                financial_status, total_amount, float(order['subtotal_incl_tax']),
-                float(order['shipping_incl_tax']), order["base_currency_code"], order_id)
+            if channel[1]=='KAMAAYURVEDA':
+                kama_discount_fields(order, financial_status, total_amount, order_id, cur)
+            else:
+                payments_tuple = (
+                    financial_status, total_amount, float(order['subtotal_incl_tax']),
+                    float(order['shipping_incl_tax']), order["base_currency_code"], order_id)
 
-            cur.execute(insert_payments_data_query, payments_tuple)
+                cur.execute(insert_payments_data_query, payments_tuple)
 
             already_used_prods = list()
             mark_delivered = True
@@ -779,6 +782,8 @@ def fetch_easyecom_orders(cur, channel, manual=None):
     data = list()
     last_synced_time = datetime.utcnow() + timedelta(hours=5.5)
     easyecom_orders_url = "%s/orders/V2/getAllOrders?api_token=%s&updated_after=%s&updated_before=%s&status_id=%s" % (channel[5], channel[3], updated_after, updated_before, fetch_status)
+    if channel[1]=='SLEEPYCAT':
+        easyecom_orders_url += "&qcPassed=1"
     while easyecom_orders_url:
         req = requests.get(easyecom_orders_url).json()
         if req['data']:
@@ -1658,6 +1663,7 @@ easyecom_wareiq_channel_map = {"Amazon.in": 2,
                                "MyGate":14,
                                "Myntra PPMP":15,
                                "Magento2.0":6,
+                               "lotusbotanicals.com":4,
                                }
 
 easyecom_wareiq_courier_map = {"eKart": 7}
@@ -1689,4 +1695,37 @@ def invoice_easyecom_order(cur, inv_text, inv_time, order_id, pickup_data_id):
                         VALUES (%s, %s, %s, %s, %s, %s);""", (order_id, pickup_data_id, inv_text, inv_no, inv_time_new, qr_url))
     except Exception as e:
         pass
+
+
+def kama_discount_fields(order, financial_status, total_amount, order_id, cur):
+    discount_amount = None
+    discount_code = None
+    discount_type = None
+    insert_payments_data_query_new = """INSERT INTO orders_payments (payment_mode, amount, subtotal, 
+                    shipping_charges, currency, order_id, discount_amount, discount_code, discount_type)
+                                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id"""
+    try:
+        if 'amaaya_amount' in order['extension_attributes'] and order['extension_attributes']['amaaya_amount']:
+            discount_amount = order['extension_attributes']['amaaya_amount']
+            discount_type = 'ecom_points'
+            discount_code = 'amaaya_amount'
+        if 'voucher_amount' in order['extension_attributes'] and order['extension_attributes']['voucher_amount']:
+            discount_amount = order['extension_attributes']['voucher_amount']
+            discount_type = 'ecom_Gyftr'
+            discount_code = order['extension_attributes']['voucher_code']
+        if 'amgiftcard_code' in order['extension_attributes'] and order['extension_attributes']['amgiftcard_code']:
+            discount_amount = order['extension_attributes']['gift_voucher_discount']
+            discount_type = 'ecom_prepaid card'
+            discount_code = order['extension_attributes']['amgiftcard_code']
+        if 'amgiftcard_code' in order['extension_attributes'] and order['extension_attributes']['amgiftcard_code']:
+            discount_amount = order['extension_attributes']['amgiftcard_gift_amount']
+            discount_type = 'ecom_Gift voucher'
+            discount_code = order['extension_attributes']['amgiftcard_code']
+    except Exception:
+        pass
+    payments_tuple = (
+        financial_status, total_amount, float(order['subtotal_incl_tax']),
+        float(order['shipping_incl_tax']), order["base_currency_code"], order_id,
+        discount_amount, discount_code, discount_type)
+    cur.execute(insert_payments_data_query_new, payments_tuple)
 

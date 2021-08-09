@@ -250,7 +250,7 @@ class ClientCustomizations(Resource):
             if not customization_object:
                 return response_object, 201
 
-            posted_data = request.form
+            posted_data = json.loads(request.form.get("data"))
             customization_object.subdomain = posted_data.get("subdomain")
             customization_object.theme_color = posted_data.get("theme_color")
             customization_object.background_image_url = posted_data.get(
@@ -263,24 +263,23 @@ class ClientCustomizations(Resource):
             )
             customization_object.support_url = posted_data.get("support_url")
             customization_object.privacy_url = posted_data.get("privacy_url")
-            customization_object.nps_enabled = json.loads(
-                posted_data.get("nps_enabled").lower()
-            )
+            customization_object.nps_enabled = posted_data.get("nps_enabled")
 
             # Handling logo files
             # * S3 bucket is version enabled
-            if not json.loads(posted_data.get("client_logo_url").lower()):
-                # If logo is removed by the user
-                customization_object.client_logo_url = null()
-            elif isinstance(posted_data.get("client_logo_url"), str):
-                # If logo object is already available in S3
-                customization_object.client_logo_url = posted_data.get(
-                    "client_logo_url"
-                )
-            else:
+            if request.files.get("client_logo_url"):
+                # If a file has been uploaded
                 customization_object.client_logo_url = process_upload_logo_file(
                     client_prefix,
                     request.files.get("client_logo_url"),
+                )
+            elif not posted_data.get("client_logo_url"):
+                # If no text and no logo file
+                customization_object.client_logo_url = null()
+            else:
+                # If no file but text is there
+                customization_object.client_logo_url = posted_data.get(
+                    "client_logo_url"
                 )
 
             # Handling banner files
@@ -304,9 +303,7 @@ class ClientCustomizations(Resource):
                     )
                 else:
                     banner_object["banner_image_url"] = banner.get("banner_image_url")
-                banner_object["image_redirect_url"] = json.dumps(
-                    banner.get("image_redirect_url")
-                )
+                banner_object["image_redirect_url"] = banner.get("image_redirect_url")
 
                 updated_banners.append(banner_object)
             customization_object.banners = json.dumps(updated_banners)
@@ -348,7 +345,11 @@ class ClientCustomizations(Resource):
                     client_prefix=client_prefix
                 ).first()
                 new_customization_object = ClientCustomization(
-                    client_prefix=client_prefix, client_name=client_object.client_name
+                    client_prefix=client_prefix,
+                    client_name=client_object.client_name,
+                    theme_color=client_object.theme_color,
+                    client_logo_url=client_object.client_logo,
+                    subdomain=client_object.tracking_url,
                 )
                 db.session.add(new_customization_object)
                 db.session.commit()

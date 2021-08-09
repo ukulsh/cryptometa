@@ -1354,8 +1354,7 @@ def update_available_quantity_from_easyecom():
                                 left join pickup_points bb on aa.pickup_id=bb.id
                                 where aa.client_prefix='KAMAAYURVEDA'
                                 and aa.enable_sdd=true
-                                and bb.warehouse_prefix in ('TLLTRO', 'MHCHRO', 'MHJTRO', 'HRDGRO', 'RJMIRO', 'TNPMRO', 
-                                'GJAORO', 'UPPMRO', 'TNEARO', 'KAVRRO', 'MHPMRO', 'WBQMRO')""")
+                                and bb.warehouse_prefix in ('TNPMRO')""")
 
             pickup_points = cur.fetchall()
             token_headers = {"Username": "WareIQ",
@@ -1828,12 +1827,19 @@ def push_kama_wondersoft(unique_id, cur=conn.cursor(), type="shipped"):
                                             "PaymentMode": order[14],
                                             "PaymentValue": order[13],
                                             "ModeType": "nan",
-                                            "PaymentReference": "****"
+                                            "PaymentReference": "****",
                                         }
                                     ]
                                 }
                             }
                         }
+            if order[18]:
+                json_body['Order']['Payments']['Payment'].append({
+                    "PaymentMode": order[20],
+                    "PaymentValue": order[18],
+                    "ModeType": "nan",
+                    "PaymentReference": order[19],
+                })
 
         token_headers = {"Username": "WareIQ",
                          "Password": "Wondersoft#12",

@@ -70,14 +70,17 @@ def get_filled_query(
     elif type == "ndr":
         query_to_run = query_to_run.replace(
             "__NDR_AGGREGATION__",
-            """left join (select ss.order_id, max(ss.id) as ndr_id, array_agg(tt.id order by ss.id desc) as reason_id, array_agg(tt.reason order by ss.id desc) as reason, array_agg(ss.date_created order by ss.id desc) as ndr_date from ndr_shipments ss left join ndr_reasons tt on ss.reason_id=tt.id 
-                                                                                            group by order_id) rr
-                                                                                            on aa.id=rr.order_id""",
+            """left join (select ss.order_id, max(ss.id) as ndr_id, array_agg(tt.id order by ss.id desc) as reason_id, 
+            array_agg(tt.reason order by ss.id desc) as reason, array_agg(ss.date_created order by ss.id desc) as ndr_date,
+            array_agg(ss.current_status order by ss.id desc) as current_status
+            from ndr_shipments ss left join ndr_reasons tt on ss.reason_id=tt.id 
+            group by order_id) rr
+            on aa.id=rr.order_id""",
         )
         query_to_run = query_to_run.replace(
             "__NDR_AGG_SEL_1__", "rr.reason_id, rr.reason, rr.ndr_date,"
         )
-        query_to_run = query_to_run.replace("__NDR_AGG_SEL_2__", "rr.ndr_id,")
+        query_to_run = query_to_run.replace("__NDR_AGG_SEL_2__", "rr.ndr_id, rr.current_status, ")
         query_to_run = query_to_run.replace(
             "__TAB_STATUS_FILTER__",
             "AND (rr.ndr_id is not null AND aa.status='PENDING' AND aa.status_type!='RT') AND gg.payment_mode!='Pickup'",
@@ -92,7 +95,7 @@ def get_filled_query(
         return {"success": False, "msg": "Invalid URL"}, 404
 
     query_to_run = query_to_run.replace("__NDR_AGG_SEL_1__", "null, null, null,")
-    query_to_run = query_to_run.replace("__NDR_AGG_SEL_2__", "null,")
+    query_to_run = query_to_run.replace("__NDR_AGG_SEL_2__", "null, null, ")
 
     if filters:
         query_to_run = filter_query(filters, query_to_run, auth_data)
@@ -154,9 +157,9 @@ def filter_query(filters, query_to_run, auth_data):
         ):
             ndr_type_filter = ""
         elif "Action Requested" in filters["ndr_type"]:
-            ndr_type_filter = "AND nn.ndr_verified in ('true', 'false')"
+            ndr_type_filter = "AND rr.current_status[1] in ('reattempt', 'cancelled')"
         else:
-            ndr_type_filter = "AND nn.ndr_verified is null"
+            ndr_type_filter = "AND rr.current_status[1] = 'required'"
 
         query_to_run = query_to_run.replace("__NDR_TYPE_FILTER__", ndr_type_filter)
 

@@ -1172,7 +1172,7 @@ def ship_bulk_orders(order_list, auth_data, courier):
             else:
                 order_tuple_str = str(tuple(order_list))
 
-            query_to_run = """SELECT array_agg(id) FROM orders WHERE id in __ORDER_IDS__ __CLIENT_FILTER__;""".replace("__ORDER_IDS__", order_tuple_str)
+            query_to_run = """SELECT array_agg(id) FROM orders WHERE id in __ORDER_IDS__ __CLIENT_FILTER__ AND status='NEW';""".replace("__ORDER_IDS__", order_tuple_str)
 
             if auth_data['user_group'] == 'client':
                 query_to_run = query_to_run.replace('__CLIENT_FILTER__', "AND client_prefix='%s'"%auth_data['client_prefix'])
@@ -1188,7 +1188,7 @@ def ship_bulk_orders(order_list, auth_data, courier):
             order_ids = cur.fetchone()[0]
             if not order_ids:
                 return {"success": False, "msg": "invalid order ids"}, 400
-            ship_orders(courier_name=courier, order_ids=order_ids, force_ship=True, cur=cur)
+            ship_orders(courier_name=courier, order_ids=order_ids, force_ship=True)
             conn.commit()
 
             return {"success": True, "msg": "shipped successfully"}, 200

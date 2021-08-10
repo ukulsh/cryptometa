@@ -324,6 +324,10 @@ class OrderList(Resource):
                             ndr_action = "Re-attempt requested by seller"
                         elif order[31] == False and order[32] in ("call", "text"):
                             ndr_action = "Re-attempt requested by customer"
+                        elif order[47] and order[47][0]=='reattempt':
+                            ndr_action ="Re-attempt requested by seller"
+                        elif order[47] and order[47][0]=='cancelled':
+                            ndr_action= "Cancellation confirmed by seller"
 
                     resp_obj["ndr_action"] = ndr_action
 
@@ -344,14 +348,14 @@ class OrderList(Resource):
                     resp_obj["status_detail"] = order[4]
 
                 if (
-                    order[49]
+                    order[50]
                     and order[3] == "DELIVERED"
-                    and order[49].startswith("https://wareiqpods")
+                    and order[50].startswith("https://wareiqpods")
                 ):
-                    resp_obj["pod_link"] = order[49]
+                    resp_obj["pod_link"] = order[50]
 
                 resp_obj["last_updated"] = (
-                    order[50].strftime("%Y-%m-%d %H:%M:%S") if order[50] else None
+                    order[51].strftime("%Y-%m-%d %H:%M:%S") if order[51] else None
                 )
 
                 resp_obj["status"] = order[3]
@@ -373,7 +377,7 @@ class OrderList(Resource):
                         "score": order[41],
                         "flag": order[40],
                         "reasons": order[42],
-                        "tags": order[47],
+                        "tags": order[48],
                     }
                 response_data.append(resp_obj)
 
@@ -4417,7 +4421,7 @@ def get_pickup_points(resp):
                                                  'UPPMRO', 'WBQMRO','TNEARO','CBWHECB2C','MHWHECB2C','DLWHEC','PLB2C01',
                                                  'HOLISOLBL','TNPMRO'):
 
-            response["pickup_points"] = ['CBWHECB2C', 'MHWHECB2C', 'DLWHEC']
+            response["pickup_points"] = ['PLB2C01', 'MHWHECB2C', 'DLWHEC']
             return jsonify(response), 200
 
         page = request.args.get("page", 1)

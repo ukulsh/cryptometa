@@ -25,7 +25,7 @@ def ship_orders(courier_name=None, order_ids=None, force_ship=None, client_prefi
     order_id_tuple = "()"
     if courier_name and order_ids:  # creating courier details list for manual shipping
         if len(order_ids) == 1:
-            order_id_tuple = "('" + str(order_ids[0]) + "')"
+            order_id_tuple = "(" + str(order_ids[0]) + ")"
         else:
             order_id_tuple = str(tuple(order_ids))
         cur.execute("""DELETE FROM order_scans where shipment_id in (select id from shipments where order_id in %s);
@@ -2284,9 +2284,6 @@ def ship_fedex_orders(cur, courier, courier_name, order_ids, order_id_tuple, bac
                         volumetric_weight, weight,
                         "", pickup_point[2], routing_code, None, None, zone)])
 
-                    if order[46] == 7:
-                        push_awb_easyecom(order[39],order[36], awb_no, courier, cur, order[55], order[56])
-
                     client_name = str(order[51])
                     customer_phone = order[5].replace(" ", "")
                     customer_phone = "0" + customer_phone[-10:]
@@ -2325,6 +2322,10 @@ def ship_fedex_orders(cur, courier, courier_name, order_ids, order_id_tuple, bac
                                            datetime.utcnow() + timedelta(hours=5.5))]
 
                 cur.execute(order_status_add_query, tuple(order_status_add_tuple))
+                conn.commit()
+                if awb_no and order[46] == 7:
+                    push_awb_easyecom(order[39],order[36], awb_no, courier, cur, order[55], order[56],
+                                      pushLabel=True, order_id=order[0])
 
             except Exception as e:
                 print("couldn't assign order: " + str(order[1]) + "\nError: " + str(e))
@@ -3113,7 +3114,7 @@ def ship_vinculum_orders(cur, courier, courier_name, order_ids, order_id_tuple):
             logger.error("messages not sent." + "   Error: " + str(e.args[0]))
 
 
-def push_awb_easyecom(invoice_id, api_token, awb, courier, cur, companyCarrierId, client_channel_id):
+def push_awb_easyecom(invoice_id, api_token, awb, courier, cur, companyCarrierId, client_channel_id, pushLabel=None, order_id=None):
     try:
         if not companyCarrierId or not companyCarrierId.isdigit():
             cur.execute("""SELECT id, unique_parameter FROM client_channel
@@ -3143,6 +3144,12 @@ def push_awb_easyecom(invoice_id, api_token, awb, courier, cur, companyCarrierId
                       "awbNum": awb,
                       "companyCarrierId": int(companyCarrierId)
                     }
+        if pushLabel:
+            headers_new = {"Content-Type": "application/json",
+                           "Authorization": "Token B52Si3qU6uOUbxCbidWTLaJlQEk9UfWkPK7BvTIt"}
+            req_new = requests.post(os.environ.get('CORE_SERVICE_URL')+"/orders/v1/download/shiplabels", headers=headers_new, json={"order_ids": [order_id]})
+            if req_new.status_code==200:
+                post_body['shippingLabelUrl']=req_new.json()['url']
         req = requests.post(post_url, data=post_body)
         if req.status_code!=200:
             requests.post(post_url, data=post_body)

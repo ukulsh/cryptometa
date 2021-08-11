@@ -1,4 +1,4 @@
-import logging, requests, random, string, json
+import logging, requests, random, string, json, os
 from app.db_utils import DbConnection, UrlShortner
 from datetime import datetime, timedelta
 
@@ -85,7 +85,7 @@ def get_courier_id_to_ship_with(rule, del_pincode, cur):
         if rule[idx]:
             serv_courier_id=get_courier_id_in_serviceability(rule[idx+4])
             cur.execute("""select serviceable from pincode_serviceability 
-                            courier_id=%s and pincode=%s;""", (serv_courier_id, del_pincode))
+                            where courier_id=%s and pincode=%s;""", (serv_courier_id, del_pincode))
             serviceable = cur.fetchone()
             if serviceable and serviceable[0]:
                 return rule[idx]
@@ -237,7 +237,7 @@ def invoice_order(cur, last_inv_no, inv_prefix, order_id, pickup_data_id):
         return last_inv_no
 
 
-def push_awb_easyecom(invoice_id, api_token, awb, courier, cur, companyCarrierId, client_channel_id):
+def push_awb_easyecom(invoice_id, api_token, awb, courier, cur, companyCarrierId, client_channel_id, pushLabel=None, order_id=None):
     try:
         if not companyCarrierId or not companyCarrierId.isdigit():
             cur.execute("""SELECT id, unique_parameter FROM client_channel
@@ -267,6 +267,12 @@ def push_awb_easyecom(invoice_id, api_token, awb, courier, cur, companyCarrierId
             "awbNum": awb,
             "companyCarrierId": int(companyCarrierId)
         }
+        if pushLabel:
+            headers_new = {"Content-Type": "application/json",
+                           "Authorization": "Token B52Si3qU6uOUbxCbidWTLaJlQEk9UfWkPK7BvTIt"}
+            req_new = requests.post(os.environ.get('CORE_SERVICE_URL')+"/orders/v1/download/shiplabels", headers=headers_new, json={"order_ids": [order_id]})
+            if req_new.status_code==200:
+                post_body['shippingLabelUrl']=req_new.json()['url']
         req = requests.post(post_url, data=post_body)
         if req.status_code!=200:
             requests.post(post_url, data=post_body)

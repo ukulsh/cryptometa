@@ -6,7 +6,7 @@ import json, random, string
 from woocommerce import API
 from math import ceil
 from app.db_utils import DbConnection, UrlShortner
-from app.ship_orders.function import ship_orders
+from app.ship_orders.shipping_rules import ShippingRules
 from app.update_status.function import update_delivered_on_channels, verification_text, \
     delhivery_status_code_mapping_dict, xpressbees_status_mapping, Xpressbees_ndr_reasons
 from app.update_status.update_status_utils import send_shipped_event, send_delivered_event, send_ndr_event, \
@@ -1188,7 +1188,8 @@ def ship_bulk_orders(order_list, auth_data, courier):
             order_ids = cur.fetchone()[0]
             if not order_ids:
                 return {"success": False, "msg": "invalid order ids"}, 400
-            ship_orders(courier_name=courier, order_ids=order_ids, force_ship=True)
+            ship_obj = ShippingRules(courier_name=courier, order_ids=order_ids, force_ship=True)
+            ship_obj.ship_orders_courier_wise()
             conn.commit()
 
             return {"success": True, "msg": "shipped successfully"}, 200

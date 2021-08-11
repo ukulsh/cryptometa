@@ -310,6 +310,23 @@ class OPAssociation(db.Model):
     discount_code = db.Column(db.String, nullable=True)
 
 
+class ReturnOrderQualityCheck(db.Model):
+    __tablename__ = "return_order_quality_check"
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    order_id = db.Column("order_id", db.Integer, db.ForeignKey("orders.id"), index=True)
+    product_id = db.Column("product_id", db.Integer, db.ForeignKey("products.id"))
+    master_product_id = db.Column(
+        "master_product_id", db.Integer, db.ForeignKey("master_products.id")
+    )
+    image_url = db.Column(db.String, nullable=True)
+    color = db.Column(db.String, nullable=True)
+    reason = db.Column(db.Text, nullable=True)
+    unique_id = db.Column(db.String, nullable=True)
+    order = db.relationship("Orders")
+    product = db.relationship("Products")
+    master_product = db.relationship("MasterProducts")
+
+
 class Orders(db.Model):
     __tablename__ = "orders"
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
@@ -323,6 +340,9 @@ class Orders(db.Model):
     status_detail = db.Column(db.String, nullable=True)
     products = db.relationship(
         "OPAssociation", backref="orders", primaryjoin=id == OPAssociation.order_id
+    )
+    qc = db.relationship(
+        "ReturnOrderQualityCheck", backref="orders", primaryjoin=id == ReturnOrderQualityCheck.order_id
     )
     delivery_address_id = db.Column(db.Integer, db.ForeignKey("shipping_address.id"))
     delivery_address = db.relationship(

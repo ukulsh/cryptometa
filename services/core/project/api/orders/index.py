@@ -39,6 +39,7 @@ from project.api.models import (
     Products,
     ShippingAddress,
     OPAssociation,
+    ReturnOrderQualityCheck,
     OrdersPayments,
     ClientMapping,
     WarehouseMapping,
@@ -3058,6 +3059,16 @@ class CreateReturn(Resource):
                             quantity=prod["quantity"],
                         )
                         new_order.products.append(op_association)
+                        if prod['qc_enabled']:
+                            qc_obj = ReturnOrderQualityCheck(
+                                order=new_order,
+                                master_product=prod_obj,
+                                image_url=prod['image_url'],
+                                color=prod['color'],
+                                reason=prod['reason'],
+                                unique_id=prod['unique_id']
+                            )
+                            new_order.qc.append(qc_obj)
 
             payment = OrdersPayments(
                 payment_mode="Pickup",

@@ -776,19 +776,40 @@ def inventory_analytics():
         warehouse = data.get('warehouse')
         previous_sales_start_date = (datetime.strptime(data.get('previous_sales_start_date'), '%Y-%m-%d') + timedelta(days=1)).strftime('%Y-%m-%d')
         previous_sales_end_date = (datetime.strptime(data.get('previous_sales_end_date'), '%Y-%m-%d') + timedelta(days=1)).strftime('%Y-%m-%d')
-        future_time_period = data.get('future_time_period')
-        expected_growth = data.get('expected_growth')
+        future_time_period = int(data.get('future_time_period'))
+        expected_growth = float(data.get('expected_growth'))
         
         query_to_run = inventory_analytics_query.format(client_prefix, previous_sales_start_date, previous_sales_end_date)
         if warehouse == 'all':
             query_to_run = query_to_run.replace('__WAREHOUSE_FILTER__', '')
         else:
             query_to_run = query_to_run.replace('__WAREHOUSE_FILTER__', 'AND dd.pickup_data_id IN {0}'.format(str(tuple(warehouse))))
-        
+
         cur.execute(query_to_run)
         stats = cur.fetchall()
-        print(stats)
 
+        data = list()
+        for stat in stats:
+            data_obj = dict()
+            data_obj['product'] = {
+                'master_id': stat[0], 
+                'id': stat[1], 
+                'name': stat[2]
+            }
+            data_obj['warehouse'] = {
+                'id': stat[3],
+                'name': stat[4],
+                'prefix': stat[5]
+            }
+            data_obj['sales'] = stat[6]
+            data_obj['available_qty'] = stat[7]
+            data_obj['n_transit_qty'] = stat[8]
+            data_obj['sku_velocity'] = data_obj['sales']/(previous_sales_end_date - previous_sales_start_date).days
+            data_obj['days_left'] = int(data_obj['available_qty']/data_obj['sku_velocity'])
+            data_obj['qty_to_restock'] = int(data_obj['sales']*(1 + expected_growth)*future_time_period/(previous_sales_end_date - previous_sales_start_date).days)
+            data.append(data_obj)
+
+        response['data'] = data
         response['success'] = True
         return jsonify(response), 200
     except Exception as e:

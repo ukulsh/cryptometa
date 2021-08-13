@@ -794,6 +794,8 @@ SELECT
     ee.product_id,
     ee.product_name,
     ee.pickup_data_id warehouse_id,
+    ii.pickup_location warehouse_name,
+    ii.warehouse_prefix,
     ee.count sales,
     COALESCE(ff.available_quantity, 0) + COALESCE(ff.rto_quantity, 0) available_quantity,
     COALESCE(gg.ro_quantity, 0) - COALESCE(gg.received_quantity, 0) in_transit_quantity
@@ -820,4 +822,6 @@ FROM (
         dd.pickup_data_id) ee
     INNER JOIN products_quantity ff ON ee.product_id = ff.product_id
     LEFT JOIN products_wro gg ON ee.id = gg.master_product_id
+    LEFT JOIN client_pickups hh ON ee.pickup_data_id = hh.id
+    LEFT JOIN pickup_points ii ON hh.pickup_id = ii.id
 """

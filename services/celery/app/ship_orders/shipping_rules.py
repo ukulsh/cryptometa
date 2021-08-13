@@ -20,12 +20,13 @@ cur_2 = conn_2.cursor()
 
 class ShippingRules:
 
-    def __init__(self, courier_name=None, order_ids=None, force_ship=None, client_prefix=None, cur=None):
+    def __init__(self, courier_name=None, order_ids=None, force_ship=None, client_prefix=None, cur=None, next_priority=None):
         self.courier_name = courier_name
         self.order_ids = order_ids
         self.force_ship = force_ship
         self.client_prefix = client_prefix
         self.cur = cur if cur else conn.cursor()
+        self.next_priority = next_priority
 
     @staticmethod
     def check_rule_match_for_order(condition_type, conditions, order):
@@ -40,34 +41,48 @@ class ShippingRules:
 
         return match
 
-    @staticmethod
-    def ship_orders_with_given_courier(courier_obj):
+
+    def ship_orders_with_given_courier(self, courier_obj):
         if courier_obj['courier'][10].startswith('Delhivery'):
-            ship_obj = ShipDelhivery(courier=courier_obj['courier'], orders=courier_obj['orders'])
+            ship_obj = ShipDelhivery(courier=courier_obj['courier'], orders=courier_obj['orders'], cur=self.cur,
+                                     next_priority=courier_obj['next_priority'] if courier_obj.get('next_priority')
+                                     else self.next_priority)
             ship_obj.ship_orders()
 
         if courier_obj['courier'][10].startswith('Xpressbees'):
-            ship_obj = ShipXpressbees(courier=courier_obj['courier'], orders=courier_obj['orders'])
+            ship_obj = ShipXpressbees(courier=courier_obj['courier'], orders=courier_obj['orders'], cur=self.cur,
+                                      next_priority=courier_obj['next_priority'] if courier_obj.get('next_priority')
+                                      else self.next_priority)
             ship_obj.ship_orders()
 
         if courier_obj['courier'][10].startswith('Bluedart'):
-            ship_obj = ShipBluedart(courier=courier_obj['courier'], orders=courier_obj['orders'])
+            ship_obj = ShipBluedart(courier=courier_obj['courier'], orders=courier_obj['orders'], cur=self.cur,
+                                    next_priority=courier_obj['next_priority'] if courier_obj.get('next_priority')
+                                    else self.next_priority)
             ship_obj.ship_orders()
 
         if courier_obj['courier'][10].startswith('Ecom'):
-            ship_obj = ShipEcomExpress(courier=courier_obj['courier'], orders=courier_obj['orders'])
+            ship_obj = ShipEcomExpress(courier=courier_obj['courier'], orders=courier_obj['orders'], cur=self.cur,
+                                       next_priority=courier_obj['next_priority'] if courier_obj.get('next_priority')
+                                       else self.next_priority)
             ship_obj.ship_orders()
 
         if courier_obj['courier'][10].startswith('Self Ship'):
-            ship_obj = ShipSelfShip(courier=courier_obj['courier'], orders=courier_obj['orders'])
+            ship_obj = ShipSelfShip(courier=courier_obj['courier'], orders=courier_obj['orders'], cur=self.cur,
+                                    next_priority=courier_obj['next_priority'] if courier_obj.get('next_priority')
+                                    else self.next_priority)
             ship_obj.ship_orders()
 
         if courier_obj['courier'][10].startswith('Pidge'):
-            ship_obj = ShipPidge(courier=courier_obj['courier'], orders=courier_obj['orders'])
+            ship_obj = ShipPidge(courier=courier_obj['courier'], orders=courier_obj['orders'], cur=self.cur,
+                                 next_priority=courier_obj['next_priority'] if courier_obj.get('next_priority')
+                                 else self.next_priority)
             ship_obj.ship_orders()
 
         if courier_obj['courier'][10].startswith('FedEx'):
-            ship_obj = ShipFedex(courier=courier_obj['courier'], orders=courier_obj['orders'])
+            ship_obj = ShipFedex(courier=courier_obj['courier'], orders=courier_obj['orders'], cur=self.cur,
+                                 next_priority=courier_obj['next_priority'] if courier_obj.get('next_priority')
+                                 else self.next_priority)
             ship_obj.ship_orders()
 
     def ship_orders_courier_wise(self):
@@ -94,6 +109,8 @@ class ShippingRules:
                 courier_obj = {"courier": courier, "orders": all_orders}
                 self.ship_orders_with_given_courier(courier_obj)
 
+            return None
+
         self.cur.execute(delete_failed_shipments_query)
         time_now = datetime.utcnow()
         if time_now.hour == 22 and 0 < time_now.minute < 30:
@@ -119,10 +136,11 @@ class ShippingRules:
             all_orders = self.cur.fetchall()
             for order in all_orders:
                 courier_id = None
+                next_priority = None
                 for rule in rules:
                     match = self.check_rule_match_for_order(rule[4], rule[5], order)
                     if match:
-                        courier_id = get_courier_id_to_ship_with(rule, str(order[18]), self.cur)
+                        courier_id, next_priority = get_courier_id_to_ship_with(rule, str(order[18]), self.cur)
                         break
                 if courier_id:
                     if courier_id not in return_dict:
@@ -130,7 +148,7 @@ class ShippingRules:
                             bb.api_url FROM master_couriers bb WHERE id=%s""" % str(courier_id))
                         courier_details = self.cur.fetchone()
                         courier = (None, client, None, 1, None, None, None, None, "") + courier_details
-                        return_dict[courier_id]={"courier": courier, "orders": [order]}
+                        return_dict[courier_id]={"courier": courier, "orders": [order], "next_priority": next_priority}
                     else:
                         return_dict[courier_id]['orders'].append(order)
 
@@ -140,7 +158,7 @@ class ShippingRules:
 
 class ShipDelhivery:
 
-    def __init__(self, cur=None, courier=None, orders=None, force_ship=None):
+    def __init__(self, cur=None, courier=None, orders=None, force_ship=None, next_priority=None):
         self.courier = courier
         self.all_orders = orders
         self.force_ship = force_ship
@@ -149,6 +167,7 @@ class ShipDelhivery:
                         "Content-Type": "application/json"}
         self.pickup_point_order_dict = dict()
         self.orders_dict = dict()
+        self.next_priority = next_priority
 
     def ship_orders(self):
         for order in self.all_orders:
@@ -172,14 +191,15 @@ class ShipDelhivery:
                 for order in order_chunk:
                     try:
                         if order[18] in delhivery_embargo_pincodes:
+                            if self.next_priority:
+                                push_order_to_next_priority(self.next_priority, order[0], self.courier, self.cur)
                             continue
                         zone = None
                         try:
                             zone = get_delivery_zone(pickup_point[8], order[18])
                         except Exception as e:
                             logger.error("couldn't find zone: " + str(order[0]) + "\nError: " + str(e))
-                        if self.courier[1]=="DHANIPHARMACY" and zone not in ('A', 'B'):
-                            continue
+
                         if not order[54]:
                             last_invoice_no = invoice_order(self.cur, last_invoice_no, pickup_point[23], order[0], pickup_id)
                         if order[26].lower() == 'cod' and not order[27] and not self.force_ship:
@@ -189,10 +209,6 @@ class ShipDelhivery:
                                                       order[36], order[37], order[38], order[39],
                                                       order[5], order[9], order[45], order[46],
                                                       order[51], order[52], zone, order[54], order[55], order[56])
-
-                        if order[17].lower() in ("bengaluru", "bangalore", "banglore") and self.courier[1] in ("SOHOMATTRESS",) and \
-                                order[26].lower() != 'pickup' and not self.force_ship:
-                            continue
 
                         if not order[52]:
                             weight = order[34][0] * order[35][0]
@@ -393,10 +409,13 @@ class ShipDelhivery:
                                                  + "\nError: " + str(e.args))
 
                         elif 'pincode' in remark:
-                            insert_shipments_data_query += "%s,"
-                            insert_shipments_data_tuple.append(("", "Fail", self.orders_dict[package['refnum']][0], None,
-                                                                None, None, None, None, "Pincode not serviceable", None,
-                                                                None, self.orders_dict[package['refnum']][14]), )
+                            if self.next_priority:
+                                push_order_to_next_priority(self.next_priority, self.orders_dict[package['refnum']][0], self.courier, self.cur)
+                            else:
+                                insert_shipments_data_query += "%s,"
+                                insert_shipments_data_tuple.append(("", "Fail", self.orders_dict[package['refnum']][0], None,
+                                                                    None, None, None, None, "Pincode not serviceable", None,
+                                                                    None, None, None, self.orders_dict[package['refnum']][14]), )
                             continue
 
                         if 'COD' in remark or 'blocked' in remark:
@@ -445,15 +464,19 @@ class ShipDelhivery:
                                                                         status_code, status, status_text, location, location_city, 
                                                                         status_time) VALUES """
                     order_status_tuple_list = list()
+                    status_add_orders = 0
                     for ship_temp in shipment_ret:
-                        insert_order_status_dict[ship_temp[1]][2] = ship_temp[0]
-                        order_status_add_query += "%s,"
-                        order_status_tuple_list.append(tuple(insert_order_status_dict[ship_temp[1]]))
+                        if ship_temp[1]:
+                            status_add_orders += 1
+                            insert_order_status_dict[ship_temp[1]][2] = ship_temp[0]
+                            order_status_add_query += "%s,"
+                            order_status_tuple_list.append(tuple(insert_order_status_dict[ship_temp[1]]))
 
-                    order_status_add_query = order_status_add_query.rstrip(',')
-                    order_status_add_query += ";"
+                    if status_add_orders:
+                        order_status_add_query = order_status_add_query.rstrip(',')
+                        order_status_add_query += ";"
 
-                    self.cur.execute(order_status_add_query, tuple(order_status_tuple_list))
+                        self.cur.execute(order_status_add_query, tuple(order_status_tuple_list))
 
                 if order_status_change_ids:
                     if len(order_status_change_ids) == 1:
@@ -475,7 +498,7 @@ class ShipDelhivery:
 
 class ShipXpressbees:
 
-    def __init__(self, cur=None, courier=None, orders=None, force_ship=None):
+    def __init__(self, cur=None, courier=None, orders=None, force_ship=None, next_priority=None):
         self.courier = courier
         self.all_orders = orders
         self.force_ship = force_ship
@@ -484,6 +507,7 @@ class ShipXpressbees:
         self.orders_dict = dict()
         self.last_assigned_awb = 0
         self.headers = {"Content-Type": "application/json"}
+        self.next_priority = next_priority
         try:
             self.cur.execute("select max(awb) from shipments where courier_id=%s;" % str(courier[9]))
             fet_res = self.cur.fetchone()
@@ -773,14 +797,18 @@ class ShipXpressbees:
                             pass
 
                     else:
-                        insert_shipments_data_query = """INSERT INTO SHIPMENTS (awb, status, order_id, pickup_id, courier_id, 
-                                                                    dimensions, volumetric_weight, weight, remark, return_point_id, routing_code, zone)
-                                                                    VALUES  %s"""
-                        insert_shipments_data_tuple = list()
-                        insert_shipments_data_tuple.append(("", "Fail", order[0], None,
-                                                            None, None, None, None, "Pincode not serviceable", None,
-                                                            None, zone, None, None), )
-                        self.cur.execute(insert_shipments_data_query, tuple(insert_shipments_data_tuple))
+                        if self.next_priority:
+                            push_order_to_next_priority(self.next_priority, order[0], self.courier, self.cur)
+                        else:
+                            insert_shipments_data_query = """INSERT INTO SHIPMENTS (awb, status, order_id, pickup_id, courier_id,
+                                                                dimensions, volumetric_weight, weight, remark, return_point_id, routing_code,
+                                                                channel_fulfillment_id, tracking_link, zone)
+                                                                        VALUES  %s"""
+                            insert_shipments_data_tuple = list()
+                            insert_shipments_data_tuple.append(("", "Fail", order[0], None,
+                                                                None, None, None, None, "Pincode not serviceable", None,
+                                                                None, None, None, zone), )
+                            self.cur.execute(insert_shipments_data_query, tuple(insert_shipments_data_tuple))
                         continue
 
                     self.cur.execute(insert_shipments_data_query, data_tuple)
@@ -813,7 +841,7 @@ class ShipXpressbees:
 
 class ShipBluedart:
 
-    def __init__(self, cur=None, courier=None, orders=None, force_ship=None):
+    def __init__(self, cur=None, courier=None, orders=None, force_ship=None, next_priority=None):
         self.courier = courier
         self.all_orders = orders
         self.force_ship = force_ship
@@ -825,6 +853,7 @@ class ShipBluedart:
         self.waybill_client = Client(self.bluedart_url)
         self.login_id = self.courier[15].split('|')[0]
         self.customer_code = self.courier[15].split('|')[1]
+        self.next_priority = next_priority
         self.client_profile = {
             "LoginID": self.login_id,
             "LicenceKey": self.courier[14],
@@ -870,14 +899,6 @@ class ShipBluedart:
                     zone = get_delivery_zone(pickup_point[8], order[18])
                 except Exception as e:
                     logger.error("couldn't find zone: " + str(order[0]) + "\nError: " + str(e))
-
-                if self.courier[1] == "ZLADE" and zone in ('A', ) and not self.force_ship:
-                    continue
-
-                if order[26].lower() == "prepaid" and self.courier[1] in ("ACTIFIBER", "BEHIR", "SHAHIKITCHEN", "SUKHILIFE",
-                                                                     "ORGANICRIOT", "SUCCESSCRAFT", "HOMELY", "BEHIR2",
-                                                                     "BEHIR3", "Creatures of Habit") and not self.force_ship:
-                    continue
 
                 time_2_days = datetime.utcnow() + timedelta(hours=5.5) - timedelta(days=1)
                 if order[47] and not (order[50] and order[2] < time_2_days) and not self.force_ship:
@@ -1011,9 +1032,9 @@ class ShipBluedart:
 
                     req = self.waybill_client.service.GenerateWayBill(**request_data)
                     insert_shipments_data_query = """INSERT INTO SHIPMENTS (awb, status, order_id, pickup_id, courier_id, 
-                                                                                                                    dimensions, volumetric_weight, weight, remark, return_point_id, routing_code, 
-                                                                                                                    channel_fulfillment_id, tracking_link, zone)
-                                                                                                                    VALUES  %s RETURNING id;"""
+                                                dimensions, volumetric_weight, weight, remark, return_point_id, routing_code, 
+                                                channel_fulfillment_id, tracking_link, zone)
+                                                VALUES  %s RETURNING id;"""
                     if req['AWBNo']:
                         order_status_change_ids.append(order[0])
                         routing_code = str(req['DestinationArea']) + "-" + str(req['DestinationLocation'])
@@ -1038,14 +1059,18 @@ class ShipBluedart:
                             pass
 
                     else:
-                        insert_shipments_data_query = """INSERT INTO SHIPMENTS (awb, status, order_id, pickup_id, courier_id, 
-                                                                                dimensions, volumetric_weight, weight, remark, return_point_id, routing_code, zone)
-                                                                                VALUES  %s"""
-                        insert_shipments_data_tuple = list()
-                        insert_shipments_data_tuple.append(("", "Fail", order[0], None,
-                                                            None, None, None, None, "Pincode not serviceable", None,
-                                                            None, zone, None, None), )
-                        self.cur.execute(insert_shipments_data_query, tuple(insert_shipments_data_tuple))
+                        if self.next_priority:
+                            push_order_to_next_priority(self.next_priority, order[0], self.courier, self.cur)
+                        else:
+                            insert_shipments_data_query = """INSERT INTO SHIPMENTS (awb, status, order_id, pickup_id, courier_id,
+                                                                dimensions, volumetric_weight, weight, remark, return_point_id, routing_code,
+                                                                channel_fulfillment_id, tracking_link, zone)
+                                                                                    VALUES  %s"""
+                            insert_shipments_data_tuple = list()
+                            insert_shipments_data_tuple.append(("", "Fail", order[0], None,
+                                                                None, None, None, None, "Pincode not serviceable", None,
+                                                                None, None, None, zone), )
+                            self.cur.execute(insert_shipments_data_query, tuple(insert_shipments_data_tuple))
                         continue
 
                     self.cur.execute(insert_shipments_data_query, data_tuple)
@@ -1079,7 +1104,7 @@ class ShipBluedart:
 
 class ShipEcomExpress:
 
-    def __init__(self, cur=None, courier=None, orders=None, force_ship=None):
+    def __init__(self, cur=None, courier=None, orders=None, force_ship=None, next_priority=None):
         self.courier = courier
         self.all_orders = orders
         self.force_ship = force_ship
@@ -1090,6 +1115,7 @@ class ShipEcomExpress:
         self.orders_dict = dict()
         self.last_assigned_awb_cod = 0
         self.last_assigned_awb_ppd = 0
+        self.next_priority = next_priority
         try:
             cur.execute("""select awb from shipments aa
                                 left join orders bb on aa.order_id=bb.id
@@ -1314,9 +1340,9 @@ class ShipEcomExpress:
                             self.last_assigned_awb_ppd = int(fetch_awb_req.json()['awb'][0])
                     return_data_raw = req.json()
                     insert_shipments_data_query = """INSERT INTO SHIPMENTS (awb, status, order_id, pickup_id, courier_id, 
-                                                                                                        dimensions, volumetric_weight, weight, remark, return_point_id, routing_code, 
-                                                                                                        channel_fulfillment_id, tracking_link, zone)
-                                                                                                        VALUES  %s RETURNING id;"""
+                                                        dimensions, volumetric_weight, weight, remark, return_point_id, routing_code, 
+                                                        channel_fulfillment_id, tracking_link, zone)
+                                                        VALUES  %s RETURNING id;"""
                     if return_data_raw['shipments'][0]['success']:
 
                         order_status_change_ids.append(order[0])
@@ -1344,14 +1370,18 @@ class ShipEcomExpress:
                             pass
 
                     else:
-                        insert_shipments_data_query = """INSERT INTO SHIPMENTS (awb, status, order_id, pickup_id, courier_id, 
-                                                                    dimensions, volumetric_weight, weight, remark, return_point_id, routing_code, zone)
-                                                                    VALUES  %s"""
-                        insert_shipments_data_tuple = list()
-                        insert_shipments_data_tuple.append(("", "Fail", order[0], None,
-                                                            None, None, None, None, "Pincode not serviceable", None,
-                                                            None, zone, None, None), )
-                        self.cur.execute(insert_shipments_data_query, tuple(insert_shipments_data_tuple))
+                        if self.next_priority:
+                            push_order_to_next_priority(self.next_priority, order[0], self.courier, self.cur)
+                        else:
+                            insert_shipments_data_query = """INSERT INTO SHIPMENTS (awb, status, order_id, pickup_id, courier_id,
+                                                                dimensions, volumetric_weight, weight, remark, return_point_id, routing_code,
+                                                                channel_fulfillment_id, tracking_link, zone)
+                                                                        VALUES  %s"""
+                            insert_shipments_data_tuple = list()
+                            insert_shipments_data_tuple.append(("", "Fail", order[0], None,
+                                                                None, None, None, None, "Pincode not serviceable", None,
+                                                                None, None, None, zone), )
+                            self.cur.execute(insert_shipments_data_query, tuple(insert_shipments_data_tuple))
                         continue
 
                     self.cur.execute(insert_shipments_data_query, data_tuple)
@@ -1384,7 +1414,7 @@ class ShipEcomExpress:
 
 class ShipFedex:
 
-    def __init__(self, cur=None, courier=None, orders=None, force_ship=None):
+    def __init__(self, cur=None, courier=None, orders=None, force_ship=None, next_priority=None):
         self.courier = courier
         self.all_orders = orders
         self.force_ship = force_ship
@@ -1396,6 +1426,7 @@ class ShipFedex:
         self.account_number = courier[15].split('|')[0]
         self.meter_number = courier[15].split('|')[1]
         self.shipment_type = courier[15].split('|')[2]
+        self.next_priority = next_priority
         self.CONFIG_OBJ = FedexConfig(key=self.api_key,
                                  password=self.api_pass,
                                  account_number=self.account_number,
@@ -1585,9 +1616,9 @@ class ShipFedex:
                             (volumetric_weight * 5000) / (dimensions['length'] * dimensions['breadth']))
 
                     insert_shipments_data_query = """INSERT INTO SHIPMENTS (awb, status, order_id, pickup_id, courier_id, 
-                                                                                                                    dimensions, volumetric_weight, weight, remark, return_point_id, routing_code, 
-                                                                                                                    channel_fulfillment_id, tracking_link, zone)
-                                                                                                                    VALUES  %s RETURNING id;"""
+                                                                            dimensions, volumetric_weight, weight, remark, return_point_id, routing_code, 
+                                                                            channel_fulfillment_id, tracking_link, zone)
+                                                                            VALUES  %s RETURNING id;"""
                     if awb_no:
                         awb_no = str(awb_no)
                         order_status_change_ids.append(order[0])
@@ -1613,14 +1644,18 @@ class ShipFedex:
                             pass
 
                     else:
-                        insert_shipments_data_query = """INSERT INTO SHIPMENTS (awb, status, order_id, pickup_id, courier_id, 
-                                                                                dimensions, volumetric_weight, weight, remark, return_point_id, routing_code, zone)
-                                                                                VALUES  %s"""
-                        insert_shipments_data_tuple = list()
-                        insert_shipments_data_tuple.append(("", "Fail", order[0], None,
-                                                            None, None, None, None, "Pincode not serviceable", None,
-                                                            None, zone, None, None), )
-                        self.cur.execute(insert_shipments_data_query, tuple(insert_shipments_data_tuple))
+                        if self.next_priority:
+                            push_order_to_next_priority(self.next_priority, order[0], self.courier, self.cur)
+                        else:
+                            insert_shipments_data_query = """INSERT INTO SHIPMENTS (awb, status, order_id, pickup_id, courier_id,
+                                                                    dimensions, volumetric_weight, weight, remark, return_point_id, routing_code,
+                                                                    channel_fulfillment_id, tracking_link, zone)
+                                                                                    VALUES  %s"""
+                            insert_shipments_data_tuple = list()
+                            insert_shipments_data_tuple.append(("", "Fail", order[0], None,
+                                                                None, None, None, None, "Pincode not serviceable", None,
+                                                                None, None, None, zone), )
+                            self.cur.execute(insert_shipments_data_query, tuple(insert_shipments_data_tuple))
                         continue
 
                     self.cur.execute(insert_shipments_data_query, data_tuple)
@@ -1661,13 +1696,14 @@ class ShipFedex:
 
 class ShipSelfShip:
 
-    def __init__(self, cur=None, courier=None, orders=None, force_ship=None):
+    def __init__(self, cur=None, courier=None, orders=None, force_ship=None, next_priority=None):
         self.courier = courier
         self.all_orders = orders
         self.force_ship = force_ship
         self.cur = cur if cur else conn.cursor()
         self.pickup_point_order_dict = dict()
         self.orders_dict = dict()
+        self.next_priority = next_priority
 
     def ship_orders(self):
         for order in self.all_orders:
@@ -1819,13 +1855,14 @@ class ShipSelfShip:
 
 class ShipPidge:
 
-    def __init__(self, cur=None, courier=None, orders=None, force_ship=None):
+    def __init__(self, cur=None, courier=None, orders=None, force_ship=None, next_priority=None):
         self.courier = courier
         self.all_orders = orders
         self.force_ship = force_ship
         self.cur = cur if cur else conn.cursor()
         self.pickup_point_order_dict = dict()
         self.orders_dict = dict()
+        self.next_priority = next_priority
         self.headers = {"Authorization": "Bearer " + courier[14],
                         "Content-Type": "application/json",
                         "platform": "Postman",
@@ -1986,14 +2023,18 @@ class ShipPidge:
                         pass
 
                 else:
-                    insert_shipments_data_query = """INSERT INTO SHIPMENTS (awb, status, order_id, pickup_id, courier_id, 
-                                                                dimensions, volumetric_weight, weight, remark, return_point_id, routing_code, zone)
-                                                                VALUES  %s"""
-                    insert_shipments_data_tuple = list()
-                    insert_shipments_data_tuple.append(("", "Fail", order[0], None,
-                                                        None, None, None, None, "Pincode not serviceable", None,
-                                                        None, zone, None, None), )
-                    self.cur.execute(insert_shipments_data_query, tuple(insert_shipments_data_tuple))
+                    if self.next_priority:
+                        push_order_to_next_priority(self.next_priority, order[0], self.courier, self.cur)
+                    else:
+                        insert_shipments_data_query = """INSERT INTO SHIPMENTS (awb, status, order_id, pickup_id, courier_id, 
+                                                        dimensions, volumetric_weight, weight, remark, return_point_id, routing_code, 
+                                                        channel_fulfillment_id, tracking_link, zone)
+                                                                    VALUES  %s"""
+                        insert_shipments_data_tuple = list()
+                        insert_shipments_data_tuple.append(("", "Fail", order[0], None,
+                                                            None, None, None, None, "Pincode not serviceable", None,
+                                                            None, zone, None, None), )
+                        self.cur.execute(insert_shipments_data_query, tuple(insert_shipments_data_tuple))
                     continue
 
                 insert_shipments_data_query = """INSERT INTO SHIPMENTS (awb, status, order_id, pickup_id, courier_id, 
@@ -2031,3 +2072,31 @@ class ShipPidge:
             self.cur.execute("UPDATE client_pickups SET invoice_last=%s WHERE id=%s;", (last_invoice_no, pickup_id))
 
             conn.commit()
+
+
+def push_order_to_next_priority(next_priority, order_id, courier, cur):
+    try:
+        cur.execute("""SELECT id, courier_name, logo_url, date_created, date_updated, api_key, 
+                                                                                        api_password, api_url FROM master_couriers
+                                                                                        WHERE id=%s""" % str(next_priority[0]))
+        courier_data = cur.fetchone()
+        courier_new = list(courier)
+        courier_new[2] = courier_data[0]
+        courier_new[3] = 1
+        courier_new[9] = courier_data[0]
+        courier_new[10] = courier_data[1]
+        courier_new[11] = courier_data[2]
+        courier_new[12] = courier_data[3]
+        courier_new[13] = courier_data[4]
+        courier_new[14] = courier_data[5]
+        courier_new[15] = courier_data[6]
+        courier_new[16] = courier_data[7]
+        next_priority.pop(0)
+        ship_obj = ShippingRules(courier_name=courier_data[1], order_ids=[order_id], next_priority=next_priority, cur=cur)
+        ship_obj.ship_orders_courier_wise()
+    except Exception as e:
+        logger.error(
+            "Couldn't assign backup courier for: " + str(order[0]) + "\nError: " + str(e.args))
+        pass
+
+    return None

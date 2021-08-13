@@ -81,6 +81,7 @@ def get_courier_id_in_serviceability(courier_name):
 
 
 def get_courier_id_to_ship_with(rule, del_pincode, cur):
+    next_priority = []
     for idx in (6,7,8,9):
         if rule[idx]:
             serv_courier_id=get_courier_id_in_serviceability(rule[idx+4])
@@ -88,8 +89,12 @@ def get_courier_id_to_ship_with(rule, del_pincode, cur):
                             where courier_id=%s and pincode=%s;""", (serv_courier_id, del_pincode))
             serviceable = cur.fetchone()
             if serviceable and serviceable[0]:
-                return rule[idx]
-    return None
+                idx_new = idx+1
+                while idx_new<=9 and rule[idx_new]:
+                    next_priority.append(rule[idx_new])
+                    idx_new+=1
+                return rule[idx], next_priority
+    return None, next_priority
 
 
 def check_condition_match_for_order(each_condition, order):
@@ -99,9 +104,9 @@ def check_condition_match_for_order(each_condition, order):
         elif each_condition['condition'] == 'is_not' and order[26].lower() != each_condition['value'].lower():
             return True
     if each_condition['param'] == 'order_amount':
-        if each_condition['condition'] == 'greater_than' and order[27] >= each_condition['value']:
+        if each_condition['condition'] == 'greater_than' and order[27] >= float(each_condition['value']):
             return True
-        elif each_condition['condition'] == 'less_than' and order[27] <= each_condition['value']:
+        elif each_condition['condition'] == 'less_than' and order[27] <= float(each_condition['value']):
             return True
     if each_condition['param'] == 'pickup':
         if each_condition['condition'] == 'is' and order[57] == each_condition['value']:
@@ -129,9 +134,9 @@ def check_condition_match_for_order(each_condition, order):
             return True
     if each_condition['param'] == 'weight':
         weight, volumetric_weight, dimensions = calculate_order_weight_dimensions(order)
-        if each_condition['condition'] == 'greater_than' and (weight>=each_condition['value'] or volumetric_weight>=each_condition['value']):
+        if each_condition['condition'] == 'greater_than' and (weight>=float(each_condition['value']) or volumetric_weight>=float(each_condition['value'])):
             return True
-        elif each_condition['condition'] == 'less_than' and (weight<=each_condition['value'] or volumetric_weight<=each_condition['value']):
+        elif each_condition['condition'] == 'less_than' and (weight<=float(each_condition['value']) or volumetric_weight<=float(each_condition['value'])):
             return True
     if each_condition['param'] == 'sku':
         for sku in order[59]:

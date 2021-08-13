@@ -1664,6 +1664,7 @@ easyecom_wareiq_channel_map = {"Amazon.in": 2,
                                "Myntra PPMP":15,
                                "Magento2.0":6,
                                "lotusbotanicals.com":4,
+                               "Amazon.in 2":2,
                                }
 
 easyecom_wareiq_courier_map = {"eKart": 7}

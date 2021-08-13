@@ -151,7 +151,9 @@ class ShippingRulesAPI(Resource):
                 return response_object, 400
 
             rule_obj.rule_name = post_data.get('rule_name')
-            rule_obj.priority = post_data.get('priority')
+            if post_data.get('priority'):
+                rule_obj.priority = int(post_data.get('priority'))
+            rule_obj.active = True if post_data.get('active') else False
             rule_obj.condition_type = post_data.get('condition_type')
             rule_obj.conditions = post_data.get('conditions')
             rule_obj.courier_1 = MasterCouriers.query.filter_by(courier_name=post_data.get('courier_1')).first()

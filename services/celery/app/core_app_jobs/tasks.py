@@ -1188,7 +1188,7 @@ def ship_bulk_orders(order_list, auth_data, courier):
             order_ids = cur.fetchone()[0]
             if not order_ids:
                 return {"success": False, "msg": "invalid order ids"}, 400
-            ship_obj = ShippingRules(courier_name=courier, order_ids=order_ids, force_ship=True)
+            ship_obj = ShippingRules(courier_name=courier, order_ids=order_ids, force_ship=True, cur=cur)
             ship_obj.ship_orders_courier_wise()
             conn.commit()
 
@@ -1653,7 +1653,9 @@ def update_pincode_serviceability_table():
                     url = "https://api.ecomexpress.in/apiv2/pincodes/"
                     req = requests.post(url, data={"username": courer_data[2], "password": courer_data[3]})
                     pincode_list = req.json()
+                    pincode_not_str = "('"
                     for pincode in pincode_list:
+                        pincode_not_str+=str(pincode.get('pincode'))+"','"
                         serviceable = pincode.get('active')
                         pincode_str = str(pincode.get('pincode'))
                         sortcode = pincode.get('route')
@@ -1661,13 +1663,21 @@ def update_pincode_serviceability_table():
                                                                           serviceable, serviceable, serviceable, sortcode,
                                                                           datetime.utcnow()+timedelta(hours=5.5)))
                         conn.commit()
+                    pincode_not_str = pincode_not_str.rstrip(",'")
+                    pincode_not_str += "')"
+                    cur.execute("""UPDATE pincode_serviceability SET serviceable=false, cod_available=false,
+                                         reverse_pickup=false, pickup=false, last_updated=now() where courier_id=15 
+                                         and pincode not in %s"""%pincode_not_str)
+                    conn.commit()
                 elif courier in (2, 12):
                     url = "https://track.delhivery.com/c/api/pin-codes/json/"
                     headers = {"Content-Type": "application/json",
                                "Authorization": "Token %s"%(courer_data[2])}
                     req = requests.get(url, headers=headers)
                     pincode_list = req.json()
+                    pincode_not_str = "('"
                     for pincode in pincode_list['delivery_codes']:
+                        pincode_not_str+=str(pincode['postal_code'].get('pin'))+"','"
                         serviceable = True if pincode['postal_code'].get('pre_paid').upper()=='Y' else False
                         cod_available = True if pincode['postal_code'].get('cod').upper()=='Y' else False
                         pickup = True if pincode['postal_code'].get('pickup').upper()=='Y' else False
@@ -1678,7 +1688,12 @@ def update_pincode_serviceability_table():
                                                                           datetime.utcnow()+timedelta(hours=5.5)))
 
                         conn.commit()
-
+                    pincode_not_str = pincode_not_str.rstrip(",'")
+                    pincode_not_str += "')"
+                    cur.execute("""UPDATE pincode_serviceability SET serviceable=false, cod_available=false,
+                                         reverse_pickup=false, pickup=false, last_updated=now() where courier_id=2 
+                                         and pincode not in %s"""%pincode_not_str)
+                    conn.commit()
                 elif courier==9:
                     from zeep import Client
                     check_url = "https://netconnect.bluedart.com/Ver1.9/ShippingAPI/Finder/ServiceFinderQuery.svc?wsdl"

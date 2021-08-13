@@ -788,3 +788,36 @@ select_serviceable_couriers_orders = """select courier_name, id, pickup,
                                         where dd.courier_name=ff.courier_name
                                         group by aa.id, aa.pickup_pincode, aa.delivery_pincode, dd.courier_name, aa.payment_mode) xx"""
 
+inventory_analytics_query = """
+SELECT
+    ee.id master_product_id,
+    ee.product_id,
+    ee.product_name,
+    ee.pickup_data_id warehouse_id,
+    ee.count sales,
+    COALESCE(ff.available_quantity, 0) + COALESCE(ff.rto_quantity, 0) available_quantity,
+    COALESCE(gg.ro_quantity, 0) - COALESCE(gg.received_quantity, 0) in_transit_quantity
+FROM (
+    SELECT
+        aa.id,
+        cc.product_id,
+        bb.name product_name,
+        dd.pickup_data_id,
+        COUNT(cc.order_id)
+    FROM
+        master_products aa
+        INNER JOIN products bb ON aa.id = bb.master_product_id
+        INNER JOIN op_association cc ON bb.id = cc.product_id
+        INNER JOIN orders dd ON cc.order_id = dd.id
+    WHERE
+        aa.client_prefix = '{0}'
+        AND dd.order_date >= '{1}' and dd.order_date <= '{2}'
+        __WAREHOUSE_FILTER__
+    GROUP BY
+        aa.id,
+        cc.product_id,
+        bb.name,
+        dd.pickup_data_id) ee
+    INNER JOIN products_quantity ff ON ee.product_id = ff.product_id
+    LEFT JOIN products_wro gg ON ee.id = gg.master_product_id
+"""

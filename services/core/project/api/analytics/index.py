@@ -9,7 +9,7 @@ from project.api.utils import authenticate_restful
 from project.api.utilities.db_utils import DbConnection
 from project.api.queries import select_state_performance_query, select_top_selling_state_query, \
     select_courier_performance_query, select_zone_performance_query, select_transit_delays_query, \
-    select_rto_delays_query, select_ndr_reason_query, select_ndr_reason_orders_query
+    select_rto_delays_query, select_ndr_reason_query, select_ndr_reason_orders_query, inventory_analytics_query
 
 analytics_blueprint = Blueprint('analytics', __name__)
 api = Api(analytics_blueprint)
@@ -751,4 +751,47 @@ def get_ndr_reasons(resp):
         return jsonify(response), 200
     except Exception as e:
         conn.rollback()
+        return jsonify(response), 400
+
+
+@analytics_blueprint.route('/analytics/v1/inventory/', methods=['GET'])
+#@authenticate_restful
+def inventory_analytics():
+    response = {"success": False, "data":[], "meta":{}}
+    cur = conn.cursor()
+
+    try:
+        #auth_data = resp.get('data')
+        auth_data = {'user_group': 'client', 'client_prefix': 'MIRAKKI'}
+
+        data = request.form
+        if not auth_data:
+            return jsonify({"msg": "Authentication Failed"}), 400
+
+        if auth_data['user_group'] != 'client':
+            response['data'] = {}
+            return jsonify(response), 401
+        
+        client_prefix = auth_data.get('client_prefix')
+        warehouse = data.get('warehouse')
+        previous_sales_start_date = (datetime.strptime(data.get('previous_sales_start_date'), '%Y-%m-%d') + timedelta(days=1)).strftime('%Y-%m-%d')
+        previous_sales_end_date = (datetime.strptime(data.get('previous_sales_end_date'), '%Y-%m-%d') + timedelta(days=1)).strftime('%Y-%m-%d')
+        future_time_period = data.get('future_time_period')
+        expected_growth = data.get('expected_growth')
+        
+        query_to_run = inventory_analytics_query.format(client_prefix, previous_sales_start_date, previous_sales_end_date)
+        if warehouse == 'all':
+            query_to_run = query_to_run.replace('__WAREHOUSE_FILTER__', '')
+        else:
+            query_to_run = query_to_run.replace('__WAREHOUSE_FILTER__', 'AND dd.pickup_data_id IN {0}'.format(str(tuple(warehouse))))
+        
+        cur.execute(query_to_run)
+        stats = cur.fetchall()
+        print(stats)
+
+        response['success'] = True
+        return jsonify(response), 200
+    except Exception as e:
+        conn.rollback()
+        print(e)
         return jsonify(response), 400

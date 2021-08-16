@@ -1,4 +1,3 @@
-
 fetch_client_channels_query = """select aa.id,aa.client_prefix,aa.channel_id,aa.api_key,aa.api_password,aa.shop_url,
                                 aa.last_synced_order,aa.last_synced_time,aa.date_created,aa.date_updated,
                                 bb.id,bb.channel_name,bb.logo_url,bb.date_created,bb.date_updated,aa.fetch_status, 
@@ -148,7 +147,9 @@ get_orders_to_ship_query = """select aa.id,aa.channel_order_id,aa.order_date,aa.
 
 update_last_shipped_order_query = """UPDATE client_couriers SET last_shipped_order_id=%s, last_shipped_time=%s WHERE client_prefix=%s"""
 
-update_orders_status_query = """UPDATE orders SET status='READY TO SHIP' WHERE id in %s;"""
+update_orders_status_query = (
+    """UPDATE orders SET status='READY TO SHIP' WHERE id in %s;"""
+)
 
 delete_failed_shipments_query = """DELETE FROM 	order_status where shipment_id in 
                                     (select id  from shipments where remark like 'Crashing while saving package%' or remark like 'COD%');
@@ -197,7 +198,9 @@ insert_manifest_data_query = """INSERT INTO manifests (manifest_id, warehouse_pr
 
 #########################update status
 
-get_courier_id_and_key_query = """SELECT id, courier_name, api_key FROM master_couriers;"""
+get_courier_id_and_key_query = (
+    """SELECT id, courier_name, api_key FROM master_couriers;"""
+)
 
 get_status_update_orders_query = """select aa.id, bb.awb, aa.status, aa.client_prefix, aa.customer_phone, 
                                     aa.order_id_channel_unique, bb.channel_fulfillment_id, cc.api_key, 
@@ -232,7 +235,9 @@ get_status_update_orders_query = """select aa.id, bb.awb, aa.status, aa.client_p
                                     and bb.awb is not null
                                     and bb.courier_id=%s;"""
 
-order_status_update_query = """UPDATE orders SET status=%s, status_type=%s, status_detail=%s WHERE id=%s;"""
+order_status_update_query = (
+    """UPDATE orders SET status=%s, status_type=%s, status_detail=%s WHERE id=%s;"""
+)
 
 select_statuses_query = """SELECT  id, status_code, status, status_text, location, status_time, location_city from order_status
                             WHERE order_id=%s AND shipment_id=%s AND courier_id=%s
@@ -304,7 +309,9 @@ insert_into_courier_cost_query = """INSERT INTO courier_charges (weight_charged,
 
 get_client_balance = """select current_balance, account_type from client_mapping where client_prefix=%s"""
 
-update_client_balance = """update client_mapping set current_balance=%s where client_prefix=%s"""
+update_client_balance = (
+    """update client_mapping set current_balance=%s where client_prefix=%s"""
+)
 
 ######################### Ivr verification
 
@@ -763,30 +770,70 @@ select_ndr_reason_orders_query = """select cc.channel_order_id, cc.status, dd.aw
                                     __CLIENT_FILTER__
                                     order by cc.order_date"""
 
-select_serviceable_couriers_orders = """select courier_name, id, pickup,
-                                        CASE WHEN (payment_mode ilike 'cod') THEN cod_available
-                                             WHEN (payment_mode ilike 'pickup') THEN reverse_pickup ELSE serviceable 
-                                        END as delivery FROM
-                                        (select aa.id, aa.pickup_pincode, aa.delivery_pincode, dd.courier_name, aa.payment_mode,
-                                        bool_or(pickup) as pickup, bool_or(serviceable) as serviceable, 
-                                        bool_or(cod_available) as cod_available, bool_or(reverse_pickup) as reverse_pickup from 
-                                        (select aa.id, cc.pincode::varchar as pickup_pincode, ee.pincode as delivery_pincode, ff.payment_mode from orders aa
-                                        left join client_pickups bb on aa.pickup_data_id=bb.id
-                                        left join pickup_points cc on bb.pickup_id=cc.id
-                                        left join shipping_address ee on ee.id=aa.delivery_address_id
-                                        left join orders_payments ff on ff.order_id=aa.id
-                                        where aa.id in __ORDER_IDS__) aa
-                                        left join 
-                                        (select aa.pincode, bb.courier_name, pickup from  pincode_serviceability aa
-                                        left join master_couriers bb on aa.courier_id=bb.id
-                                        ) dd on aa.pickup_pincode=dd.pincode
-                                        left join 
-                                        (select aa.pincode, bb.courier_name, serviceable, cod_available, reverse_pickup 
-                                        from pincode_serviceability aa
-                                        left join master_couriers bb on aa.courier_id=bb.id
-                                        ) ff on aa.delivery_pincode=ff.pincode
-                                        where dd.courier_name=ff.courier_name
-                                        group by aa.id, aa.pickup_pincode, aa.delivery_pincode, dd.courier_name, aa.payment_mode) xx"""
+select_serviceable_couriers_orders = """
+SELECT
+    courier_name,
+    id,
+    pickup,
+    CASE WHEN (payment_mode ILIKE 'cod') THEN
+        cod_available
+    WHEN (payment_mode ILIKE 'pickup') THEN
+        reverse_pickup
+    ELSE
+        serviceable
+    END AS delivery
+FROM (
+    SELECT
+        aa.id,
+        aa.pickup_pincode,
+        aa.delivery_pincode,
+        dd.courier_name,
+        aa.payment_mode,
+        bool_or(pickup) AS pickup,
+        bool_or(serviceable) AS serviceable,
+        bool_or(cod_available) AS cod_available,
+        bool_or(reverse_pickup) AS reverse_pickup
+    FROM (
+        SELECT
+            aa.id,
+            cc.pincode::varchar AS pickup_pincode,
+            ee.pincode AS delivery_pincode,
+            ff.payment_mode
+        FROM
+            orders aa
+        LEFT JOIN client_pickups bb ON aa.pickup_data_id = bb.id
+        LEFT JOIN pickup_points cc ON bb.pickup_id = cc.id
+        LEFT JOIN shipping_address ee ON ee.id = aa.delivery_address_id
+        LEFT JOIN orders_payments ff ON ff.order_id = aa.id
+    WHERE
+        aa.id IN __ORDER_IDS__) aa
+    LEFT JOIN (
+        SELECT
+            aa.pincode,
+            bb.courier_name,
+            pickup
+        FROM
+            pincode_serviceability aa
+            LEFT JOIN master_couriers bb ON aa.courier_id = bb.id) dd ON aa.pickup_pincode = dd.pincode
+        LEFT JOIN (
+            SELECT
+                aa.pincode,
+                bb.courier_name,
+                serviceable,
+                cod_available,
+                reverse_pickup
+            FROM
+                pincode_serviceability aa
+                LEFT JOIN master_couriers bb ON aa.courier_id = bb.id) ff ON aa.delivery_pincode = ff.pincode
+        WHERE
+            dd.courier_name = ff.courier_name
+        GROUP BY
+            aa.id,
+            aa.pickup_pincode,
+            aa.delivery_pincode,
+            dd.courier_name,
+            aa.payment_mode) xx
+"""
 
 inventory_analytics_query = """
 SELECT
@@ -824,4 +871,17 @@ FROM (
     LEFT JOIN products_wro gg ON ee.id = gg.master_product_id
     LEFT JOIN client_pickups hh ON ee.pickup_data_id = hh.id
     LEFT JOIN pickup_points ii ON hh.pickup_id = ii.id
+"""
+
+all_warehouses_query = """
+SELECT
+	aa.client_prefix,
+    aa.pickup_id warehouse_id,
+    bb.pickup_location warehouse_name,
+    bb.warehouse_prefix
+FROM
+    client_pickups aa
+	LEFT JOIN pickup_points bb ON aa.pickup_id = bb.id
+WHERE
+		aa.client_prefix = '{0}'
 """

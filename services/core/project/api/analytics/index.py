@@ -23,7 +23,6 @@ from project.api.queries import (
     select_ndr_reason_query,
     select_ndr_reason_orders_query,
     inventory_analytics_query,
-    all_warehouses_query,
 )
 
 analytics_blueprint = Blueprint("analytics", __name__)
@@ -1006,14 +1005,23 @@ def get_ndr_reasons(resp):
 
 
 @analytics_blueprint.route("/analytics/v1/inventory/", methods=["GET"])
-# @authenticate_restful
-def inventory_analytics():
+@authenticate_restful
+def inventory_analytics(resp):
+    """This function generates statistics for each product of a given client
+    that is either available in a warehouse or that has active sales in the past
+    requested time period.
+    """
     response = {"success": False, "data": {}}
     cur = conn.cursor()
 
     try:
-        # auth_data = resp.get('data')
-        auth_data = {"user_group": "client", "client_prefix": "MIRAKKI"}
+        auth_data = resp.get("data")
+        # auth_data = {"user_group": "client", "client_prefix": "MIRAKKI"}
+
+        # Threshold percentage in the range [0, 1] above which quantity is considered threshold
+        overstock_threshold = 0
+        # Future number of days to be considered for calculating expected sales to determine overstock
+        overstock_timeline = 90
 
         data = request.form
         if not auth_data:
@@ -1023,8 +1031,9 @@ def inventory_analytics():
             response["data"] = {}
             return jsonify(response), 401
 
+        # Extract data from payload
         client_prefix = auth_data.get("client_prefix")
-        warehouse = data.get("warehouse")
+        warehouses = data.get("warehouses")
         previous_sales_start_date = (
             datetime.strptime(data.get("previous_sales_start_date"), "%Y-%m-%d")
             + timedelta(days=1)
@@ -1036,15 +1045,16 @@ def inventory_analytics():
         future_time_period = int(data.get("future_time_period"))
         expected_growth = float(data.get("expected_growth"))
 
+        # Run query to get stats on each product
         query_to_run = inventory_analytics_query.format(
             client_prefix, previous_sales_start_date, previous_sales_end_date
         )
-        if warehouse == "all":
+        if warehouses == "all":
             query_to_run = query_to_run.replace("__WAREHOUSE_FILTER__", "")
         else:
             query_to_run = query_to_run.replace(
                 "__WAREHOUSE_FILTER__",
-                "AND dd.pickup_data_id IN {0}".format(str(tuple(warehouse))),
+                "AND aa.warehouse_prefix IN {0}".format(str(tuple(warehouses))),
             )
 
         cur.execute(query_to_run)
@@ -1053,11 +1063,17 @@ def inventory_analytics():
         data = list()
         for stat in stats:
             data_obj = dict()
-            data_obj["product"] = {"master_id": stat[0], "id": stat[1], "name": stat[2]}
-            data_obj["warehouse"] = {"id": stat[3], "name": stat[4], "prefix": stat[5]}
-            data_obj["sales"] = stat[6]
-            data_obj["available_qty"] = stat[7]
-            data_obj["in_transit_qty"] = stat[8]
+            data_obj["product"] = {
+                "master_id": stat[1],
+                "sku": stat[2],
+                "id": stat[3],
+                "name": stat[4],
+            }
+            data_obj["warehouse_prefix"] = stat[5]
+            data_obj["available_qty"] = 0 if stat[6] is None else int(stat[6])
+            data_obj["sales"] = 0 if stat[7] is None else int(stat[7])
+            data_obj["in_transit_qty"] = 0 if stat[8] is None else int(stat[8])
+            data_obj["ead"] = stat[9]
             data_obj["sku_velocity"] = round(
                 data_obj["sales"]
                 / (
@@ -1066,9 +1082,12 @@ def inventory_analytics():
                 ).days,
                 2,
             )
-            data_obj["days_left"] = max(
-                int(data_obj["available_qty"] / data_obj["sku_velocity"]), 0
-            )
+            if data_obj["sku_velocity"] != 0:
+                data_obj["days_left"] = max(
+                    int(data_obj["available_qty"] / data_obj["sku_velocity"]), 0
+                )
+            else:
+                data_obj["days_left"] = math.inf
             data_obj["qty_to_restock"] = math.ceil(
                 data_obj["sales"]
                 * (1 + expected_growth)
@@ -1078,25 +1097,24 @@ def inventory_analytics():
                     - datetime.strptime(previous_sales_start_date, "%Y-%m-%d")
                 ).days
             )
+            data_obj["overstock"] = max(
+                data_obj["available_qty"]
+                - math.ceil(
+                    (1 + overstock_threshold)
+                    * data_obj["sku_velocity"]
+                    * overstock_timeline
+                ),
+                0,
+            )
             data.append(data_obj)
 
         response["data"]["products"] = data
 
-        query_to_run = all_warehouses_query.format(client_prefix)
-        cur.execute(query_to_run)
-        warehouses = cur.fetchall()
-
-        data = list()
-        for warehouse in warehouses:
-            data_obj = {
-                "client_prefix": warehouse[0],
-                "id": warehouse[1],
-                "name": warehouse[2],
-                "prefix": warehouse[3],
-            }
-            data.append(data_obj)
-
+        # Get list of all warehouses attached to a client at which either
+        # products are available or sales are happening
+        data = list(set((stat[4] for stat in stats)))
         response["data"]["warehouses"] = data
+
         response["success"] = True
         return jsonify(response), 200
     except Exception as e:

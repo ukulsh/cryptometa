@@ -837,51 +837,80 @@ FROM (
 
 inventory_analytics_query = """
 SELECT
-    ee.id master_product_id,
-    ee.product_id,
-    ee.product_name,
-    ee.pickup_data_id warehouse_id,
-    ii.pickup_location warehouse_name,
-    ii.warehouse_prefix,
-    ee.count sales,
-    COALESCE(ff.available_quantity, 0) + COALESCE(ff.rto_quantity, 0) available_quantity,
-    COALESCE(gg.ro_quantity, 0) - COALESCE(gg.received_quantity, 0) in_transit_quantity
+    *
 FROM (
     SELECT
-        aa.id,
-        cc.product_id,
-        bb.name product_name,
-        dd.pickup_data_id,
-        COUNT(cc.order_id)
-    FROM
-        master_products aa
-        INNER JOIN products bb ON aa.id = bb.master_product_id
-        INNER JOIN op_association cc ON bb.id = cc.product_id
-        INNER JOIN orders dd ON cc.order_id = dd.id
-    WHERE
-        aa.client_prefix = '{0}'
-        AND dd.order_date >= '{1}' and dd.order_date <= '{2}'
-        __WAREHOUSE_FILTER__
-    GROUP BY
-        aa.id,
-        cc.product_id,
-        bb.name,
-        dd.pickup_data_id) ee
-    INNER JOIN products_quantity ff ON ee.product_id = ff.product_id
-    LEFT JOIN products_wro gg ON ee.id = gg.master_product_id
-    LEFT JOIN client_pickups hh ON ee.pickup_data_id = hh.id
-    LEFT JOIN pickup_points ii ON hh.pickup_id = ii.id
-"""
-
-all_warehouses_query = """
-SELECT
-	aa.client_prefix,
-    aa.pickup_id warehouse_id,
-    bb.pickup_location warehouse_name,
-    bb.warehouse_prefix
-FROM
-    client_pickups aa
-	LEFT JOIN pickup_points bb ON aa.pickup_id = bb.id
+        aa.client_prefix,
+        aa.master_product_id,
+        aa.sku,
+        aa.product_id,
+        aa.product_name,
+        aa.warehouse_prefix,
+        SUM(aa.available_quantity) available_quantity,
+        SUM(aa.sales) sales,
+        SUM(COALESCE(cc.ro_quantity, 0) - COALESCE(cc.received_quantity, 0)) in_transit_quantity,
+  			MAX(bb.edd) ead
+    FROM ((
+            SELECT
+                aa.client_prefix,
+                aa.id master_product_id,
+                aa.sku,
+                bb.id product_id,
+                bb.name product_name,
+                cc.warehouse_prefix,
+                COALESCE(cc.available_quantity, 0) + COALESCE(cc.rto_quantity, 0) available_quantity,
+                CAST(NULL AS int) sales
+            FROM
+                master_products aa
+                INNER JOIN products bb ON aa.id = bb.master_product_id
+                LEFT JOIN products_quantity cc ON bb.id = cc.product_id
+            WHERE
+                aa.client_prefix = '{0}')
+        UNION ALL (
+            SELECT
+                aa.client_prefix,
+                aa.id master_product_id,
+                aa.sku,
+                cc.product_id product_id,
+                bb.name product_name,
+                ff.warehouse_prefix,
+                CAST(NULL AS int) available_quantity,
+                COUNT(cc.order_id) sales
+            FROM
+                master_products aa
+                INNER JOIN products bb ON aa.id = bb.master_product_id
+                LEFT JOIN op_association cc ON bb.id = cc.product_id
+                LEFT JOIN orders dd ON cc.order_id = dd.id
+                LEFT JOIN client_pickups ee ON dd.pickup_data_id = ee.id
+                LEFT JOIN pickup_points ff ON ee.pickup_id = ff.id
+            WHERE
+                aa.client_prefix = '{0}'
+                AND dd.order_date >= '{1}'
+                AND dd.order_date <= '{2}'
+                AND dd.pickup_data_id IS NOT NULL
+            GROUP BY
+                aa.id,
+                aa.client_prefix,
+                cc.product_id,
+                bb.name,
+                ee.id,
+                ff.warehouse_prefix,
+                ff.pickup_location)) aa
+    LEFT JOIN warehouse_ro bb ON aa.client_prefix = bb.client_prefix
+        AND aa.warehouse_prefix = bb.warehouse_prefix
+    LEFT JOIN products_wro cc ON aa.master_product_id = cc.master_product_id
+        AND bb.id = cc.wro_id
+GROUP BY
+    aa.client_prefix,
+    aa.master_product_id,
+    aa.sku,
+    aa.product_id,
+    aa.product_name,
+    aa.warehouse_prefix) aa
 WHERE
-		aa.client_prefix = '{0}'
+    NOT (aa.warehouse_prefix IS NULL
+        AND aa.available_quantity = 0
+        AND aa.sales IS NULL
+        AND aa.in_transit_quantity = 0)
+    __WAREHOUSE_FILTER__
 """

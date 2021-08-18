@@ -130,8 +130,10 @@ get_pickup_requests_query = """select aa.pickup_data_id,  bb.courier_id, dd.ware
                                 left join shipments bb on aa.id=bb.order_id
                                 left join client_pickups cc on aa.pickup_data_id=cc.id
                                 left join pickup_points dd on cc.pickup_id=dd.id
+                                left join client_mapping ee on ee.client_prefix=aa.client_prefix
                                 where aa.status in ('READY TO SHIP', 'PICKUP REQUESTED')
-                                and bb.id is not null"""
+                                and bb.id is not null
+                                and ee.auto_pur!=false"""
 
 insert_manifest_query = """INSERT into manifests (manifest_id, warehouse_prefix, courier_id, client_pickup_id, 
                             pickup_id, pickup_date, manifest_url, total_scheduled) VALUES (%s,%s,%s,%s,%s,%s,%s,%s) returning id;"""

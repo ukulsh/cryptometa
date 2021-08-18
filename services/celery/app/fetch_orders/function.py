@@ -1699,31 +1699,37 @@ def invoice_easyecom_order(cur, inv_text, inv_time, order_id, pickup_data_id):
 
 
 def kama_discount_fields(order, financial_status, total_amount, order_id, cur):
-    discount_amount = None
-    discount_code = None
-    discount_type = None
+    discount_amount = 0
+    discount_code = ""
+    discount_type = ""
     insert_payments_data_query_new = """INSERT INTO orders_payments (payment_mode, amount, subtotal, 
                     shipping_charges, currency, order_id, discount_amount, discount_code, discount_type)
                                 VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id"""
     try:
         if 'amaaya_amount' in order['extension_attributes'] and order['extension_attributes']['amaaya_amount']:
-            discount_amount = order['extension_attributes']['amaaya_amount']
-            discount_type = 'ecom_points'
-            discount_code = 'amaaya_amount'
+            discount_amount += order['extension_attributes']['amaaya_amount']
+            discount_type += 'ecom_points|'
+            discount_code += 'amaaya_amount:'+str(order['extension_attributes']['amaaya_amount'])+"|"
         if 'voucher_amount' in order['extension_attributes'] and order['extension_attributes']['voucher_amount']:
-            discount_amount = order['extension_attributes']['voucher_amount']
-            discount_type = 'ecom_Gyftr'
-            discount_code = order['extension_attributes']['voucher_code']
+            discount_amount += order['extension_attributes']['voucher_amount']
+            discount_type += 'ecom_Gyftr|'
+            discount_code += order['extension_attributes']['voucher_code']+":"+\
+                            str(order['extension_attributes']['voucher_amount'])+"|"
         if 'amgiftcard_code' in order['extension_attributes'] and order['extension_attributes']['amgiftcard_code']:
-            discount_amount = order['extension_attributes']['gift_voucher_discount']
-            discount_type = 'ecom_prepaid card'
-            discount_code = order['extension_attributes']['amgiftcard_code']
+            discount_amount += order['extension_attributes']['gift_voucher_discount']
+            discount_type += 'ecom_prepaid card|'
+            discount_code += order['extension_attributes']['amgiftcard_code']+":"+ \
+                            str(order['extension_attributes']['gift_voucher_discount'])+"|"
         if 'amgiftcard_code' in order['extension_attributes'] and order['extension_attributes']['amgiftcard_code']:
-            discount_amount = order['extension_attributes']['amgiftcard_gift_amount']
-            discount_type = 'ecom_Gift voucher'
-            discount_code = order['extension_attributes']['amgiftcard_code']
+            discount_amount += order['extension_attributes']['amgiftcard_gift_amount']
+            discount_type += 'ecom_Gift voucher|'
+            discount_code += order['extension_attributes']['amgiftcard_code']+":"+ \
+                            str(order['extension_attributes']['amgiftcard_gift_amount'])+"|"
+
     except Exception:
         pass
+    discount_type = discount_type.rstrip("|")
+    discount_code = discount_code.rstrip("|")
     payments_tuple = (
         financial_status, total_amount, float(order['subtotal_incl_tax']),
         float(order['shipping_incl_tax']), order["base_currency_code"], order_id,

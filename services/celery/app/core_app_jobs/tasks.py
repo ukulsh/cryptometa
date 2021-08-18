@@ -1643,7 +1643,7 @@ def create_pickups_entry_util():
 
 
 def update_pincode_serviceability_table():
-    courier_list = (15, 2, 5, 9, 27)
+    courier_list = (15, 2, 5, 9, 42, 27)
     with conn.cursor() as cur:
         for courier in courier_list:
             try:
@@ -1723,6 +1723,28 @@ def update_pincode_serviceability_table():
                                                                           datetime.utcnow()+timedelta(hours=5.5)))
 
                         conn.commit()
+
+                elif courier==42:
+                    check_url = "http://fareyesvc.ctbsplus.dtdc.com/ratecalapi/PincodeApiCall"
+                    cur.execute("SELECT pincode FROM pincode_serviceability WHERE courier_id=42;")
+                    all_pincodes = cur.fetchall()
+                    for pincode in all_pincodes:
+                        req = requests.post(check_url, headers={"content-type": "application/json"}, json={
+                            "orgPincode":"110016",
+                            "desPincode":str(pincode[0])
+                        })
+                        if req.json() and req.json()['ZIPCODE_RESP']:
+                            req = req.json()['ZIPCODE_RESP'][0]
+                            serviceable = True if req['SERVFLAG']=='Y' else False
+                            cod_available = True if req['SERV_COD']=='Y' else False
+                            pickup = True if req['SERVFLAG']=='Y' else False
+                            pincode_str = str(pincode[0])
+                            sortcode = None
+                            cur.execute(update_pincode_serviceability_query, (pincode_str, courier, serviceable,
+                                                                              cod_available, pickup, pickup, sortcode,
+                                                                              datetime.utcnow()+timedelta(hours=5.5)))
+
+                            conn.commit()
             except Exception as e:
                 logger.error("Couldn't update serviceability for "+str(courier)+"\nError: "+str(e.args[0]))
 
@@ -1850,12 +1872,22 @@ def push_kama_wondersoft(unique_id, cur=conn.cursor(), type="shipped"):
                             }
                         }
             if order[18]:
-                json_body['Order']['Payments']['Payment'].append({
-                    "PaymentMode": order[20],
-                    "PaymentValue": order[18],
-                    "ModeType": "nan",
-                    "PaymentReference": order[19],
-                })
+                if "|" in order[19]:
+                    PaymentReference = order[19].split("|")
+                    for idx, payment_obj in enumerate(PaymentReference):
+                        json_body['Order']['Payments']['Payment'].append({
+                            "PaymentMode": order[20].split("|")[idx],
+                            "PaymentValue": float(payment_obj.split(":")[1]),
+                            "ModeType": "nan",
+                            "PaymentReference": payment_obj.split(":")[0],
+                        })
+                else:
+                    json_body['Order']['Payments']['Payment'].append({
+                        "PaymentMode": order[20],
+                        "PaymentValue": order[18],
+                        "ModeType": "nan",
+                        "PaymentReference": order[19],
+                    })
 
         token_headers = {"Username": "WareIQ",
                          "Password": "Wondersoft#12",

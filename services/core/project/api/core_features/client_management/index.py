@@ -251,7 +251,7 @@ class ClientCustomizations(Resource):
                 return response_object, 201
 
             posted_data = json.loads(request.form.get("data"))
-            customization_object.subdomain = posted_data.get("subdomain")
+            customization_object.subdomain = posted_data.get("subdomain").lower().replace(' ', '')
             customization_object.theme_color = posted_data.get("theme_color")
             customization_object.background_image_url = posted_data.get(
                 "background_image_url"

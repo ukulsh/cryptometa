@@ -23,6 +23,7 @@ from project.api.queries import (
     select_ndr_reason_query,
     select_ndr_reason_orders_query,
     inventory_analytics_query,
+    inventory_analytics_filters_query,
 )
 
 analytics_blueprint = Blueprint("analytics", __name__)
@@ -1005,8 +1006,8 @@ def get_ndr_reasons(resp):
 
 
 @analytics_blueprint.route("/analytics/v1/inventory/", methods=["GET"])
-@authenticate_restful
-def inventory_analytics(resp):
+# @authenticate_restful
+def inventory_analytics():
     """This function generates statistics for each product of a given client
     that is either available in a warehouse or that has active sales in the past
     requested time period.
@@ -1015,15 +1016,14 @@ def inventory_analytics(resp):
     cur = conn.cursor()
 
     try:
-        auth_data = resp.get("data")
-        # auth_data = {"user_group": "client", "client_prefix": "MIRAKKI"}
+        # auth_data = resp.get("data")
+        auth_data = {"user_group": "client", "client_prefix": "MIRAKKI"}
 
         # Threshold percentage in the range [0, 1] above which quantity is considered threshold
         overstock_threshold = 0
         # Future number of days to be considered for calculating expected sales to determine overstock
         overstock_timeline = 90
 
-        data = request.form
         if not auth_data:
             return jsonify({"msg": "Authentication Failed"}), 400
 
@@ -1032,6 +1032,7 @@ def inventory_analytics(resp):
             return jsonify(response), 401
 
         # Extract data from payload
+        data = request.form
         client_prefix = auth_data.get("client_prefix")
         warehouses = data.get("warehouses")
         previous_sales_start_date = (
@@ -1044,10 +1045,16 @@ def inventory_analytics(resp):
         ).strftime("%Y-%m-%d")
         future_time_period = int(data.get("future_time_period"))
         expected_growth = float(data.get("expected_growth"))
+        page = int(data.get("page"))
+        per_page = int(data.get("per_page"))
 
         # Run query to get stats on each product
         query_to_run = inventory_analytics_query.format(
-            client_prefix, previous_sales_start_date, previous_sales_end_date
+            client_prefix,
+            previous_sales_start_date,
+            previous_sales_end_date,
+            (page - 1) * per_page,
+            per_page,
         )
         if warehouses == "all":
             query_to_run = query_to_run.replace("__WAREHOUSE_FILTER__", "")
@@ -1066,14 +1073,13 @@ def inventory_analytics(resp):
             data_obj["product"] = {
                 "master_id": stat[1],
                 "sku": stat[2],
-                "id": stat[3],
-                "name": stat[4],
+                "name": stat[3],
             }
-            data_obj["warehouse_prefix"] = stat[5]
-            data_obj["available_qty"] = 0 if stat[6] is None else int(stat[6])
-            data_obj["sales"] = 0 if stat[7] is None else int(stat[7])
-            data_obj["in_transit_qty"] = 0 if stat[8] is None else int(stat[8])
-            data_obj["ead"] = stat[9]
+            data_obj["warehouse_prefix"] = stat[4]
+            data_obj["available_qty"] = 0 if not stat[5] else int(stat[5])
+            data_obj["sales"] = 0 if not stat[6] else int(stat[6])
+            data_obj["in_transit_qty"] = 0 if not stat[7] else int(stat[7])
+            data_obj["ead"] = stat[8]
             data_obj["sku_velocity"] = round(
                 data_obj["sales"]
                 / (
@@ -1088,14 +1094,17 @@ def inventory_analytics(resp):
                 )
             else:
                 data_obj["days_left"] = math.inf
-            data_obj["qty_to_restock"] = math.ceil(
-                data_obj["sales"]
-                * (1 + expected_growth)
-                * future_time_period
-                / (
-                    datetime.strptime(previous_sales_end_date, "%Y-%m-%d")
-                    - datetime.strptime(previous_sales_start_date, "%Y-%m-%d")
-                ).days
+            data_obj["qty_to_restock"] = (
+                math.ceil(
+                    data_obj["sales"]
+                    * (1 + expected_growth)
+                    * future_time_period
+                    / (
+                        datetime.strptime(previous_sales_end_date, "%Y-%m-%d")
+                        - datetime.strptime(previous_sales_start_date, "%Y-%m-%d")
+                    ).days
+                )
+                - data_obj["available_qty"]
             )
             data_obj["overstock"] = max(
                 data_obj["available_qty"]
@@ -1109,14 +1118,67 @@ def inventory_analytics(resp):
             data.append(data_obj)
 
         response["data"]["products"] = data
-
-        # Get list of all warehouses attached to a client at which either
-        # products are available or sales are happening
-        data = list(set((stat[4] for stat in stats)))
-        response["data"]["warehouses"] = data
-
         response["success"] = True
         return jsonify(response), 200
+    except Exception as e:
+        conn.rollback()
+        print(e)
+        return jsonify(response), 400
+
+
+@analytics_blueprint.route("/analytics/v1/inventory/get_filters", methods=["GET"])
+# @authenticate_restful
+def get_inventory_filters():
+    response = {"success": False, "data": {}}
+    cur = conn.cursor()
+
+    try:
+        # auth_data = resp.get("data")
+        auth_data = {"user_group": "client", "client_prefix": "MIRAKKI"}
+
+        if not auth_data:
+            return jsonify({"msg": "Authentication Failed"}), 400
+
+        if auth_data["user_group"] != "client":
+            response["data"] = {}
+            return jsonify(response), 401
+
+        client_prefix = auth_data.get("client_prefix")
+        query_to_run = inventory_analytics_filters_query.format(client_prefix)
+
+        cur.execute(query_to_run)
+        filters = cur.fetchall()
+
+        data = list()
+        for filter in filters:
+            data.append({"warehouse_prefix": filter[0], "product_count": filter[1]})
+
+        response["data"] = data
+        response["success"] = True
+        return jsonify(response), 200
+    except Exception as e:
+        conn.rollback()
+        print(e)
+        return jsonify(response), 400
+
+
+@analytics_blueprint.route("/analytics/v1/inventory/snapshot", methods=["GET"])
+# @authenticate_restful
+def inventory_snapshot():
+    response = {"success": False, "data": {}}
+    cur = conn.cursor()
+
+    try:
+        # auth_data = resp.get("data")
+        auth_data = {"user_group": "client", "client_prefix": "MIRAKKI"}
+
+        if not auth_data:
+            return jsonify({"msg": "Authentication Failed"}), 400
+
+        if auth_data["user_group"] != "client":
+            response["data"] = {}
+            return jsonify(response), 401
+
     except Exception as e:
         conn.rollback()
         print(e)

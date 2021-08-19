@@ -850,62 +850,64 @@ FROM (
         SUM(COALESCE(cc.ro_quantity, 0) - COALESCE(cc.received_quantity, 0)) in_transit_quantity,
         MIN(bb.edd) ead
     FROM ((
-        SELECT
-            aa.client_prefix,
-            aa.id master_product_id,
-            aa.sku,
-            aa.name product_name,
-            bb.warehouse_prefix,
-            bb.available_quantity available_quantity,
-            CAST(NULL AS int) sales
-        FROM
-            master_products aa
-            LEFT JOIN products_quantity bb ON aa.id = bb.product_id
-        WHERE
-            aa.client_prefix = '{0}')
-    UNION ALL (
-        SELECT
-            aa.client_prefix,
-            aa.id master_product_id,
-            aa.sku,
-            aa.name product_name,
-            ee.warehouse_prefix,
-            CAST(NULL AS int) available_quantity,
-            COUNT(bb.order_id) sales
-        FROM
-            master_products aa
-            LEFT JOIN op_association bb ON aa.id = bb.master_product_id
-            LEFT JOIN orders cc ON bb.order_id = cc.id
-            LEFT JOIN client_pickups dd ON cc.pickup_data_id = dd.id
-            LEFT JOIN pickup_points ee ON dd.pickup_id = ee.id
-        WHERE
-            aa.client_prefix = '{0}'
-            AND cc.order_date >= '{1}'
-            AND cc.order_date <= '{2}'
-            AND cc.pickup_data_id IS NOT NULL
-        GROUP BY
-            aa.id,
-            aa.client_prefix,
-            aa.name,
-            aa.sku,
-            dd.id,
-            ee.warehouse_prefix)) aa
-    LEFT JOIN (
-        SELECT
-            *
-        FROM
-            warehouse_ro
-        WHERE
-            status = 'awaiting') bb ON aa.client_prefix = bb.client_prefix
-        AND aa.warehouse_prefix = bb.warehouse_prefix
-    LEFT JOIN products_wro cc ON aa.master_product_id = cc.master_product_id
-        AND bb.id = cc.wro_id
-GROUP BY
-    aa.client_prefix,
-    aa.master_product_id,
-    aa.sku,
-    aa.product_name,
-    aa.warehouse_prefix) aa
+            SELECT
+                aa.client_prefix,
+                aa.id master_product_id,
+                aa.sku,
+                aa.name product_name,
+                bb.warehouse_prefix,
+                bb.available_quantity available_quantity,
+                CAST(NULL AS int) sales
+            FROM
+                master_products aa
+                LEFT JOIN products_quantity bb ON aa.id = bb.product_id
+            WHERE
+                aa.client_prefix = '{0}'
+        )
+        UNION ALL (
+            SELECT
+                aa.client_prefix,
+                aa.id master_product_id,
+                aa.sku,
+                aa.name product_name,
+                ee.warehouse_prefix,
+                CAST(NULL AS int) available_quantity,
+                COUNT(bb.order_id) sales
+            FROM
+                master_products aa
+                LEFT JOIN op_association bb ON aa.id = bb.master_product_id
+                LEFT JOIN orders cc ON bb.order_id = cc.id
+                LEFT JOIN client_pickups dd ON cc.pickup_data_id = dd.id
+                LEFT JOIN pickup_points ee ON dd.pickup_id = ee.id
+            WHERE
+                aa.client_prefix = '{0}'
+                AND cc.order_date >= '{1}'
+                AND cc.order_date <= '{2}'
+                AND cc.pickup_data_id IS NOT NULL
+            GROUP BY
+                aa.id,
+                aa.client_prefix,
+                aa.name,
+                aa.sku,
+                dd.id,
+                ee.warehouse_prefix
+        )) aa
+        LEFT JOIN (
+            SELECT
+                *
+            FROM
+                warehouse_ro
+            WHERE
+                status = 'awaiting'
+        ) bb ON aa.client_prefix = bb.client_prefix AND aa.warehouse_prefix = bb.warehouse_prefix
+        LEFT JOIN products_wro cc ON aa.master_product_id = cc.master_product_id AND bb.id = cc.wro_id
+    GROUP BY
+        aa.client_prefix,
+        aa.master_product_id,
+        aa.sku,
+        aa.product_name,
+        aa.warehouse_prefix
+) aa
 WHERE
     NOT (aa.warehouse_prefix IS NULL
         AND aa.available_quantity = 0
@@ -913,7 +915,7 @@ WHERE
         AND aa.in_transit_quantity = 0)
     __WAREHOUSE_FILTER__
 ORDER BY
-    COALESCE(aa.sales, 0) - COALESCE(aa.available_quantity, 0) DESC
+    __SORT_BY_FILTER__
 OFFSET {3} LIMIT {4}
 """
 
@@ -922,36 +924,65 @@ SELECT
     aa.warehouse_prefix,
     COUNT(DISTINCT (aa.sku)) product_count
 FROM ((
-    SELECT
-        cc.warehouse_prefix,
-        aa.sku sku
-    FROM
-        master_products aa
-        LEFT JOIN products_wro bb ON aa.id = bb.master_product_id
-        LEFT JOIN warehouse_ro cc ON bb.wro_id = cc.id
-    WHERE
-        aa.client_prefix = '{0}'
-    GROUP BY
-        cc.warehouse_prefix,
-        aa.sku)
-UNION ALL (
-    SELECT
-        ee.warehouse_prefix,
-        aa.sku sku
-    FROM
-        master_products aa
-        LEFT JOIN op_association bb ON aa.id = bb.master_product_id
-        LEFT JOIN orders cc ON bb.order_id = cc.id
-        LEFT JOIN client_pickups dd ON cc.pickup_data_id = dd.id
-        LEFT JOIN pickup_points ee ON dd.pickup_id = ee.id
-    WHERE
-        aa.client_prefix = '{0}'
-        AND cc.pickup_data_id IS NOT NULL
-    GROUP BY
-        ee.warehouse_prefix,
-        aa.sku)) aa
+        SELECT
+            cc.warehouse_prefix,
+            aa.sku sku
+        FROM
+            master_products aa
+            LEFT JOIN products_wro bb ON aa.id = bb.master_product_id
+            LEFT JOIN warehouse_ro cc ON bb.wro_id = cc.id
+        WHERE
+            aa.client_prefix = '{0}'
+        GROUP BY
+            cc.warehouse_prefix,
+            aa.sku
+    )
+    UNION ALL (
+        SELECT
+            ee.warehouse_prefix,
+            aa.sku sku
+        FROM
+            master_products aa
+            LEFT JOIN op_association bb ON aa.id = bb.master_product_id
+            LEFT JOIN orders cc ON bb.order_id = cc.id
+            LEFT JOIN client_pickups dd ON cc.pickup_data_id = dd.id
+            LEFT JOIN pickup_points ee ON dd.pickup_id = ee.id
+        WHERE
+            aa.client_prefix = '{0}'
+            AND cc.pickup_data_id IS NOT NULL
+        GROUP BY
+            ee.warehouse_prefix,
+            aa.sku)
+) aa
 WHERE
     aa.warehouse_prefix IS NOT NULL
 GROUP BY
     aa.warehouse_prefix
+"""
+
+inventory_analytics_in_transit_query = """
+SELECT 
+    aa.client_prefix,
+    aa.id master_product_id,
+    aa.sku,
+    aa.name product_name,
+    bb.warehouse_prefix,
+    SUM(COALESCE(cc.ro_quantity, 0) - COALESCE(cc.received_quantity, 0)) in_transit_quantity,
+    MIN(bb.edd) ead
+FROM
+    master_products aa  
+    LEFT JOIN warehouse_ro bb ON aa.client_prefix = bb.client_prefix
+    LEFT JOIN products_wro cc ON aa.id = cc.master_product_id AND bb.id = cc.wro_id
+WHERE
+    aa.client_prefix = '{0}' AND bb.status = 'awaiting'
+GROUP BY
+    aa.client_prefix,
+    aa.id,
+    aa.sku,
+    aa.name,
+    bb.warehouse_prefix
+ORDER BY
+	ead ASC NULLS LAST,
+    in_transit_quantity DESC
+OFFSET {1} LIMIT {2}
 """

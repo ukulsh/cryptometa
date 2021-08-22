@@ -582,9 +582,9 @@ select_wallet_remittance_orders_query = """select yy.*, xx.transaction_id from
                                         and ee.integrated=true) yy
                                         on xx.client_prefix=yy.client_prefix 
                                         and yy.delivered_date BETWEEN xx.order_start AND xx.order_end
-                                         where xx.unique_id=__REMITTANCE_ID__
-                                         __CLIENT_FILTER__
-                                         order by delivered_date"""
+                                        __REMITTANCE_ID_FILTER__
+                                        __CLIENT_FILTER__
+                                        order by delivered_date"""
 
 select_state_performance_query = """select state, order_count, ROUND((order_count*100 / SUM(order_count) OVER ()), 1) AS perc_total, 
                                     ROUND(shipping_cost::numeric/nullif(ship_cost_count, 0), 2) as avg_ship_cost,

@@ -324,6 +324,26 @@ class ShipDelhivery:
                         if order[26].lower() == "cod":
                             shipment_data['cod_amount'] = order[27]
 
+                        if order[26].lower() == "pickup":
+                            item_list = []
+                            self.cur.execute("""SELECT image_url, color, reason, unique_id, quantity, name FROM
+                                                 return_order_quality_check aa
+                                                 left join op_association bb on aa.order_id=bb.order_id
+                                                 and aa.master_product_id=bb.master_product_id
+                                                 left join master_products cc on aa.master_product_id=cc.id
+                                                 WHERE aa.order_id=%s"""%str(order[0]))
+                            items=self.cur.fetchall()
+                            for item in items:
+                                item_list.append({"images": item[0],
+                                                  "color": item[1],
+                                                  "reason": item[2],
+                                                  "ean": item[3] if item[3] else "",
+                                                  "imei": item[3] if item[3] else "",
+                                                  "item_quantity": item[4],
+                                                  "descr": item[5]
+                                                  })
+                            shipment_data['qc'] = {'item': item_list}
+
                         shipments.append(shipment_data)
                     except Exception as e:
                         logger.error("couldn't assign order: " + str(order[0]) + "\nError: " + str(e))

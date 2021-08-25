@@ -316,7 +316,7 @@ class OrderList(Resource):
                     resp_obj["attempt_list"] = attempt_list
                     resp_obj["ndr_id"] = order[46]
                     ndr_action = "take_action"
-                    if order[30]:
+                    if order[30] and order[47] and order[47][0]=='requested':
                         if order[31] == True and order[32] in ("call", "text"):
                             ndr_action = "Cancellation confirmed by customer"
                         elif order[31] == True and order[32] == "manual":

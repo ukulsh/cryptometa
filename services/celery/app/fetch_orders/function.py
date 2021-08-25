@@ -1715,16 +1715,16 @@ def kama_discount_fields(order, financial_status, total_amount, order_id, cur):
             discount_type += 'ecom_Gyftr|'
             discount_code += order['extension_attributes']['voucher_code']+":"+\
                             str(order['extension_attributes']['voucher_amount'])+"|"
-        if 'amgiftcard_code' in order['extension_attributes'] and order['extension_attributes']['amgiftcard_code']:
+        if 'gift_voucher_discount' in order['extension_attributes'] and order['extension_attributes']['gift_voucher_discount']:
             discount_amount += order['extension_attributes']['gift_voucher_discount']
             discount_type += 'ecom_prepaid card|'
-            discount_code += order['extension_attributes']['amgiftcard_code']+":"+ \
+            discount_code += order['extension_attributes']['quicksilver_voucher_code']+":"+ \
                             str(order['extension_attributes']['gift_voucher_discount'])+"|"
-        if 'amgiftcard_code' in order['extension_attributes'] and order['extension_attributes']['amgiftcard_code']:
-            discount_amount += order['extension_attributes']['amgiftcard_gift_amount']
+        if 'kama_gv_discount' in order['extension_attributes'] and order['extension_attributes']['kama_gv_discount']:
+            discount_amount += order['extension_attributes']['kama_gv_discount']
             discount_type += 'ecom_Gift voucher|'
-            discount_code += order['extension_attributes']['amgiftcard_code']+":"+ \
-                            str(order['extension_attributes']['amgiftcard_gift_amount'])+"|"
+            discount_code += order['extension_attributes']['kama_gv_code']+":"+ \
+                            str(order['extension_attributes']['kama_gv_discount'])+"|"
 
     except Exception:
         pass

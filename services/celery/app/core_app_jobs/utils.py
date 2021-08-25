@@ -330,6 +330,8 @@ def update_easyecom_status(order, status_id):
         "current_shipment_status_id": status_id,
         "awb": order[1],
     }
+    if status_id in (3,9):
+        fulfil_data['delivery_date'] = (datetime.utcnow()+timedelta(hours=5.5)).strftime('%Y-%m-%d %H:%M:%S')
     req_ful = requests.post(create_fulfillment_url, data=json.dumps(fulfil_data),
                             headers=ful_header)
 

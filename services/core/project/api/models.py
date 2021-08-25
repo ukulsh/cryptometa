@@ -6,6 +6,8 @@ from sqlalchemy.dialects.postgresql import JSON
 from sqlalchemy import UniqueConstraint, Index
 from datetime import datetime
 from sqlalchemy.dialects.postgresql import ARRAY
+from sqlalchemy.ext.mutable import MutableDict
+from sqlalchemy.dialects.postgresql import JSONB
 
 
 class Products(db.Model):
@@ -19,22 +21,24 @@ class Products(db.Model):
     product_image = db.Column(db.String, nullable=True)
     price = db.Column(db.FLOAT, nullable=True)
     client_prefix = db.Column(db.String, nullable=True)
-    channel_id = db.Column(db.Integer, db.ForeignKey('master_channels.id'))
-    channel = db.relationship("MasterChannels", backref=db.backref("products", uselist=True))
-    subcategory_id = db.Column(db.Integer, db.ForeignKey('products_subcategories.id'))
-    subcategory = db.relationship("ProductsSubCategories", backref=db.backref("products"))
-    master_product_id = db.Column(db.Integer, db.ForeignKey('master_products.id'))
-    master_product = db.relationship("MasterProducts", backref=db.backref("products", uselist=True))
+    channel_id = db.Column(db.Integer, db.ForeignKey("master_channels.id"))
+    channel = db.relationship(
+        "MasterChannels", backref=db.backref("products", uselist=True)
+    )
+    subcategory_id = db.Column(db.Integer, db.ForeignKey("products_subcategories.id"))
+    subcategory = db.relationship(
+        "ProductsSubCategories", backref=db.backref("products")
+    )
+    master_product_id = db.Column(db.Integer, db.ForeignKey("master_products.id"))
+    master_product = db.relationship(
+        "MasterProducts", backref=db.backref("products", uselist=True)
+    )
     hsn_code = db.Column(db.String, nullable=True)
     date_created = db.Column(db.DateTime, default=datetime.now)
     date_updated = db.Column(db.DateTime, onupdate=datetime.now)
 
     def to_json(self):
-        return {
-            'id': self.id,
-            'name': self.name,
-            'sku': self.sku
-        }
+        return {"id": self.id, "name": self.name, "sku": self.sku}
 
 
 class MasterProducts(db.Model):
@@ -48,8 +52,10 @@ class MasterProducts(db.Model):
     price = db.Column(db.FLOAT, nullable=True)
     client_prefix = db.Column(db.String, nullable=True)
     active = db.Column(db.BOOLEAN, nullable=True, default=True)
-    subcategory_id = db.Column(db.Integer, db.ForeignKey('products_subcategories.id'))
-    subcategory = db.relationship("ProductsSubCategories", backref=db.backref("master_products"))
+    subcategory_id = db.Column(db.Integer, db.ForeignKey("products_subcategories.id"))
+    subcategory = db.relationship(
+        "ProductsSubCategories", backref=db.backref("master_products")
+    )
     hsn_code = db.Column(db.String, nullable=True)
     tax_rate = db.Column(db.FLOAT, nullable=True)
     date_created = db.Column(db.DateTime, default=datetime.now)
@@ -59,8 +65,10 @@ class MasterProducts(db.Model):
 class ProductQuantity(db.Model):
     __tablename__ = "products_quantity"
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    product_id = db.Column(db.Integer, db.ForeignKey('master_products.id'))
-    product = db.relationship("MasterProducts", backref=db.backref("quantity", uselist=True))
+    product_id = db.Column(db.Integer, db.ForeignKey("master_products.id"))
+    product = db.relationship(
+        "MasterProducts", backref=db.backref("quantity", uselist=True)
+    )
     total_quantity = db.Column(db.Integer, nullable=False)
     approved_quantity = db.Column(db.Integer, nullable=True)
     available_quantity = db.Column(db.Integer, nullable=True)
@@ -84,8 +92,10 @@ class KeywordWeights(db.Model):
     warehouse_prefix = db.Column(db.String, nullable=False)
     dimensions = db.Column(JSON)
     weight = db.Column(db.FLOAT, nullable=True)
-    subcategory_id = db.Column(db.Integer, db.ForeignKey('products_subcategories.id'))
-    subcategory = db.relationship("ProductsSubCategories", backref=db.backref("keyword_weights"))
+    subcategory_id = db.Column(db.Integer, db.ForeignKey("products_subcategories.id"))
+    subcategory = db.relationship(
+        "ProductsSubCategories", backref=db.backref("keyword_weights")
+    )
     date_created = db.Column(db.DateTime, default=datetime.now)
     date_updated = db.Column(db.DateTime, onupdate=datetime.now)
 
@@ -93,10 +103,18 @@ class KeywordWeights(db.Model):
 class ProductsCombos(db.Model):
     __tablename__ = "products_combos"
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    combo_id = db.Column(db.Integer, db.ForeignKey('master_products.id'))
-    combo = db.relationship("MasterProducts", backref=db.backref("combo", uselist=True), foreign_keys=[combo_id])
-    combo_prod_id = db.Column(db.Integer, db.ForeignKey('master_products.id'))
-    combo_prod = db.relationship("MasterProducts", backref=db.backref("combo_prod", uselist=True), foreign_keys=[combo_prod_id])
+    combo_id = db.Column(db.Integer, db.ForeignKey("master_products.id"))
+    combo = db.relationship(
+        "MasterProducts",
+        backref=db.backref("combo", uselist=True),
+        foreign_keys=[combo_id],
+    )
+    combo_prod_id = db.Column(db.Integer, db.ForeignKey("master_products.id"))
+    combo_prod = db.relationship(
+        "MasterProducts",
+        backref=db.backref("combo_prod", uselist=True),
+        foreign_keys=[combo_prod_id],
+    )
     quantity = db.Column(db.Integer, nullable=False, default=1)
     date_created = db.Column(db.DateTime, default=datetime.now)
     date_updated = db.Column(db.DateTime, onupdate=datetime.now)
@@ -114,7 +132,7 @@ class ProductsSubCategories(db.Model):
     __tablename__ = "products_subcategories"
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     name = db.Column(db.String, nullable=False)
-    category_id = db.Column(db.Integer, db.ForeignKey('products_categories.id'))
+    category_id = db.Column(db.Integer, db.ForeignKey("products_categories.id"))
     category = db.relationship("ProductsCategories", backref=db.backref("subcategory"))
     date_created = db.Column(db.DateTime, default=datetime.now)
     date_updated = db.Column(db.DateTime, onupdate=datetime.now)
@@ -123,8 +141,10 @@ class ProductsSubCategories(db.Model):
 class InventoryUpdate(db.Model):
     __tablename__ = "inventory_update"
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    product_id = db.Column(db.Integer, db.ForeignKey('master_products.id'))
-    product = db.relationship("MasterProducts", backref=db.backref("inventory_update", uselist=True))
+    product_id = db.Column(db.Integer, db.ForeignKey("master_products.id"))
+    product = db.relationship(
+        "MasterProducts", backref=db.backref("inventory_update", uselist=True)
+    )
     warehouse_prefix = db.Column(db.String, nullable=False)
     user = db.Column(db.String, nullable=False)
     remark = db.Column(db.String, nullable=True)
@@ -145,10 +165,10 @@ class MasterChannels(db.Model):
 
     def to_json(self):
         return {
-            'id': self.id,
-            'channel_name': self.channel_name,
-            'logo_url': self.logo_url,
-            'integrated': self.integrated
+            "id": self.id,
+            "channel_name": self.channel_name,
+            "logo_url": self.logo_url,
+            "integrated": self.integrated,
         }
 
 
@@ -173,10 +193,10 @@ class MasterCouriers(db.Model):
 
     def to_json(self):
         return {
-            'id': self.id,
-            'courier_name': self.courier_name,
-            'logo_url': self.logo_url,
-            'integrated': self.integrated
+            "id": self.id,
+            "courier_name": self.courier_name,
+            "logo_url": self.logo_url,
+            "integrated": self.integrated,
         }
 
 
@@ -196,7 +216,19 @@ class PickupPoints(db.Model):
     latitude = db.Column(db.FLOAT, nullable=True)
     longitude = db.Column(db.FLOAT, nullable=True)
 
-    def __init__(self, pickup_location, name, phone, address, address_two, city, state, country, pincode, warehouse_prefix):
+    def __init__(
+        self,
+        pickup_location,
+        name,
+        phone,
+        address,
+        address_two,
+        city,
+        state,
+        country,
+        pincode,
+        warehouse_prefix,
+    ):
         self.pickup_location = pickup_location
         self.name = name
         self.phone = phone
@@ -210,10 +242,10 @@ class PickupPoints(db.Model):
 
     def to_json(self):
         return {
-            'id': self.id,
-            'pickup_location': self.pickup_location,
-            'name': self.name,
-            'warehouse_prefix': self.warehouse_prefix
+            "id": self.id,
+            "pickup_location": self.pickup_location,
+            "name": self.name,
+            "warehouse_prefix": self.warehouse_prefix,
         }
 
 
@@ -233,7 +265,19 @@ class ReturnPoints(db.Model):
     latitude = db.Column(db.FLOAT, nullable=True)
     longitude = db.Column(db.FLOAT, nullable=True)
 
-    def __init__(self, return_location, name, phone, address, address_two, city, state, country, pincode, warehouse_prefix):
+    def __init__(
+        self,
+        return_location,
+        name,
+        phone,
+        address,
+        address_two,
+        city,
+        state,
+        country,
+        pincode,
+        warehouse_prefix,
+    ):
         self.return_location = return_location
         self.name = name
         self.phone = phone
@@ -247,11 +291,13 @@ class ReturnPoints(db.Model):
 
 
 class OPAssociation(db.Model):
-    __tablename__ = 'op_association'
+    __tablename__ = "op_association"
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    order_id = db.Column('order_id', db.Integer, db.ForeignKey('orders.id'), index=True)
-    product_id = db.Column('product_id', db.Integer, db.ForeignKey('products.id'))
-    master_product_id = db.Column('master_product_id', db.Integer, db.ForeignKey('master_products.id'))
+    order_id = db.Column("order_id", db.Integer, db.ForeignKey("orders.id"), index=True)
+    product_id = db.Column("product_id", db.Integer, db.ForeignKey("products.id"))
+    master_product_id = db.Column(
+        "master_product_id", db.Integer, db.ForeignKey("master_products.id")
+    )
     quantity = db.Column(db.Integer)
     amount = db.Column(db.FLOAT, nullable=True)
     channel_item_id = db.Column(db.String, nullable=True)
@@ -262,6 +308,23 @@ class OPAssociation(db.Model):
     discount_amount = db.Column(db.FLOAT, nullable=True)
     discount_type = db.Column(db.String, nullable=True)
     discount_code = db.Column(db.String, nullable=True)
+
+
+class ReturnOrderQualityCheck(db.Model):
+    __tablename__ = "return_order_quality_check"
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    order_id = db.Column("order_id", db.Integer, db.ForeignKey("orders.id"), index=True)
+    product_id = db.Column("product_id", db.Integer, db.ForeignKey("products.id"))
+    master_product_id = db.Column(
+        "master_product_id", db.Integer, db.ForeignKey("master_products.id")
+    )
+    image_url = db.Column(db.String, nullable=True)
+    color = db.Column(db.String, nullable=True)
+    reason = db.Column(db.Text, nullable=True)
+    unique_id = db.Column(db.String, nullable=True)
+    order = db.relationship("Orders")
+    product = db.relationship("Products")
+    master_product = db.relationship("MasterProducts")
 
 
 class Orders(db.Model):
@@ -275,24 +338,36 @@ class Orders(db.Model):
     status = db.Column(db.String, nullable=False)
     status_type = db.Column(db.String, nullable=True)
     status_detail = db.Column(db.String, nullable=True)
-    products = db.relationship("OPAssociation", backref="orders", primaryjoin=id == OPAssociation.order_id)
-    delivery_address_id = db.Column(db.Integer, db.ForeignKey('shipping_address.id'))
-    delivery_address = db.relationship("ShippingAddress", backref=db.backref("orders", uselist=True))
-    billing_address_id = db.Column(db.Integer, db.ForeignKey('billing_address.id'))
-    billing_address = db.relationship("BillingAddress", backref=db.backref("orders", uselist=True))
+    products = db.relationship(
+        "OPAssociation", backref="orders", primaryjoin=id == OPAssociation.order_id
+    )
+    qc = db.relationship(
+        "ReturnOrderQualityCheck", backref="orders", primaryjoin=id == ReturnOrderQualityCheck.order_id
+    )
+    delivery_address_id = db.Column(db.Integer, db.ForeignKey("shipping_address.id"))
+    delivery_address = db.relationship(
+        "ShippingAddress", backref=db.backref("orders", uselist=True)
+    )
+    billing_address_id = db.Column(db.Integer, db.ForeignKey("billing_address.id"))
+    billing_address = db.relationship(
+        "BillingAddress", backref=db.backref("orders", uselist=True)
+    )
     client_prefix = db.Column(db.String, nullable=True)
-    client_channel_id = db.Column(db.Integer, db.ForeignKey('client_channel.id'))
-    client_channel = db.relationship("ClientChannel", backref=db.backref("orders", uselist=True))
-    master_channel_id = db.Column(db.Integer, db.ForeignKey('master_channels.id'))
+    client_channel_id = db.Column(db.Integer, db.ForeignKey("client_channel.id"))
+    client_channel = db.relationship(
+        "ClientChannel", backref=db.backref("orders", uselist=True)
+    )
+    master_channel_id = db.Column(db.Integer, db.ForeignKey("master_channels.id"))
     master_channel = db.relationship("MasterChannels", backref=db.backref("orders"))
     order_id_channel_unique = db.Column(db.String, nullable=True)
-    pickup_data_id = db.Column(db.Integer, db.ForeignKey('client_pickups.id'))
-    pickup_data = db.relationship("ClientPickups", backref=db.backref("orders", uselist=True))
+    pickup_data_id = db.Column(db.Integer, db.ForeignKey("client_pickups.id"))
+    pickup_data = db.relationship(
+        "ClientPickups", backref=db.backref("orders", uselist=True)
+    )
     chargeable_weight = db.Column(db.FLOAT, nullable=True)
     date_created = db.Column(db.DateTime, default=datetime.now)
     date_updated = db.Column(db.DateTime, onupdate=datetime.now)
-    __table_args__ = (Index('orders_id_date_idx_2', 'order_date', 'id'),
-                      )
+    __table_args__ = (Index("orders_id_date_idx_2", "order_date", "id"),)
 
 
 class FailedOrders(db.Model):
@@ -306,25 +381,35 @@ class FailedOrders(db.Model):
     error = db.Column(db.String, nullable=True)
     synced = db.Column(db.BOOLEAN, nullable=True, default=False)
     client_prefix = db.Column(db.String, nullable=True)
-    client_channel_id = db.Column(db.Integer, db.ForeignKey('client_channel.id'))
-    client_channel = db.relationship("ClientChannel", backref=db.backref("failed_orders", uselist=True))
-    master_channel_id = db.Column(db.Integer, db.ForeignKey('master_channels.id'))
-    master_channel = db.relationship("MasterChannels", backref=db.backref("failed_orders"))
+    client_channel_id = db.Column(db.Integer, db.ForeignKey("client_channel.id"))
+    client_channel = db.relationship(
+        "ClientChannel", backref=db.backref("failed_orders", uselist=True)
+    )
+    master_channel_id = db.Column(db.Integer, db.ForeignKey("master_channels.id"))
+    master_channel = db.relationship(
+        "MasterChannels", backref=db.backref("failed_orders")
+    )
     order_id_channel_unique = db.Column(db.String, nullable=True)
     date_created = db.Column(db.DateTime, default=datetime.now)
     date_updated = db.Column(db.DateTime, onupdate=datetime.now)
     __table_args__ = (
-        db.UniqueConstraint('order_id_channel_unique', 'client_channel_id', name='fld_ord_unique'),
+        db.UniqueConstraint(
+            "order_id_channel_unique", "client_channel_id", name="fld_ord_unique"
+        ),
     )
 
 
 class OrdersInvoice(db.Model):
     __tablename__ = "orders_invoice"
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    order_id = db.Column(db.Integer, db.ForeignKey('orders.id'))
-    order = db.relationship("Orders", backref=db.backref("orders_invoice", uselist=True))
-    pickup_data_id = db.Column(db.Integer, db.ForeignKey('client_pickups.id'))
-    pickup_data = db.relationship("ClientPickups", backref=db.backref("orders_invoice", uselist=True))
+    order_id = db.Column(db.Integer, db.ForeignKey("orders.id"))
+    order = db.relationship(
+        "Orders", backref=db.backref("orders_invoice", uselist=True)
+    )
+    pickup_data_id = db.Column(db.Integer, db.ForeignKey("client_pickups.id"))
+    pickup_data = db.relationship(
+        "ClientPickups", backref=db.backref("orders_invoice", uselist=True)
+    )
     invoice_no_text = db.Column(db.String, nullable=False)
     invoice_no = db.Column(db.Integer, nullable=False)
     cancelled = db.Column(db.BOOLEAN, nullable=True)
@@ -340,8 +425,10 @@ class OrdersPayments(db.Model):
     amount = db.Column(db.FLOAT, nullable=False)
     subtotal = db.Column(db.FLOAT, nullable=True)
     shipping_charges = db.Column(db.FLOAT, nullable=True)
-    currency = db.Column(db.String, nullable=False, default='INR')
-    order_id = db.Column(db.Integer, db.ForeignKey('orders.id'), unique=True, index=True)
+    currency = db.Column(db.String, nullable=False, default="INR")
+    order_id = db.Column(
+        db.Integer, db.ForeignKey("orders.id"), unique=True, index=True
+    )
     order = db.relationship("Orders", backref=db.backref("payments", uselist=True))
     discount_amount = db.Column(db.FLOAT, nullable=True)
     discount_type = db.Column(db.String, nullable=True)
@@ -351,8 +438,12 @@ class OrdersPayments(db.Model):
 class OrdersExtraDetails(db.Model):
     __tablename__ = "orders_extra_details"
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    order_id = db.Column(db.Integer, db.ForeignKey('orders.id'), unique=True, index=True)
-    order = db.relationship("Orders", backref=db.backref("orders_extra_details", uselist=True))
+    order_id = db.Column(
+        db.Integer, db.ForeignKey("orders.id"), unique=True, index=True
+    )
+    order = db.relationship(
+        "Orders", backref=db.backref("orders_extra_details", uselist=True)
+    )
     ip_address = db.Column(db.String, nullable=True)
     user_agent = db.Column(db.String, nullable=True)
     session_id = db.Column(db.String, nullable=True)
@@ -368,8 +459,10 @@ class OrdersExtraDetails(db.Model):
 class ThirdwatchData(db.Model):
     __tablename__ = "thirdwatch_data"
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    order_id = db.Column(db.Integer, db.ForeignKey('orders.id'), unique=True)
-    order = db.relationship("Orders", backref=db.backref("thirdwatch_data", uselist=True))
+    order_id = db.Column(db.Integer, db.ForeignKey("orders.id"), unique=True)
+    order = db.relationship(
+        "Orders", backref=db.backref("thirdwatch_data", uselist=True)
+    )
     flag = db.Column(db.String, nullable=True)
     order_timestamp = db.Column(db.String, nullable=True)
     score = db.Column(db.FLOAT, nullable=True)
@@ -435,14 +528,20 @@ class Shipments(db.Model):
     weight = db.Column(db.FLOAT, nullable=True)
     volumetric_weight = db.Column(db.FLOAT, nullable=True)
     dimensions = db.Column(JSON)
-    order_id = db.Column(db.Integer, db.ForeignKey('orders.id'))
+    order_id = db.Column(db.Integer, db.ForeignKey("orders.id"))
     order = db.relationship("Orders", backref=db.backref("shipments", uselist=True))
-    pickup_id = db.Column(db.Integer, db.ForeignKey('pickup_points.id'))
-    pickup = db.relationship("PickupPoints", backref=db.backref("shipments", uselist=True))
-    return_point_id = db.Column(db.Integer, db.ForeignKey('return_points.id'))
-    return_point = db.relationship("ReturnPoints", backref=db.backref("shipments", uselist=True))
-    courier_id = db.Column(db.Integer, db.ForeignKey('master_couriers.id'))
-    courier = db.relationship("MasterCouriers", backref=db.backref("shipments", uselist=True))
+    pickup_id = db.Column(db.Integer, db.ForeignKey("pickup_points.id"))
+    pickup = db.relationship(
+        "PickupPoints", backref=db.backref("shipments", uselist=True)
+    )
+    return_point_id = db.Column(db.Integer, db.ForeignKey("return_points.id"))
+    return_point = db.relationship(
+        "ReturnPoints", backref=db.backref("shipments", uselist=True)
+    )
+    courier_id = db.Column(db.Integer, db.ForeignKey("master_couriers.id"))
+    courier = db.relationship(
+        "MasterCouriers", backref=db.backref("shipments", uselist=True)
+    )
     routing_code = db.Column(db.String, nullable=True)
     edd = db.Column(db.DateTime)
     pdd = db.Column(db.DateTime)
@@ -451,8 +550,7 @@ class Shipments(db.Model):
     remark = db.Column(db.Text, nullable=True)
     zone = db.Column(db.String, nullable=True)
     same_state = db.Column(db.BOOLEAN, nullable=True, default=None)
-    __table_args__ = (UniqueConstraint('order_id', name='order_id_unique'),
-                      )
+    __table_args__ = (UniqueConstraint("order_id", name="order_id_unique"),)
 
 
 class NDRReasons(db.Model):
@@ -464,11 +562,11 @@ class NDRReasons(db.Model):
 class NDRShipments(db.Model):
     __tablename__ = "ndr_shipments"
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    order_id = db.Column(db.Integer, db.ForeignKey('orders.id'), index=True)
+    order_id = db.Column(db.Integer, db.ForeignKey("orders.id"), index=True)
     order = db.relationship("Orders", backref=db.backref("ndr_shipments"))
-    shipment_id = db.Column(db.Integer, db.ForeignKey('shipments.id'))
+    shipment_id = db.Column(db.Integer, db.ForeignKey("shipments.id"))
     shipment = db.relationship("Shipments", backref=db.backref("ndr_shipments"))
-    reason_id = db.Column(db.Integer, db.ForeignKey('ndr_reasons.id'))
+    reason_id = db.Column(db.Integer, db.ForeignKey("ndr_reasons.id"))
     reason = db.relationship("NDRReasons", backref=db.backref("ndr_shipments"))
     current_status = db.Column(db.String, nullable=True)
     ndr_remark = db.Column(db.String, nullable=True)
@@ -484,8 +582,10 @@ class ClientChannel(db.Model):
     __tablename__ = "client_channel"
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     client_prefix = db.Column(db.String, nullable=True)
-    channel_id = db.Column(db.Integer, db.ForeignKey('master_channels.id'))
-    channel = db.relationship("MasterChannels", backref=db.backref("client_channel", uselist=True))
+    channel_id = db.Column(db.Integer, db.ForeignKey("master_channels.id"))
+    channel = db.relationship(
+        "MasterChannels", backref=db.backref("client_channel", uselist=True)
+    )
     store_name = db.Column(db.String, nullable=True)
     api_key = db.Column(db.String, nullable=True)
     api_password = db.Column(db.String, nullable=True)
@@ -495,15 +595,15 @@ class ClientChannel(db.Model):
     last_synced_time = db.Column(db.DateTime, nullable=True)
     fetch_status = db.Column(ARRAY(db.String(20)))
     mark_shipped = db.Column(db.BOOLEAN, nullable=True, default=True)
-    shipped_status = db.Column(db.String, nullable=True, default='shipped')
+    shipped_status = db.Column(db.String, nullable=True, default="shipped")
     mark_canceled = db.Column(db.BOOLEAN, nullable=True, default=True)
-    canceled_status = db.Column(db.String, nullable=True, default='cancelled')
+    canceled_status = db.Column(db.String, nullable=True, default="cancelled")
     mark_returned = db.Column(db.BOOLEAN, nullable=True, default=True)
-    returned_status = db.Column(db.String, nullable=True, default='returned')
+    returned_status = db.Column(db.String, nullable=True, default="returned")
     mark_delivered = db.Column(db.BOOLEAN, nullable=True, default=True)
-    delivered_status = db.Column(db.String, nullable=True, default='delivered')
+    delivered_status = db.Column(db.String, nullable=True, default="delivered")
     mark_invoiced = db.Column(db.BOOLEAN, nullable=True, default=True)
-    invoiced_status = db.Column(db.String, nullable=True, default='invoiced')
+    invoiced_status = db.Column(db.String, nullable=True, default="invoiced")
     status = db.Column(db.BOOLEAN, default=True, nullable=False)
     connection_status = db.Column(db.BOOLEAN, default=True, nullable=False)
     unique_parameter = db.Column(db.String, nullable=True)
@@ -512,10 +612,28 @@ class ClientChannel(db.Model):
     date_created = db.Column(db.DateTime, default=datetime.now)
     date_updated = db.Column(db.DateTime, onupdate=datetime.now)
 
-    def __init__(self, client_prefix=None, store_name=None, channel_id=None, api_key=None,  api_password=None, shop_url=None, shared_secret=None,
-                 mark_shipped=None, shipped_status=None, mark_invoiced=None, invoiced_status=None, mark_canceled=None,
-                 canceled_status=None, mark_delivered=None, delivered_status=None, mark_returned=None, returned_status=None,
-                 sync_inventory=None, fetch_status=[]):
+    def __init__(
+        self,
+        client_prefix=None,
+        store_name=None,
+        channel_id=None,
+        api_key=None,
+        api_password=None,
+        shop_url=None,
+        shared_secret=None,
+        mark_shipped=None,
+        shipped_status=None,
+        mark_invoiced=None,
+        invoiced_status=None,
+        mark_canceled=None,
+        canceled_status=None,
+        mark_delivered=None,
+        delivered_status=None,
+        mark_returned=None,
+        returned_status=None,
+        sync_inventory=None,
+        fetch_status=[],
+    ):
         self.client_prefix = client_prefix
         self.store_name = store_name
         self.channel_id = channel_id
@@ -538,31 +656,35 @@ class ClientChannel(db.Model):
 
     def to_json(self):
         return {
-            'id': self.id,
-            'channel_name': self.channel.channel_name,
-            'logo_url': self.channel.logo_url,
-            'api_key': self.api_key,
-            'api_password': self.api_password,
-            'store_name': self.store_name,
-            'shop_url': self.shop_url,
-            'shared_secret': self.shared_secret,
-            'mark_shipped': self.mark_shipped,
-            'shipped_status': self.shipped_status,
-            'mark_invoiced': self.mark_invoiced,
-            'invoiced_status': self.invoiced_status,
-            'mark_canceled': self.mark_canceled,
-            'canceled_status': self.canceled_status,
-            'mark_delivered': self.mark_delivered,
-            'delivered_status': self.delivered_status,
-            'mark_returned': self.mark_returned,
-            'returned_status': self.returned_status,
-            'sync_inventory': self.sync_inventory,
-            'fetch_status': self.fetch_status if isinstance(self.fetch_status, list) else [],
-            'status': self.status,
-            'connection_status': self.connection_status,
-            'last_synced_time': str(self.last_synced_time) if self.last_synced_time else None,
-            'badges_active': True if self.script_id else False,
-            'script_id': self.script_id
+            "id": self.id,
+            "channel_name": self.channel.channel_name,
+            "logo_url": self.channel.logo_url,
+            "api_key": self.api_key,
+            "api_password": self.api_password,
+            "store_name": self.store_name,
+            "shop_url": self.shop_url,
+            "shared_secret": self.shared_secret,
+            "mark_shipped": self.mark_shipped,
+            "shipped_status": self.shipped_status,
+            "mark_invoiced": self.mark_invoiced,
+            "invoiced_status": self.invoiced_status,
+            "mark_canceled": self.mark_canceled,
+            "canceled_status": self.canceled_status,
+            "mark_delivered": self.mark_delivered,
+            "delivered_status": self.delivered_status,
+            "mark_returned": self.mark_returned,
+            "returned_status": self.returned_status,
+            "sync_inventory": self.sync_inventory,
+            "fetch_status": self.fetch_status
+            if isinstance(self.fetch_status, list)
+            else [],
+            "status": self.status,
+            "connection_status": self.connection_status,
+            "last_synced_time": str(self.last_synced_time)
+            if self.last_synced_time
+            else None,
+            "badges_active": True if self.script_id else False,
+            "script_id": self.script_id,
         }
 
 
@@ -604,11 +726,17 @@ class ClientCouriers(db.Model):
     __tablename__ = "client_couriers"
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     client_prefix = db.Column(db.String, nullable=True)
-    courier_id = db.Column(db.Integer, db.ForeignKey('master_couriers.id'))
-    courier = db.relationship("MasterCouriers", backref=db.backref("client_couriers", uselist=True))
-    priority = db.Column(db.Integer, nullable=False, default=1) #column to define product by which be ship order
-    last_shipped_order_id = db.Column(db.Integer, db.ForeignKey('orders.id'))
-    last_shipped_order = db.relationship("Orders", backref=db.backref("client_couriers", uselist=True))
+    courier_id = db.Column(db.Integer, db.ForeignKey("master_couriers.id"))
+    courier = db.relationship(
+        "MasterCouriers", backref=db.backref("client_couriers", uselist=True)
+    )
+    priority = db.Column(
+        db.Integer, nullable=False, default=1
+    )  # column to define product by which be ship order
+    last_shipped_order_id = db.Column(db.Integer, db.ForeignKey("orders.id"))
+    last_shipped_order = db.relationship(
+        "Orders", backref=db.backref("client_couriers", uselist=True)
+    )
     last_shipped_time = db.Column(db.DateTime, nullable=True)
     unique_parameter = db.Column(db.String, nullable=True)
     active = db.Column(db.BOOLEAN, nullable=True, default=None)
@@ -624,11 +752,11 @@ class ClientCouriers(db.Model):
 
     def to_json(self):
         return {
-            'client_prefix': self.client_prefix,
-            'courier_name': self.courier.courier_name,
-            'priority': self.priority,
-            'active': self.active,
-            'logo_url': self.courier.logo_url if self.courier else None,
+            "client_prefix": self.client_prefix,
+            "courier_name": self.courier.courier_name,
+            "priority": self.priority,
+            "active": self.active,
+            "logo_url": self.courier.logo_url if self.courier else None,
         }
 
 
@@ -636,14 +764,20 @@ class ClientPickups(db.Model):
     __tablename__ = "client_pickups"
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     client_prefix = db.Column(db.String, nullable=True)
-    pickup_id = db.Column(db.Integer, db.ForeignKey('pickup_points.id'))
-    pickup = db.relationship("PickupPoints", backref=db.backref("client_pickups", uselist=True))
-    return_point_id = db.Column(db.Integer, db.ForeignKey('return_points.id'))
-    return_point = db.relationship("ReturnPoints", backref=db.backref("client_returns", uselist=True))
+    pickup_id = db.Column(db.Integer, db.ForeignKey("pickup_points.id"))
+    pickup = db.relationship(
+        "PickupPoints", backref=db.backref("client_pickups", uselist=True)
+    )
+    return_point_id = db.Column(db.Integer, db.ForeignKey("return_points.id"))
+    return_point = db.relationship(
+        "ReturnPoints", backref=db.backref("client_returns", uselist=True)
+    )
     gstin = db.Column(db.String, nullable=True)
     easyecom_loc_code = db.Column(db.String, nullable=True)
     active = db.Column(db.BOOLEAN, nullable=True, default=True)
-    wareiq_location = db.Column(db.BOOLEAN, nullable=False, server_default='false', default=False)
+    wareiq_location = db.Column(
+        db.BOOLEAN, nullable=False, server_default="false", default=False
+    )
     enable_sdd = db.Column(db.BOOLEAN, nullable=True, default=False)
     invoice_prefix = db.Column(db.String, nullable=True)
     invoice_last = db.Column(db.Integer, nullable=True, default=0)
@@ -658,31 +792,31 @@ class ClientPickups(db.Model):
 
     def to_json(self):
         return {
-            'id': self.id,
-            'client_prefix': self.client_prefix,
-            'pickup_address': self.pickup.address,
-            'pickup_address_two': self.pickup.address_two,
-            'pickup_name': self.pickup.name,
-            'pickup_location': self.pickup.pickup_location,
-            'pickup_phone': self.pickup.phone,
-            'pickup_city': self.pickup.city,
-            'pickup_state': self.pickup.state,
-            'pickup_country': self.pickup.country,
-            'pickup_pincode': self.pickup.pincode,
-            'pickup_warehouse_prefix': self.pickup.warehouse_prefix,
-            'gstin': self.gstin,
-            'return_address': self.return_point.address,
-            'return_address_two': self.return_point.address_two,
-            'return_name': self.return_point.name,
-            'return_location': self.return_point.return_location,
-            'return_phone': self.return_point.phone,
-            'return_city': self.return_point.city,
-            'return_state': self.return_point.state,
-            'return_country': self.return_point.country,
-            'return_pincode': self.return_point.pincode,
-            'return_warehouse_prefix': self.return_point.warehouse_prefix,
-            'active': self.active,
-            'wareiq_location': self.wareiq_location
+            "id": self.id,
+            "client_prefix": self.client_prefix,
+            "pickup_address": self.pickup.address,
+            "pickup_address_two": self.pickup.address_two,
+            "pickup_name": self.pickup.name,
+            "pickup_location": self.pickup.pickup_location,
+            "pickup_phone": self.pickup.phone,
+            "pickup_city": self.pickup.city,
+            "pickup_state": self.pickup.state,
+            "pickup_country": self.pickup.country,
+            "pickup_pincode": self.pickup.pincode,
+            "pickup_warehouse_prefix": self.pickup.warehouse_prefix,
+            "gstin": self.gstin,
+            "return_address": self.return_point.address,
+            "return_address_two": self.return_point.address_two,
+            "return_name": self.return_point.name,
+            "return_location": self.return_point.return_location,
+            "return_phone": self.return_point.phone,
+            "return_city": self.return_point.city,
+            "return_state": self.return_point.state,
+            "return_country": self.return_point.country,
+            "return_pincode": self.return_point.pincode,
+            "return_warehouse_prefix": self.return_point.warehouse_prefix,
+            "active": self.active,
+            "wareiq_location": self.wareiq_location,
         }
 
 
@@ -691,12 +825,16 @@ class PickupRequests(db.Model):
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     client_prefix = db.Column(db.String, nullable=False)
     warehouse_prefix = db.Column(db.String, nullable=False)
-    last_picked_order_id = db.Column(db.Integer, db.ForeignKey('orders.id'))
-    last_picked_order = db.relationship("Orders", backref=db.backref("pickup_requests", uselist=True))
+    last_picked_order_id = db.Column(db.Integer, db.ForeignKey("orders.id"))
+    last_picked_order = db.relationship(
+        "Orders", backref=db.backref("pickup_requests", uselist=True)
+    )
     pickup_after_hours = db.Column(db.Integer, nullable=False)
     last_pickup_request_date = db.Column(db.DateTime, nullable=True)
-    pickup_id = db.Column(db.Integer, db.ForeignKey('pickup_points.id'))
-    pickup = db.relationship("PickupPoints", backref=db.backref("pickup_requests", uselist=True))
+    pickup_id = db.Column(db.Integer, db.ForeignKey("pickup_points.id"))
+    pickup = db.relationship(
+        "PickupPoints", backref=db.backref("pickup_requests", uselist=True)
+    )
     date_created = db.Column(db.DateTime, default=datetime.now)
     date_updated = db.Column(db.DateTime, onupdate=datetime.now)
 
@@ -706,12 +844,18 @@ class Manifests(db.Model):
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     manifest_id = db.Column(db.String, nullable=False)
     warehouse_prefix = db.Column(db.String, nullable=False)
-    courier_id = db.Column(db.Integer, db.ForeignKey('master_couriers.id'))
-    courier = db.relationship("MasterCouriers", backref=db.backref("manifests", uselist=True))
-    pickup_id = db.Column(db.Integer, db.ForeignKey('pickup_points.id'))
-    pickup = db.relationship("PickupPoints", backref=db.backref("manifests", uselist=True))
-    client_pickup_id = db.Column(db.Integer, db.ForeignKey('client_pickups.id'))
-    client_pickup = db.relationship("ClientPickups", backref=db.backref("manifests", uselist=True))
+    courier_id = db.Column(db.Integer, db.ForeignKey("master_couriers.id"))
+    courier = db.relationship(
+        "MasterCouriers", backref=db.backref("manifests", uselist=True)
+    )
+    pickup_id = db.Column(db.Integer, db.ForeignKey("pickup_points.id"))
+    pickup = db.relationship(
+        "PickupPoints", backref=db.backref("manifests", uselist=True)
+    )
+    client_pickup_id = db.Column(db.Integer, db.ForeignKey("client_pickups.id"))
+    client_pickup = db.relationship(
+        "ClientPickups", backref=db.backref("manifests", uselist=True)
+    )
     total_scheduled = db.Column(db.Integer, nullable=True)
     total_picked = db.Column(db.Integer, nullable=True)
     pickup_date = db.Column(db.DateTime, nullable=True)
@@ -723,28 +867,32 @@ class Manifests(db.Model):
 class OrderPickups(db.Model):
     __tablename__ = "order_pickups"
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    manifest_id = db.Column(db.Integer, db.ForeignKey('manifests.id'))
+    manifest_id = db.Column(db.Integer, db.ForeignKey("manifests.id"))
     manifest = db.relationship("Manifests", backref=db.backref("order_pickups"))
-    order_id = db.Column(db.Integer, db.ForeignKey('orders.id'))
+    order_id = db.Column(db.Integer, db.ForeignKey("orders.id"))
     order = db.relationship("Orders", backref=db.backref("order_pickups"))
     picked = db.Column(db.BOOLEAN, nullable=True, default=None)
     pickup_time = db.Column(db.DateTime, default=None)
     date_created = db.Column(db.DateTime, default=datetime.now)
     date_updated = db.Column(db.DateTime, onupdate=datetime.now)
     __table_args__ = (
-        db.UniqueConstraint('order_id', 'manifest_id', name='ord_mnf_unique'),
+        db.UniqueConstraint("order_id", "manifest_id", name="ord_mnf_unique"),
     )
 
 
 class OrderStatus(db.Model):
     __tablename__ = "order_status"
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    order_id = db.Column(db.Integer, db.ForeignKey('orders.id'))
+    order_id = db.Column(db.Integer, db.ForeignKey("orders.id"))
     order = db.relationship("Orders", backref=db.backref("order_status", uselist=True))
-    courier_id = db.Column(db.Integer, db.ForeignKey('master_couriers.id'))
-    courier = db.relationship("MasterCouriers", backref=db.backref("order_status", uselist=True))
-    shipment_id = db.Column(db.Integer, db.ForeignKey('shipments.id'))
-    shipment = db.relationship("Shipments", backref=db.backref("order_status", uselist=True))
+    courier_id = db.Column(db.Integer, db.ForeignKey("master_couriers.id"))
+    courier = db.relationship(
+        "MasterCouriers", backref=db.backref("order_status", uselist=True)
+    )
+    shipment_id = db.Column(db.Integer, db.ForeignKey("shipments.id"))
+    shipment = db.relationship(
+        "Shipments", backref=db.backref("order_status", uselist=True)
+    )
     status_code = db.Column(db.String, nullable=True)
     status = db.Column(db.String, nullable=True)
     status_text = db.Column(db.String, nullable=True)
@@ -752,19 +900,29 @@ class OrderStatus(db.Model):
     location_city = db.Column(db.String, nullable=True)
     status_time = db.Column(db.DateTime, default=datetime.now)
     __table_args__ = (
-        db.UniqueConstraint('order_id', 'courier_id', 'shipment_id', 'status', name='ord_cr_shp_st_unique'),
+        db.UniqueConstraint(
+            "order_id",
+            "courier_id",
+            "shipment_id",
+            "status",
+            name="ord_cr_shp_st_unique",
+        ),
     )
 
 
 class OrderScans(db.Model):
     __tablename__ = "order_scans"
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    order_id = db.Column(db.Integer, db.ForeignKey('orders.id'))
+    order_id = db.Column(db.Integer, db.ForeignKey("orders.id"))
     order = db.relationship("Orders", backref=db.backref("order_scans", uselist=True))
-    courier_id = db.Column(db.Integer, db.ForeignKey('master_couriers.id'))
-    courier = db.relationship("MasterCouriers", backref=db.backref("order_scans", uselist=True))
-    shipment_id = db.Column(db.Integer, db.ForeignKey('shipments.id'))
-    shipment = db.relationship("Shipments", backref=db.backref("order_scans", uselist=True))
+    courier_id = db.Column(db.Integer, db.ForeignKey("master_couriers.id"))
+    courier = db.relationship(
+        "MasterCouriers", backref=db.backref("order_scans", uselist=True)
+    )
+    shipment_id = db.Column(db.Integer, db.ForeignKey("shipments.id"))
+    shipment = db.relationship(
+        "Shipments", backref=db.backref("order_scans", uselist=True)
+    )
     status_code = db.Column(db.String, nullable=True)
     status = db.Column(db.String, nullable=True)
     status_text = db.Column(db.String, nullable=True)
@@ -772,7 +930,14 @@ class OrderScans(db.Model):
     location_city = db.Column(db.String, nullable=True)
     status_time = db.Column(db.DateTime, default=datetime.now)
     __table_args__ = (
-        db.UniqueConstraint('order_id', 'courier_id', 'shipment_id', 'status', 'status_time', name='ord_cr_shp_st_sttime_unique'),
+        db.UniqueConstraint(
+            "order_id",
+            "courier_id",
+            "shipment_id",
+            "status",
+            "status_time",
+            name="ord_cr_shp_st_sttime_unique",
+        ),
     )
 
 
@@ -785,10 +950,14 @@ class DiscrepencyStatus(db.Model):
 class WeightDiscrepency(db.Model):
     __tablename__ = "weight_discrepency"
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    status_id = db.Column(db.Integer, db.ForeignKey('discrepency_status.id'))
-    status = db.relationship("DiscrepencyStatus", backref=db.backref("weight_discrepency", uselist=True))
-    shipment_id = db.Column(db.Integer, db.ForeignKey('shipments.id'))
-    shipment = db.relationship("Shipments", backref=db.backref("weight_discrepency", uselist=True))
+    status_id = db.Column(db.Integer, db.ForeignKey("discrepency_status.id"))
+    status = db.relationship(
+        "DiscrepencyStatus", backref=db.backref("weight_discrepency", uselist=True)
+    )
+    shipment_id = db.Column(db.Integer, db.ForeignKey("shipments.id"))
+    shipment = db.relationship(
+        "Shipments", backref=db.backref("weight_discrepency", uselist=True)
+    )
     raised_date = db.Column(db.DateTime, default=datetime.now)
     dispute_date = db.Column(db.DateTime, default=datetime.now)
     charged_weight = db.Column(db.FLOAT, nullable=True)
@@ -803,7 +972,9 @@ class WeightDiscrepency(db.Model):
 class CodVerification(db.Model):
     __tablename__ = "cod_verification"
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    order_id = db.Column(db.Integer, db.ForeignKey('orders.id'), unique=True, index=True)
+    order_id = db.Column(
+        db.Integer, db.ForeignKey("orders.id"), unique=True, index=True
+    )
     order = db.relationship("Orders", backref=db.backref("exotel_data", uselist=True))
     call_sid = db.Column(db.String, nullable=True)
     recording_url = db.Column(db.String, nullable=True)
@@ -812,17 +983,19 @@ class CodVerification(db.Model):
     verification_link = db.Column(db.String, nullable=True)
     verification_time = db.Column(db.DateTime, default=datetime.now)
     date_created = db.Column(db.DateTime, default=datetime.now)
-    click_browser =  db.Column(db.String, nullable=True)
-    click_platform =  db.Column(db.String, nullable=True)
-    click_string =  db.Column(db.String, nullable=True)
-    click_version =  db.Column(db.String, nullable=True)
+    click_browser = db.Column(db.String, nullable=True)
+    click_platform = db.Column(db.String, nullable=True)
+    click_string = db.Column(db.String, nullable=True)
+    click_version = db.Column(db.String, nullable=True)
 
 
 class NDRVerification(db.Model):
     __tablename__ = "ndr_verification"
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    order_id = db.Column(db.Integer, db.ForeignKey('orders.id'), index=True)
-    order = db.relationship("Orders", backref=db.backref("ndr_verification", uselist=True))
+    order_id = db.Column(db.Integer, db.ForeignKey("orders.id"), index=True)
+    order = db.relationship(
+        "Orders", backref=db.backref("ndr_verification", uselist=True)
+    )
     call_sid = db.Column(db.String, nullable=True)
     recording_url = db.Column(db.String, nullable=True)
     ndr_verified = db.Column(db.BOOLEAN, nullable=True, default=None)
@@ -839,8 +1012,10 @@ class NDRVerification(db.Model):
 class DeliveryCheck(db.Model):
     __tablename__ = "delivery_check"
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    order_id = db.Column(db.Integer, db.ForeignKey('orders.id'))
-    order = db.relationship("Orders", backref=db.backref("delivery_check", uselist=True))
+    order_id = db.Column(db.Integer, db.ForeignKey("orders.id"))
+    order = db.relationship(
+        "Orders", backref=db.backref("delivery_check", uselist=True)
+    )
     call_sid = db.Column(db.String, nullable=True)
     recording_url = db.Column(db.String, nullable=True)
     del_verified = db.Column(db.BOOLEAN, nullable=True, default=None)
@@ -857,8 +1032,10 @@ class DeliveryCheck(db.Model):
 class CouriersCosts(db.Model):
     __tablename__ = "courier_costs"
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    courier_id = db.Column(db.Integer, db.ForeignKey('master_couriers.id'))
-    courier = db.relationship("MasterCouriers", backref=db.backref("courier_costs", uselist=True))
+    courier_id = db.Column(db.Integer, db.ForeignKey("master_couriers.id"))
+    courier = db.relationship(
+        "MasterCouriers", backref=db.backref("courier_costs", uselist=True)
+    )
     zone_a = db.Column(db.FLOAT, nullable=True)
     zone_b = db.Column(db.FLOAT, nullable=True)
     zone_c1 = db.Column(db.FLOAT, nullable=True)
@@ -886,8 +1063,10 @@ class CostToClients(db.Model):
     __tablename__ = "cost_to_clients"
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     client_prefix = db.Column(db.String, nullable=True)
-    courier_id = db.Column(db.Integer, db.ForeignKey('master_couriers.id'))
-    courier = db.relationship("MasterCouriers", backref=db.backref("cost_to_clients", uselist=True))
+    courier_id = db.Column(db.Integer, db.ForeignKey("master_couriers.id"))
+    courier = db.relationship(
+        "MasterCouriers", backref=db.backref("cost_to_clients", uselist=True)
+    )
     zone_a = db.Column(db.FLOAT, nullable=True)
     zone_b = db.Column(db.FLOAT, nullable=True)
     zone_c = db.Column(db.FLOAT, nullable=True)
@@ -907,8 +1086,27 @@ class CostToClients(db.Model):
     date_created = db.Column(db.DateTime, default=datetime.now)
     date_updated = db.Column(db.DateTime, onupdate=datetime.now)
 
-    def __init__(self, client_prefix, courier_id, zone_a, zone_b, zone_c, zone_d, zone_e, a_step,
-                 b_step, c_step, d_step, e_step, cod_min, cod_ratio, rvp_ratio, rto_ratio, management_fee=None, management_fee_static=None):
+    def __init__(
+        self,
+        client_prefix,
+        courier_id,
+        zone_a,
+        zone_b,
+        zone_c,
+        zone_d,
+        zone_e,
+        a_step,
+        b_step,
+        c_step,
+        d_step,
+        e_step,
+        cod_min,
+        cod_ratio,
+        rvp_ratio,
+        rto_ratio,
+        management_fee=None,
+        management_fee_static=None,
+    ):
         self.client_prefix = client_prefix
         self.courier_id = courier_id
         self.zone_a = zone_a
@@ -930,25 +1128,25 @@ class CostToClients(db.Model):
 
     def to_json(self):
         return {
-            'client_prefix': self.client_prefix,
-            'courier_name': self.courier.courier_name,
-            'weight_offset': self.courier.weight_offset,
-            'additional_weight_offset': self.courier.additional_weight_offset,
-            'zone_a': self.zone_a,
-            'zone_b': self.zone_b,
-            'zone_c': self.zone_c,
-            'zone_d': self.zone_d,
-            'zone_e': self.zone_e,
-            'a_step': self.a_step,
-            'b_step': self.b_step,
-            'c_step': self.c_step,
-            'd_step': self.d_step,
-            'e_step': self.e_step,
-            'cod_min': self.cod_min,
-            'cod_ratio': self.cod_ratio,
-            'rvp_ratio': self.rvp_ratio,
-            'rto_ratio': self.rto_ratio,
-            'management_fee': self.management_fee
+            "client_prefix": self.client_prefix,
+            "courier_name": self.courier.courier_name,
+            "weight_offset": self.courier.weight_offset,
+            "additional_weight_offset": self.courier.additional_weight_offset,
+            "zone_a": self.zone_a,
+            "zone_b": self.zone_b,
+            "zone_c": self.zone_c,
+            "zone_d": self.zone_d,
+            "zone_e": self.zone_e,
+            "a_step": self.a_step,
+            "b_step": self.b_step,
+            "c_step": self.c_step,
+            "d_step": self.d_step,
+            "e_step": self.e_step,
+            "cod_min": self.cod_min,
+            "cod_ratio": self.cod_ratio,
+            "rvp_ratio": self.rvp_ratio,
+            "rto_ratio": self.rto_ratio,
+            "management_fee": self.management_fee,
         }
 
 
@@ -983,8 +1181,10 @@ class ClientDeductions(db.Model):
     cod_charged_gst = db.Column(db.FLOAT, nullable=True)
     total_charge = db.Column(db.FLOAT, nullable=True)
     total_charged_gst = db.Column(db.FLOAT, nullable=True)
-    shipment_id = db.Column(db.Integer, db.ForeignKey('shipments.id'))
-    shipment = db.relationship("Shipments", backref=db.backref("client_deductions", uselist=True))
+    shipment_id = db.Column(db.Integer, db.ForeignKey("shipments.id"))
+    shipment = db.relationship(
+        "Shipments", backref=db.backref("client_deductions", uselist=True)
+    )
     weight_charged = db.Column(db.FLOAT, nullable=True)
     zone = db.Column(db.String, nullable=True)
     type = db.Column(db.String, nullable=True)
@@ -1010,8 +1210,10 @@ class WalletPassbook(db.Model):
 class ClientDefaultCost(db.Model):
     __tablename__ = "client_default_cost"
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    courier_id = db.Column(db.Integer, db.ForeignKey('master_couriers.id'))
-    courier = db.relationship("MasterCouriers", backref=db.backref("client_default_cost", uselist=True))
+    courier_id = db.Column(db.Integer, db.ForeignKey("master_couriers.id"))
+    courier = db.relationship(
+        "MasterCouriers", backref=db.backref("client_default_cost", uselist=True)
+    )
     zone_a = db.Column(db.FLOAT, nullable=True)
     zone_b = db.Column(db.FLOAT, nullable=True)
     zone_c = db.Column(db.FLOAT, nullable=True)
@@ -1030,25 +1232,25 @@ class ClientDefaultCost(db.Model):
 
     def to_json(self):
         return {
-            'id': self.id,
-            'courier_name': self.courier.courier_name,
-            'weight_offset': self.courier.weight_offset,
-            'additional_weight_offset': self.courier.additional_weight_offset,
-            'zone_a': self.zone_a,
-            'zone_b': self.zone_b,
-            'zone_c': self.zone_c,
-            'zone_d': self.zone_d,
-            'zone_e': self.zone_e,
-            'a_step': self.a_step,
-            'b_step': self.b_step,
-            'c_step': self.c_step,
-            'd_step': self.d_step,
-            'e_step': self.e_step,
-            'cod_min': self.cod_min,
-            'cod_ratio': self.cod_ratio,
-            'rto_ratio': self.rto_ratio,
-            'rvp_ratio': self.rvp_ratio,
-            'management_fee': self.management_fee
+            "id": self.id,
+            "courier_name": self.courier.courier_name,
+            "weight_offset": self.courier.weight_offset,
+            "additional_weight_offset": self.courier.additional_weight_offset,
+            "zone_a": self.zone_a,
+            "zone_b": self.zone_b,
+            "zone_c": self.zone_c,
+            "zone_d": self.zone_d,
+            "zone_e": self.zone_e,
+            "a_step": self.a_step,
+            "b_step": self.b_step,
+            "c_step": self.c_step,
+            "d_step": self.d_step,
+            "e_step": self.e_step,
+            "cod_min": self.cod_min,
+            "cod_ratio": self.cod_ratio,
+            "rto_ratio": self.rto_ratio,
+            "rvp_ratio": self.rvp_ratio,
+            "management_fee": self.management_fee,
         }
 
 
@@ -1059,8 +1261,10 @@ class CourierCharges(db.Model):
     rto_charge = db.Column(db.FLOAT, nullable=True)
     cod_charge = db.Column(db.FLOAT, nullable=True)
     total_charge = db.Column(db.FLOAT, nullable=True)
-    shipment_id = db.Column(db.Integer, db.ForeignKey('shipments.id'))
-    shipment = db.relationship("Shipments", backref=db.backref("courier_charges", uselist=True))
+    shipment_id = db.Column(db.Integer, db.ForeignKey("shipments.id"))
+    shipment = db.relationship(
+        "Shipments", backref=db.backref("courier_charges", uselist=True)
+    )
     weight_charged = db.Column(db.FLOAT, nullable=True)
     zone = db.Column(db.String, nullable=True)
     deduction_time = db.Column(db.DateTime, default=datetime.now)
@@ -1077,7 +1281,9 @@ class ClientMapping(db.Model):
     client_logo = db.Column(db.String, nullable=True)
     theme_color = db.Column(db.String, nullable=True)
     api_token = db.Column(db.String, nullable=True)
-    verify_ndr = db.Column(db.BOOLEAN, nullable=True, server_default='true', default=True)
+    verify_ndr = db.Column(
+        db.BOOLEAN, nullable=True, server_default="true", default=True
+    )
     verify_cod = db.Column(db.BOOLEAN, nullable=True, default=True)
     essential = db.Column(db.BOOLEAN, nullable=True, default=True)
     custom_email = db.Column(db.Text, nullable=True)
@@ -1085,7 +1291,9 @@ class ClientMapping(db.Model):
     unique_parameter = db.Column(db.String, nullable=True)
     cod_ship_unconfirmed = db.Column(db.BOOLEAN, nullable=True, default=True)
     hide_weights = db.Column(db.BOOLEAN, nullable=True, default=None)
-    order_split = db.Column(db.BOOLEAN, nullable=True, server_default='false', default=False)
+    order_split = db.Column(
+        db.BOOLEAN, nullable=True, server_default="false", default=False
+    )
     order_split_type = db.Column(db.Integer, nullable=True)
     default_warehouse = db.Column(db.String, nullable=True)
     hide_products = db.Column(db.BOOLEAN, nullable=True, default=False)
@@ -1095,7 +1303,9 @@ class ClientMapping(db.Model):
     auto_pur = db.Column(db.BOOLEAN, nullable=True, default=None)
     auto_pur_time = db.Column(db.Integer, nullable=True)
     shipping_label = db.Column(db.String, nullable=True)
-    current_balance = db.Column(db.FLOAT, nullable=False, default=0.0, server_default="0.0")
+    current_balance = db.Column(
+        db.FLOAT, nullable=False, default=0.0, server_default="0.0"
+    )
     account_type = db.Column(db.String, nullable=True)
     lock_cod = db.Column(db.BOOLEAN, nullable=True, default=None)
     thirdwatch = db.Column(db.BOOLEAN, nullable=True, default=None)
@@ -1104,7 +1314,14 @@ class ClientMapping(db.Model):
     remittance_cycle = db.Column(db.Integer, nullable=True)
     tracking_url = db.Column(db.String, nullable=True, unique=True)
 
-    def __init__(self, client_name, client_prefix, account_type, client_logo=None, theme_color=None):
+    def __init__(
+        self,
+        client_name,
+        client_prefix,
+        account_type,
+        client_logo=None,
+        theme_color=None,
+    ):
         self.client_name = client_name
         self.client_prefix = client_prefix
         self.account_type = account_type
@@ -1118,24 +1335,57 @@ class ClientMapping(db.Model):
 
     def to_json(self):
         return {
-            'id': self.id,
-            'client_prefix': self.client_prefix,
-            'client_name': self.client_name,
-            'client_logo': self.client_logo,
-            'theme_color': self.theme_color,
-            'verify_ndr': self.verify_ndr,
-            'verify_cod': self.verify_cod,
-            'cod_ship_unconfirmed': self.cod_ship_unconfirmed,
-            'verify_cod_manual': self.cod_man_ver,
-            'hide_products': self.hide_products,
-            'hide_shipper_address': self.hide_address,
-            'shipping_label': self.shipping_label,
-            'default_warehouse': self.default_warehouse,
-            'order_split': self.order_split,
-            'auto_pur': self.auto_pur,
-            'auto_pur_time': self.auto_pur_time,
-            'account_type': self.account_type,
-            'current_balance': self.current_balance
+            "id": self.id,
+            "client_prefix": self.client_prefix,
+            "client_name": self.client_name,
+            "client_logo": self.client_logo,
+            "theme_color": self.theme_color,
+            "verify_ndr": self.verify_ndr,
+            "verify_cod": self.verify_cod,
+            "cod_ship_unconfirmed": self.cod_ship_unconfirmed,
+            "verify_cod_manual": self.cod_man_ver,
+            "hide_products": self.hide_products,
+            "hide_shipper_address": self.hide_address,
+            "shipping_label": self.shipping_label,
+            "default_warehouse": self.default_warehouse,
+            "order_split": self.order_split,
+            "auto_pur": self.auto_pur,
+            "auto_pur_time": self.auto_pur_time,
+            "account_type": self.account_type,
+            "current_balance": self.current_balance,
+        }
+
+
+class ClientCustomization(db.Model):
+    __tablename__ = "client_customization"
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    client_prefix = db.Column(db.String, nullable=False, unique=True)
+    subdomain = db.Column(db.String, nullable=True, unique=True)
+    client_logo_url = db.Column(db.String, nullable=True)
+    theme_color = db.Column(db.String, nullable=True)
+    background_image_url = db.Column(db.String, nullable=True)
+    client_name = db.Column(db.String, nullable=False)
+    client_url = db.Column(db.String, nullable=True)
+    nav_links = db.Column(JSONB, nullable=True)
+    support_url = db.Column(db.String, nullable=True)
+    privacy_url = db.Column(db.String, nullable=True)
+    nps_enabled = db.Column(db.BOOLEAN, nullable=False, default=False)
+    banners = db.Column(JSONB, nullable=True)
+
+    def to_json(self):
+        return {
+            "client_prefix": self.client_prefix,
+            "subdomain": self.subdomain,
+            "client_logo_url": self.client_logo_url,
+            "theme_color": self.theme_color,
+            "background_image_url": self.background_image_url,
+            "client_name": self.client_name,
+            "client_url": self.client_url,
+            "nav_links": self.nav_links,
+            "support_url": self.support_url,
+            "privacy_url": self.privacy_url,
+            "nps_enabled": self.nps_enabled,
+            "banners": self.banners,
         }
 
 
@@ -1156,17 +1406,21 @@ class WarehouseMapping(db.Model):
 class ClientChannelLocations(db.Model):
     __tablename__ = "client_channel_locations"
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    pickup_data_id = db.Column(db.Integer, db.ForeignKey('client_pickups.id'))
-    pickup_data = db.relationship("ClientPickups", backref=db.backref("client_channel_locations"))
-    client_channel_id = db.Column(db.Integer, db.ForeignKey('client_channel.id'))
-    client_channel = db.relationship("ClientChannel", backref=db.backref("client_channel_locations"))
+    pickup_data_id = db.Column(db.Integer, db.ForeignKey("client_pickups.id"))
+    pickup_data = db.relationship(
+        "ClientPickups", backref=db.backref("client_channel_locations")
+    )
+    client_channel_id = db.Column(db.Integer, db.ForeignKey("client_channel.id"))
+    client_channel = db.relationship(
+        "ClientChannel", backref=db.backref("client_channel_locations")
+    )
     location_id = db.Column(db.String, nullable=False)
 
 
 class IVRHistory(db.Model):
     __tablename__ = "ivr_history"
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    order_id = db.Column(db.Integer, db.ForeignKey('orders.id'))
+    order_id = db.Column(db.Integer, db.ForeignKey("orders.id"))
     order = db.relationship("Orders", backref=db.backref("ivr_history", uselist=True))
     call_sid = db.Column(db.String, nullable=True)
     recording_url = db.Column(db.String, nullable=True)
@@ -1187,7 +1441,7 @@ class WarehouseRO(db.Model):
     no_of_boxes = db.Column(db.Integer, nullable=True)
     tracking_details = db.Column(db.String, nullable=True)
     edd = db.Column(db.DateTime)
-    status = db.Column(db.String, nullable=False, default='awaiting')
+    status = db.Column(db.String, nullable=False, default="awaiting")
     date_created = db.Column(db.DateTime, default=datetime.now)
     date_updated = db.Column(db.DateTime, onupdate=datetime.now)
 
@@ -1212,8 +1466,12 @@ class Downloads(db.Model):
 class ProductsWRO(db.Model):
     __tablename__ = "products_wro"
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    wro_id = db.Column('wro_id', db.Integer, db.ForeignKey('warehouse_ro.id'), index=True)
-    master_product_id = db.Column('master_product_id', db.Integer, db.ForeignKey('master_products.id'))
+    wro_id = db.Column(
+        "wro_id", db.Integer, db.ForeignKey("warehouse_ro.id"), index=True
+    )
+    master_product_id = db.Column(
+        "master_product_id", db.Integer, db.ForeignKey("master_products.id")
+    )
     ro_quantity = db.Column(db.Integer)
     received_quantity = db.Column(db.Integer)
     wro = db.relationship("WarehouseRO")
@@ -1242,8 +1500,10 @@ class PincodeServiceability(db.Model):
     __tablename__ = "pincode_serviceability"
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     pincode = db.Column(db.String, nullable=False)
-    courier_id = db.Column(db.Integer, db.ForeignKey('master_couriers.id'))
-    courier = db.relationship("MasterCouriers", backref=db.backref("pincode_serviceability", uselist=True))
+    courier_id = db.Column(db.Integer, db.ForeignKey("master_couriers.id"))
+    courier = db.relationship(
+        "MasterCouriers", backref=db.backref("pincode_serviceability", uselist=True)
+    )
     serviceable = db.Column(db.BOOLEAN, nullable=True, default=None)
     cod_available = db.Column(db.BOOLEAN, nullable=True, default=None)
     reverse_pickup = db.Column(db.BOOLEAN, nullable=True, default=None)
@@ -1255,9 +1515,55 @@ class PincodeServiceability(db.Model):
 
 
 class RemittanceOrderMap(db.Model):
-    __tablename__ = 'remittance_order_map'
+    __tablename__ = "remittance_order_map"
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    order_id = db.Column('order_id', db.Integer, db.ForeignKey('orders.id'), index=True)
-    remittance_id = db.Column('remittance_id', db.Integer, db.ForeignKey('cod_remittance.id'))
+    order_id = db.Column("order_id", db.Integer, db.ForeignKey("orders.id"), index=True)
+    remittance_id = db.Column(
+        "remittance_id", db.Integer, db.ForeignKey("cod_remittance.id")
+    )
     order = db.relationship("Orders")
     remittance = db.relationship("CODRemittance")
+
+
+class ShippingRules(db.Model):
+    __tablename__ = "shipping_rules"
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    client_prefix = db.Column(db.String, nullable=False)
+    rule_name = db.Column(db.String, nullable=False)
+    priority = db.Column(db.Integer, nullable=False)
+    condition_type = db.Column(db.String, nullable=False)
+    conditions = db.Column(JSON, nullable=False)
+    active = db.Column(db.BOOLEAN, nullable=False, default=True)
+    courier_1_id = db.Column(db.Integer, db.ForeignKey("master_couriers.id"))
+    courier_1 = db.relationship("MasterCouriers", foreign_keys=[courier_1_id], backref=db.backref("shipping_rules_1"))
+    courier_2_id = db.Column(db.Integer, db.ForeignKey("master_couriers.id"))
+    courier_2 = db.relationship("MasterCouriers", foreign_keys=[courier_2_id], backref=db.backref("shipping_rules_2"))
+    courier_3_id = db.Column(db.Integer, db.ForeignKey("master_couriers.id"))
+    courier_3 = db.relationship("MasterCouriers", foreign_keys=[courier_3_id], backref=db.backref("shipping_rules_3"))
+    courier_4_id = db.Column(db.Integer, db.ForeignKey("master_couriers.id"))
+    courier_4 = db.relationship("MasterCouriers", foreign_keys=[courier_4_id], backref=db.backref("shipping_rules_4"))
+    date_created = db.Column(db.DateTime, default=datetime.now)
+    date_updated = db.Column(db.DateTime, onupdate=datetime.now)
+
+    def __init__(self, client_prefix, rule_name, priority, condition_type, conditions=[], active=True):
+        self.client_prefix = client_prefix
+        self.rule_name = rule_name
+        self.priority = priority
+        self.condition_type = condition_type
+        self.conditions = conditions
+        self.active = active
+
+    def to_json(self):
+        return {
+            "client_prefix": self.client_prefix,
+            "rule_id": self.id,
+            "rule_name": self.rule_name,
+            "priority": self.priority,
+            "condition_type": self.condition_type,
+            "conditions": self.conditions,
+            "active": self.active,
+            "courier_1": self.courier_1.courier_name if self.courier_1 else None,
+            "courier_2": self.courier_2.courier_name if self.courier_2 else None,
+            "courier_3": self.courier_3.courier_name if self.courier_3 else None,
+            "courier_4": self.courier_4.courier_name if self.courier_4 else None,
+        }

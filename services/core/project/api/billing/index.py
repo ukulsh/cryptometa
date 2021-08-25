@@ -27,7 +27,9 @@ DEDUCTIONS_DOWNLOAD_HEADERS = ["Time", "Status", "Courier", "AWB", "order ID", "
 
 RECHARGES_DOWNLOAD_HEADERS = ["Payment Time", "Amount", "Transaction ID", "status"]
 
-REMITTANCE_DOWNLOAD_HEADERS = ["Order ID", "Order Date", "Courier", "AWB", "Payment Mode", "Amount", "Delivered Date"]
+REMITTANCE_DOWNLOAD_HEADERS = ["Order ID", "Order Date", "Courier", "AWB", "Payment Mode", "Amount", "Delivered Date", "TransactionID"]
+
+REMITTANCE_TABLE_HEADERS = ["Remittance ID", "Remittance Date", "Status", "Transaction ID", "Amount"]
 
 RECONCILIATION_DOWNLOAD_HEADERS = ["Order ID", "Raised Date", "AWB", "Courier", "Entered Weight",
                                                        "Charged Weight", "Expected Amount", "Charged Amount", "Status",
@@ -393,103 +395,146 @@ class WalletRemittance(Resource):
                 return {"success": False, "error": "upto 250 results allowed per page"}, 401
             search_key = data.get('search_key', '')
             filters = data.get('filters', {})
+            unique_ids = data.get('unique_ids', None)
             unique_id = request.args.get("unique_id", None)
+            download = request.args.get("download", None)
             auth_data = resp.get('data')
             if not auth_data:
                 return {"success": False, "msg": "Auth Failed"}, 404
-            if auth_data.get('user_group') in ('super-admin', 'client', 'multi-vendor'):
-                client_prefix = auth_data.get('client_prefix')
+            if auth_data.get('user_group') not in ('super-admin', 'client', 'multi-vendor'):
+                return {"success": False, "msg": "Invalid User"}, 404
+
+            client_prefix = auth_data.get('client_prefix')
+            if unique_id or unique_ids:
                 if unique_id:
-                    query_to_execute = select_wallet_remittance_orders_query.replace('__REMITTANCE_ID__', str(unique_id))
-                    cur.execute(query_to_execute)
-                    remittance_qs_data = cur.fetchall()
-                    si = io.StringIO()
-                    cw = csv.writer(si)
-                    cw.writerow(REMITTANCE_DOWNLOAD_HEADERS)
-                    for remittance in remittance_qs_data:
-                        try:
-                            new_row = list()
-                            new_row.append(str(remittance[1]))
-                            new_row.append(remittance[2].strftime("%Y-%m-%d %H:%M:%S") if remittance[2] else "N/A")
-                            new_row.append(str(remittance[3]))
-                            new_row.append(str(remittance[4]))
-                            new_row.append(str(remittance[5]))
-                            new_row.append(str(remittance[6]))
-                            new_row.append(remittance[7].strftime("%Y-%m-%d %H:%M:%S") if remittance[7] else "N/A")
-                            cw.writerow(new_row)
-                        except Exception as e:
-                            pass
-
-                    output = make_response(si.getvalue())
-                    filename = str(client_prefix) + "_EXPORT.csv"
-                    output.headers["Content-Disposition"] = "attachment; filename=" + filename
-                    output.headers["Content-type"] = "text/csv"
-                    return output
-
-                query_to_execute = select_wallet_remittance_query
-                if filters:
-                    if 'client' in filters:
-                        if len(filters['client'])==1:
-                            cl_filter = "AND client_prefix in ('%s')"%filters['client'][0]
-                        else:
-                            cl_filter = "AND client_prefix in %s"%str(tuple(filters['client']))
-
-                        query_to_execute = query_to_execute.replace('__CLIENT_FILTER__', cl_filter)
-                    if 'remittance_date' in filters:
-                        filter_date_start = filters['remittance_date'][0][0:19].replace('T',' ')
-                        filter_date_end = filters['remittance_date'][1][0:19].replace('T',' ')
-                        query_to_execute = query_to_execute.replace("__REMITTANCE_DATE_FILTER__", "AND remittance_date between '%s' and '%s'" %(filter_date_start, filter_date_end))
-
-                    if 'status' in filters:
-                        if len(filters['status']) == 1:
-                            st_filter = "AND status in ('%s')"%filters['status'][0]
-                        else:
-                            st_filter = "AND status in %s"%str(tuple(filters['status']))
-                        query_to_execute = query_to_execute.replace('__STATUS_FILTER__', st_filter)
-
-                query_to_execute = query_to_execute.replace('__STATUS_FILTER__', "")
-
-                if auth_data['user_group'] == 'client':
-                    query_to_execute = query_to_execute.replace('__CLIENT_FILTER__', "AND client_prefix = '%s'"%client_prefix)
-
-                if auth_data['user_group'] == 'multi-vendor':
-                    cur.execute("SELECT vendor_list FROM multi_vendor WHERE client_prefix='%s';" % client_prefix)
-                    vendor_list = cur.fetchone()[0]
-                    query_to_execute = query_to_execute.replace("__MV_CLIENT_FILTER__",
-                                                        "AND client_prefix in %s" % str(tuple(vendor_list)))
-
+                    query_to_execute = select_wallet_remittance_orders_query.replace('__REMITTANCE_ID_FILTER__', 'where xx.unique_id=%s'%str(unique_id))
                 else:
-                    query_to_execute = query_to_execute.replace("__MV_CLIENT_FILTER__", "")
+                    if len(unique_ids)==1:
+                        unique_id_tuple = "("+str(unique_ids[0])+")"
+                    else:
+                        unique_id_tuple = str(tuple(unique_ids))
+                    query_to_execute = select_wallet_remittance_orders_query.replace('__REMITTANCE_ID_FILTER__', 'where xx.unique_id in %s'%unique_id_tuple)
 
-                if search_key:
-                    query_to_execute = query_to_execute.replace('__SEARCH_KEY_FILTER__', "AND transaction_id ilike '%__SEARCH_KEY__%'".replace('__SEARCH_KEY__', search_key))
-
-                query_to_execute = query_to_execute.replace('__SEARCH_KEY_FILTER__',"").replace('__CLIENT_FILTER__', "").replace('__REMITTANCE_DATE_FILTER__', '')
-                cur.execute(query_to_execute.replace('__PAGINATION__', ""))
-                total_count = cur.rowcount
-                query_to_execute = query_to_execute.replace('__PAGINATION__', "OFFSET %s LIMIT %s"%(str((page-1)*per_page), str(per_page)))
-
+                if auth_data.get('user_group')=='client':
+                    query_to_execute = query_to_execute.replace('__CLIENT_FILTER__', "and xx.client_prefix='%s'"%client_prefix)
+                else:
+                    query_to_execute = query_to_execute.replace('__CLIENT_FILTER__', "")
                 cur.execute(query_to_execute)
-                ret_data = list()
-                fetch_data = cur.fetchall()
-                for entry in fetch_data:
-                    ret_obj = dict()
-                    ret_obj['unique_id'] = entry[0]
-                    ret_obj['remittance_id'] = entry[2]
-                    ret_obj['remittance_date'] = entry[3].strftime("%d-%m-%Y")
-                    ret_obj['status'] = entry[4]
-                    ret_obj['transaction_id'] = entry[5]
-                    ret_obj['amount'] = round(entry[6]) if entry[6] else None
-                    ret_data.append(ret_obj)
-                response['data'] = ret_data
+                remittance_qs_data = cur.fetchall()
+                si = io.StringIO()
+                cw = csv.writer(si)
+                cw.writerow(REMITTANCE_DOWNLOAD_HEADERS)
+                for remittance in remittance_qs_data:
+                    try:
+                        new_row = list()
+                        new_row.append(str(remittance[1]))
+                        new_row.append(remittance[2].strftime("%Y-%m-%d %H:%M:%S") if remittance[2] else "N/A")
+                        new_row.append(str(remittance[3]))
+                        new_row.append(str(remittance[4]))
+                        new_row.append(str(remittance[5]))
+                        new_row.append(str(remittance[6]))
+                        new_row.append(remittance[7].strftime("%Y-%m-%d %H:%M:%S") if remittance[7] else "N/A")
+                        new_row.append(str(remittance[8]))
+                        if auth_data.get('user_group')=='super-admin':
+                            new_row.append(remittance[0])
+                        cw.writerow(new_row)
+                    except Exception as e:
+                        pass
 
-                total_pages = math.ceil(total_count/per_page)
-                response['meta']['pagination'] = {'total': total_count,
-                                                  'per_page':per_page,
-                                                  'current_page': page,
-                                                  'total_pages':total_pages}
+                output = make_response(si.getvalue())
+                filename = str(client_prefix) + "_EXPORT.csv"
+                output.headers["Content-Disposition"] = "attachment; filename=" + filename
+                output.headers["Content-type"] = "text/csv"
+                return output
 
-                return response, 200
+            query_to_execute = select_wallet_remittance_query
+            if filters:
+                if 'client' in filters:
+                    if len(filters['client'])==1:
+                        cl_filter = "AND client_prefix in ('%s')"%filters['client'][0]
+                    else:
+                        cl_filter = "AND client_prefix in %s"%str(tuple(filters['client']))
+
+                    query_to_execute = query_to_execute.replace('__CLIENT_FILTER__', cl_filter)
+                if 'remittance_date' in filters:
+                    filter_date_start = filters['remittance_date'][0][0:19].replace('T',' ')
+                    filter_date_end = filters['remittance_date'][1][0:19].replace('T',' ')
+                    query_to_execute = query_to_execute.replace("__REMITTANCE_DATE_FILTER__", "AND remittance_date between '%s' and '%s'" %(filter_date_start, filter_date_end))
+
+                if 'status' in filters:
+                    if len(filters['status']) == 1:
+                        st_filter = "AND status in ('%s')"%filters['status'][0]
+                    else:
+                        st_filter = "AND status in %s"%str(tuple(filters['status']))
+                    query_to_execute = query_to_execute.replace('__STATUS_FILTER__', st_filter)
+
+            query_to_execute = query_to_execute.replace('__STATUS_FILTER__', "")
+
+            if auth_data['user_group'] == 'client':
+                query_to_execute = query_to_execute.replace('__CLIENT_FILTER__', "AND client_prefix = '%s'"%client_prefix)
+
+            if auth_data['user_group'] == 'multi-vendor':
+                cur.execute("SELECT vendor_list FROM multi_vendor WHERE client_prefix='%s';" % client_prefix)
+                vendor_list = cur.fetchone()[0]
+                query_to_execute = query_to_execute.replace("__MV_CLIENT_FILTER__",
+                                                    "AND client_prefix in %s" % str(tuple(vendor_list)))
+
+            else:
+                query_to_execute = query_to_execute.replace("__MV_CLIENT_FILTER__", "")
+
+            if search_key:
+                query_to_execute = query_to_execute.replace('__SEARCH_KEY_FILTER__', "AND transaction_id ilike '%__SEARCH_KEY__%'".replace('__SEARCH_KEY__', search_key))
+
+            query_to_execute = query_to_execute.replace('__SEARCH_KEY_FILTER__',"").replace('__CLIENT_FILTER__', "").replace('__REMITTANCE_DATE_FILTER__', '')
+            cur.execute(query_to_execute.replace('__PAGINATION__', ""))
+            if download:
+                remittance_qs_data = cur.fetchall()
+                si = io.StringIO()
+                cw = csv.writer(si)
+                cw.writerow(REMITTANCE_TABLE_HEADERS)
+                for remittance in remittance_qs_data:
+                    try:
+                        new_row = list()
+                        new_row.append(str(remittance[2]))
+                        new_row.append(remittance[3].strftime("%d-%m-%Y"))
+                        new_row.append(remittance[4])
+                        new_row.append(remittance[5])
+                        new_row.append(round(remittance[6]) if remittance[6] else None)
+                        if auth_data.get('user_group')=='super-admin':
+                            new_row.append(remittance[1])
+                        cw.writerow(new_row)
+                    except Exception as e:
+                        pass
+
+                output = make_response(si.getvalue())
+                filename = str(client_prefix) + "_EXPORT.csv"
+                output.headers["Content-Disposition"] = "attachment; filename=" + filename
+                output.headers["Content-type"] = "text/csv"
+                return output
+            total_count = cur.rowcount
+            query_to_execute = query_to_execute.replace('__PAGINATION__', "OFFSET %s LIMIT %s"%(str((page-1)*per_page), str(per_page)))
+
+            cur.execute(query_to_execute)
+            ret_data = list()
+            fetch_data = cur.fetchall()
+            for entry in fetch_data:
+                ret_obj = dict()
+                ret_obj['unique_id'] = entry[0]
+                ret_obj['remittance_id'] = entry[2]
+                ret_obj['remittance_date'] = entry[3].strftime("%d-%m-%Y")
+                ret_obj['status'] = entry[4]
+                ret_obj['transaction_id'] = entry[5]
+                ret_obj['amount'] = round(entry[6]) if entry[6] else None
+                ret_data.append(ret_obj)
+            response['data'] = ret_data
+
+            total_pages = math.ceil(total_count/per_page)
+            response['meta']['pagination'] = {'total': total_count,
+                                              'per_page':per_page,
+                                              'current_page': page,
+                                              'total_pages':total_pages}
+
+            return response, 200
         except Exception as e:
             return {"success": False, "error":str(e.args[0])}, 404
 

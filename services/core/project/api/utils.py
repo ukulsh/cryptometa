@@ -57,6 +57,11 @@ def authenticate_restful(f):
         auth_header = request.headers.get('Authorization')
         if not auth_header:
             auth_header = "Token " + request.args.get('token') if request.args.get('token') else None
+
+        # celery service authentication
+        if auth_header=='Token B52Si3qU6uOUbxCbidWTLaJlQEk9UfWkPK7BvTIt':
+            response = {"data": {"user_group": "super-admin", "client_prefix": "WAREIQ"}}
+            return f(response, *args, **kwargs)
         if not auth_header:
             response_object['message'] = 'Provide a valid auth token.'
             code = 403

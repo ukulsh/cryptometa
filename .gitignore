@@ -6,6 +6,11 @@ node_modules
 # Mac specific
 **/.DS_Store
 
+<<<<<<< HEAD
+=======
+**/.idea
+
+>>>>>>> 628fd39bead75a5f494f224f8f2997a2bb5da326
 # Local venv
 venv
 **/qa.env

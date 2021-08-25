@@ -53,6 +53,7 @@ services:
     environment:
       - FLASK_ENV=production
       - USERS_SERVICE_URL=http://users:5000
+      - CORE_SERVICE_URL=http://core:5000
       - SECRET_KEY=my_precious
       - DATABASE_URL=postgresql://postgres:aSderRFgd23@wareiq-core-prod2.cvqssxsqruyc.us-east-1.rds.amazonaws.com:5432/core_prod
       - DATABASE_HOST=wareiq-core-prod2.cvqssxsqruyc.us-east-1.rds.amazonaws.com

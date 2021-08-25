@@ -130,8 +130,10 @@ get_pickup_requests_query = """select aa.pickup_data_id,  bb.courier_id, dd.ware
                                 left join shipments bb on aa.id=bb.order_id
                                 left join client_pickups cc on aa.pickup_data_id=cc.id
                                 left join pickup_points dd on cc.pickup_id=dd.id
+                                left join client_mapping ee on ee.client_prefix=aa.client_prefix
                                 where aa.status in ('READY TO SHIP', 'PICKUP REQUESTED')
-                                and bb.id is not null"""
+                                and bb.id is not null
+                                and ee.auto_pur!=false"""
 
 insert_manifest_query = """INSERT into manifests (manifest_id, warehouse_prefix, courier_id, client_pickup_id, 
                             pickup_id, pickup_date, manifest_url, total_scheduled) VALUES (%s,%s,%s,%s,%s,%s,%s,%s) returning id;"""
@@ -172,7 +174,7 @@ create_pincode_serv_file_query = """select aa.pincode, city, state, bool_or(serv
 wondersoft_push_query = """select cc.first_name, cc.last_name, aa.customer_phone, aa.customer_email, ff.gstin, 
                             cc.address_one,cc.address_two, cc.city, cc.state, cc.pincode, aa.order_date, 
                             aa.channel_order_id, gg.warehouse_prefix, dd.amount, dd.payment_mode, ee.products_sku,
-                            ee.quan, ee.prod_amount from orders aa
+                            ee.quan, ee.prod_amount, dd.discount_amount, dd.discount_code, dd.discount_type  from orders aa
                             left join shipping_address cc
                             on aa.delivery_address_id=cc.id
                             left join orders_payments dd

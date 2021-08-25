@@ -10,6 +10,7 @@ from .update_status.function import update_status
 from .fetch_orders.function import fetch_orders, assign_pickup_points_for_unassigned
 from .fetch_orders.sync_channel_status import sync_channel_status
 from .ship_orders.function import ship_orders
+from .ship_orders.shipping_rules import ShippingRules
 from .core_app_jobs.tasks import *
 from .download_queues.tasks import *
 from .core_app_jobs.utils import authenticate_username_password, authenticate_restful
@@ -170,7 +171,8 @@ def status_update(sync_ext=None):
 
 @celery_app.task(name='orders_ship')
 def orders_ship(client_prefix=None):
-    ship_orders(client_prefix=client_prefix)
+    ship_obj = ShippingRules(client_prefix=client_prefix)
+    ship_obj.ship_orders_courier_wise()
     return 'successfully completed ship_orders'
 
 

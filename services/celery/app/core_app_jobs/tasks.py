@@ -6,7 +6,7 @@ import json, random, string
 from woocommerce import API
 from math import ceil
 from app.db_utils import DbConnection, UrlShortner
-from app.ship_orders.function import ship_orders
+from app.ship_orders.shipping_rules import ShippingRules
 from app.update_status.function import update_delivered_on_channels, verification_text, \
     delhivery_status_code_mapping_dict, xpressbees_status_mapping, Xpressbees_ndr_reasons
 from app.update_status.update_status_utils import send_shipped_event, send_delivered_event, send_ndr_event, \
@@ -1172,7 +1172,7 @@ def ship_bulk_orders(order_list, auth_data, courier):
             else:
                 order_tuple_str = str(tuple(order_list))
 
-            query_to_run = """SELECT array_agg(id) FROM orders WHERE id in __ORDER_IDS__ __CLIENT_FILTER__;""".replace("__ORDER_IDS__", order_tuple_str)
+            query_to_run = """SELECT array_agg(id) FROM orders WHERE id in __ORDER_IDS__ __CLIENT_FILTER__ AND status='NEW';""".replace("__ORDER_IDS__", order_tuple_str)
 
             if auth_data['user_group'] == 'client':
                 query_to_run = query_to_run.replace('__CLIENT_FILTER__', "AND client_prefix='%s'"%auth_data['client_prefix'])
@@ -1188,7 +1188,8 @@ def ship_bulk_orders(order_list, auth_data, courier):
             order_ids = cur.fetchone()[0]
             if not order_ids:
                 return {"success": False, "msg": "invalid order ids"}, 400
-            ship_orders(courier_name=courier, order_ids=order_ids, force_ship=True, cur=cur)
+            ship_obj = ShippingRules(courier_name=courier, order_ids=order_ids, force_ship=True, cur=cur)
+            ship_obj.ship_orders_courier_wise()
             conn.commit()
 
             return {"success": True, "msg": "shipped successfully"}, 200
@@ -1354,7 +1355,7 @@ def update_available_quantity_from_easyecom():
                                 left join pickup_points bb on aa.pickup_id=bb.id
                                 where aa.client_prefix='KAMAAYURVEDA'
                                 and aa.enable_sdd=true
-                                and bb.warehouse_prefix in ('TNPMRO', 'MHJTRO')""")
+                                and bb.warehouse_prefix in ('TNPMRO')""")
 
             pickup_points = cur.fetchall()
             token_headers = {"Username": "WareIQ",
@@ -1642,7 +1643,7 @@ def create_pickups_entry_util():
 
 
 def update_pincode_serviceability_table():
-    courier_list = (15, 2, 5, 9, 27)
+    courier_list = (15, 2, 5, 9, 42, 27)
     with conn.cursor() as cur:
         for courier in courier_list:
             try:
@@ -1652,7 +1653,9 @@ def update_pincode_serviceability_table():
                     url = "https://api.ecomexpress.in/apiv2/pincodes/"
                     req = requests.post(url, data={"username": courer_data[2], "password": courer_data[3]})
                     pincode_list = req.json()
+                    pincode_not_str = "('"
                     for pincode in pincode_list:
+                        pincode_not_str+=str(pincode.get('pincode'))+"','"
                         serviceable = pincode.get('active')
                         pincode_str = str(pincode.get('pincode'))
                         sortcode = pincode.get('route')
@@ -1660,13 +1663,21 @@ def update_pincode_serviceability_table():
                                                                           serviceable, serviceable, serviceable, sortcode,
                                                                           datetime.utcnow()+timedelta(hours=5.5)))
                         conn.commit()
+                    pincode_not_str = pincode_not_str.rstrip(",'")
+                    pincode_not_str += "')"
+                    cur.execute("""UPDATE pincode_serviceability SET serviceable=false, cod_available=false,
+                                         reverse_pickup=false, pickup=false, last_updated=now() where courier_id=15 
+                                         and pincode not in %s"""%pincode_not_str)
+                    conn.commit()
                 elif courier in (2, 12):
                     url = "https://track.delhivery.com/c/api/pin-codes/json/"
                     headers = {"Content-Type": "application/json",
                                "Authorization": "Token %s"%(courer_data[2])}
                     req = requests.get(url, headers=headers)
                     pincode_list = req.json()
+                    pincode_not_str = "('"
                     for pincode in pincode_list['delivery_codes']:
+                        pincode_not_str+=str(pincode['postal_code'].get('pin'))+"','"
                         serviceable = True if pincode['postal_code'].get('pre_paid').upper()=='Y' else False
                         cod_available = True if pincode['postal_code'].get('cod').upper()=='Y' else False
                         pickup = True if pincode['postal_code'].get('pickup').upper()=='Y' else False
@@ -1677,7 +1688,12 @@ def update_pincode_serviceability_table():
                                                                           datetime.utcnow()+timedelta(hours=5.5)))
 
                         conn.commit()
-
+                    pincode_not_str = pincode_not_str.rstrip(",'")
+                    pincode_not_str += "')"
+                    cur.execute("""UPDATE pincode_serviceability SET serviceable=false, cod_available=false,
+                                         reverse_pickup=false, pickup=false, last_updated=now() where courier_id=2 
+                                         and pincode not in %s"""%pincode_not_str)
+                    conn.commit()
                 elif courier==9:
                     from zeep import Client
                     check_url = "https://netconnect.bluedart.com/Ver1.9/ShippingAPI/Finder/ServiceFinderQuery.svc?wsdl"
@@ -1707,6 +1723,28 @@ def update_pincode_serviceability_table():
                                                                           datetime.utcnow()+timedelta(hours=5.5)))
 
                         conn.commit()
+
+                elif courier==42:
+                    check_url = "http://fareyesvc.ctbsplus.dtdc.com/ratecalapi/PincodeApiCall"
+                    cur.execute("SELECT pincode FROM pincode_serviceability WHERE courier_id=42;")
+                    all_pincodes = cur.fetchall()
+                    for pincode in all_pincodes:
+                        req = requests.post(check_url, headers={"content-type": "application/json"}, json={
+                            "orgPincode":"110016",
+                            "desPincode":str(pincode[0])
+                        })
+                        if req.json() and req.json()['ZIPCODE_RESP']:
+                            req = req.json()['ZIPCODE_RESP'][0]
+                            serviceable = True if req['SERVFLAG']=='Y' else False
+                            cod_available = True if req['SERV_COD']=='Y' else False
+                            pickup = True if req['SERVFLAG']=='Y' else False
+                            pincode_str = str(pincode[0])
+                            sortcode = None
+                            cur.execute(update_pincode_serviceability_query, (pincode_str, courier, serviceable,
+                                                                              cod_available, pickup, pickup, sortcode,
+                                                                              datetime.utcnow()+timedelta(hours=5.5)))
+
+                            conn.commit()
             except Exception as e:
                 logger.error("Couldn't update serviceability for "+str(courier)+"\nError: "+str(e.args[0]))
 
@@ -1827,12 +1865,29 @@ def push_kama_wondersoft(unique_id, cur=conn.cursor(), type="shipped"):
                                             "PaymentMode": order[14],
                                             "PaymentValue": order[13],
                                             "ModeType": "nan",
-                                            "PaymentReference": "****"
+                                            "PaymentReference": "****",
                                         }
                                     ]
                                 }
                             }
                         }
+            if order[18]:
+                if "|" in order[19]:
+                    PaymentReference = order[19].split("|")
+                    for idx, payment_obj in enumerate(PaymentReference):
+                        json_body['Order']['Payments']['Payment'].append({
+                            "PaymentMode": order[20].split("|")[idx],
+                            "PaymentValue": float(payment_obj.split(":")[1]),
+                            "ModeType": "nan",
+                            "PaymentReference": payment_obj.split(":")[0],
+                        })
+                else:
+                    json_body['Order']['Payments']['Payment'].append({
+                        "PaymentMode": order[20],
+                        "PaymentValue": order[18],
+                        "ModeType": "nan",
+                        "PaymentReference": order[19],
+                    })
 
         token_headers = {"Username": "WareIQ",
                          "Password": "Wondersoft#12",

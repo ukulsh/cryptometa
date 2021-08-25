@@ -1007,8 +1007,8 @@ def get_ndr_reasons(resp):
 
 
 @analytics_blueprint.route("/analytics/v1/inventory/", methods=["GET"])
-# @authenticate_restful
-def inventory_analytics():
+@authenticate_restful
+def inventory_analytics(resp):
     """This function generates statistics for each product of a given client
     that is either available in a warehouse or that has active sales in the past
     requested time period.
@@ -1017,8 +1017,7 @@ def inventory_analytics():
     cur = conn.cursor()
 
     try:
-        # auth_data = resp.get("data")
-        auth_data = {"user_group": "client", "client_prefix": "MIRAKKI"}
+        auth_data = resp.get("data")
         client_prefix = auth_data.get("client_prefix")
 
         # Threshold percentage in the range [0, 1] above which quantity is considered threshold
@@ -1158,14 +1157,13 @@ def inventory_analytics():
 
 
 @analytics_blueprint.route("/analytics/v1/inventory/get_filters", methods=["GET"])
-# @authenticate_restful
-def get_inventory_filters():
+@authenticate_restful
+def get_inventory_filters(resp):
     response = {"success": False, "data": {}}
     cur = conn.cursor()
 
     try:
-        # auth_data = resp.get("data")
-        auth_data = {"user_group": "client", "client_prefix": "MIRAKKI"}
+        auth_data = resp.get("data")
         client_prefix = auth_data.get("client_prefix")
 
         if not auth_data:
@@ -1195,14 +1193,13 @@ def get_inventory_filters():
 
 
 @analytics_blueprint.route("/analytics/v1/inventory/in_transit", methods=["GET"])
-# @authenticate_restful
-def inventory_snapshot():
+@authenticate_restful
+def inventory_snapshot(resp):
     response = {"success": False, "data": {}, "meta": {}}
     cur = conn.cursor()
 
     try:
-        # auth_data = resp.get("data")
-        auth_data = {"user_group": "client", "client_prefix": "HEALTHI"}
+        auth_data = resp.get("data")
         client_prefix = auth_data.get("client_prefix")
 
         if not auth_data:

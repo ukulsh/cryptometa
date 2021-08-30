@@ -1,20 +1,14 @@
-from hmac import new
-import logging, boto3, requests, json, xmltodict
-from datetime import datetime, timedelta
 from time import sleep
-from .queries import *
-from .courier_config import config
-from email.mime.multipart import MIMEMultipart
+from woocommerce import API
+from datetime import datetime, timedelta
 from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+import requests, json, hmac, hashlib, base64, logging, boto3
+
+from .queries import *
 from .order_shipped import order_shipped
-from .function import (
-    update_delivered_on_channels,
-    update_rto_on_channels,
-    update_picked_on_channels,
-    verification_text,
-    ecom_express_convert_xml_dict,
-)
-from app.db_utils import DbConnection, UrlShortner
+from ..db_utils import UrlShortner
+
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -32,957 +26,525 @@ email_client = boto3.client(
     aws_secret_access_key="3dw3MQgEL9Q0Ug9GqWLo8+O1e5xu5Edi5Hl90sOs",
 )
 
-conn = DbConnection.get_db_connection_instance()
 
+def verification_text(current_order, cur, ndr_reason=None):
+    ndr_confirmation_link = "http://track.wareiq.com/core/v1/passthru/ndr?CustomField=%s" % str(current_order[0])
+    ndr_confirmation_link = UrlShortner.get_short_url(ndr_confirmation_link, cur)
 
-def update_status(sync_ext=None):
-    cur = conn.cursor()
-    # Fetch courier objects - [id, courier_name, api_key, api_password]
-    if not sync_ext:
-        cur.execute(get_courier_id_and_key_query + " where integrated is true and id=27;")
-    else:
-        cur.execute(get_courier_id_and_key_query + " where integrated is not true;")
-
-    for courier in cur.fetchall():
-        try:
-            update_obj = OrderUpdateCourier(courier, cur)
-            update_obj.update_status()
-        except Exception as e:
-            logger.error("Status update failed: " + str(e.args[0]))
-
-    cur.close()
-
-
-class OrderUpdateCourier:
-    """
-    This class takes care of updating the status of active orders for a courier.
-    """
-
-    def __init__(self, courier, cursor):
-        self.id = courier[0]
-        if courier[1].startswith("Delhivery"):
-            self.name = "Delhivery"
-        elif courier[1].startswith("Xpressbees"):
-            self.name = "Xpressbees"
-        elif courier[1].startswith("Bluedart"):
-            self.name = "Bluedart"
-        elif courier[1].startswith("Ecom Express"):
-            self.name = "Ecom Express"
-        elif courier[1].startswith("Pidge"):
-            self.name = "Pidge"
-        self.api_key = courier[2]
-        self.api_password = courier[3]
-        self.cursor = cursor
-
-    def get_dict(self):
-        return {"id": self.id, "name": self.name, "api_key": self.api_key, "api_password": self.api_password}
-
-    def update_status(self):
-        """
-        Main function that checks and updates status of all active orders for a courier
-        """
-        pickup_count = 0
-        pickup_dict = dict()
-
-        self.cursor.execute(get_status_update_orders_query % str(self.id))
-        active_orders = self.cursor.fetchall()
-
-        # 1. In case the courier APIs need bulk AWBs for update, use this logic
-        if config[self.name]["api_type"] == "bulk":
-            requested_ship_data, orders_dict, exotel_idx, exotel_sms_data = self.request_bulk_status_from_courier(
-                active_orders
-            )
-            logger.info("Count of {0} packages: ".format(self.name) + str(len(requested_ship_data)))
-        else:
-            requested_ship_data = active_orders
-
-        for requested_order in requested_ship_data:
-            try:
-                # 2. In case the courier APIs need individual AWBs for update, use this logic
-                if config[self.name]["api_type"] == "individual":
-                    (
-                        requested_individual_order,
-                        exotel_idx,
-                        exotel_sms_data,
-                    ) = self.request_individual_status_from_courier(requested_order)
-                else:
-                    requested_individual_order = requested_order
-
-                # 3. Perform any courier specific sanity checks on data recieved in this section
-                check_obj = self.check_if_data_exists(requested_individual_order)
-                if check_obj["type"] == "continue":
-                    continue
-
-                # 4. Based on the API design, extract relevant information from API response
-                new_data = self.get_courier_specific_order_data(requested_individual_order)
-                if new_data["type"] == "continue":
-                    continue
-
-                # 5. In this section, generate any courier specific flags to be used later in their corresponding logic
-                flags, new_data = self.set_courier_specific_flags(
-                    requested_individual_order, new_data, orders_dict, check_obj
+    insert_cod_ver_tuple = (current_order[0], ndr_confirmation_link, datetime.now())
+    date_today = (datetime.utcnow() + timedelta(hours=5.5)).strftime("%Y-%m-%d")
+    cur.execute(
+        "SELECT * from ndr_shipments WHERE shipment_id=%s and date_created::date='%s';"
+        % (str(current_order[10]), date_today)
+    )
+    if not cur.fetchone():
+        ndr_ship_tuple = (
+            current_order[0],
+            current_order[10],
+            ndr_reason,
+            "required",
+            datetime.utcnow() + timedelta(hours=5.5),
+        )
+        cur.execute(
+            "INSERT INTO ndr_shipments (order_id, shipment_id, reason_id, current_status, date_created) VALUES (%s,%s,%s,%s,%s);",
+            ndr_ship_tuple,
+        )
+        if current_order[37] != False and ndr_reason in (1, 3, 9, 11):
+            cur.execute("SELECT * FROM ndr_verification where order_id=%s;" % str(current_order[0]))
+            if not cur.fetchone():
+                cur.execute(
+                    "INSERT INTO ndr_verification (order_id, verification_link, date_created) VALUES (%s,%s,%s);",
+                    insert_cod_ver_tuple,
                 )
-                if flags["type"] == "continue":
-                    continue
-
-                if config[self.name]["api_type"] == "individual":
-                    order = requested_order
-                else:
-                    order = orders_dict[new_data["current_awb"]]
-
-                try:
-                    # 6. Get current scans information for an order
-                    # Tuple of (id (orders), id (shipments), id (courier))
-                    order_status_tuple = (order[0], order[10], self.id)
-                    self.cursor.execute(select_statuses_query, order_status_tuple)
-
-                    # Fetch status objects - [id, status_code, status, status_text, location, status_time, location_city]
-                    all_scans = self.cursor.fetchall()
-                    all_scans_dict = dict()
-                    for scan in all_scans:
-                        all_scans_dict[scan[2]] = scan
-
-                    # 7. Convert courier specific order status into a uniform WareIQ standard
-                    new_status_dict, flags = self.convert_courier_status_to_wareiq_status(
-                        requested_individual_order, new_data, order, flags
-                    )
-
-                    # 8. Update the status of the orders under certain conditions only
-                    if new_status_dict:
-                        for status_key, status_value in new_status_dict.items():
-                            if status_key not in all_scans_dict:
-                                self.cursor.execute(
-                                    "INSERT INTO order_status (order_id, courier_id, shipment_id, "
-                                    "status_code, status, status_text, location, location_city, "
-                                    "status_time) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s);",
-                                    status_value,
-                                )
-
-                            elif status_key == "In Transit" and status_value[8] > all_scans_dict[status_key][5]:
-                                self.cursor.execute(
-                                    "UPDATE order_status SET location=%s, location_city=%s, status_time=%s"
-                                    " WHERE id=%s;",
-                                    (status_value[6], status_value[7], status_value[8], all_scans_dict[status_key][0]),
-                                )
-                    else:
-                        continue
-                except Exception as e:
-                    logger.error("Open status failed for id: " + str(order[0]) + "\nErr: " + str(e.args[0]))
-
-                # 9. Update shipment status of the order
-                status_obj, new_data = self.update_shipment_data(
-                    requested_individual_order, new_data, order, new_data["current_awb"], flags, check_obj
-                )
-                if status_obj["type"] == "continue":
-                    continue
-
-                customer_phone = order[4].replace(" ", "")
+                customer_phone = current_order[4].replace(" ", "")
                 customer_phone = "0" + customer_phone[-10:]
-
-                # 10. Update webhooks if the new status is delivered
-                if new_data["new_status"] == "DELIVERED":
-                    self.send_delivered_update(new_data, order, customer_phone)
-
-                # 11. Update webhooks if the new status is RTO
-                if new_data["new_status"] == "RTO":
-                    self.send_rto_update(new_data["new_status"], order)
-
-                # 12. Update webhooks if the new status is in transit and previous status is not in transit
-                if (
-                    order[2] in ("READY TO SHIP", "PICKUP REQUESTED", "NOT PICKED")
-                    and new_data["new_status"] == "IN TRANSIT"
-                ):
-                    pickup_count, pickup_dict, status_obj = self.send_new_to_transit_update(
-                        pickup_count, pickup_dict, new_data, order, status_obj, customer_phone, flags
-                    )
-                    if status_obj["type"] == "continue":
-                        continue
-
-                # 13. Update webhooks if the new status is pending
-                if order[2] != new_data["new_status"]:
-                    status_update_tuple = (
-                        new_data["new_status"],
-                        status_obj["data"]["status_type"],
-                        status_obj["data"]["status_detail"],
-                        order[0],
-                    )
-                    self.cursor.execute(order_status_update_query, status_update_tuple)
-                    self.send_pending_update(new_data, status_obj["data"]["status_code"], order, requested_order)
-
-                # 14. Update webhooks for courier specific updates
-                exotel_idx, exotel_sms_data = self.courier_specific_status_updates(
-                    new_data["new_status"], order, exotel_idx, exotel_sms_data, customer_phone, new_data["current_awb"]
-                )
-                conn.commit()
-            except Exception as e:
-                logger.error("Status update failed for " + str(order[0]) + "    err:" + str(e.args[0]))
-
-        # 15. Send SMS if necessary
-        self.send_exotel_messages(exotel_idx, exotel_sms_data)
-        if pickup_count:
-            logger.info("Total Picked: " + str(pickup_count) + "  Time: " + str(datetime.utcnow()))
-            try:
-                for key, value in pickup_dict.items():
-                    logger.info("picked for pickup_id " + str(key) + ": " + str(value))
-                    date_today = datetime.now().strftime("%Y-%m-%d")
-                    pickup_count_tuple = (value, self.id, key, date_today)
-                    self.cursor.execute(update_pickup_count_query, pickup_count_tuple)
-            except Exception as e:
-                logger.error("Couldn't update pickup count for : " + str(e.args[0]))
-
-        conn.commit()
-
-    def try_check_status_url(self, check_status_url, api_type, headers, data):
-        """
-        This function executes courier API dependent request pattern
-        """
-        try:
-            if api_type == "GET":
-                req = requests.get(check_status_url)
-            elif api_type == "POST":
-                if headers and data:
-                    req = requests.post(check_status_url, headers=headers, data=data)
-        except Exception:
-            sleep(10)
-            try:
-                if api_type == "GET":
-                    req = requests.get(check_status_url)
-                elif api_type == "POST":
-                    if headers and data:
-                        req = requests.post(check_status_url, headers=headers, data=data)
-            except Exception as e:
-                logger.error("{0} connection issue: ".format(self.id) + "\nError: " + str(e.args[0]))
-                pass
-
-        return req
-
-    def alert_wareiq_team(self, exotel_idx, exotel_sms_data):
-        """
-        Alert WareIQ team on errors with usage of courier APIs
-        """
-        sms_to_key = "Messages[%s][To]" % str(exotel_idx)
-        sms_body_key = "Messages[%s][Body]" % str(exotel_idx)
-        sms_body_key_data = "Status Update Fail Alert"
-        customer_phone = "08750108744"
-        exotel_sms_data[sms_to_key] = customer_phone
-        exotel_sms_data[sms_body_key] = sms_body_key_data
-        exotel_idx += 1
-
-        return exotel_idx, exotel_sms_data
-
-    def request_bulk_status_from_courier(self, orders):
-        """
-        Function for couriers who require sending AWBs in bulk to their API.
-        Depending on the API design of each courier, logic is segregated.
-        """
-        orders_dict = dict()
-        requested_ship_data = list()
-        exotel_idx = 0
-        exotel_sms_data = {"From": "LM-WAREIQ"}
-
-        if self.name == "Delhivery":
-            chunks = [orders[x : x + 500] for x in range(0, len(orders), 500)]
-            for some_orders in chunks:
-                awb_string = ""
-                for order in some_orders:
-                    orders_dict[order[1]] = order
-                    awb_string += order[1] + ","
-
-                awb_string = awb_string.rstrip(",")
-                check_status_url = config[self.name]["status_url"] % (awb_string, self.api_key)
-                req = self.try_check_status_url(check_status_url, "GET", {}, {})
-
-                if req:
-                    try:
-                        requested_ship_data += req.json()["ShipmentData"]
-                    except Exception as e:
-                        logger.error("Status Tracking Failed for: " + awb_string + "\nError: " + str(e.args[0]))
-                        if e.args[0] == "ShipmentData":
-                            if len(some_orders) > 25:
-                                smaller_chunks = [some_orders[x : x + 20] for x in range(0, len(some_orders), 20)]
-                                chunks += smaller_chunks
-                            exotel_idx, exotel_sms_data = self.alert_wareiq_team(exotel_idx, exotel_sms_data)
-
-        if self.name == "Xpressbees":
-            headers = {"Content-Type": "application/json"}
-            chunks = [orders[x : x + 10] for x in range(0, len(orders), 10)]
-            for some_orders in chunks:
-                awb_string = ""
-                for order in some_orders:
-                    orders_dict[order[1]] = order
-                    awb_string += order[1] + ","
-
-                xpressbees_body = {"AWBNo": awb_string.rstrip(","), "XBkey": self.api_password.split("|")[1]}
-
-                check_status_url = config[self.name]["status_url"]
-                req = self.try_check_status_url(check_status_url, "POST", headers, json.dumps(xpressbees_body))
-                req = requests.post(check_status_url, headers=headers, data=json.dumps(xpressbees_body)).json()
-                requested_ship_data += req
-
-        if self.name == "Bluedart":
-            chunks = [orders[x : x + 200] for x in range(0, len(orders), 200)]
-            for some_orders in chunks:
-                awb_string = ""
-                for order in some_orders:
-                    orders_dict[order[1]] = order
-                    awb_string += order[1] + ","
-
-                awb_string = awb_string.rstrip(",")
-                req = None
-                check_status_url = config[self.name]["status_url"] % awb_string
-                req = self.try_check_status_url(check_status_url, "GET", {}, {})
-
-                if req:
-                    try:
-                        req = xmltodict.parse(req.content)
-                        if type(req["ShipmentData"]["Shipment"]) == list:
-                            requested_ship_data += req["ShipmentData"]["Shipment"]
-                        else:
-                            requested_ship_data += [req["ShipmentData"]["Shipment"]]
-                    except Exception as e:
-                        logger.error("Status Tracking Failed for: " + awb_string + "\nError: " + str(e.args[0]))
-                        if e.args[0] == "ShipmentData":
-                            exotel_idx, exotel_sms_data = self.alert_wareiq_team(exotel_idx, exotel_sms_data)
-
-        if self.name == "Ecom Express":
-            chunks = [orders[x : x + 100] for x in range(0, len(orders), 100)]
-            for some_orders in chunks:
-                awb_string = ""
-                for order in some_orders:
-                    orders_dict[order[1]] = order
-                    awb_string += order[1] + ","
-
-                awb_string = awb_string.rstrip(",")
-
-                check_status_url = config[self.name]["status_url"] % (awb_string, self.api_key, self.api_password)
-                req = self.try_check_status_url(check_status_url, "GET", {}, {})
-                try:
-                    req = xmltodict.parse(req.content)
-                    if type(req["ecomexpress-objects"]["object"]) == list:
-                        req_data = list()
-                        for elem in req["ecomexpress-objects"]["object"]:
-                            req_obj = ecom_express_convert_xml_dict(elem)
-                            req_data.append(req_obj)
-                    else:
-                        req_data = [ecom_express_convert_xml_dict(req["ecomexpress-objects"]["object"])]
-
-                    requested_ship_data += req_data
-
-                except Exception as e:
-                    logger.error("Status Tracking Failed for: " + awb_string + "\nError: " + str(e.args[0]))
-                    if e.args[0] == "ShipmentData":
-                        exotel_idx, exotel_sms_data = self.alert_wareiq_team(exotel_idx, exotel_sms_data)
-
-        return requested_ship_data, orders_dict, exotel_idx, exotel_sms_data
-
-    def request_individual_status_from_courier(self, order):
-        """
-        Function for couriers who require sending AWBs individually to their API.
-        Depending on the API design of each courier, logic is segregated.
-        """
-        exotel_idx = 0
-        exotel_sms_data = {"From": "LM-WAREIQ"}
-
-        if self.name == "Pidge":
-            headers = {
-                "Authorization": "Bearer " + self.api_key,
-                "Content-Type": "application/json",
-                "platform": "Postman",
-                "deviceId": "abc",
-                "buildNumber": "123",
-            }
-            requested_order = requests.get(config[self.name]["status_url"] + str(order[0]), headers=headers).json()
-
-        return requested_order, exotel_idx, exotel_sms_data
-
-    def check_if_data_exists(self, requested_order):
-        """
-        Once the data is recieved from the courier API, sanity checks are
-        performed wherever necessary.
-        """
-        return_object = {"type": None}
-        if self.name == "Xpressbees":
-            if not requested_order["ShipmentSummary"]:
-                return_object["type"] = "continue"
-                return return_object
-
-        if self.name == "Pidge":
-            payload = requested_order["data"]["current_status"]
-            reason_code_number = payload.get("trip_status")
-
-            if not reason_code_number:
-                return_object["type"] = "continue"
-                return return_object
-
-            if payload.get("attempt_type") not in (10, 30, 40, 70):
-                return_object["type"] = "continue"
-                return return_object
-
-            if reason_code_number not in (130, 150, 170, 190, 5):
-                return_object["type"] = "continue"
-                return return_object
-
-            return_object["reason_code_number"] = reason_code_number
-
-        return return_object
-
-    def get_courier_specific_order_data(self, order):
-        """
-        This function has logic to pickup right keys to extract information
-        from the courier API response. Different couriers provide different
-        kinds of information. Accordingly logic is segregated.
-        """
-        new_data = {"type": "continue"}
-        if self.name == "Delhivery":
-            new_data["new_status"] = order["Shipment"]["Status"]["Status"]
-            new_data["current_awb"] = order["Shipment"]["AWB"]
-
-        if self.name == "Xpressbees":
-            new_data["new_status"] = order["ShipmentSummary"][0]["StatusCode"]
-            new_data["current_awb"] = order["AWBNo"]
-
-        if self.name == "Bluedart":
-            if order["StatusType"] == "NF":
-                return new_data
-            new_data["current_awb"] = order["@WaybillNo"] if "@WaybillNo" in order else ""
-            try:
-                new_data["scan_group"] = order["Scans"]["ScanDetail"][0]["ScanGroupType"]
-                new_data["scan_code"] = order["Scans"]["ScanDetail"][0]["ScanCode"]
-            except Exception as e:
-                new_data["scan_group"] = order["Scans"]["ScanDetail"]["ScanGroupType"]
-                new_data["scan_code"] = order["Scans"]["ScanDetail"]["ScanCode"]
-
-            if (
-                new_data["scan_group"] not in config[self.name]["status_mapping"]
-                or new_data["scan_code"] not in config[self.name]["status_mapping"][new_data["scan_group"]]
-            ):
-                return new_data
-
-            new_data["new_status"] = config[self.name]["status_mapping"][new_data["scan_group"]][new_data["scan_code"]][
-                0
-            ]
-            new_data["current_awb"] = order["@WaybillNo"]
-
-        if self.name == "Ecom Express":
-            new_data["scan_code"] = order["reason_code_number"]
-            if new_data["scan_code"] not in config[self.name]["status_mapping"]:
-                return new_data
-
-            new_data["new_status"] = config[self.name]["status_mapping"][new_data["scan_code"]][0]
-            new_data["current_awb"] = order["awb_number"]
-
-        if self.name == "Pidge":
-            new_data["current_awb"] = str(order["data"]["current_status"]["PBID"])
-
-        new_data["type"] = None
-        return new_data
-
-    def set_courier_specific_flags(self, requested_order, new_data, orders_dict, check_obj):
-        """
-        Courier specific sanity checks and custom flags to be used later in their logic are
-        performed here.
-        """
-        flags = {"type": "continue"}
-        if self.name == "Xpressbees":
-            flags["order_picked_check"] = False
-
-        if self.name == "Bluedart":
-            flags["is_return"] = False
-            if "@RefNo" in requested_order and str(requested_order["@RefNo"]).startswith("074"):
-                new_data["current_awb"] = str(str(requested_order["@RefNo"]).split("-")[1]).strip()
-                flags["is_return"] = True
-
-            if flags["is_return"] and new_data["new_status"] != "DELIVERED":
-                return flags, new_data
-
-        if self.name == "Ecom Express":
-            if (
-                orders_dict[new_data["current_awb"]][2] == "CANCELED" and new_data["new_status"] != "IN TRANSIT"
-            ) or new_data["new_status"] in ("READY TO SHIP", "PICKUP REQUESTED"):
-                return flags, new_data
-
-        if self.name == "Pidge":
-            payload = requested_order["data"]["current_status"]
-            flags["is_return"] = False
-            if payload.get("attempt_type") == 30:
-                flags["is_return"] = True
-            new_data["new_status"] = ""
-
-            if check_obj["reason_code_number"] in config[self.name]["status_mapping"]:
-                new_data["new_status"] = config[self.name]["status_mapping"][check_obj["reason_code_number"]][0]
-
-            if not new_data["new_status"] or new_data["new_status"] in ("READY TO SHIP", "PICKUP REQUESTED"):
-                return flags, new_data
-
-        flags["type"] = None
-        return flags, new_data
-
-    def convert_courier_status_to_wareiq_status(self, requested_order, new_data, existing_order, flags):
-        """
-        Convert terinology of order details in courier API to a uniform WareIQ format.
-        """
-        new_status = dict()
-        if self.name == "Delhivery":
-            for each_scan in requested_order["Shipment"]["Scans"]:
-                status_time = each_scan["ScanDetail"]["StatusDateTime"]
-                if status_time:
-                    if len(status_time) == 19:
-                        status_time = datetime.strptime(status_time, config[self.name]["status_time_format"])
-                    else:
-                        status_time = datetime.strptime(status_time, config[self.name]["status_time_format"] + ".%f")
-
-                to_record_status = config[self.name]["status_mapper_fn"](each_scan)
-                if not to_record_status:
-                    continue
-
-                if to_record_status not in new_status:
-                    new_status[to_record_status] = (
-                        existing_order[0],
-                        self.id,
-                        existing_order[10],
-                        each_scan["ScanDetail"]["ScanType"],
-                        to_record_status,
-                        each_scan["ScanDetail"]["Instructions"],
-                        each_scan["ScanDetail"]["ScannedLocation"],
-                        each_scan["ScanDetail"]["CityLocation"],
-                        status_time,
-                    )
-                elif to_record_status == "In Transit" and new_status[to_record_status][8] < status_time:
-                    new_status[to_record_status] = (
-                        existing_order[0],
-                        self.id,
-                        existing_order[10],
-                        each_scan["ScanDetail"]["ScanType"],
-                        to_record_status,
-                        each_scan["ScanDetail"]["Instructions"],
-                        each_scan["ScanDetail"]["ScannedLocation"],
-                        each_scan["ScanDetail"]["CityLocation"],
-                        status_time,
-                    )
-
-        if self.name == "Xpressbees":
-            for each_scan in requested_order["ShipmentSummary"]:
-                if not each_scan.get("Location"):
-                    continue
-                status_time = each_scan["StatusDate"] + "T" + each_scan["StatusTime"]
-                if status_time:
-                    status_time = datetime.strptime(status_time, config[self.name]["status_time_format"])
-
-                to_record_status, flags = config[self.name]["status_mapper_fn"](each_scan, flags)
-                if not to_record_status:
-                    continue
-
-                if to_record_status not in new_status:
-                    new_status[to_record_status] = (
-                        existing_order[0],
-                        self.id,
-                        existing_order[10],
-                        config[self.name]["status_mapping"][each_scan["StatusCode"]][1],
-                        to_record_status,
-                        each_scan["Status"],
-                        each_scan["Location"],
-                        each_scan["Location"].split(", ")[1],
-                        status_time,
-                    )
-                elif to_record_status == "In Transit" and new_status[to_record_status][8] < status_time:
-                    new_status[to_record_status] = (
-                        existing_order[0],
-                        self.id,
-                        existing_order[10],
-                        config[self.name]["status_mapping"][each_scan["StatusCode"]][1],
-                        to_record_status,
-                        each_scan["Status"],
-                        each_scan["Location"],
-                        each_scan["Location"].split(", ")[1],
-                        status_time,
-                    )
-
-        if self.name == "Bluedart":
-            if isinstance(requested_order["Scans"]["ScanDetail"], list):
-                scan_list = requested_order["Scans"]["ScanDetail"]
-            else:
-                scan_list = [requested_order["Scans"]["ScanDetail"]]
-            for each_scan in scan_list:
-                status_time = each_scan["ScanDate"] + "T" + each_scan["ScanTime"]
-                if status_time:
-                    status_time = datetime.strptime(status_time, config[self.name]["status_time_format"])
-
-                to_record_status, flags = config[self.name]["status_mapper_fn"](
-                    each_scan, new_data["new_status"], flags
-                )
-                if not to_record_status:
-                    continue
-
-                if to_record_status not in new_status:
-                    new_status[to_record_status] = (
-                        existing_order[0],
-                        self.id,
-                        existing_order[10],
-                        each_scan["ScanType"],
-                        to_record_status,
-                        each_scan["Scan"],
-                        each_scan["ScannedLocation"],
-                        each_scan["ScannedLocation"],
-                        status_time,
-                    )
-                elif (
-                    to_record_status == "In Transit"
-                    and new_status[to_record_status][8] < status_time
-                    and not flags["is_return"]
-                ):
-                    new_status[to_record_status] = (
-                        existing_order[0],
-                        self.id,
-                        existing_order[10],
-                        each_scan["ScanType"],
-                        to_record_status,
-                        each_scan["Scan"],
-                        each_scan["ScannedLocation"],
-                        each_scan["ScannedLocation"],
-                        status_time,
-                    )
-
-        if self.name == "Ecom Express":
-            for each_scan in requested_order["scans"]:
-                status_time = each_scan["updated_on"]
-                if status_time:
-                    status_time = datetime.strptime(status_time, config[self.name]["status_time_format"])
-
-                to_record_status, status_time = config[self.name]["status_mapper_fn"](
-                    each_scan, new_data, requested_order, status_time
-                )
-                if not to_record_status:
-                    continue
-
-                if to_record_status not in new_status:
-                    new_status[to_record_status] = (
-                        existing_order[0],
-                        self.id,
-                        existing_order[10],
-                        each_scan["reason_code_number"],
-                        to_record_status,
-                        each_scan["status"],
-                        each_scan["location_city"],
-                        each_scan["city_name"],
-                        status_time,
-                    )
-                elif to_record_status == "In Transit" and new_status[to_record_status][8] < status_time:
-                    new_status[to_record_status] = (
-                        existing_order[0],
-                        self.id,
-                        existing_order[10],
-                        each_scan["reason_code_number"],
-                        to_record_status,
-                        each_scan["status"],
-                        each_scan["location_city"],
-                        each_scan["city_name"],
-                        status_time,
-                    )
-
-        if self.name == "Pidge":
-            for each_scan in requested_order["data"]["past_status"]:
-                if each_scan.get("attempt_type") == 20:
-                    continue
-                if (
-                    each_scan.get("trip_status") in (20, 100, 120, 5)
-                    or each_scan.get("trip_status") not in config[self.name]["status_mapping"]
-                ):
-                    continue
-
-                status_time = each_scan["status_datetime"]
-                if status_time:
-                    status_time = datetime.strptime(status_time, config[self.name]["status_time_format"])
-
-                to_record_status = config[self.name]["status_mapping"][each_scan.get("trip_status")][2]
-
-                if to_record_status not in new_status:
-                    new_status[to_record_status] = (
-                        existing_order[0],
-                        self.id,
-                        existing_order[10],
-                        each_scan["trip_status"],
-                        to_record_status,
-                        each_scan["trip_status"],
-                        "",
-                        "",
-                        status_time,
-                    )
-                elif to_record_status == "In Transit" and new_status[to_record_status][8] < status_time:
-                    new_status[to_record_status] = (
-                        existing_order[0],
-                        self.id,
-                        existing_order[10],
-                        each_scan["trip_status"],
-                        to_record_status,
-                        each_scan["trip_status"],
-                        "",
-                        "",
-                        status_time,
-                    )
-        return new_status, flags
-
-    def update_shipment_data(self, requested_order, new_data, existing_order, current_awb, flags, check_obj):
-        """
-        Once order status data is converted to uniform WareIQ format,
-        update them in DB accordingly.
-        """
-        return_object = {
-            "type": "continue",
-            "data": {"status_type": None, "status_detail": None, "status_code": None, "edd": None},
+                send_ndr_event(customer_phone, current_order, ndr_confirmation_link)
+
+
+def woocommerce_fulfillment(order):
+    wcapi = API(url=order[9], consumer_key=order[7], consumer_secret=order[8], version="wc/v3")
+    status_mark = order[27]
+    if not status_mark:
+        status_mark = "completed"
+    r = wcapi.post(
+        "orders/%s?consumer_key=%s&consumer_secret=%s" % (str(order[5]), order[7], order[8]),
+        data={"status": status_mark},
+    )
+    try:
+        r = wcapi.post(
+            "orders/%s/shipment-trackings" % str(order[5]),
+            data={"tracking_provider": "WareIQ", "tracking_number": order[1]},
+        )
+    except Exception:
+        pass
+
+
+def lotus_organics_update(order, status):
+    url = "https://lotusapi.farziengineer.co/plugins/plugin.wareiq/order/update"
+    headers = {"x-api-key": "c2d8f4d497ee44649653074f139eddf2"}
+    data = {"id": int(order[5]), "ware_iq_id": order[0], "awb_number": str(order[1]), "status_information": status}
+
+    req = requests.post(url, headers=headers, data=data)
+
+
+def lotus_botanicals_shipped(order):
+    try:
+        url = "http://webapps.lotusbotanicals.com/orders/update/shipping/" + str(order[0])
+        headers = {"Content-Type": "application/json", "Authorization": "Ae76eH239jla*fgna#q6fG&5Khswq_kpaj$#1a"}
+        tracking_link = "http://webapp.wareiq.com/tracking/%s" % str(order[1])
+        data = {"tracking_service": "WareIQ", "tracking_number": str(order[1]), "url": tracking_link}
+        req = requests.post(url, headers=headers, data=json.dumps(data))
+
+    except Exception as e:
+        logger.error("Couldn't update lotus for: " + str(order[0]) + "\nError: " + str(e.args))
+
+
+def lotus_botanicals_delivered(order):
+    try:
+        url = "http://webapps.lotusbotanicals.com/orders/update/delivered/" + str(order[0])
+        headers = {"Content-Type": "application/json", "Authorization": "Ae76eH239jla*fgna#q6fG&5Khswq_kpaj$#1a"}
+        data = {}
+        req = requests.post(url, headers=headers, data=json.dumps(data))
+    except Exception as e:
+        logger.error("Couldn't update lotus for: " + str(order[0]) + "\nError: " + str(e.args))
+
+
+def woocommerce_returned(order):
+    wcapi = API(url=order[9], consumer_key=order[7], consumer_secret=order[8], version="wc/v3")
+    status_mark = order[33]
+    if not status_mark:
+        status_mark = "cancelled"
+    r = wcapi.post("orders/%s" % str(order[5]), data={"status": status_mark})
+
+
+def shopify_fulfillment(order, cur):
+    if not order[25]:
+        get_locations_url = "https://%s:%s@%s/admin/api/2019-10/locations.json" % (order[7], order[8], order[9])
+        req = requests.get(get_locations_url).json()
+        location_id = str(req["locations"][0]["id"])
+        cur.execute("UPDATE client_channel set unique_parameter=%s where id=%s" % (location_id, order[34]))
+    else:
+        location_id = str(order[25])
+
+    create_fulfillment_url = "https://%s:%s@%s/admin/api/2019-10/orders/%s/fulfillments.json" % (
+        order[7],
+        order[8],
+        order[9],
+        order[5],
+    )
+    tracking_link = "http://webapp.wareiq.com/tracking/%s" % str(order[1])
+    ful_header = {"Content-Type": "application/json"}
+    fulfil_data = {
+        "fulfillment": {
+            "tracking_number": str(order[1]),
+            "tracking_urls": [tracking_link],
+            "tracking_company": "WareIQ",
+            "location_id": int(location_id),
+            "notify_customer": True,
         }
-        if self.name == "Delhivery":
-            if new_data["new_status"] == "Manifested":
-                return return_object
+    }
+    req_ful = requests.post(create_fulfillment_url, data=json.dumps(fulfil_data), headers=ful_header)
+    fulfillment_id = None
+    try:
+        fulfillment_id = str(req_ful.json()["fulfillment"]["id"])
+    except KeyError:
+        if req_ful.json().get("errors") and req_ful.json().get("errors") == "Not Found":
+            get_locations_url = "https://%s:%s@%s/admin/api/2019-10/locations.json" % (order[7], order[8], order[9])
+            req = requests.get(get_locations_url).json()
+            location_id = str(req["locations"][0]["id"])
+            cur.execute("UPDATE client_channel set unique_parameter=%s where id=%s" % (location_id, order[34]))
+            fulfil_data["fulfillment"]["location_id"] = int(location_id)
+            req_ful = requests.post(create_fulfillment_url, data=json.dumps(fulfil_data), headers=ful_header)
+            fulfillment_id = str(req_ful.json()["fulfillment"]["id"])
+    if fulfillment_id and tracking_link:
+        cur.execute(
+            "UPDATE shipments SET channel_fulfillment_id=%s, tracking_link=%s WHERE id=%s",
+            (fulfillment_id, tracking_link, order[10]),
+        )
+    return fulfillment_id, tracking_link
 
-            new_data["new_status"] = new_data["new_status"].upper()
-            if (existing_order[2] == "CANCELED" and new_data["new_status"] != "IN TRANSIT") or new_data[
-                "new_status"
-            ] in ("READY TO SHIP", "NOT PICKED", "PICKUP REQUESTED"):
-                return return_object
 
-            return_object["status_type"] = requested_order["Shipment"]["Status"]["StatusType"]
-            if new_data["new_status"] == "PENDING":
-                return_object["status_code"] = requested_order["Shipment"]["Scans"][-1]["ScanDetail"]["StatusCode"]
+def hepta_fulfilment(order):
+    headers = {
+        "Content-Type": "application/x-www-form-urlencoded",
+        "Authorization": "Basic c2VydmljZS5hcGl1c2VyOllQSGpBQXlXY3RWYzV5MWg=",
+    }
+    hepta_url = "https://www.nashermiles.com/alexandria/api/v1/shipment/create"
+    hepta_body = {
+        "order_id": str(order[5]),
+        "awb_number": str(order[1]),
+        "tracking_link": "http://webapp.wareiq.com/tracking/%s" % str(order[1]),
+    }
+    req_ful = requests.post(hepta_url, headers=headers, data=json.dumps(hepta_body))
 
-            return_object["edd"] = requested_order["Shipment"]["expectedDate"]
 
-        if self.name == "Xpressbees":
-            new_status_temp = config[self.name]["status_mapping"][new_data["new_status"]][0].upper()
+def shopify_markpaid(order):
+    get_transactions_url = "https://%s:%s@%s/admin/api/2019-10/orders/%s/transactions.json" % (
+        order[7],
+        order[8],
+        order[9],
+        order[5],
+    )
+
+    tra_header = {"Content-Type": "application/json"}
+    transaction_data = {
+        "transaction": {"kind": "sale", "source": "external", "amount": str(order[35]), "currency": "INR"}
+    }
+    req_ful = requests.post(get_transactions_url, data=json.dumps(transaction_data), headers=tra_header)
+
+
+def instamojo_push_awb(order):
+    push_awb_url = "https://api.instamojo.com/v2/store/orders/%s/" % str(order[5])
+    tra_header = {"Authorization": "Bearer " + order[7]}
+    tracking_link = "https://webapp.wareiq.com/tracking/%s" % str(order[1])
+    push_awb_data = {"shipping": {"tracking_url": tracking_link, "waybill": str(order[1]), "courier_partner": "WareIQ"}}
+    req_ful = requests.patch(push_awb_url, data=push_awb_data, headers=tra_header)
+
+
+def instamojo_update_status(order, status, status_text):
+    push_awb_url = "https://api.instamojo.com/v2/store/orders/%s/update-order/" % str(order[5])
+    tra_header = {"Authorization": "Bearer " + order[7]}
+    push_awb_data = {"order_status": status, "comments": status_text}
+
+    req_ful = requests.patch(push_awb_url, data=push_awb_data, headers=tra_header)
+
+
+def shopify_cancel(order):
+    get_cancel_url = "https://%s:%s@%s/admin/api/2019-10/orders/%s/cancel.json" % (
+        order[7],
+        order[8],
+        order[9],
+        order[5],
+    )
+
+    tra_header = {"Content-Type": "application/json"}
+    cancel_data = {"restock": False}
+    if order[3] in ("BEHIR", "SHAHIKITCHEN", "SUKHILIFE", "SUCCESSCRAFT", "NEWYOURCHOICE"):
+        cancel_data = {"restock": True}
+    req_ful = requests.post(get_cancel_url, data=json.dumps(cancel_data), headers=tra_header)
+
+
+def magento_fulfillment(order, cur, courier=None):
+    create_fulfillment_url = "%s/V1/order/%s/ship" % (order[9], order[5])
+    tracking_link = "http://webapp.wareiq.com/tracking/%s" % str(order[1])
+    ful_header = {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer " + order[7],
+        "User-Agent": "WareIQ server",
+    }
+
+    items_list = list()
+    for idx, sku in enumerate(order[16]):
+        if sku:
+            items_list.append({"extension_attributes": {}, "order_item_id": int(sku), "qty": int(order[17][idx])})
+    fulfil_data = {
+        "items": items_list,
+        "notify": False,
+        "tracks": [
+            {
+                "extension_attributes": {"warehouse_name": str(order[36])} if order[3] == "KAMAAYURVEDA" else {},
+                "track_number": str(order[1]),
+                "title": courier[1],
+                "carrier_code": courier[1],
+            }
+        ],
+    }
+    req_ful = requests.post(create_fulfillment_url, data=json.dumps(fulfil_data), headers=ful_header)
+
+    if type(req_ful.json()) == str:
+        cur.execute(
+            "UPDATE shipments SET channel_fulfillment_id=%s, tracking_link=%s WHERE id=%s",
+            (req_ful.json(), tracking_link, order[10]),
+        )
+
+    shipped_comment_url = "%s/V1/orders/%s/comments" % (order[9], order[5])
+
+    status_mark = order[27]
+    if not status_mark:
+        status_mark = "shipped"
+    time_now = datetime.utcnow() + timedelta(hours=5.5)
+    time_now = time_now.strftime("%Y-%m-%d %H:%M:%S")
+    complete_data = {
+        "statusHistory": {
+            "comment": "Shipment Created",
+            "created_at": time_now,
+            "parent_id": int(order[5]),
+            "is_customer_notified": 0,
+            "is_visible_on_front": 0,
+            "status": status_mark,
+        }
+    }
+    req_ful = requests.post(shipped_comment_url, data=json.dumps(complete_data), headers=ful_header)
+    return req_ful.json(), tracking_link
+
+
+def magento_invoice(order):
+    create_invoice_url = "%s/V1/order/%s/invoice" % (order[9], order[5])
+    ful_header = {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer " + order[7],
+        "User-Agent": "WareIQ server",
+    }
+
+    items_list = list()
+    for idx, sku in enumerate(order[16]):
+        if sku:
+            items_list.append({"extension_attributes": {}, "order_item_id": int(sku), "qty": int(order[17][idx])})
+
+    invoice_data = {"capture": False, "notify": False}
+    req_ful = requests.post(create_invoice_url, data=json.dumps(invoice_data), headers=ful_header)
+
+    invoice_comment_url = "%s/V1/orders/%s/comments" % (order[9], order[5])
+
+    status_mark = order[29]
+    if not status_mark:
+        status_mark = "invoiced"
+    time_now = datetime.utcnow() + timedelta(hours=5.5)
+    time_now = time_now.strftime("%Y-%m-%d %H:%M:%S")
+    complete_data = {
+        "statusHistory": {
+            "comment": "Invoice Created",
+            "created_at": time_now,
+            "parent_id": int(order[5]),
+            "is_customer_notified": 0,
+            "is_visible_on_front": 0,
+            "status": status_mark,
+        }
+    }
+    req_ful = requests.post(invoice_comment_url, data=json.dumps(complete_data), headers=ful_header)
+
+
+def magento_complete_order(order):
+    complete_order_url = "%s/V1/orders/%s/comments" % (order[9], order[5])
+    ful_header = {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer " + order[7],
+        "User-Agent": "WareIQ server",
+    }
+
+    status_mark = order[31]
+    if not status_mark:
+        status_mark = "delivered"
+    time_now = datetime.utcnow() + timedelta(hours=5.5)
+    time_now = time_now.strftime("%Y-%m-%d %H:%M:%S")
+    complete_data = {
+        "statusHistory": {
+            "comment": "Order Delivered",
+            "created_at": time_now,
+            "parent_id": int(order[5]),
+            "is_customer_notified": 0,
+            "is_visible_on_front": 0,
+            "status": status_mark,
+        }
+    }
+    req_ful = requests.post(complete_order_url, data=json.dumps(complete_data), headers=ful_header)
+
+
+def magento_return_order(order):
+    complete_order_url = "%s/V1/orders/%s/comments" % (order[9], order[5])
+    ful_header = {"Content-Type": "application/json", "Authorization": "Bearer " + order[7]}
+
+    status_mark = order[33]
+    if not status_mark:
+        status_mark = "returned"
+    time_now = datetime.utcnow() + timedelta(hours=5.5)
+    time_now = time_now.strftime("%Y-%m-%d %H:%M:%S")
+    complete_data = {
+        "statusHistory": {
+            "comment": "Order Returned",
+            "created_at": time_now,
+            "parent_id": int(order[5]),
+            "is_customer_notified": 0,
+            "is_visible_on_front": 0,
+            "status": status_mark,
+        }
+    }
+    req_ful = requests.post(complete_order_url, data=json.dumps(complete_data), headers=ful_header)
+
+
+def update_picked_on_channels(order, cur, courier=None):
+    if order[3] == "NASHER" and order[5]:
+        hepta_fulfilment(order)
+    if order[26] != False:
+        if order[14] == 5:
             try:
-                return_object["status_type"] = config[self.name]["status_mapping"][new_data["new_status"]][1]
-            except KeyError:
-                return_object["status_type"] = None
-
-            if new_status_temp in ("READY TO SHIP", "PICKUP REQUESTED"):
-                return return_object
-
-            new_data["new_status"] = new_status_temp
-
-            if existing_order[2] == "CANCELED" and new_data["new_status"] != "IN TRANSIT":
-                return return_object
-
-            return_object["edd"] = requested_order["ShipmentSummary"][0].get("ExpectedDeliveryDate")
-
-        if self.name == "Bluedart":
-            if flags["is_return"] and new_data["new_status"] == "DELIVERED":
-                new_data["new_status"] = "RTO"
-
-            return_object["status_type"] = requested_order["StatusType"]
-            if new_data["new_status"] in ("NOT PICKED", "READY TO SHIP", "PICKUP REQUESTED"):
-                return return_object
-            return_object["status_detail"] = None
-            return_object["status_code"] = new_data["scan_code"]
-
-            if existing_order[2] == "CANCELED" and new_data["new_status"] != "IN TRANSIT":
-                return return_object
-
-            return_object["edd"] = (
-                requested_order["ExpectedDeliveryDate"] if "ExpectedDeliveryDate" in requested_order else None
-            )
-
-        if self.name == "Ecom Express":
-            return_object["edd"] = requested_order["expected_date"] if "expected_date" in requested_order else None
-            return_object["status_type"] = config[self.name]["status_mapping"][new_data["scan_code"]][1]
-            return_object["status_detail"] = None
-            return_object["status_code"] = new_data["scan_code"]
-
-        if self.name == "Pidge":
-            if check_obj["reason_code_number"] in config[self.name]["status_mapping"]:
-                return_object["status_type"] = "UD" if not flags["is_return"] else "RT"
-
-        if return_object["edd"]:
-            try:
-                return_object["edd"] = datetime.strptime(return_object["edd"], config[self.name]["edd_time_format"])
-                if datetime.utcnow().hour < 4:
-                    self.cursor.execute("UPDATE shipments SET edd=%s WHERE awb=%s", (return_object["edd"], current_awb))
-                    self.cursor.execute(
-                        "UPDATE shipments SET pdd=%s WHERE awb=%s and pdd is null", (return_object["edd"], current_awb)
-                    )
+                woocommerce_fulfillment(order)
             except Exception as e:
-                logger.error(str(e.args))
+                logger.error("Couldn't update woocommerce for: " + str(order[0]) + "\nError: " + str(e.args))
+        elif order[14] == 1:
+            try:
+                shopify_fulfillment(order, cur)
+            except Exception as e:
+                logger.error("Couldn't update shopify for: " + str(order[0]) + "\nError: " + str(e.args))
+        elif order[14] == 6:  # Magento fulfilment
+            try:
+                if order[28] != False:
+                    magento_invoice(order)
+                magento_fulfillment(order, cur, courier=courier)
+            except Exception as e:
+                logger.error("Couldn't update Magento for: " + str(order[0]) + "\nError: " + str(e.args))
+        elif order[14] == 8:  # Bikayi fulfilment
+            try:
+                update_bikayi_status(order, "IN_PROGRESS")
+            except Exception as e:
+                logger.error("Couldn't update Bikayi for: " + str(order[0]) + "\nError: " + str(e.args))
+        elif order[3] == "LOTUSBOTANICALS":
+            lotus_botanicals_shipped(order)
+        elif order[3] == "LOTUSORGANICS":
+            try:
+                lotus_organics_update(order, "Order Shipped")
+            except Exception as e:
+                pass
+        elif order[14] == 7:  # Easyecom fulfilment
+            try:
+                update_easyecom_status(order, 2)
+            except Exception as e:
+                logger.error("Couldn't update Easyecom for: " + str(order[0]) + "\nError: " + str(e.args))
+        elif order[14] == 13:  # Instamojo fulfilment
+            try:
+                instamojo_push_awb(order)
+                instamojo_update_status(order, "dispatched", "Order picked up by courier")
+            except Exception as e:
+                logger.error("Couldn't update Instamojo for: " + str(order[0]) + "\nError: " + str(e.args))
 
-            return_object["type"] = None
 
-        return return_object, new_data
+def update_delivered_on_channels(order):
+    if order[30] != False:
+        if order[14] == 6:  # Magento complete
+            try:
+                magento_complete_order(order)
+            except Exception as e:
+                logger.error("Couldn't complete Magento for: " + str(order[0]) + "\nError: " + str(e.args))
 
-    def send_delivered_update(self, new_data, existing_order, customer_phone):
-        """
-        Send updates for the orders with new status as delivered.
-        """
-        update_delivered_on_channels(existing_order)
-        webhook_updates(
-            existing_order,
-            self.cursor,
-            new_data["new_status"],
-            "Shipment Delivered",
-            "",
-            (datetime.utcnow() + timedelta(hours=5.5)).strftime("%Y-%m-%d %H:%M:%S"),
-        )
-        tracking_link = "https://webapp.wareiq.com/tracking/" + new_data["current_awb"]
-        tracking_link = UrlShortner.get_short_url(tracking_link, self.cursor)
-        send_delivered_event(customer_phone, existing_order, self.name, tracking_link)
-
-    def send_rto_update(self, new_status, existing_order):
-        """
-        Send updates for the orders with new status as RTO.
-        """
-        update_rto_on_channels(existing_order)
-        webhook_updates(
-            existing_order,
-            self.cursor,
-            new_status,
-            "Shipment RTO",
-            "",
-            (datetime.utcnow() + timedelta(hours=5.5)).strftime("%Y-%m-%d %H:%M:%S"),
-        )
-
-    def send_new_to_transit_update(
-        self, pickup_count, pickup_dict, new_data, existing_order, status_obj, customer_phone, flags
-    ):
-        """
-        Send updates for the orders with new status as picked up for delivery.
-        """
-        if self.name == "Xpressbees":
-            if not flags["order_picked_check"]:
-                status_obj["type"] = "continue"
-                return pickup_count, pickup_dict, status_obj
-
-        pickup_count += 1
-        if existing_order[11] not in pickup_dict:
-            pickup_dict[existing_order[11]] = 1
-        else:
-            pickup_dict[existing_order[11]] += 1
-
-        time_now = datetime.utcnow() + timedelta(hours=5.5)
-        self.cursor.execute(
-            "UPDATE order_pickups SET picked=%s, pickup_time=%s WHERE order_id=%s", (True, time_now, existing_order[0])
-        )
-
-        update_picked_on_channels(existing_order, self.cursor, courier=self.get_dict())
-        webhook_updates(
-            existing_order,
-            self.cursor,
-            new_data["new_status"],
-            "Shipment Picked Up",
-            "",
-            (datetime.utcnow() + timedelta(hours=5.5)).strftime("%Y-%m-%d %H:%M:%S"),
-        )
-
-        if status_obj["data"]["edd"]:
-            self.cursor.execute(
-                "UPDATE shipments SET pdd=%s WHERE awb=%s", (status_obj["data"]["edd"], new_data["current_awb"])
-            )
-
-        tracking_link = "https://webapp.wareiq.com/tracking/" + new_data["current_awb"]
-        tracking_link = UrlShortner.get_short_url(tracking_link, self.cursor)
-        send_shipped_event(
-            customer_phone,
-            existing_order[19],
-            existing_order,
-            status_obj["data"]["edd"].strftime("%-d %b") if status_obj["data"]["edd"] else "",
-            self.name,
-            tracking_link,
-        )
-
-        return pickup_count, pickup_dict, status_obj
-
-    def send_pending_update(self, new_data, status_code, existing_order, requested_order):
-        """
-        Send updates for the orders with new status as pending.
-        Also perform verifications for NDR.
-        """
+    if order[28] != False and str(order[13]).lower() == "cod" and order[14] == 1:  # mark paid on shopify
         try:
-            ndr_reason = None
-            if self.name == "Delhivery":
-                if new_data["new_status"] == "PENDING" and status_code in config[self.name]["status_mapping"]:
-                    ndr_reason = config[self.name]["status_mapping"][status_code]
-            if self.name == "Xpressbees":
-                if requested_order["ShipmentSummary"][0]["StatusCode"] == "UD":
-                    ndr_reason = config[self.name]["ndr_mapper_fn"](requested_order)
-            if self.name == "Bluedart":
-                if (
-                    new_data["new_status"] == "PENDING"
-                    and status_code in config[self.name]["status_mapping"][new_data["scan_group"]]
-                ):
-                    ndr_reason = config[self.name]["status_mapping"][new_data["scan_group"]][status_code][3]
-            if self.name == "Ecom Express":
-                if new_data["new_status"] == "PENDING" and status_code in config[self.name]["ndr_reasons"]:
-                    ndr_reason = config[self.name]["ndr_reasons"][status_code]
-
-            if ndr_reason:
-                verification_text(existing_order, self.cursor, ndr_reason=ndr_reason)
-                webhook_updates(
-                    existing_order,
-                    self.cursor,
-                    new_data["new_status"],
-                    "",
-                    "",
-                    (datetime.utcnow() + timedelta(hours=5.5)).strftime("%Y-%m-%d %H:%M:%S"),
-                    ndr_id=ndr_reason,
-                )
+            shopify_markpaid(order)
         except Exception as e:
-            logger.error("NDR confirmation not sent. Order id: " + str(existing_order[0]))
+            logger.error("Couldn't mark paid Shopify for: " + str(order[0]) + "\nError: " + str(e.args))
 
-    def courier_specific_status_updates(
-        self, new_status, existing_order, exotel_idx, exotel_sms_data, customer_phone, current_awb
-    ):
-        """
-        Send updates for the orders with new status specific to couriers.
-        """
-        if self.name == "Delhivery":
-            if new_status == "DTO":
-                webhook_updates(
-                    existing_order,
-                    self.cursor,
-                    new_status,
-                    "Shipment delivered to origin",
-                    "",
-                    (datetime.utcnow() + timedelta(hours=5.5)).strftime("%Y-%m-%d %H:%M:%S"),
-                )
-                sms_to_key = "Messages[%s][To]" % str(exotel_idx)
-                sms_body_key = "Messages[%s][Body]" % str(exotel_idx)
-                exotel_sms_data[sms_to_key] = customer_phone
-                exotel_sms_data[sms_body_key] = (
-                    "Delivered: Your %s order via Delhivery to seller - https://webapp.wareiq.com/tracking/%s . Powered by WareIQ"
-                    % (existing_order[[20]], current_awb)
-                )
-                exotel_idx += 1
+    elif order[3] == "LOTUSBOTANICALS":
+        lotus_botanicals_delivered(order)
 
-            if (
-                existing_order[2] in ("SCHEDULED", "DISPATCHED")
-                and new_status == "IN TRANSIT"
-                and existing_order[13].lower() == "pickup"
-            ):
-                sms_to_key = "Messages[%s][To]" % str(exotel_idx)
-                sms_body_key = "Messages[%s][Body]" % str(exotel_idx)
-                exotel_sms_data[sms_to_key] = customer_phone
-                exotel_sms_data[sms_body_key] = (
-                    "Picked: Your %s order via Delhivery - https://webapp.wareiq.com/tracking/%s . Powered by WareIQ"
-                    % (existing_order[[20]], current_awb)
-                )
-                exotel_idx += 1
-                webhook_updates(
-                    existing_order,
-                    self.cursor,
-                    "DTO " + new_status,
-                    "Shipment picked from customer",
-                    "",
-                    (datetime.utcnow() + timedelta(hours=5.5)).strftime("%Y-%m-%d %H:%M:%S"),
-                )
+    elif order[3] == "LOTUSORGANICS":
+        try:
+            lotus_organics_update(order, "Order Delivered")
+        except Exception as e:
+            pass
 
-        return exotel_idx, exotel_sms_data
+    elif order[14] == 7:  # Easyecom Delivered
+        try:
+            update_easyecom_status(order, 3)
+        except Exception as e:
+            logger.error("Couldn't update Easyecom for: " + str(order[0]) + "\nError: " + str(e.args))
+    elif order[14] == 8:  # Bikayi delivered
+        try:
+            update_bikayi_status(order, "DELIVERED")
+        except Exception as e:
+            logger.error("Couldn't update Bikayi for: " + str(order[0]) + "\nError: " + str(e.args))
+    elif order[14] == 13:  # Instamojo delivered
+        try:
+            instamojo_update_status(order, "completed", "Order delivered to customer")
+        except Exception as e:
+            logger.error("Couldn't update Instamojo for: " + str(order[0]) + "\nError: " + str(e.args))
 
-    def send_exotel_messages(self, exotel_idx, exotel_sms_data):
-        """
-        Once order status has been updated, send updates via Exotel to end customers.
-        """
-        if exotel_idx:
-            logger.info("Sending messages...count:" + str(exotel_idx))
+
+def update_rto_on_channels(order):
+    if order[32] != False:
+        if order[14] == 6:  # Magento return
             try:
-                lad = requests.post(config[self.name]["exotel_url"], data=exotel_sms_data)
+                magento_return_order(order)
             except Exception as e:
-                logger.error("messages not sent." + "   Error: " + str(e.args[0]))
-        return
+                logger.error("Couldn't return Magento for: " + str(order[0]) + "\nError: " + str(e.args))
+        elif order[14] == 5:  # Woocommerce Cancelled
+            try:
+                woocommerce_returned(order)
+            except Exception as e:
+                logger.error("Couldn't cancel on woocommerce for: " + str(order[0]) + "\nError: " + str(e.args))
+
+        elif order[14] == 1:  # Shopify Cancelled
+            try:
+                shopify_cancel(order)
+            except Exception as e:
+                logger.error("Couldn't cancel on Shopify for: " + str(order[0]) + "\nError: " + str(e.args))
+
+        elif order[3] == "LOTUSORGANICS":
+            try:
+                lotus_organics_update(order, "RTO")
+            except Exception as e:
+                pass
+        elif order[14] == 7:  # Easyecom RTO
+            try:
+                update_easyecom_status(order, 9)
+            except Exception as e:
+                logger.error("Couldn't update Easyecom for: " + str(order[0]) + "\nError: " + str(e.args))
+        elif order[14] == 8:  # Bikayi RTO
+            try:
+                update_bikayi_status(order, "RETURNED")
+            except Exception as e:
+                logger.error("Couldn't update Bikayi for: " + str(order[0]) + "\nError: " + str(e.args))
+        elif order[14] == 13:  # Instamojo RTO
+            try:
+                instamojo_update_status(order, "completed", "Order returned to seller")
+            except Exception as e:
+                logger.error("Couldn't update instamojo for: " + str(order[0]) + "\nError: " + str(e.args))
+
+
+def update_easyecom_status(order, status_id):
+    create_fulfillment_url = "%s/Carrier/updateTrackingStatus?api_token=%s" % (order[9], order[7])
+    ful_header = {"Content-Type": "application/json"}
+    fulfil_data = {
+        "api_token": order[7],
+        "current_shipment_status_id": status_id,
+        "awb": order[1],
+    }
+    req_ful = requests.post(create_fulfillment_url, data=json.dumps(fulfil_data), headers=ful_header)
+
+
+def update_bikayi_status(order, status):
+    bikayi_update_url = """https://asia-south1-bikai-d5ee5.cloudfunctions.net/platformPartnerFunctions-updateOrder"""
+    key = "3f638d4ff80defb82109951b9638fae3fe0ff8a2d6dc20ed8c493783"
+    secret = "6e130520777eb175c300aefdfc1270a4f9a57f2309451311ad3fdcfb"
+    timestamp = (datetime.utcnow() + timedelta(hours=5.5)).strftime("%s")
+    req_body = {
+        "appId": "WAREIQ",
+        "merchantId": order[3].split("_")[1],
+        "timestamp": timestamp,
+        "orderId": str(order[12]),
+        "status": status,
+        "trackingLink": "https://webapp.wareiq.com/tracking/" + order[1],
+        "notes": status,
+        "wayBill": order[1],
+    }
+    signature = hmac.new(
+        bytes(secret.encode()),
+        (key.encode() + "|".encode() + base64.b64encode(json.dumps(req_body).replace(" ", "").encode())),
+        hashlib.sha256,
+    ).hexdigest()
+    headers = {"Content-Type": "application/json", "authorization": signature}
+    data = requests.post(bikayi_update_url, headers=headers, data=json.dumps(req_body)).json()
+
+
+def ecom_express_convert_xml_dict(elem):
+    req_obj = dict()
+    for elem2 in elem["field"]:
+        req_obj[elem2["@name"]] = None
+        if "#text" in elem2:
+            req_obj[elem2["@name"]] = elem2["#text"]
+        elif "object" in elem2:
+            if type(elem2["object"]) == list:
+                scan_list = list()
+                for obj in elem2["object"]:
+                    scan_obj = dict()
+                    for newobj in obj["field"]:
+                        scan_obj[newobj["@name"]] = None
+                        if "#text" in newobj:
+                            scan_obj[newobj["@name"]] = newobj["#text"]
+                    scan_list.append(scan_obj)
+                req_obj[elem2["@name"]] = scan_list
+            else:
+                req_obj[elem2["@name"]] = elem2["object"]
+
+    return req_obj
 
 
 def send_shipped_event(mobile, email, order, edd, courier_name, tracking_link=None):

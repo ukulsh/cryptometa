@@ -10,6 +10,7 @@ node_modules
 venv
 **/qa.env
 **/qa_run.py
+*.toml
 
 #VSCode
 .vscode

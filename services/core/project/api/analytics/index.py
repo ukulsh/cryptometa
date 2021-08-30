@@ -950,10 +950,10 @@ def inventory_analytics(resp):
             data = json.loads(request.data)
             warehouses = data.get("warehouses")
             previous_sales_start_date = (
-                datetime.strptime(data.get("previous_sales_start_date"), "%Y-%m-%d") + timedelta(days=1)
+                datetime.strptime(data.get("previous_sales_start_date"), "%d-%m-%Y") + timedelta(days=1)
             ).strftime("%Y-%m-%d")
             previous_sales_end_date = (
-                datetime.strptime(data.get("previous_sales_end_date"), "%Y-%m-%d") + timedelta(days=1)
+                datetime.strptime(data.get("previous_sales_end_date"), "%d-%m-%Y") + timedelta(days=1)
             ).strftime("%Y-%m-%d")
             future_time_period = int(data.get("future_time_period"))
             expected_growth = float(data.get("expected_growth"))
@@ -1017,7 +1017,7 @@ def inventory_analytics(resp):
             data_obj["available_qty"] = 0 if not stat[5] else int(stat[5])
             data_obj["sales"] = 0 if not stat[6] else int(stat[6])
             data_obj["in_transit_qty"] = 0 if not stat[7] else int(stat[7])
-            data_obj["ead"] = stat[8]
+            data_obj["ead"] = None if not stat[8] else datetime.strftime(stat[8], "%d-%m-%Y")
             data_obj["sku_velocity"] = round(
                 data_obj["sales"]
                 / (
@@ -1029,7 +1029,7 @@ def inventory_analytics(resp):
             if data_obj["sku_velocity"] != 0:
                 data_obj["days_left"] = max(int(data_obj["available_qty"] / data_obj["sku_velocity"]), 0)
             else:
-                data_obj["days_left"] = math.inf
+                data_obj["days_left"] = "Infinity"
             data_obj["qty_to_restock"] = (
                 math.ceil(data_obj["sku_velocity"] * (1 + expected_growth) * future_time_period)
                 - data_obj["available_qty"]
@@ -1126,7 +1126,7 @@ def inventory_snapshot(resp):
             }
             data_obj["warehouse_prefix"] = order[4]
             data_obj["in_transit_qty"] = 0 if not order[5] else int(order[5])
-            data_obj["ead"] = order[6]
+            data_obj["ead"] = None if not order[6] else datetime.strftime(order[6], "%d-%m-%Y")
             data.append(data_obj)
 
         response["data"] = data

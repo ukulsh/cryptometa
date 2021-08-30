@@ -947,7 +947,7 @@ def inventory_analytics(resp):
 
         # Extract data from payload
         try:
-            data = request.form
+            data = json.loads(request.data)
             warehouses = data.get("warehouses")
             previous_sales_start_date = (
                 datetime.strptime(data.get("previous_sales_start_date"), "%Y-%m-%d") + timedelta(days=1)
@@ -1053,7 +1053,6 @@ def inventory_analytics(resp):
         return jsonify(response), 200
     except Exception as e:
         conn.rollback()
-        print(e)
         return jsonify(response), 500
 
 
@@ -1085,7 +1084,6 @@ def get_inventory_filters(resp):
         return jsonify(response), 200
     except Exception as e:
         conn.rollback()
-        print(e)
         return jsonify(response), 500
 
 
@@ -1104,7 +1102,7 @@ def inventory_snapshot(resp):
 
         # Extract data from payload
         try:
-            data = request.form
+            data = json.loads(request.data)
             page = int(data.get("page"))
             per_page = int(data.get("per_page"))
         except Exception as e:
@@ -1143,5 +1141,4 @@ def inventory_snapshot(resp):
         return jsonify(response), 200
     except Exception as e:
         conn.rollback()
-        print(e)
         return jsonify(response), 500

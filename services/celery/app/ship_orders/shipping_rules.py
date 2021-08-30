@@ -91,6 +91,12 @@ class ShippingRules:
                                  else self.next_priority)
             ship_obj.ship_orders()
 
+        if courier_obj['courier'][10].startswith('Blowhorn'):
+            ship_obj = ShipBlowhorn(courier=courier_obj['courier'], orders=courier_obj['orders'], cur=self.cur,
+                                next_priority=courier_obj['next_priority'] if courier_obj.get('next_priority')
+                                else self.next_priority)
+            ship_obj.ship_orders()
+
     def ship_orders_courier_wise(self):
 
         if self.courier_name and self.order_ids:
@@ -1757,9 +1763,6 @@ class ShipSelfShip:
 
             last_invoice_no = pickup_point[22] if pickup_point[22] else 0
 
-            if not pickup_point[21] and not self.force_ship:
-                continue
-
             for order in all_new_orders:
                 if order[26].lower() == 'pickup':
                     continue
@@ -1821,19 +1824,23 @@ class ShipSelfShip:
                 if pickup_point[0] == 142 and order[18] not in pidge_del_sdd_pincodes:
                     continue
 
-                dimensions = order[33][0]
-                dimensions['length'] = dimensions['length'] * order[35][0]
-                weight = order[34][0] * order[35][0]
-                volumetric_weight = (dimensions['length'] * dimensions['breadth'] * dimensions['height']) / 5000
-                for idx, dim in enumerate(order[33]):
-                    if idx == 0:
-                        continue
-                    dim['length'] += dim['length'] * (order[35][idx])
-                    volumetric_weight += (dim['length'] * dim['breadth'] * dim['height']) / 5000
-                    weight += order[34][idx] * (order[35][idx])
-                if dimensions['length'] and dimensions['breadth']:
-                    dimensions['height'] = round(
-                        (volumetric_weight * 5000) / (dimensions['length'] * dimensions['breadth']))
+                weight, dimensions, volumetric_weight = 0.5, {"length": 1, "breadth":1, "height":1}, 0.5
+                try:
+                    dimensions = order[33][0]
+                    dimensions['length'] = dimensions['length'] * order[35][0]
+                    weight = order[34][0] * order[35][0]
+                    volumetric_weight = (dimensions['length'] * dimensions['breadth'] * dimensions['height']) / 5000
+                    for idx, dim in enumerate(order[33]):
+                        if idx == 0:
+                            continue
+                        dim['length'] += dim['length'] * (order[35][idx])
+                        volumetric_weight += (dim['length'] * dim['breadth'] * dim['height']) / 5000
+                        weight += order[34][idx] * (order[35][idx])
+                    if dimensions['length'] and dimensions['breadth']:
+                        dimensions['height'] = round(
+                            (volumetric_weight * 5000) / (dimensions['length'] * dimensions['breadth']))
+                except Exception:
+                    pass
 
                 insert_shipments_data_query = """INSERT INTO SHIPMENTS (awb, status, order_id, pickup_id, courier_id, 
                                                                                 dimensions, volumetric_weight, weight, remark, return_point_id, routing_code, 
@@ -2126,6 +2133,233 @@ class ShipPidge:
             conn.commit()
 
 
+class ShipBlowhorn:
+
+    def __init__(self, cur=None, courier=None, orders=None, force_ship=None, next_priority=None):
+        self.courier = courier
+        self.all_orders = orders
+        self.force_ship = force_ship
+        self.cur = cur if cur else conn.cursor()
+        self.pickup_point_order_dict = dict()
+        self.orders_dict = dict()
+        self.next_priority = next_priority
+        self.headers = {"API_KEY": courier[14],
+                        "Content-Type": "application/json"}
+
+    def ship_orders(self):
+        for order in self.all_orders:
+            if order[41]:
+                if order[41] not in self.pickup_point_order_dict:
+                    self.pickup_point_order_dict[order[41]] = [order]
+                else:
+                    self.pickup_point_order_dict[order[41]].append(order)
+
+        for pickup_id, all_new_orders in self.pickup_point_order_dict.items():
+            last_shipped_order_id = 0
+            pickup_points_tuple = (pickup_id,)
+            self.cur.execute(get_pickup_points_query, pickup_points_tuple)
+            order_status_change_ids = list()
+            pickup_point = self.cur.fetchone()  # change this as we get to dynamic pickups
+            last_invoice_no = pickup_point[22] if pickup_point[22] else 0
+            pick_lat, pick_lon = pickup_point[24], pickup_point[25]
+
+            if not (pick_lat and pick_lon):
+                pick_lat, pick_lon = get_lat_lon_pickup(pickup_point, self.cur)
+
+            for order in all_new_orders:
+                if order[26].lower() == 'pickup':
+                    try:
+                        self.cur.execute("""SELECT id, courier_name, logo_url, date_created, date_updated, api_key, 
+                                                                            api_password, api_url FROM master_couriers
+                                                                            WHERE courier_name='%s'""" % "Delhivery Surface Standard")
+                        courier_data = self.cur.fetchone()
+                        courier_new = list(self.courier)
+                        courier_new[2] = courier_data[0]
+                        courier_new[3] = 1
+                        courier_new[9] = courier_data[0]
+                        courier_new[10] = courier_data[1]
+                        courier_new[11] = courier_data[2]
+                        courier_new[12] = courier_data[3]
+                        courier_new[13] = courier_data[4]
+                        courier_new[14] = courier_data[5]
+                        courier_new[15] = courier_data[6]
+                        courier_new[16] = courier_data[7]
+                        ship_obj = ShipDelhivery(courier=tuple(courier_new), orders=[order])
+                        ship_obj.ship_orders()
+                    except Exception as e:
+                        logger.error("Couldn't assign backup courier for: " + str(order[0]) + "\nError: " + str(e.args))
+                        pass
+                    continue
+                # kama ayurveda assign delhi orders pincode check
+                if order[18] not in pidge_del_sdd_pincodes:
+                    continue
+                zone = None
+                try:
+                    zone = get_delivery_zone(pickup_point[8], order[18])
+                except Exception as e:
+                    logger.error("couldn't find zone: " + str(order[0]) + "\nError: " + str(e))
+
+                time_2_days = datetime.utcnow() + timedelta(hours=5.5) - timedelta(days=1)
+                if order[47] and not (order[50] and order[2] < time_2_days) and not self.force_ship:
+                    if order[26].lower() == 'cod' and not order[42] and order[43]:
+                        continue  # change this to continue later
+                    if order[26].lower() == 'cod' and not order[43]:
+                        try:  ## Cod confirmation  text
+                            cod_verification_text(order, self.cur)
+                        except Exception as e:
+                            logger.error(
+                                "Cod confirmation not sent. Order id: " + str(order[0]))
+                        continue
+
+                if zone != 'A' and not self.force_ship:
+                    continue
+
+                lat, lon = order[22], order[23]
+
+                if not (lat and lon):
+                    lat, lon = get_lat_lon(order, self.cur)
+
+                dimensions = order[33][0]
+                dimensions['length'] = dimensions['length'] * order[35][0]
+                weight = order[34][0] * order[35][0]
+                volumetric_weight = (dimensions['length'] * dimensions['breadth'] * dimensions['height']) / 5000
+                for idx, dim in enumerate(order[33]):
+                    if idx == 0:
+                        continue
+                    dim['length'] += dim['length'] * (order[35][idx])
+                    volumetric_weight += (dim['length'] * dim['breadth'] * dim['height']) / 5000
+                    weight += order[34][idx] * (order[35][idx])
+                if dimensions['length'] and dimensions['breadth']:
+                    dimensions['height'] = round(
+                        (volumetric_weight * 5000) / (dimensions['length'] * dimensions['breadth']))
+
+                package_string = ""
+                for idx, prod in enumerate(order[40]):
+                    package_string += prod + " (" + str(order[35][idx]) + ") + "
+
+                customer_phone = order[5].replace(" ", "")
+                customer_phone = customer_phone[-10:]
+
+                pickup_time = datetime.utcnow()+timedelta(hours=5.5)
+                if pickup_time.hour>=12:
+                    pickup_time = pickup_time + timedelta(days=1)
+                pickup_time = pickup_time.strftime("%Y-%m-%d")
+                deliver_time = pickup_time+"T16:00:00.000000"
+                pickup_time = pickup_time+"T14:00:00.000000"
+
+                delivery_address = order[15]
+                delivery_address += order[16] if order[16] else ""
+                pickup_address = pickup_point[4]
+                pickup_address += pickup_point[5] if pickup_point[5] else ""
+                blowhorn_body = {
+                    "awb_number": "WIQ"+str(order[0]),
+                    "customer_name": order[13],
+                    "customer_mobile": customer_phone,
+                    "customer_email": order[4] if order[4] else "noemail@example.com",
+                    "delivery_address": delivery_address,
+                    "delivery_postal_code": order[18],
+                    "reference_number": str(order[0]),
+                    "customer_reference_number": order[1],
+                    "delivery_lat": str(lat),
+                    "delivery_lon": str(lon),
+                    "pickup_address": pickup_address,
+                    "pickup_postal_code": pickup_point[8],
+                    "pickup_lat": str(pick_lat),
+                    "pickup_lon": str(pick_lon),
+                    "pickup_customer_name": pickup_point[11],
+                    "pickup_customer_mobile": pickup_point[3],
+                    "weight": str(weight),
+                    "volume": str(volumetric_weight),
+                    "pickup_datetime": pickup_time,
+                    "expected_delivery_time": deliver_time,
+                    "is_cod": False,
+                    "item_details": [
+                        {
+                            "item_name": package_string,
+                            "item_quantity": 1
+                        }
+                    ]
+                }
+
+                if order[26].lower()=='cod' or order[26].lower()=='cash on delivery':
+                    blowhorn_body['is_cod'] = True
+                    blowhorn_body['cash_on_delivery'] = str(order[27])
+
+                return_data_raw = requests.post(self.courier[16] + "api/orders/shipment", headers=self.headers, data=json.dumps(blowhorn_body)).json()
+                logger.info(str(order[0])+": "+str(return_data_raw))
+                if return_data_raw.get('status')=='PASS':
+                    order_status_change_ids.append(order[0])
+                    data_tuple = tuple([(
+                        str(return_data_raw['message']['awb_number']),
+                        return_data_raw['status'],
+                        order[0], pickup_point[1], self.courier[9], json.dumps(dimensions), volumetric_weight, weight,
+                        "", pickup_point[2], "", None, None, zone)])
+
+                    if order[46] == 7:
+                        push_awb_easyecom(order[39], order[36], str(return_data_raw['message']['awb_number']), self.courier,
+                                          self.cur, order[55], order[56])
+
+                    client_name = str(order[51])
+
+                    try:
+                        tracking_link_wareiq = "https://webapp.wareiq.com/tracking/" + str(return_data_raw['message']['awb_number'])
+                        tracking_link_wareiq = UrlShortner.get_short_url(tracking_link_wareiq, self.cur)
+                        send_received_event(client_name, customer_phone, tracking_link_wareiq)
+                    except Exception:
+                        pass
+
+                else:
+                    if self.next_priority:
+                        push_order_to_next_priority(self.next_priority, [order[0]], self.courier, self.cur)
+                    else:
+                        insert_shipments_data_query = """INSERT INTO SHIPMENTS (awb, status, order_id, pickup_id, courier_id, 
+                                                        dimensions, volumetric_weight, weight, remark, return_point_id, routing_code, 
+                                                        channel_fulfillment_id, tracking_link, zone)
+                                                                    VALUES  %s"""
+                        insert_shipments_data_tuple = list()
+                        insert_shipments_data_tuple.append(("", "Fail", order[0], None,
+                                                            None, None, None, None, "Pincode not serviceable", None,
+                                                            None, zone, None, None), )
+                        self.cur.execute(insert_shipments_data_query, tuple(insert_shipments_data_tuple))
+                    continue
+
+                insert_shipments_data_query = """INSERT INTO SHIPMENTS (awb, status, order_id, pickup_id, courier_id, 
+                                                    dimensions, volumetric_weight, weight, remark, return_point_id, routing_code, 
+                                                    channel_fulfillment_id, tracking_link, zone)
+                                                    VALUES  %s RETURNING id;"""
+
+                self.cur.execute(insert_shipments_data_query, data_tuple)
+                ship_temp = self.cur.fetchone()
+                order_status_add_query = """INSERT INTO order_status (order_id, courier_id, shipment_id, 
+                                                                            status_code, status, status_text, location, location_city, 
+                                                                            status_time) VALUES %s"""
+
+                order_status_add_tuple = [(order[0], self.courier[9],
+                                           ship_temp[0], "UD", "Received", "Consignment Manifested",
+                                           pickup_point[6], pickup_point[6],
+                                           datetime.utcnow() + timedelta(hours=5.5))]
+
+                self.cur.execute(order_status_add_query, tuple(order_status_add_tuple))
+
+                if not order[54]:
+                    last_invoice_no = invoice_order(self.cur, last_invoice_no, pickup_point[23], order[0], pickup_id)
+
+            if last_shipped_order_id:
+                last_shipped_data_tuple = (
+                    last_shipped_order_id, datetime.now(tz=pytz.timezone('Asia/Calcutta')), self.courier[1])
+                self.cur.execute(update_last_shipped_order_query, last_shipped_data_tuple)
+
+            if order_status_change_ids:
+                if len(order_status_change_ids) == 1:
+                    self.cur.execute(update_orders_status_query % (("(%s)") % str(order_status_change_ids[0])))
+                else:
+                    self.cur.execute(update_orders_status_query, (tuple(order_status_change_ids),))
+
+            self.cur.execute("UPDATE client_pickups SET invoice_last=%s WHERE id=%s;", (last_invoice_no, pickup_id))
+
+            conn.commit()
+
+
 class ShipDTDC:
 
     def __init__(self, cur=None, courier=None, orders=None, force_ship=None, next_priority=None):
@@ -2137,7 +2371,8 @@ class ShipDTDC:
         self.orders_dict = dict()
         self.headers = {"api-key": courier[14],
                         "Content-Type": "application/json"}
-        self.client_code = courier[15]
+        self.client_code = courier[15].split("|")[0]
+        self.service_type_id = courier[15].split("|")[1]
         self.next_priority = next_priority
 
     def ship_orders(self):
@@ -2259,7 +2494,7 @@ class ShipDTDC:
                             {
                                 "customer_code": self.client_code,
                                 "reference_number": "",
-                                "service_type_id": "B2C PRIORITY",
+                                "service_type_id": self.service_type_id,
                                 "load_type": "NON-DOCUMENT",
                                 "description": package_string,
                                 "num_pieces": "1",
@@ -2308,6 +2543,7 @@ class ShipDTDC:
                     }
                     if order[26].lower() == "cod":
                         dtdc_body["consignments"][0]['cod_amount'] = str(order[27])
+                        dtdc_body["consignments"][0]['cod_collection_mode'] = "cash"
 
                     dtdc_manifest_url = self.courier[16]
                     req = requests.post(dtdc_manifest_url, headers=self.headers, data=json.dumps(dtdc_body))

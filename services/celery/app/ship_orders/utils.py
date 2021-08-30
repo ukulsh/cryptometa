@@ -78,6 +78,10 @@ def get_courier_id_in_serviceability(courier_name):
         return 3
     if courier_name.startswith('Shadowfax'):
         return 4
+    if courier_name.startswith('DTDC'):
+        return 42
+    if courier_name.startswith('Blowhorn'):
+        return 45
 
 
 def get_courier_id_to_ship_with(rule, del_pincode, cur):

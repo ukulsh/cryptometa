@@ -772,11 +772,15 @@ def sync_all_products_with_channel(client_prefix):
 
 def create_cod_remittance_entry():
     cur = conn.cursor()
-
-    cur.execute("select distinct(client_prefix) FROM orders aa WHERE client_prefix is not null order by client_prefix")
-    all_clients = cur.fetchall()
     insert_tuple = list()
     insert_value_str = ""
+
+    # weekly remittance
+    cur.execute("""select distinct(aa.client_prefix), remittance_cycle FROM orders aa
+                    left join client_mapping bb on aa.client_prefix=bb.client_prefix
+                    WHERE aa.client_prefix is not null AND (remittance_cycle is null or remittance_cycle =1)
+                    order by aa.client_prefix""")
+    all_clients = cur.fetchall()
     remittance_date = datetime.utcnow() + timedelta(hours=5.5) + timedelta(days=8)
     for client in all_clients:
         remittance_id = client[0] + "_" + str(remittance_date.date())
@@ -796,6 +800,73 @@ def create_cod_remittance_entry():
         insert_tuple.append(
             (client[0], remittance_id, remittance_date, 'processing', datetime.utcnow() + timedelta(hours=5.5), del_from, del_to))
         insert_value_str += "%s,"
+
+    #twice a week remittance
+    cur.execute("""select distinct(aa.client_prefix), remittance_cycle FROM orders aa 
+                    left join client_mapping bb on aa.client_prefix=bb.client_prefix
+                    WHERE aa.client_prefix is not null AND remittance_cycle=2
+                    order by aa.client_prefix""")
+    all_clients = cur.fetchall()
+    remittance_dates = [datetime.utcnow() + timedelta(hours=5.5) + timedelta(days=5),
+                        datetime.utcnow() + timedelta(hours=5.5) + timedelta(days=8)]
+    for client in all_clients:
+        for remittance_date in remittance_dates:
+            remittance_id = client[0] + "_" + str(remittance_date.date())
+            last_remittance_id = client[0] + "_" + str((remittance_date - timedelta(days=7)).date())
+            cur.execute("SELECT * from cod_remittance WHERE remittance_id=%s", (last_remittance_id,))
+            try:
+                cur.fetchone()[0]
+            except Exception as e:
+                if remittance_date.weekday()==1:
+                    del_from = remittance_date - timedelta(days=12)
+                elif remittance_date.weekday()==4:
+                    del_from = remittance_date - timedelta(days=11)
+                del_to = remittance_date - timedelta(days=8)
+                insert_tuple.append(
+                    (client[0], last_remittance_id, remittance_date - timedelta(days=7), 'processing',
+                     datetime.utcnow() + timedelta(hours=5.5), del_from, del_to))
+                insert_value_str += "%s,"
+            if remittance_date.weekday()==1:
+                del_from = remittance_date - timedelta(days=5)
+            elif remittance_date.weekday()==4:
+                del_from = remittance_date - timedelta(days=4)
+            del_to = remittance_date - timedelta(days=1)
+            insert_tuple.append(
+                (client[0], remittance_id, remittance_date, 'processing', datetime.utcnow() + timedelta(hours=5.5), del_from, del_to))
+            insert_value_str += "%s,"
+
+    #7 days a week remittance
+    cur.execute("""select distinct(aa.client_prefix), remittance_cycle FROM orders aa 
+                    left join client_mapping bb on aa.client_prefix=bb.client_prefix
+                    WHERE aa.client_prefix is not null AND remittance_cycle=7
+                    order by aa.client_prefix""")
+    all_clients = cur.fetchall()
+    remittance_dates = [datetime.utcnow() + timedelta(hours=5.5) + timedelta(days=8),
+                        datetime.utcnow() + timedelta(hours=5.5) + timedelta(days=9),
+                        datetime.utcnow() + timedelta(hours=5.5) + timedelta(days=10),
+                        datetime.utcnow() + timedelta(hours=5.5) + timedelta(days=11),
+                        datetime.utcnow() + timedelta(hours=5.5) + timedelta(days=12),
+                        datetime.utcnow() + timedelta(hours=5.5) + timedelta(days=13),
+                        datetime.utcnow() + timedelta(hours=5.5) + timedelta(days=14)]
+    for client in all_clients:
+        for remittance_date in remittance_dates:
+            remittance_id = client[0] + "_" + str(remittance_date.date())
+            last_remittance_id = client[0] + "_" + str((remittance_date - timedelta(days=7)).date())
+            cur.execute("SELECT * from cod_remittance WHERE remittance_id=%s", (last_remittance_id,))
+            try:
+                cur.fetchone()[0]
+            except Exception as e:
+                del_from = remittance_date - timedelta(days=15)
+                del_to = remittance_date - timedelta(days=14)
+                insert_tuple.append(
+                    (client[0], last_remittance_id, remittance_date - timedelta(days=7), 'processing',
+                     datetime.utcnow() + timedelta(hours=5.5), del_from, del_to))
+                insert_value_str += "%s,"
+            del_from = remittance_date - timedelta(days=8)
+            del_to = remittance_date - timedelta(days=7)
+            insert_tuple.append(
+                (client[0], remittance_id, remittance_date, 'processing', datetime.utcnow() + timedelta(hours=5.5), del_from, del_to))
+            insert_value_str += "%s,"
 
     insert_value_str = insert_value_str.rstrip(",")
 
@@ -1643,7 +1714,7 @@ def create_pickups_entry_util():
 
 
 def update_pincode_serviceability_table():
-    courier_list = (15, 2, 5, 9, 42, 27)
+    courier_list = (15, 2, 5, 9, 27)
     with conn.cursor() as cur:
         for courier in courier_list:
             try:
@@ -1705,7 +1776,7 @@ def update_pincode_serviceability_table():
                         "Api_type": "S",
                         "Version": "1.3"
                     }
-                    cur.execute("SELECT pincode FROM pincode_serviceability WHERE courier_id=15;")
+                    cur.execute("SELECT distinct(pincode) FROM pincode_serviceability;")
                     all_pincodes = cur.fetchall()
                     for pincode in all_pincodes:
                         request_data = {
@@ -1726,7 +1797,7 @@ def update_pincode_serviceability_table():
 
                 elif courier==42:
                     check_url = "http://fareyesvc.ctbsplus.dtdc.com/ratecalapi/PincodeApiCall"
-                    cur.execute("SELECT pincode FROM pincode_serviceability WHERE courier_id=42;")
+                    cur.execute("SELECT distinct(pincode) FROM pincode_serviceability;")
                     all_pincodes = cur.fetchall()
                     for pincode in all_pincodes:
                         req = requests.post(check_url, headers={"content-type": "application/json"}, json={

@@ -947,6 +947,8 @@ def track_xpressbees_orders(courier, cur):
                 status_type = None
             if new_status_temp in ("READY TO SHIP", "PICKUP REQUESTED"):
                 continue
+            if new_status=='PUD' and not order_picked_check:
+                continue
             new_status = new_status_temp
 
             if orders_dict[current_awb][2] == "CANCELED" and new_status != "IN TRANSIT":

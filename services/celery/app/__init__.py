@@ -68,7 +68,7 @@ app.config['CELERYBEAT_SCHEDULE'] = {
             },
     'run-cod-queue': {
                     'task': 'cod_remittance_queue',
-                    'schedule': crontab(hour=19, minute=20, day_of_week='thu'),
+                    'schedule': crontab(hour=19, minute=20),
                     'options': {'queue': 'mark_channel_delivered'}
                 },
     'run-cod-entry': {

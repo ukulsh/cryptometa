@@ -152,11 +152,7 @@ def get_state_performance(resp):
 
         all_vendors = None
         if auth_data["user_group"] == "multi-vendor":
-            all_vendors = (
-                db.session.query(MultiVendor)
-                .filter(MultiVendor.client_prefix == client_prefix)
-                .first()
-            )
+            all_vendors = db.session.query(MultiVendor).filter(MultiVendor.client_prefix == client_prefix).first()
             all_vendors = all_vendors.vendor_list
 
         if auth_data["user_group"] == "client":
@@ -173,9 +169,7 @@ def get_state_performance(resp):
             query_to_run = query_to_run.replace("__CLIENT_FILTER__", "")
 
         if mode:
-            query_to_run = query_to_run.replace(
-                "__MODE_FILTER__", "and ii.payment_mode ilike '%s'" % str(mode).lower()
-            )
+            query_to_run = query_to_run.replace("__MODE_FILTER__", "and ii.payment_mode ilike '%s'" % str(mode).lower())
         else:
             query_to_run = query_to_run.replace("__MODE_FILTER__", "")
 
@@ -210,9 +204,7 @@ def get_state_performance(resp):
 
             s3 = session.resource("s3")
             bucket = s3.Bucket("wareiqfiles")
-            bucket.upload_file(
-                filename, "downloads/" + filename, ExtraArgs={"ACL": "public-read"}
-            )
+            bucket.upload_file(filename, "downloads/" + filename, ExtraArgs={"ACL": "public-read"})
             state_url = "https://wareiqfiles.s3.amazonaws.com/downloads/" + filename
             os.remove(filename)
             return jsonify({"url": state_url, "success": True}), 200
@@ -278,11 +270,7 @@ def get_courier_performance(resp):
 
         all_vendors = None
         if auth_data["user_group"] == "multi-vendor":
-            all_vendors = (
-                db.session.query(MultiVendor)
-                .filter(MultiVendor.client_prefix == client_prefix)
-                .first()
-            )
+            all_vendors = db.session.query(MultiVendor).filter(MultiVendor.client_prefix == client_prefix).first()
             all_vendors = all_vendors.vendor_list
 
         if auth_data["user_group"] == "client":
@@ -299,9 +287,7 @@ def get_courier_performance(resp):
             query_to_run = query_to_run.replace("__CLIENT_FILTER__", "")
 
         if mode:
-            query_to_run = query_to_run.replace(
-                "__MODE_FILTER__", "and ii.payment_mode ilike '%s'" % str(mode).lower()
-            )
+            query_to_run = query_to_run.replace("__MODE_FILTER__", "and ii.payment_mode ilike '%s'" % str(mode).lower())
         else:
             query_to_run = query_to_run.replace("__MODE_FILTER__", "")
 
@@ -311,9 +297,7 @@ def get_courier_performance(resp):
                 zone = "('" + zone[0] + "')"
             else:
                 zone = "('" + "','".join(zone) + "')"
-            query_to_run = query_to_run.replace(
-                "__ZONE_FILTER__", "and hh.zone in %s" % zone
-            )
+            query_to_run = query_to_run.replace("__ZONE_FILTER__", "and hh.zone in %s" % zone)
         else:
             query_to_run = query_to_run.replace("__ZONE_FILTER__", "")
 
@@ -347,9 +331,7 @@ def get_courier_performance(resp):
 
             s3 = session.resource("s3")
             bucket = s3.Bucket("wareiqfiles")
-            bucket.upload_file(
-                filename, "downloads/" + filename, ExtraArgs={"ACL": "public-read"}
-            )
+            bucket.upload_file(filename, "downloads/" + filename, ExtraArgs={"ACL": "public-read"})
             state_url = "https://wareiqfiles.s3.amazonaws.com/downloads/" + filename
             os.remove(filename)
             return jsonify({"url": state_url, "success": True}), 200
@@ -412,11 +394,7 @@ def get_zone_performance(resp):
 
         all_vendors = None
         if auth_data["user_group"] == "multi-vendor":
-            all_vendors = (
-                db.session.query(MultiVendor)
-                .filter(MultiVendor.client_prefix == client_prefix)
-                .first()
-            )
+            all_vendors = db.session.query(MultiVendor).filter(MultiVendor.client_prefix == client_prefix).first()
             all_vendors = all_vendors.vendor_list
 
         if auth_data["user_group"] == "client":
@@ -462,9 +440,7 @@ def get_zone_performance(resp):
 
             s3 = session.resource("s3")
             bucket = s3.Bucket("wareiqfiles")
-            bucket.upload_file(
-                filename, "downloads/" + filename, ExtraArgs={"ACL": "public-read"}
-            )
+            bucket.upload_file(filename, "downloads/" + filename, ExtraArgs={"ACL": "public-read"})
             state_url = "https://wareiqfiles.s3.amazonaws.com/downloads/" + filename
             os.remove(filename)
             return jsonify({"url": state_url, "success": True}), 200
@@ -527,11 +503,7 @@ def get_top_states(resp):
 
         all_vendors = None
         if auth_data["user_group"] == "multi-vendor":
-            all_vendors = (
-                db.session.query(MultiVendor)
-                .filter(MultiVendor.client_prefix == client_prefix)
-                .first()
-            )
+            all_vendors = db.session.query(MultiVendor).filter(MultiVendor.client_prefix == client_prefix).first()
             all_vendors = all_vendors.vendor_list
 
         if auth_data["user_group"] == "client":
@@ -594,11 +566,7 @@ def get_transit_delays(resp):
 
         all_vendors = None
         if auth_data["user_group"] == "multi-vendor":
-            all_vendors = (
-                db.session.query(MultiVendor)
-                .filter(MultiVendor.client_prefix == client_prefix)
-                .first()
-            )
+            all_vendors = db.session.query(MultiVendor).filter(MultiVendor.client_prefix == client_prefix).first()
             all_vendors = all_vendors.vendor_list
 
         if auth_data["user_group"] == "client":
@@ -644,21 +612,11 @@ def get_transit_delays(resp):
                         new_row.append(str(order[2]))
                         new_row.append(str(order[3]))
                         new_row.append(str(order[4]))
-                        new_row.append(
-                            order[5].strftime("%Y-%m-%d %H:%M:%S")
-                            if order[5]
-                            else "N/A"
-                        )
-                        new_row.append(
-                            order[6].strftime("%Y-%m-%d") if order[6] else "N/A"
-                        )
+                        new_row.append(order[5].strftime("%Y-%m-%d %H:%M:%S") if order[5] else "N/A")
+                        new_row.append(order[6].strftime("%Y-%m-%d") if order[6] else "N/A")
                         new_row.append(str(order[7]))
                         new_row.append(str(order[8]))
-                        new_row.append(
-                            order[9].strftime("%Y-%m-%d %H:%M:%S")
-                            if order[9]
-                            else "N/A"
-                        )
+                        new_row.append(order[9].strftime("%Y-%m-%d %H:%M:%S") if order[9] else "N/A")
                         new_row.append(str(order[10]))
                         new_row.append(str(order[11]))
                         new_row.append(str(order[12]))
@@ -668,18 +626,12 @@ def get_transit_delays(resp):
 
             s3 = session.resource("s3")
             bucket = s3.Bucket("wareiqfiles")
-            bucket.upload_file(
-                filename, "downloads/" + filename, ExtraArgs={"ACL": "public-read"}
-            )
+            bucket.upload_file(filename, "downloads/" + filename, ExtraArgs={"ACL": "public-read"})
             state_url = "https://wareiqfiles.s3.amazonaws.com/downloads/" + filename
             os.remove(filename)
             return jsonify({"url": state_url, "success": True}), 200
 
-        count_query = (
-            "select count(*) from ("
-            + query_to_run.replace("__PAGINATION__", "")
-            + ") xx"
-        )
+        count_query = "select count(*) from (" + query_to_run.replace("__PAGINATION__", "") + ") xx"
         cur.execute(count_query)
         total_count = cur.fetchone()[0]
         query_to_run = query_to_run.replace(
@@ -699,14 +651,10 @@ def get_transit_delays(resp):
                 "awb": order[3],
                 "zone": order[8],
             }
-            st_obj["shipped_date"] = (
-                order[5].strftime("%Y-%m-%d %H:%M:%S") if order[5] else "N/A"
-            )
+            st_obj["shipped_date"] = order[5].strftime("%Y-%m-%d %H:%M:%S") if order[5] else "N/A"
             st_obj["pdd"] = order[6].strftime("%Y-%m-%d") if order[6] else "N/A"
             st_obj["delayed_by_days"] = order[7]
-            st_obj["last_scan_time"] = (
-                order[9].strftime("%Y-%m-%d %H:%M:%S") if order[9] else "N/A"
-            )
+            st_obj["last_scan_time"] = order[9].strftime("%Y-%m-%d %H:%M:%S") if order[9] else "N/A"
             st_obj["customer"] = {
                 "name": order[10],
                 "phone": order[11],
@@ -758,11 +706,7 @@ def get_rto_delays(resp):
 
         all_vendors = None
         if auth_data["user_group"] == "multi-vendor":
-            all_vendors = (
-                db.session.query(MultiVendor)
-                .filter(MultiVendor.client_prefix == client_prefix)
-                .first()
-            )
+            all_vendors = db.session.query(MultiVendor).filter(MultiVendor.client_prefix == client_prefix).first()
             all_vendors = all_vendors.vendor_list
 
         if auth_data["user_group"] == "client":
@@ -808,18 +752,10 @@ def get_rto_delays(resp):
                         new_row.append(str(order[2]))
                         new_row.append(str(order[3]))
                         new_row.append(str(order[4]))
-                        new_row.append(
-                            order[5].strftime("%Y-%m-%d %H:%M:%S")
-                            if order[5]
-                            else "N/A"
-                        )
+                        new_row.append(order[5].strftime("%Y-%m-%d %H:%M:%S") if order[5] else "N/A")
                         new_row.append(str(order[6]))
                         new_row.append(str(order[7]))
-                        new_row.append(
-                            order[8].strftime("%Y-%m-%d %H:%M:%S")
-                            if order[8]
-                            else "N/A"
-                        )
+                        new_row.append(order[8].strftime("%Y-%m-%d %H:%M:%S") if order[8] else "N/A")
                         new_row.append(str(order[9]))
                         new_row.append(str(order[10]))
                         new_row.append(str(order[11]))
@@ -829,18 +765,12 @@ def get_rto_delays(resp):
 
             s3 = session.resource("s3")
             bucket = s3.Bucket("wareiqfiles")
-            bucket.upload_file(
-                filename, "downloads/" + filename, ExtraArgs={"ACL": "public-read"}
-            )
+            bucket.upload_file(filename, "downloads/" + filename, ExtraArgs={"ACL": "public-read"})
             state_url = "https://wareiqfiles.s3.amazonaws.com/downloads/" + filename
             os.remove(filename)
             return jsonify({"url": state_url, "success": True}), 200
 
-        count_query = (
-            "select count(*) from ("
-            + query_to_run.replace("__PAGINATION__", "")
-            + ") xx"
-        )
+        count_query = "select count(*) from (" + query_to_run.replace("__PAGINATION__", "") + ") xx"
         cur.execute(count_query)
         total_count = cur.fetchone()[0]
 
@@ -861,13 +791,9 @@ def get_rto_delays(resp):
                 "awb": order[3],
                 "zone": order[7],
             }
-            st_obj["return_mark_date"] = (
-                order[5].strftime("%Y-%m-%d %H:%M:%S") if order[5] else "N/A"
-            )
+            st_obj["return_mark_date"] = order[5].strftime("%Y-%m-%d %H:%M:%S") if order[5] else "N/A"
             st_obj["delayed_by_days"] = order[6]
-            st_obj["last_scan_time"] = (
-                order[8].strftime("%Y-%m-%d %H:%M:%S") if order[8] else "N/A"
-            )
+            st_obj["last_scan_time"] = order[8].strftime("%Y-%m-%d %H:%M:%S") if order[8] else "N/A"
             st_obj["customer"] = {
                 "name": order[9],
                 "phone": order[10],
@@ -915,11 +841,7 @@ def get_ndr_reasons(resp):
 
         all_vendors = None
         if auth_data["user_group"] == "multi-vendor":
-            all_vendors = (
-                db.session.query(MultiVendor)
-                .filter(MultiVendor.client_prefix == client_prefix)
-                .first()
-            )
+            all_vendors = db.session.query(MultiVendor).filter(MultiVendor.client_prefix == client_prefix).first()
             all_vendors = all_vendors.vendor_list
 
         if auth_data["user_group"] == "client":
@@ -960,10 +882,7 @@ def get_ndr_reasons(resp):
                             "call",
                         ):
                             new_row.append("customer")
-                        elif (
-                            order[4] in ("reattempt", "cancelled")
-                            and order[5] == "manual"
-                        ):
+                        elif order[4] in ("reattempt", "cancelled") and order[5] == "manual":
                             new_row.append("seller")
                         else:
                             new_row.append("")
@@ -979,9 +898,7 @@ def get_ndr_reasons(resp):
 
             s3 = session.resource("s3")
             bucket = s3.Bucket("wareiqfiles")
-            bucket.upload_file(
-                filename, "downloads/" + filename, ExtraArgs={"ACL": "public-read"}
-            )
+            bucket.upload_file(filename, "downloads/" + filename, ExtraArgs={"ACL": "public-read"})
             state_url = "https://wareiqfiles.s3.amazonaws.com/downloads/" + filename
             os.remove(filename)
             return jsonify({"url": state_url, "success": True}), 200
@@ -1006,7 +923,7 @@ def get_ndr_reasons(resp):
         return jsonify(response), 400
 
 
-@analytics_blueprint.route("/analytics/v1/inventory/", methods=["GET"])
+@analytics_blueprint.route("/analytics/v1/inventory/", methods=["POST"])
 @authenticate_restful
 def inventory_analytics(resp):
     """This function generates statistics for each product of a given client
@@ -1028,21 +945,15 @@ def inventory_analytics(resp):
         if not auth_data:
             return jsonify({"msg": "Authentication Failed"}), 401
 
-        if auth_data["user_group"] != "client":
-            response["data"] = {}
-            return jsonify(response), 401
-
         # Extract data from payload
         try:
             data = request.form
             warehouses = data.get("warehouses")
             previous_sales_start_date = (
-                datetime.strptime(data.get("previous_sales_start_date"), "%Y-%m-%d")
-                + timedelta(days=1)
+                datetime.strptime(data.get("previous_sales_start_date"), "%Y-%m-%d") + timedelta(days=1)
             ).strftime("%Y-%m-%d")
             previous_sales_end_date = (
-                datetime.strptime(data.get("previous_sales_end_date"), "%Y-%m-%d")
-                + timedelta(days=1)
+                datetime.strptime(data.get("previous_sales_end_date"), "%Y-%m-%d") + timedelta(days=1)
             ).strftime("%Y-%m-%d")
             future_time_period = int(data.get("future_time_period"))
             expected_growth = float(data.get("expected_growth"))
@@ -1116,26 +1027,16 @@ def inventory_analytics(resp):
                 2,
             )
             if data_obj["sku_velocity"] != 0:
-                data_obj["days_left"] = max(
-                    int(data_obj["available_qty"] / data_obj["sku_velocity"]), 0
-                )
+                data_obj["days_left"] = max(int(data_obj["available_qty"] / data_obj["sku_velocity"]), 0)
             else:
                 data_obj["days_left"] = math.inf
             data_obj["qty_to_restock"] = (
-                math.ceil(
-                    data_obj["sku_velocity"]
-                    * (1 + expected_growth)
-                    * future_time_period
-                )
+                math.ceil(data_obj["sku_velocity"] * (1 + expected_growth) * future_time_period)
                 - data_obj["available_qty"]
             )
             data_obj["overstock"] = max(
                 data_obj["available_qty"]
-                - math.ceil(
-                    (1 + overstock_threshold)
-                    * data_obj["sku_velocity"]
-                    * overstock_timeline
-                ),
+                - math.ceil((1 + overstock_threshold) * data_obj["sku_velocity"] * overstock_timeline),
                 0,
             )
             data.append(data_obj)
@@ -1169,10 +1070,6 @@ def get_inventory_filters(resp):
         if not auth_data:
             return jsonify({"msg": "Authentication Failed"}), 401
 
-        if auth_data["user_group"] != "client":
-            response["data"] = {}
-            return jsonify(response), 401
-
         # Run query to get filters on warehouses and number of products in each warehouse
         query_to_run = inventory_analytics_filters_query.format(client_prefix)
         cur.execute(query_to_run)
@@ -1192,7 +1089,7 @@ def get_inventory_filters(resp):
         return jsonify(response), 500
 
 
-@analytics_blueprint.route("/analytics/v1/inventory/in_transit", methods=["GET"])
+@analytics_blueprint.route("/analytics/v1/inventory/in_transit", methods=["POST"])
 @authenticate_restful
 def inventory_snapshot(resp):
     response = {"success": False, "data": {}, "meta": {}}
@@ -1205,10 +1102,6 @@ def inventory_snapshot(resp):
         if not auth_data:
             return jsonify({"msg": "Authentication Failed"}), 401
 
-        if auth_data["user_group"] != "client":
-            response["data"] = {}
-            return jsonify(response), 401
-
         # Extract data from payload
         try:
             data = request.form
@@ -1219,9 +1112,7 @@ def inventory_snapshot(resp):
             return jsonify(response), 400
 
         # Run query to get status on each in transit order to warehouse
-        query_to_run = inventory_analytics_in_transit_query.format(
-            client_prefix, (page - 1) * per_page, per_page
-        )
+        query_to_run = inventory_analytics_in_transit_query.format(client_prefix, (page - 1) * per_page, per_page)
         cur.execute(query_to_run)
         total_count = cur.rowcount
         in_transit_orders = cur.fetchall()

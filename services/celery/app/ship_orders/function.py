@@ -25,7 +25,7 @@ def ship_orders(courier_name=None, order_ids=None, force_ship=None, client_prefi
     order_id_tuple = "()"
     if courier_name and order_ids:  # creating courier details list for manual shipping
         if len(order_ids) == 1:
-            order_id_tuple = "('" + str(order_ids[0]) + "')"
+            order_id_tuple = "(" + str(order_ids[0]) + ")"
         else:
             order_id_tuple = str(tuple(order_ids))
         cur.execute("""DELETE FROM order_scans where shipment_id in (select id from shipments where order_id in %s);
@@ -209,6 +209,8 @@ def ship_delhivery_orders(cur, courier, courier_name, order_ids, order_id_tuple,
             shipments = list()
             for order in order_chunk:
                 try:
+                    if order[18] in delhivery_embargo_pincodes:
+                        continue
                     zone = None
                     try:
                         zone = get_delivery_zone(pickup_point[8], order[18])
@@ -458,7 +460,7 @@ def ship_delhivery_orders(cur, courier, courier_name, order_ids, order_id_tuple,
                             insert_shipments_data_query += "%s,"
                             insert_shipments_data_tuple.append(("", "Fail", orders_dict[package['refnum']][0], None,
                                                                 None, None, None, None, "Pincode not serviceable", None,
-                                                                None, orders_dict[package['refnum']][14]), )
+                                                                None, orders_dict[package['refnum']][14], None, None), )
                         continue
 
                     if 'COD' in remark or 'blocked' in remark:
@@ -609,7 +611,7 @@ def ship_shadowfax_orders(cur, courier, courier_name, order_ids, order_id_tuple,
                         insert_shipments_data_tuple = list()
                         insert_shipments_data_tuple.append(("", "Fail", order[0], None,
                                                             None, None, None, None, "Pincode not serviceable", None,
-                                                            None, zone), )
+                                                            None, zone, None, None), )
                         cur.execute(insert_shipments_data_query, tuple(insert_shipments_data_tuple))
                     continue
 
@@ -1036,7 +1038,7 @@ def ship_xpressbees_orders(cur, courier, courier_name, order_ids, order_id_tuple
                         insert_shipments_data_tuple = list()
                         insert_shipments_data_tuple.append(("", "Fail", order[0], None,
                                                             None, None, None, None, "Pincode not serviceable", None,
-                                                            None, zone), )
+                                                            None, zone, None, None), )
                         cur.execute(insert_shipments_data_query, tuple(insert_shipments_data_tuple))
                     continue
 
@@ -1412,7 +1414,7 @@ def ship_expressbees_orders(cur, courier, courier_name, order_ids, order_id_tupl
                         insert_shipments_data_tuple = list()
                         insert_shipments_data_tuple.append(("", "Fail", order[0], None,
                                                             None, None, None, None, "Pincode not serviceable", None,
-                                                            None, zone), )
+                                                            None, zone, None, None), )
                         cur.execute(insert_shipments_data_query, tuple(insert_shipments_data_tuple))
                     continue
 
@@ -1663,6 +1665,13 @@ def ship_ecom_orders(cur, courier, courier_name, order_ids, order_id_tuple, back
                 ecom_url = courier[16] + "/apiv3/manifest_awb/"
                 req = requests.post(ecom_url, data={"username": courier[14], "password": courier[15],
                                                     "json_input": json.dumps([json_input])})
+
+                while req.json()['shipments'][0]['reason'] == 'AIRWAYBILL_IN_USE':
+                    last_assigned_awb += 1
+                    json_input['AWB_NUMBER'] = str(last_assigned_awb)
+                    req = requests.post(ecom_url, data={"username": courier[14], "password": courier[15],
+                                                        "json_input": json.dumps([json_input])})
+
                 if req.json()['shipments'][0]['reason'] == 'INCORRECT_AWB_NUMBER':
                     fetch_awb_url = courier[16] + "/apiv2/fetch_awb/"
                     fetch_awb_req = requests.post(fetch_awb_url, data={"username": courier[14], "password": courier[15],
@@ -1715,7 +1724,7 @@ def ship_ecom_orders(cur, courier, courier_name, order_ids, order_id_tuple, back
                         insert_shipments_data_tuple = list()
                         insert_shipments_data_tuple.append(("", "Fail", order[0], None,
                                                             None, None, None, None, "Pincode not serviceable", None,
-                                                            None, zone), )
+                                                            None, zone, None, None), )
                         cur.execute(insert_shipments_data_query, tuple(insert_shipments_data_tuple))
                     continue
 
@@ -1816,7 +1825,9 @@ def ship_bluedart_orders(cur, courier, courier_name, order_ids, order_id_tuple, 
             if courier[1] == "ZLADE" and zone in ('A', ) and not force_ship:
                 continue
 
-            if order[26].lower() == "prepaid" and courier[1] in ("ACTIFIBER", "BEHIR", "SHAHIKITCHEN", "SUKHILIFE", "ORGANICRIOT", "SUCCESSCRAFT", "HOMELY", "BEHIR2", "BEHIR3") and not force_ship:
+            if order[26].lower() == "prepaid" and courier[1] in ("ACTIFIBER", "BEHIR", "SHAHIKITCHEN", "SUKHILIFE",
+                                                                 "ORGANICRIOT", "SUCCESSCRAFT", "HOMELY", "BEHIR2",
+                                                                 "BEHIR3", "Creatures of Habit") and not force_ship:
                 continue
 
             time_2_days = datetime.utcnow() + timedelta(hours=5.5) - timedelta(days=1)
@@ -2011,7 +2022,7 @@ def ship_bluedart_orders(cur, courier, courier_name, order_ids, order_id_tuple, 
                         insert_shipments_data_tuple = list()
                         insert_shipments_data_tuple.append(("", "Fail", order[0], None,
                                                             None, None, None, None, "Pincode not serviceable", None,
-                                                            None, zone), )
+                                                            None, zone, None, None), )
                         cur.execute(insert_shipments_data_query, tuple(insert_shipments_data_tuple))
                     continue
 
@@ -2273,9 +2284,6 @@ def ship_fedex_orders(cur, courier, courier_name, order_ids, order_id_tuple, bac
                         volumetric_weight, weight,
                         "", pickup_point[2], routing_code, None, None, zone)])
 
-                    if order[46] == 7:
-                        push_awb_easyecom(order[39],order[36], awb_no, courier, cur, order[55], order[56])
-
                     client_name = str(order[51])
                     customer_phone = order[5].replace(" ", "")
                     customer_phone = "0" + customer_phone[-10:]
@@ -2298,7 +2306,7 @@ def ship_fedex_orders(cur, courier, courier_name, order_ids, order_id_tuple, bac
                         insert_shipments_data_tuple = list()
                         insert_shipments_data_tuple.append(("", "Fail", order[0], None,
                                                             None, None, None, None, "Pincode not serviceable", None,
-                                                            None, zone), )
+                                                            None, zone, None, None), )
                         cur.execute(insert_shipments_data_query, tuple(insert_shipments_data_tuple))
                     continue
 
@@ -2314,6 +2322,10 @@ def ship_fedex_orders(cur, courier, courier_name, order_ids, order_id_tuple, bac
                                            datetime.utcnow() + timedelta(hours=5.5))]
 
                 cur.execute(order_status_add_query, tuple(order_status_add_tuple))
+                conn.commit()
+                if awb_no and order[46] == 7:
+                    push_awb_easyecom(order[39],order[36], awb_no, courier, cur, order[55], order[56],
+                                      pushLabel=True, order_id=order[0])
 
             except Exception as e:
                 print("couldn't assign order: " + str(order[1]) + "\nError: " + str(e))
@@ -2678,7 +2690,7 @@ def ship_sdd_orders(cur, courier, courier_name, order_ids, order_id_tuple, backu
                     insert_shipments_data_tuple = list()
                     insert_shipments_data_tuple.append(("", "Fail", order[0], None,
                                                         None, None, None, None, "Pincode not serviceable", None,
-                                                        None, zone), )
+                                                        None, zone, None, None), )
                     cur.execute(insert_shipments_data_query, tuple(insert_shipments_data_tuple))
                 continue
 
@@ -2869,7 +2881,7 @@ def ship_pidge_orders(cur, courier, courier_name, order_ids, order_id_tuple, bac
                         }
 
             return_data_raw = requests.post(courier[16] + "/v1.0/vendor/order", headers=headers, data=json.dumps(pidge_body)).json()
-
+            logger.info(str(order[0])+": "+str(return_data_raw))
             if return_data_raw.get('success'):
                 order_status_change_ids.append(order[0])
                 data_tuple = tuple([(
@@ -2902,7 +2914,7 @@ def ship_pidge_orders(cur, courier, courier_name, order_ids, order_id_tuple, bac
                     insert_shipments_data_tuple = list()
                     insert_shipments_data_tuple.append(("", "Fail", order[0], None,
                                                         None, None, None, None, "Pincode not serviceable", None,
-                                                        None, zone), )
+                                                        None, zone, None, None), )
                     cur.execute(insert_shipments_data_query, tuple(insert_shipments_data_tuple))
                 continue
 
@@ -3102,7 +3114,7 @@ def ship_vinculum_orders(cur, courier, courier_name, order_ids, order_id_tuple):
             logger.error("messages not sent." + "   Error: " + str(e.args[0]))
 
 
-def push_awb_easyecom(invoice_id, api_token, awb, courier, cur, companyCarrierId, client_channel_id):
+def push_awb_easyecom(invoice_id, api_token, awb, courier, cur, companyCarrierId, client_channel_id, pushLabel=None, order_id=None):
     try:
         if not companyCarrierId or not companyCarrierId.isdigit():
             cur.execute("""SELECT id, unique_parameter FROM client_channel
@@ -3132,6 +3144,12 @@ def push_awb_easyecom(invoice_id, api_token, awb, courier, cur, companyCarrierId
                       "awbNum": awb,
                       "companyCarrierId": int(companyCarrierId)
                     }
+        if pushLabel:
+            headers_new = {"Content-Type": "application/json",
+                           "Authorization": "Token B52Si3qU6uOUbxCbidWTLaJlQEk9UfWkPK7BvTIt"}
+            req_new = requests.post(os.environ.get('CORE_SERVICE_URL')+"/orders/v1/download/shiplabels", headers=headers_new, json={"order_ids": [order_id]})
+            if req_new.status_code==200:
+                post_body['shippingLabelUrl']=req_new.json()['url']
         req = requests.post(post_url, data=post_body)
         if req.status_code!=200:
             requests.post(post_url, data=post_body)
@@ -3288,6 +3306,7 @@ bluedart_area_code_mapping = {"110015":"DEL",
                                 "394210":"SUR",
                                 "395001":"SUR",
                                 "396445":"NVS",
+                                "396195":"VAP",
                                 "400001":"BOM",
                                 "440027":"BOM",
                                 "400064":"BOM",
@@ -3598,3 +3617,4 @@ kama_HRDGRO_sdd_pincodes = ('110037','122001','122002','122004','122005','122006
 kama_RJMIRO_sdd_pincodes = ()
 kama_UPPMRO_sdd_pincodes = ('226010','226016','226014','226005','226001','226006','226024','226012','226011','226017','226004','226020','226021')
 kama_GJAORO_sdd_pincodes = ('380052','380059','380054','382455','380015','380058','380009','382210','380007','380005')
+delhivery_embargo_pincodes = ('100000','100001','530013','533003','737121','475335','441221','711351','402402','520013','500036','410602','680005','496111','680517','680306','325204','852213','845455','303508','306603','344044','192129','100094','512190','192124','332712','790003','517213','766017','425442','185101','782624','582207','494444','501517','192101','562073','670633','768621','182203','494450','413521','201102','191113','392130','164145','795130','306601','590021','320001','795128','413221','192122','843319','835229','495449','344801','501501','125052','524403','410001','191111','795148','521214','793109','792104','192202','193303','678581','175141','795115','191101','193301','743370','795149','300501','843331','182146','192301','192125','501102','425108','480881','209509','567103','522411','586202','751029','412303','460005','963210','413416','762016','272175','509003','442906','737120','517321','192231','422204','682555','509208','101401','680684','475002','799181','517194','192221','754139','445402','788820','193101','521227','583232','521501','400407','583128','543260','382230','744202','671543','273403','344031','249125','190019','585301','515872','799284','767028','334202','420123','796501','493778','494552','790001','389172','571250','193201','685612','284203','423106','534463','185111','561204','507307','214306','369170','180021','393105','531235','531051','367001','581412','788737','679501','795136','585416','191121','674001','517569','401701','383422','263132','761132','770037','364265','230401','112004','774123','572119','745112','577126','423111','421101','260001','334023','416630','530026','512701','456560','190011','458667','569020','193502','734501','402501','671344','671315','173204','795126','642133','190006','759147','691573','785600','845449','852137','523315','275132','304025','744205','175132','461442','795103','522026','500901','743001','671316','561101','502257','531043','544445','145022','272170','761209','840001','494226','750103','793108','525002','583277','383205','571214','635501','523305','577419','815356','596202','501101','192201','795009','521228','570033','171224','530016','530046','585215','574201','534202','534462','530004','843001','502210','396050','341319','671531','344034','172113','495552','789130','344011','507134','192232','502345','577127','494441','847401','518468','531105','362010','191112','522505','471405','520018','506112','795001','342314','671313','581239','670358','473885','310001','516173','768206','246435','491771','380068','313329','413505','192123','426412','491888','413532','521226','342306','140021','278182','181102','331517','400201','743373','194103','495674','382465','689662','670310','500301','770027','327031','494449','533001','530032','530020','262551','271855','263635','425205','200401','585218','103102','193224','584120','261403','262902','413227','190012','796321','410114','453551','133307','193222','441046','473770','508113','582116','795141','524224','795005','423103','497333','500112','193401','442024','301710','422208','506369','495445','686510','796701','796036','796001','795142','300008','494553','173032','262554','744204','193223','412301','258001','754910','737106','285124','517305','577424','795133','602026','682018','562001','400045','766028','192305','585217','415715','685615','194104','562111','111202','796017','623301','635853','641625','416212','507158','737001','811001','843502','679577','796891','673301','331505','488442','534201','389860','847105','523105','671552','572214','597201','583192','247149','445308','765029','534426','441916','126001','845435','641037','523190','842013','140107','500102','491229','737111','333885','442103','641045','685565','521154','192233','796005','595102','248918','535557','494228','480101','698681','641005','132013','441003','394007','411068','799271','415614','788931','262542','767038','571561','471313','262121','333514','460063','518344','140119','437433','172033','250515','590066','492109','193411','301401','505106','410601','855075','431736','495551','798612','494665','401604','388820','688991','283142','283010','491444','581168','851111','573160','615001','376317','370155','345063','444702','303119','407005','322214','456671','332707','185132','761215','413223','303502','313804','822118','520108','641069','790104','441409','493344','506106','795114','854321','523302','517418','638654','335802','314021','683001','360024','312207','583280','695574','193302','192401','583218','833221','413305','192302','415605','671314','509520','570076','577556','523260','581103','577601','580067','416308','815355','334601','520007','523180','641108','700203','600612','793009','934009','844508','412206','416003','577006','641025','415312','507517','517129','584136','563119','517421','577124','540018','848206','762208','532123','744201','713382','523125','473670','146226','591290','744103','942001','415112','793001','566033','581322','751077','795138','673507','191202','793002','795134','602106','914101','518333','253631','572141','563181','744106','248909','586001','495008','518465','176311','494551','192210','570098','754312','782470','759105','232105','577549','576229','576228','328026','577512','495118','480331','332041','140801','226820','423110','796070','606212','111214','680304','835418','910001','415613','764037','246002','192306','505524','384470','576223','570035','444719','585265','581111','524239','678711','563129','284419','643109','783346','184201','642024','673572','501106','744102','364415','868575','764028','262522','500501','699647','680501','670581','451770','395024','497114','413533','120091','389161','680589','583278','801114','472246','193122','481885','536640','507137','305813','181203','473781','637220','501504','431306','262552','532215','202395','364490','790102','415620','220038','314038','744101','825006','790103','783134','508287','577453','577114','577550','673661','423115','192126','494556','360025','500114','679563','680503','835405','571444','847427','501503','301048','305027','673639','683581','413410','476048','783394','686636','784172','461221','401123','691310','496107','673574','500059','341542','744107','744207','487100','685531','145027','679306','147603','768105','685620','306706','401411','793005','591109','673475','396239','246421','194102','344703','223402','679327','523114','327604','680651','680519','500035','678382','415703','271861','414504','276011','585303','679534','415538','402301','101009','670562','182008','413408','768121','848207','363440','500060','573164','403812','410006','192211','334302','335705','517326','523167','344706','680584','825109','334201','768219','673602','515001','370115','494447','680014','673506','364310','457550','572117','670721','120065','500221','571303','680596','496440','627951','451881','673613','813123','473105','900090','305201','771103','796014','509230','682551','263157','413721','193404','305812','581213','766016','679303','679531','493551','507310','171007','325208','583632','761121','400204','416813','572202','883937','585035','411105','834498','509991','271308','574203','574241','585212','533004','380421','325216','602204','141806','786020','673014','732010','851129','641049','673029','507728','641001','570073','686575','850829','793012','400505','602105','526360','262901','201103','516268','570067','540024','760076','679313','680006','641659','687007','670006','673573','141419')

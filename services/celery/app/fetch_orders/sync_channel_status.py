@@ -136,7 +136,7 @@ def resync_easyecom_orders(cur, channel, manual=None):
                 cur.execute("""DELETE FROM order_scans where shipment_id in (select id from shipments where order_id = %s);
                                DELETE FROM order_status where shipment_id in (select id from shipments where order_id = %s);
                                DELETE FROM shipments where order_id = %s;
-                               UPDATE orders SET client_prefix='NEW' where id=%s;""", (str(existing_order[0]),str(existing_order[0]),
+                               UPDATE orders SET status='NEW' where id=%s;""", (str(existing_order[0]),str(existing_order[0]),
                                                                                        str(existing_order[0]),str(existing_order[0])))
 
         except Exception as e:

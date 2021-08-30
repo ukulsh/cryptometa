@@ -34,7 +34,7 @@ get_status_update_orders_query = """select aa.id, bb.awb, aa.status, aa.client_p
                                     where (aa.status not in ('NEW','DELIVERED','NOT SHIPPED','RTO','CANCELED','CLOSED','DTO','LOST','DAMAGED','SHORTAGE','SHIPPED')
                                         or (aa.status='CANCELED' and order_date>now() - interval '15 days'))
                                     and aa.status_type is distinct from 'DL'
-                                    and bb.awb != ''
+                                    and bb.awb in ('78540875232', '89249530123', '89249468556', '78540781443')
                                     and bb.awb is not null
                                     and bb.courier_id=%s;"""
 

@@ -14,6 +14,7 @@ logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 RAVEN_URL = "https://api.ravenapp.dev/v1/apps/ccaaf889-232e-49df-aeb8-869e3153509d/events/send"
+
 RAVEN_HEADERS = {
     "Content-Type": "application/json",
     "Authorization": "AuthKey K4noY3GgzaW8OEedfZWAOyg+AmKZTsqO/h/8Y4LVtFA=",
@@ -549,7 +550,11 @@ def ecom_express_convert_xml_dict(elem):
 
 def send_shipped_event(mobile, email, order, edd, courier_name, tracking_link=None):
     background_color = str(order[24]) if order[24] else "#B5D0EC"
-    client_logo = str(order[21]) if order[21] else "https://logourls.s3.amazonaws.com/client_logos/logo_ane.png"
+    client_logo = (
+        str(order[21])
+        if order[21]
+        else "https://logourls.s3.amazonaws.com/client_logos/logo_ane.png"
+    )
     client_name = str(order[20]) if order[20] else "WareIQ"
     email_title = str(order[22]) if order[22] else "Your order has been shipped!"
     order_id = str(order[12]) if order[12] else ""
@@ -643,7 +648,12 @@ def send_ndr_event(mobile, order, verification_link):
 
 
 def send_bulk_emails(emails):
-    logger.info("Sending Emails....count: " + str(len(emails)) + "  Time: " + str(datetime.utcnow()))
+    logger.info(
+        "Sending Emails....count: "
+        + str(len(emails))
+        + "  Time: "
+        + str(datetime.utcnow())
+    )
     for email in emails:
         try:
             response = email_client.send_raw_email(
@@ -661,7 +671,11 @@ def send_bulk_emails(emails):
 def create_email(order, edd, email):
     try:
         background_color = str(order[24]) if order[24] else "#B5D0EC"
-        client_logo = str(order[21]) if order[21] else "https://logourls.s3.amazonaws.com/client_logos/logo_ane.png"
+        client_logo = (
+            str(order[21])
+            if order[21]
+            else "https://logourls.s3.amazonaws.com/client_logos/logo_ane.png"
+        )
         client_name = str(order[20]) if order[20] else "WareIQ"
         email_title = str(order[22]) if order[22] else "Your order has been shipped!"
         order_id = str(order[12]) if order[12] else ""
@@ -707,11 +721,15 @@ def create_email(order, edd, email):
         msg.attach(part2)
         return msg
     except Exception as e:
-        logger.error("Couldn't send email: " + str(order[1]) + "\nError: " + str(e.args))
+        logger.error(
+            "Couldn't send email: " + str(order[1]) + "\nError: " + str(e.args)
+        )
         return None
 
 
-def webhook_updates(order, cur, status, status_text, location, status_time, ndr_id=None):
+def webhook_updates(
+    order, cur, status, status_text, location, status_time, ndr_id=None
+):
     if order[38]:
         try:
             if ndr_id:

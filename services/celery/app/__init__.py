@@ -10,6 +10,7 @@ from .update_status.function_v2 import update_status as update_status_new
 from .fetch_orders.function import fetch_orders, assign_pickup_points_for_unassigned
 from .fetch_orders.sync_channel_status import sync_channel_status
 from .ship_orders.function import ship_orders
+from .ship_orders.shipping_rules import ShippingRules
 from .core_app_jobs.tasks import *
 from .download_queues.tasks import *
 from .core_app_jobs.utils import authenticate_username_password, authenticate_restful
@@ -45,64 +46,68 @@ app.config["CELERY_BROKER_URL"] = "amqp://ravi:Kad97711@rabbitmq:5672"
 app.config["USERS_SERVICE_URL"] = os.environ.get("USERS_SERVICE_URL")
 cors.init_app(app)
 
-app.config["CELERYBEAT_SCHEDULE"] = {
-    "run-status-update": {
-        "task": "status_update",
-        "schedule": crontab(minute="50", hour="*"),
-        "options": {"queue": "update_status"},
-    },
-    "run-status-update-2": {
-        "task": "status_update",
-        "schedule": crontab(minute="50", hour="*/2"),
-        "options": {"queue": "update_status_2"},
-        "args": (1,),
-    },
-    "run-fetch-orders": {
-        "task": "fetch_orders",
-        "schedule": crontab(minute="15,45", hour="*"),
-        "options": {"queue": "fetch_orders"},
-    },
-    "run-ship-orders": {"task": "orders_ship", "schedule": crontab(minute="*/30"), "options": {"queue": "ship_orders"}},
-    "run-cod-queue": {
-        "task": "cod_remittance_queue",
-        "schedule": crontab(hour=19, minute=20, day_of_week="thu"),
-        "options": {"queue": "mark_channel_delivered"},
-    },
-    "run-cod-entry": {
-        "task": "cod_remittance_entry",
-        "schedule": crontab(hour=19, minute=55, day_of_week="wed"),
-        "options": {"queue": "mark_channel_delivered"},
-    },
-    "run-calculate-costs": {
-        "task": "calculate_costs",
-        "schedule": crontab(minute="*/30"),
-        "options": {"queue": "calculate_costs"},
-    },
-    "run-sync-all-inventory": {
-        "task": "sync_all_inventory",
-        "schedule": crontab(minute="*/60"),
-        "options": {"queue": "sync_all_inventory"},
-    },
-    "run-ndr-reattempt": {
-        "task": "ndr_push_reattempts",
-        "schedule": crontab(hour=18, minute=00),
-        "options": {"queue": "mark_channel_delivered"},
-    },
-    "create-pickups-entry": {
-        "task": "create_pickups_entry",
-        "schedule": crontab(hour=2, minute=45, day_of_week="mon,tue,wed,thu,fri,sat"),
-        "options": {"queue": "mark_channel_delivered"},
-    },
-    "update-pincode-serviceability": {
-        "task": "update_pincode_serviceability",
-        "schedule": crontab(hour=20, minute=30),
-        "options": {"queue": "sync_all_inventory"},
-    },
-    "sync-channel-status": {
-        "task": "sync_channel_status",
-        "schedule": crontab(minute="40", hour="*"),
-        "options": {"queue": "sync_channel_status"},
-    },
+app.config['CELERYBEAT_SCHEDULE'] = {
+    'run-status-update': {
+            'task': 'status_update',
+            'schedule': crontab(minute='50', hour='*'),
+            'options': {'queue': 'update_status'}
+        },
+    'run-status-update-2': {
+                'task': 'status_update',
+                'schedule': crontab(minute='50', hour='*/2'),
+                'options': {'queue': 'update_status_2'},
+                'args': (1, )
+            },
+    'run-fetch-orders': {
+                'task': 'fetch_orders',
+                'schedule': crontab(minute='15,45', hour='*'),
+                'options': {'queue': 'fetch_orders'}
+            },
+    'run-ship-orders': {
+                'task': 'orders_ship',
+                'schedule': crontab(minute='*/30'),
+                'options': {'queue': 'ship_orders'}
+            },
+    'run-cod-queue': {
+                    'task': 'cod_remittance_queue',
+                    'schedule': crontab(hour=19, minute=20),
+                    'options': {'queue': 'mark_channel_delivered'}
+                },
+    'run-cod-entry': {
+                    'task': 'cod_remittance_entry',
+                    'schedule': crontab(hour=19, minute=55, day_of_week='wed'),
+                    'options': {'queue': 'mark_channel_delivered'}
+                },
+    'run-calculate-costs': {
+                'task': 'calculate_costs',
+                'schedule': crontab(minute='*/30'),
+                'options': {'queue': 'calculate_costs'}
+            },
+    'run-sync-all-inventory': {
+                    'task': 'sync_all_inventory',
+                    'schedule': crontab(minute='*/60'),
+                    'options': {'queue': 'sync_all_inventory'}
+                },
+    'run-ndr-reattempt': {
+                        'task': 'ndr_push_reattempts',
+                        'schedule': crontab(hour=18, minute=00),
+                        'options': {'queue': 'mark_channel_delivered'}
+                    },
+    'create-pickups-entry': {
+                            'task': 'create_pickups_entry',
+                            'schedule': crontab(hour=2, minute=45, day_of_week='mon,tue,wed,thu,fri,sat'),
+                            'options': {'queue': 'mark_channel_delivered'}
+                        },
+    'update-pincode-serviceability': {
+                        'task': 'update_pincode_serviceability',
+                        'schedule': crontab(hour=20, minute=30),
+                        'options': {'queue': 'sync_all_inventory'}
+                    },
+    'sync-channel-status': {
+                'task': 'sync_channel_status',
+                'schedule': crontab(minute='40', hour='*'),
+                'options': {'queue': 'sync_channel_status'}
+            },
 }
 
 app.config["CELERY_TIMEZONE"] = "UTC"
@@ -168,8 +173,9 @@ def status_update(sync_ext=None):
 
 @celery_app.task(name="orders_ship")
 def orders_ship(client_prefix=None):
-    ship_orders(client_prefix=client_prefix)
-    return "successfully completed ship_orders"
+    ship_obj = ShippingRules(client_prefix=client_prefix)
+    ship_obj.ship_orders_courier_wise()
+    return 'successfully completed ship_orders'
 
 
 @celery_app.task(name="ship_bulk_orders_job")

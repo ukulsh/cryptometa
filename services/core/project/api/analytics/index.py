@@ -923,7 +923,7 @@ def get_ndr_reasons(resp):
         return jsonify(response), 400
 
 
-@analytics_blueprint.route("/analytics/v1/inventory/", methods=["POST"])
+@analytics_blueprint.route("/analytics/v1/inventory", methods=["POST"])
 @authenticate_restful
 def inventory_analytics(resp):
     """This function generates statistics for each product of a given client

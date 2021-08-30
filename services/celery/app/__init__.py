@@ -167,7 +167,7 @@ def create_pickups_entry():
 
 @celery_app.task(name="status_update")
 def status_update(sync_ext=None):
-    update_status(sync_ext)
+    update_status_new(sync_ext)
     return "successfully completed status_update"
 
 
@@ -215,7 +215,7 @@ def bulkship_orders(resp):
 
 @app.route("/scans/v1/dev", methods=["GET"])
 def celery_dev():
-    update_status_new()
+    push_awbs_easyecom.apply_async(queue='mark_channel_delivered')
     return jsonify({"msg": "Task received"}), 200
 
 

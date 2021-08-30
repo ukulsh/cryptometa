@@ -28,7 +28,7 @@ def update_status(sync_ext=None):
     cur = conn.cursor()
     # Fetch courier objects - [id, courier_name, api_key, api_password]
     if not sync_ext:
-        cur.execute(get_courier_id_and_key_query + " where integrated is true and id=9;")
+        cur.execute(get_courier_id_and_key_query + " where integrated is true;")
     else:
         cur.execute(get_courier_id_and_key_query + " where integrated is not true;")
 

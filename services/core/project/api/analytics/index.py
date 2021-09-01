@@ -30,6 +30,9 @@ from project.api.queries import (
 analytics_blueprint = Blueprint("analytics", __name__)
 api = Api(analytics_blueprint)
 
+conn = DbConnection.get_db_connection_instance()
+conn_2 = DbConnection.get_pincode_db_connection_instance()
+
 session = boto3.Session(
     aws_access_key_id="AKIAWRT2R3KC3YZUBFXY",
     aws_secret_access_key="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",
@@ -117,7 +120,6 @@ NDR_ORDERS_DOWNLOAD_HEADERS = [
 @authenticate_restful
 def get_state_performance(resp):
     response = {"success": False}
-    conn = DbConnection.get_db_connection_instance()
     cur = conn.cursor()
     try:
         auth_data = resp.get("data")
@@ -235,7 +237,6 @@ def get_state_performance(resp):
 @authenticate_restful
 def get_courier_performance(resp):
     response = {"success": False}
-    conn = DbConnection.get_db_connection_instance()
     cur = conn.cursor()
     try:
         auth_data = resp.get("data")
@@ -362,7 +363,6 @@ def get_courier_performance(resp):
 @authenticate_restful
 def get_zone_performance(resp):
     response = {"success": False}
-    conn = DbConnection.get_db_connection_instance()
     cur = conn.cursor()
     try:
         auth_data = resp.get("data")
@@ -472,7 +472,6 @@ def get_zone_performance(resp):
 @authenticate_restful
 def get_top_states(resp):
     response = {"success": False}
-    conn = DbConnection.get_db_connection_instance()
     cur = conn.cursor()
     try:
         auth_data = resp.get("data")
@@ -543,7 +542,6 @@ def get_top_states(resp):
 @authenticate_restful
 def get_transit_delays(resp):
     response = {"success": False, "data": [], "meta": {}}
-    conn = DbConnection.get_db_connection_instance()
     cur = conn.cursor()
     try:
         data = json.loads(request.data)
@@ -684,7 +682,6 @@ def get_transit_delays(resp):
 @authenticate_restful
 def get_rto_delays(resp):
     response = {"success": False, "data": [], "meta": {}}
-    conn = DbConnection.get_db_connection_instance()
     cur = conn.cursor()
     try:
         data = json.loads(request.data)
@@ -824,7 +821,6 @@ def get_rto_delays(resp):
 @authenticate_restful
 def get_ndr_reasons(resp):
     response = {"success": False, "data": [], "meta": {}}
-    conn = DbConnection.get_db_connection_instance()
     cur = conn.cursor()
     try:
         auth_data = resp.get("data")
@@ -935,7 +931,6 @@ def inventory_analytics(resp):
     requested time period.
     """
     response = {"success": False, "data": {}, "meta": {}}
-    conn = DbConnection.get_db_connection_instance()
     cur = conn.cursor()
 
     try:
@@ -1065,7 +1060,6 @@ def inventory_analytics(resp):
 @authenticate_restful
 def get_inventory_filters(resp):
     response = {"success": False, "data": {}}
-    conn = DbConnection.get_db_connection_instance()
     cur = conn.cursor()
 
     try:
@@ -1097,7 +1091,6 @@ def get_inventory_filters(resp):
 @authenticate_restful
 def inventory_snapshot(resp):
     response = {"success": False, "data": {}, "meta": {}}
-    conn = DbConnection.get_db_connection_instance()
     cur = conn.cursor()
 
     try:

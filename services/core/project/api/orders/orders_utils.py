@@ -10,13 +10,18 @@ from project.api.queries import (
 
 from project.api.utilities.db_utils import DbConnection
 
+conn = DbConnection.get_db_connection_instance()
+cur = conn.cursor()
+
 session = boto3.Session(
     aws_access_key_id="AKIAWRT2R3KC3YZUBFXY",
     aws_secret_access_key="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",
 )
 
 
-def get_filled_query(search_key, search_key_on_customer_detail, since_id, type, filters, auth_data):
+def get_filled_query(
+    search_key, search_key_on_customer_detail, since_id, type, filters, auth_data
+):
     query_to_run = select_orders_list_query
 
     if search_key:
@@ -28,13 +33,19 @@ def get_filled_query(search_key, search_key_on_customer_detail, since_id, type, 
 
     if search_key_on_customer_detail:
         regex_check_customer_details = " AND (customer_name ilike '%__SEARCH_KEY_ON_CUSTOMER_DETAILS__%' or customer_phone ilike '%__SEARCH_KEY_ON_CUSTOMER_DETAILS__%' or customer_email ilike '%__SEARCH_KEY_ON_CUSTOMER_DETAILS__%')"
-        query_to_run = query_to_run.replace("__SEARCH_KEY_FILTER_ON_CUSTOMER__", regex_check_customer_details)
-        query_to_run = query_to_run.replace("__SEARCH_KEY_ON_CUSTOMER_DETAILS__", search_key_on_customer_detail)
+        query_to_run = query_to_run.replace(
+            "__SEARCH_KEY_FILTER_ON_CUSTOMER__", regex_check_customer_details
+        )
+        query_to_run = query_to_run.replace(
+            "__SEARCH_KEY_ON_CUSTOMER_DETAILS__", search_key_on_customer_detail
+        )
 
     query_to_run = user_group_filter(query_to_run, auth_data)
 
     if since_id:
-        query_to_run = query_to_run.replace("__SINCE_ID_FILTER__", "AND id>%s" % str(since_id))
+        query_to_run = query_to_run.replace(
+            "__SINCE_ID_FILTER__", "AND id>%s" % str(since_id)
+        )
 
     if type == "new":
         query_to_run = query_to_run.replace(
@@ -66,14 +77,18 @@ def get_filled_query(search_key, search_key_on_customer_detail, since_id, type, 
             group by order_id) rr
             on aa.id=rr.order_id""",
         )
-        query_to_run = query_to_run.replace("__NDR_AGG_SEL_1__", "rr.reason_id, rr.reason, rr.ndr_date,")
+        query_to_run = query_to_run.replace(
+            "__NDR_AGG_SEL_1__", "rr.reason_id, rr.reason, rr.ndr_date,"
+        )
         query_to_run = query_to_run.replace("__NDR_AGG_SEL_2__", "rr.ndr_id, rr.current_status, ")
         query_to_run = query_to_run.replace(
             "__TAB_STATUS_FILTER__",
             "AND (rr.ndr_id is not null AND aa.status='PENDING' AND aa.status_type!='RT') AND gg.payment_mode!='Pickup'",
         )
     elif type == "rvp":
-        query_to_run = query_to_run.replace("__TAB_STATUS_FILTER__", "AND gg.payment_mode ilike 'pickup'")
+        query_to_run = query_to_run.replace(
+            "__TAB_STATUS_FILTER__", "AND gg.payment_mode ilike 'pickup'"
+        )
     elif type == "all":
         pass
     else:
@@ -95,38 +110,51 @@ def filter_query(filters, query_to_run, auth_data):
             status_tuple = "('" + filters["status"][0] + "')"
         else:
             status_tuple = str(tuple(filters["status"]))
-        query_to_run = query_to_run.replace("__STATUS_FILTER__", "AND aa.status in %s" % status_tuple)
+        query_to_run = query_to_run.replace(
+            "__STATUS_FILTER__", "AND aa.status in %s" % status_tuple
+        )
 
     if "courier" in filters:
         if len(filters["courier"]) == 1:
             courier_tuple = "('" + filters["courier"][0] + "')"
         else:
             courier_tuple = str(tuple(filters["courier"]))
-        query_to_run = query_to_run.replace("__COURIER_FILTER__", "AND courier_name in %s" % courier_tuple)
+        query_to_run = query_to_run.replace(
+            "__COURIER_FILTER__", "AND courier_name in %s" % courier_tuple
+        )
 
     if "client" in filters and auth_data["user_group"] != "client":
         if len(filters["client"]) == 1:
             client_tuple = "('" + filters["client"][0] + "')"
         else:
             client_tuple = str(tuple(filters["client"]))
-        query_to_run = query_to_run.replace("__CLIENT_FILTER__", "AND aa.client_prefix in %s" % client_tuple)
+        query_to_run = query_to_run.replace(
+            "__CLIENT_FILTER__", "AND aa.client_prefix in %s" % client_tuple
+        )
 
     if "pickup_point" in filters:
         if len(filters["pickup_point"]) == 1:
             pickup_tuple = "('" + filters["pickup_point"][0] + "')"
         else:
             pickup_tuple = str(tuple(filters["pickup_point"]))
-        query_to_run = query_to_run.replace("__PICKUP_FILTER__", "AND ii.warehouse_prefix in %s" % pickup_tuple)
+        query_to_run = query_to_run.replace(
+            "__PICKUP_FILTER__", "AND ii.warehouse_prefix in %s" % pickup_tuple
+        )
 
     if "ndr_reason" in filters:
         if len(filters["ndr_reason"]) == 1:
             reason_tuple = "('" + filters["ndr_reason"][0] + "')"
         else:
             reason_tuple = str(tuple(filters["ndr_reason"]))
-        query_to_run = query_to_run.replace("__NDR_REASON_FILTER__", "AND rr.reason[1] in %s" % reason_tuple)
+        query_to_run = query_to_run.replace(
+            "__NDR_REASON_FILTER__", "AND rr.reason[1] in %s" % reason_tuple
+        )
 
     if "ndr_type" in filters:
-        if "Action Requested" in filters["ndr_type"] and "Action Required" in filters["ndr_type"]:
+        if (
+            "Action Requested" in filters["ndr_type"]
+            and "Action Required" in filters["ndr_type"]
+        ):
             ndr_type_filter = ""
         elif "Action Requested" in filters["ndr_type"]:
             ndr_type_filter = "AND rr.current_status[1] in ('reattempt', 'cancelled')"
@@ -140,14 +168,17 @@ def filter_query(filters, query_to_run, auth_data):
             type_tuple = "('" + filters["order_type"][0] + "')"
         else:
             type_tuple = str(tuple(filters["order_type"]))
-        query_to_run = query_to_run.replace("__TYPE_FILTER__", "AND upper(payment_mode) in %s" % type_tuple)
+        query_to_run = query_to_run.replace(
+            "__TYPE_FILTER__", "AND upper(payment_mode) in %s" % type_tuple
+        )
 
     if "order_date" in filters:
         filter_date_start = filters["order_date"][0][0:19].replace("T", " ")
         filter_date_end = filters["order_date"][1][0:19].replace("T", " ")
         query_to_run = query_to_run.replace(
             "__ORDER_DATE_FILTER__",
-            "AND order_date between '%s' and '%s'" % (filter_date_start, filter_date_end),
+            "AND order_date between '%s' and '%s'"
+            % (filter_date_start, filter_date_end),
         )
 
     if "thirdwatch_score" in filters:
@@ -163,7 +194,9 @@ def filter_query(filters, query_to_run, auth_data):
             flag_tuple = "('" + filters["thirdwatch_flag"][0] + "')"
         else:
             flag_tuple = str(tuple(filters["thirdwatch_flag"]))
-        query_to_run = query_to_run.replace("__THIRDWATCH_FLAG_FILTER__", "AND uu.flag in %s" % flag_tuple)
+        query_to_run = query_to_run.replace(
+            "__THIRDWATCH_FLAG_FILTER__", "AND uu.flag in %s" % flag_tuple
+        )
 
     if "thirdwatch_tags" in filters:
         flag_tuple = str(filters["thirdwatch_tags"])
@@ -174,14 +207,17 @@ def filter_query(filters, query_to_run, auth_data):
 
     if "updated_after" in filters:
         updated_after = filters["updated_after"]
-        query_to_run = query_to_run.replace("__UPDATED_AFTER__", "AND aa.date_updated > '%s'" % updated_after)
+        query_to_run = query_to_run.replace(
+            "__UPDATED_AFTER__", "AND aa.date_updated > '%s'" % updated_after
+        )
 
     if "pickup_time" in filters:
         filter_date_start = filters["pickup_time"][0][0:19].replace("T", " ")
         filter_date_end = filters["pickup_time"][1][0:19].replace("T", " ")
         query_to_run = query_to_run.replace(
             "__PICKUP_TIME_FILTER__",
-            "AND pickup_time between '%s' and '%s'" % (filter_date_start, filter_date_end),
+            "AND pickup_time between '%s' and '%s'"
+            % (filter_date_start, filter_date_end),
         )
 
     if "manifest_time" in filters:
@@ -189,7 +225,8 @@ def filter_query(filters, query_to_run, auth_data):
         filter_date_end = filters["manifest_time"][1][0:19].replace("T", " ")
         query_to_run = query_to_run.replace(
             "__MANIFEST_DATE_FILTER__",
-            "AND manifest_time between '%s' and '%s'" % (filter_date_start, filter_date_end),
+            "AND manifest_time between '%s' and '%s'"
+            % (filter_date_start, filter_date_end),
         )
 
     if "delivered_time" in filters:
@@ -197,7 +234,8 @@ def filter_query(filters, query_to_run, auth_data):
         filter_date_end = filters["delivered_time"][1][0:19].replace("T", " ")
         query_to_run = query_to_run.replace(
             "__PICKUP_TIME_FILTER__",
-            "AND delivered_time between '%s' and '%s'" % (filter_date_start, filter_date_end),
+            "AND delivered_time between '%s' and '%s'"
+            % (filter_date_start, filter_date_end),
         )
 
     if "channels" in filters:
@@ -205,7 +243,9 @@ def filter_query(filters, query_to_run, auth_data):
             channel_tuple = "('" + filters["channels"][0] + "')"
         else:
             channel_tuple = str(tuple(filters["channels"]))
-        query_to_run = query_to_run.replace("__MASTER_CHANNEL__", "AND vv.channel_name in %s" % channel_tuple)
+        query_to_run = query_to_run.replace(
+            "__MASTER_CHANNEL__", "AND vv.channel_name in %s" % channel_tuple
+        )
 
     if "edd" in filters:
         filter_date_start = filters["edd"][0][0:19].replace("T", " ")
@@ -226,11 +266,11 @@ def download_flag_func(
     hide_weights,
     report_id,
 ):
-    conn = DbConnection.get_db_connection_instance()
-    cur = conn.cursor()
 
     client_prefix = (
-        auth_data.get("client_prefix") if auth_data.get("client_prefix") else auth_data.get("warehouse_prefix")
+        auth_data.get("client_prefix")
+        if auth_data.get("client_prefix")
+        else auth_data.get("warehouse_prefix")
     )
     query_to_run = re.sub(r"""__.+?__""", "", query_to_run)
     cur.execute(query_to_run)
@@ -238,7 +278,9 @@ def download_flag_func(
     order_id_data = ",".join([str(it[1]) for it in orders_qs_data])
     product_detail_by_order_id = {}
     if order_id_data:
-        update_product_details_query = get_selected_product_details.replace("__FILTERED_ORDER_ID__", order_id_data)
+        update_product_details_query = get_selected_product_details.replace(
+            "__FILTERED_ORDER_ID__", order_id_data
+        )
         cur.execute(update_product_details_query)
         product_detail_data = cur.fetchall()
         for it in product_detail_data:
@@ -264,7 +306,11 @@ def download_flag_func(
         cw.writerow(ORDERS_DOWNLOAD_HEADERS)
         for order in orders_qs_data:
             try:
-                product_data = product_detail_by_order_id[order[1]] if order[1] in product_detail_by_order_id else []
+                product_data = (
+                    product_detail_by_order_id[order[1]]
+                    if order[1] in product_detail_by_order_id
+                    else []
+                )
                 if product_data and product_data[0]:
                     for idx, val in enumerate(product_data[0]):
                         order_disc = "N/A"
@@ -279,11 +325,17 @@ def download_flag_func(
                         new_row.append(str(order[13]))
                         new_row.append(str(order[15]))
                         new_row.append(str(order[14]))
-                        new_row.append(order[2].strftime("%Y-%m-%d %H:%M:%S") if order[2] else "N/A")
+                        new_row.append(
+                            order[2].strftime("%Y-%m-%d %H:%M:%S")
+                            if order[2]
+                            else "N/A"
+                        )
                         new_row.append(str(order[7]))
                         new_row.append(str(order[9]) if not hide_weights else "")
                         new_row.append(str(order[5]))
-                        new_row.append(order[8].strftime("%Y-%m-%d") if order[8] else "N/A")
+                        new_row.append(
+                            order[8].strftime("%Y-%m-%d") if order[8] else "N/A"
+                        )
                         new_row.append(str(order[3]))
                         new_row.append(str(order[16]))
                         new_row.append(str(order[17]))
@@ -297,9 +349,21 @@ def download_flag_func(
                         new_row.append(str(product_data[2][idx]))
                         new_row.append(str(order[24]))
                         new_row.append(order[25])
-                        new_row.append(order[34].strftime("%Y-%m-%d %H:%M:%S") if order[34] else "N/A")
-                        new_row.append(order[23].strftime("%Y-%m-%d %H:%M:%S") if order[23] else "N/A")
-                        new_row.append(order[22].strftime("%Y-%m-%d %H:%M:%S") if order[22] else "N/A")
+                        new_row.append(
+                            order[34].strftime("%Y-%m-%d %H:%M:%S")
+                            if order[34]
+                            else "N/A"
+                        )
+                        new_row.append(
+                            order[23].strftime("%Y-%m-%d %H:%M:%S")
+                            if order[23]
+                            else "N/A"
+                        )
+                        new_row.append(
+                            order[22].strftime("%Y-%m-%d %H:%M:%S")
+                            if order[22]
+                            else "N/A"
+                        )
                         if order[27] and order[28] is not None:
                             new_row.append("Confirmed" if order[28] else "Cancelled")
                             new_row.append(str(order[29]))
@@ -312,12 +376,24 @@ def download_flag_func(
                         else:
                             new_row.append("N/A")
                             new_row.append("N/A")
-                        new_row.append(order[39].strftime("%Y-%m-%d %H:%M:%S") if order[39] else "N/A")
+                        new_row.append(
+                            order[39].strftime("%Y-%m-%d %H:%M:%S")
+                            if order[39]
+                            else "N/A"
+                        )
                         new_row.append(str(order[43]) if order[43] else "0")
                         new_row.append(str(order[44]) if order[44] else "N/A")
-                        new_row.append(order[45].strftime("%Y-%m-%d %H:%M:%S") if order[45] else "N/A")
+                        new_row.append(
+                            order[45].strftime("%Y-%m-%d %H:%M:%S")
+                            if order[45]
+                            else "N/A"
+                        )
                         new_row.append(str(order_disc))
-                        prod_amount = product_data[5][idx] if product_data[5][idx] is not None else product_data[7][idx]
+                        prod_amount = (
+                            product_data[5][idx]
+                            if product_data[5][idx] is not None
+                            else product_data[7][idx]
+                        )
                         cgst, sgst, igst = "", "", ""
                         try:
                             taxable_amount = prod_amount / (1 + product_data[6][idx])
@@ -352,7 +428,9 @@ def download_flag_func(
 
     s3 = session.resource("s3")
     bucket = s3.Bucket("wareiqfiles")
-    bucket.upload_file(filename, "downloads/" + filename, ExtraArgs={"ACL": "public-read"})
+    bucket.upload_file(
+        filename, "downloads/" + filename, ExtraArgs={"ACL": "public-read"}
+    )
     invoice_url = "https://wareiqfiles.s3.amazonaws.com/downloads/" + filename
     file_size = os.path.getsize(filename)
     file_size = int(file_size / 1000)
@@ -378,7 +456,10 @@ def user_group_filter(query_to_run, auth_data):
             "AND ii.warehouse_prefix = '%s'" % auth_data.get("warehouse_prefix"),
         )
     if auth_data["user_group"] == "multi-vendor":
-        cur.execute("SELECT vendor_list FROM multi_vendor WHERE client_prefix='%s';" % auth_data.get("client_prefix"))
+        cur.execute(
+            "SELECT vendor_list FROM multi_vendor WHERE client_prefix='%s';"
+            % auth_data.get("client_prefix")
+        )
         vendor_list = cur.fetchone()[0]
         query_to_run = query_to_run.replace(
             "__MV_CLIENT_FILTER__",

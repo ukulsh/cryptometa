@@ -674,14 +674,14 @@ config = {
             "RECEIVER REFUSED DELIVERY(CIR)": 3,
             "RECEIVER SHIFTED FROM GIVEN ADDRESS-(CIR)": 2,
             "RESTRICTED ENTRY-(OTR)": 7,
-            "CONSIGNMENT LOST-(OTR)": 0,  #! New row to be added in table
+            "CONSIGNMENT LOST-(OTR)": 0,  #! New row to be added in table?
             "RESCHEDULED": 4,
             "COVID 19 - OFFICE CLOSED/DOOR LOCKED": 7,  #!
             "RECEIVER WANTS OPEN DELIVERY-(CIR)": 10,
             "CONSIGNOR REFUSED RTO SHIPMENT-(CIR)": 3,  #!
             "LOCAL HOLIDAY-(OTR)": 12,  #!
             "PAPERWORK REQUIRED-(OTR)": 14,
-            "COVID19 COULD NOT ATTEMPT": 12,  #! Do we add covid 19 related row?
+            "COVID19 COULD NOT ATTEMPT": 12,  #! Add covid 19 related row?
             "OTP NOT GENERATED": 14,  #!
         },
     },

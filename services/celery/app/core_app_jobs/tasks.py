@@ -86,6 +86,8 @@ def consume_ecom_scan_util(payload):
             customer_phone = order[4].replace(" ", "")
             customer_phone = "0" + customer_phone[-10:]
             tracking_link = "https://webapp.wareiq.com/tracking/" + order[1]
+            if order[43]:
+                tracking_link = "https://"+str(order[43])+".wiq.app/tracking/" + order[1]
 
             if tracking_status == "Picked":
                 mark_picked_channel(order, cur, courier="Ecom Express")
@@ -177,6 +179,8 @@ def consume_sfxsdd_scan_util(payload):
             customer_phone = order[4].replace(" ", "")
             customer_phone = "0" + customer_phone[-10:]
             tracking_link = "https://webapp.wareiq.com/tracking/" + order[1]
+            if order[43]:
+                tracking_link = "https://"+str(order[43])+".wiq.app/tracking/" + order[1]
 
             if tracking_status == "Picked":
                 mark_picked_channel(order, cur, courier="Shadowfax")
@@ -256,6 +260,12 @@ def consume_pidge_scan_util(payload):
             location = order[41]
             location_city = order[41]
 
+            if status in ('DELIVERED', 'DISPATCHED') and payload.get("attempt_type") not in (10, 40):
+                return "No status to update"
+
+            if status in ('IN TRANSIT', ) and payload.get("attempt_type") not in (10, 70):
+                return "No status to update"
+
             if reason_code_number in pidge_status_mapping:
                 status = pidge_status_mapping[reason_code_number][0]
                 status_type = "UD" if not is_return else "RT"
@@ -290,6 +300,8 @@ def consume_pidge_scan_util(payload):
             customer_phone = order[4].replace(" ", "")
             customer_phone = "0" + customer_phone[-10:]
             tracking_link = "https://webapp.wareiq.com/tracking/" + order[1]
+            if order[43]:
+                tracking_link = "https://"+str(order[43])+".wiq.app/tracking/" + order[1]
 
             if tracking_status == "Picked":
                 mark_picked_channel(order, cur, courier="Pidge")
@@ -398,6 +410,8 @@ def consume_delhivery_scan_util(payload):
             customer_phone = order[4].replace(" ", "")
             customer_phone = "0" + customer_phone[-10:]
             tracking_link = "https://webapp.wareiq.com/tracking/" + order[1]
+            if order[43]:
+                tracking_link = "https://"+str(order[43])+".wiq.app/tracking/" + order[1]
 
             if tracking_status == "Picked":
                 mark_picked_channel(order, cur, courier="Delhivery")
@@ -503,6 +517,8 @@ def consume_xpressbees_scan_util(payload):
             customer_phone = order[4].replace(" ", "")
             customer_phone = "0" + customer_phone[-10:]
             tracking_link = "https://webapp.wareiq.com/tracking/" + order[1]
+            if order[43]:
+                tracking_link = "https://"+str(order[43])+".wiq.app/tracking/" + order[1]
 
             if tracking_status == "Picked":
                 mark_picked_channel(order, cur, courier="Xpressbees")
@@ -1426,7 +1442,7 @@ def update_available_quantity_from_easyecom():
                                 left join pickup_points bb on aa.pickup_id=bb.id
                                 where aa.client_prefix='KAMAAYURVEDA'
                                 and aa.enable_sdd=true
-                                and bb.warehouse_prefix in ('TNPMRO')""")
+                                and bb.warehouse_prefix in ('TNPMRO', 'TLLTRO')""")
 
             pickup_points = cur.fetchall()
             token_headers = {"Username": "WareIQ",

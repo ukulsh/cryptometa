@@ -220,20 +220,9 @@ class ShipDelhivery:
                         self.orders_dict[str(order[0])] = (order[0], order[33], order[34], order[35],
                                                       order[36], order[37], order[38], order[39],
                                                       order[5], order[9], order[45], order[46],
-                                                      order[51], order[52], zone, order[54], order[55], order[56])
+                                                      order[51], order[52], zone, order[54], order[55], order[56], order[60])
 
-                        if not order[52]:
-                            weight = order[34][0] * order[35][0]
-                            volumetric_weight = (order[33][0]['length'] * order[33][0]['breadth'] * order[33][0]['height']) * \
-                                                order[35][0] / 5000
-                            for idx, dim in enumerate(order[33]):
-                                if idx == 0:
-                                    continue
-                                volumetric_weight += (dim['length'] * dim['breadth'] * dim['height']) * order[35][idx] / 5000
-                                weight += order[34][idx] * (order[35][idx])
-                        else:
-                            weight = float(order[52])
-                            volumetric_weight = float(order[52])
+                        weight, volumetric_weight, dimensions = calculate_order_weight_dimensions(order)
 
                         if self.courier[10] == "Delhivery Surface Standard" and not self.force_ship:
                             weight_counted = weight if weight > volumetric_weight else volumetric_weight
@@ -420,6 +409,8 @@ class ShipDelhivery:
 
                             try:
                                 tracking_link_wareiq = "https://webapp.wareiq.com/tracking/" + str(package['waybill'])
+                                if self.orders_dict[package['refnum']][18]:
+                                    tracking_link_wareiq = "https://"+self.orders_dict[package['refnum']][18]+".wiq.app/tracking/" + str(package['waybill'])
                                 tracking_link_wareiq = UrlShortner.get_short_url(tracking_link_wareiq, self.cur)
                                 if self.courier[1] != 'DHANIPHARMACY':
                                     send_received_event(client_name, customer_phone, tracking_link_wareiq)
@@ -598,19 +589,6 @@ class ShipXpressbees:
 
                     continue
 
-                if not order[52]:
-                    try:
-                        weight = order[34][0] * order[35][0]
-                        volumetric_weight = (order[33][0]['length'] * order[33][0]['breadth'] * order[33][0]['height']) * \
-                                            order[35][0] / 5000
-                        for idx, dim in enumerate(order[33]):
-                            if idx == 0:
-                                continue
-                            volumetric_weight += (dim['length'] * dim['breadth'] * dim['height']) * order[35][idx] / 5000
-                            weight += order[34][idx] * (order[35][idx])
-                    except Exception:
-                        pass
-
                 zone = None
                 try:
                     zone = get_delivery_zone(pickup_point[8], order[18])
@@ -643,19 +621,7 @@ class ShipXpressbees:
                         package_quantity += order[35][idx]
                     package_string += "Shipping"
 
-                    dimensions = order[33][0]
-                    dimensions['length'] = dimensions['length'] * order[35][0]
-                    weight = order[34][0] * order[35][0]
-                    volumetric_weight = (dimensions['length'] * dimensions['breadth'] * dimensions['height']) / 5000
-                    for idx, dim in enumerate(order[33]):
-                        if idx == 0:
-                            continue
-                        dim['length'] = dim['length'] * (order[35][idx])
-                        volumetric_weight += (dim['length'] * dim['breadth'] * dim['height']) / 5000
-                        weight += order[34][idx] * (order[35][idx])
-                    if dimensions['length'] and dimensions['breadth']:
-                        dimensions['height'] = round(
-                            (volumetric_weight * 5000) / (dimensions['length'] * dimensions['breadth']))
+                    weight, volumetric_weight, dimensions = calculate_order_weight_dimensions(order)
 
                     shipping_phone = order[21] if order[21] else order[5]
                     shipping_phone = ''.join(e for e in str(shipping_phone) if e.isalnum())
@@ -822,6 +788,8 @@ class ShipXpressbees:
 
                         try:
                             tracking_link_wareiq = "https://webapp.wareiq.com/tracking/" + str(return_data_raw['AWBNo'])
+                            if order[60]:
+                                tracking_link_wareiq = "https://"+order[60]+".wiq.app/tracking/" + str(return_data_raw['AWBNo'])
                             tracking_link_wareiq = UrlShortner.get_short_url(tracking_link_wareiq, self.cur)
                             if self.courier[1] != 'DHANIPHARMACY':
                                 send_received_event(client_name, customer_phone, tracking_link_wareiq)
@@ -998,15 +966,9 @@ class ShipBluedart:
 
                     package_string = ""
                     package_quantity = 0
-                    break_loop = None
                     for idx, prod in enumerate(order[40]):
-                        if "tiles gap filler" in prod.lower():
-                            break_loop=True
                         package_string += prod + " (" + str(order[35][idx]) + ") + "
                         package_quantity += order[35][idx]
-
-                    if break_loop:
-                        continue
 
                     package_string += "Shipping"
 
@@ -1037,19 +999,7 @@ class ShipBluedart:
                     services['PickupTime'] = "1400"
                     services['RegisterPickup'] = True
 
-                    dimensions = order[33][0]
-                    dimensions['length'] = dimensions['length'] * order[35][0]
-                    weight = order[34][0] * order[35][0]
-                    volumetric_weight = (dimensions['length'] * dimensions['breadth'] * dimensions['height']) / 5000
-                    for idx, dim in enumerate(order[33]):
-                        if idx == 0:
-                            continue
-                        dim['length'] += dim['length'] * (order[35][idx])
-                        volumetric_weight += (dim['length'] * dim['breadth'] * dim['height']) / 5000
-                        weight += order[34][idx] * (order[35][idx])
-                    if dimensions['length'] and dimensions['breadth']:
-                        dimensions['height'] = round(
-                            (volumetric_weight * 5000) / (dimensions['length'] * dimensions['breadth']))
+                    weight, volumetric_weight, dimensions = calculate_order_weight_dimensions(order)
 
                     services['ActualWeight'] = weight
                     services['PieceCount'] = 1
@@ -1087,6 +1037,8 @@ class ShipBluedart:
 
                         try:
                             tracking_link_wareiq = "https://webapp.wareiq.com/tracking/" + str(req['AWBNo'])
+                            if order[60]:
+                                tracking_link_wareiq = "https://"+order[60]+".wiq.app/tracking/" + str(req['AWBNo'])
                             tracking_link_wareiq = UrlShortner.get_short_url(tracking_link_wareiq, self.cur)
                             if self.courier[1]!='DHANIPHARMACY':
                                 send_received_event(client_name, customer_phone, tracking_link_wareiq)
@@ -1257,19 +1209,7 @@ class ShipEcomExpress:
                         package_quantity += order[35][idx]
                     package_string += "Shipping"
 
-                    dimensions = order[33][0]
-                    dimensions['length'] = dimensions['length'] * order[35][0]
-                    weight = order[34][0] * order[35][0]
-                    volumetric_weight = (dimensions['length'] * dimensions['breadth'] * dimensions['height']) / 5000
-                    for idx, dim in enumerate(order[33]):
-                        if idx == 0:
-                            continue
-                        dim['length'] += dim['length'] * (order[35][idx])
-                        volumetric_weight += (dim['length'] * dim['breadth'] * dim['height']) / 5000
-                        weight += order[34][idx] * (order[35][idx])
-                    if dimensions['length'] and dimensions['breadth']:
-                        dimensions['height'] = round(
-                            (volumetric_weight * 5000) / (dimensions['length'] * dimensions['breadth']))
+                    weight, volumetric_weight, dimensions = calculate_order_weight_dimensions(order)
 
                     shipping_phone = order[21] if order[21] else order[5]
                     shipping_phone = ''.join(e for e in str(shipping_phone) if e.isalnum())
@@ -1398,6 +1338,8 @@ class ShipEcomExpress:
 
                         try:
                             tracking_link_wareiq = "https://webapp.wareiq.com/tracking/" + str(return_data_raw['shipments'][0]['awb'])
+                            if order[60]:
+                                tracking_link_wareiq = "https://"+order[60]+".wiq.app/tracking/" + str(return_data_raw['shipments'][0]['awb'])
                             tracking_link_wareiq = UrlShortner.get_short_url(tracking_link_wareiq, self.cur)
                             if self.courier[1] != 'DHANIPHARMACY':
                                 send_received_event(client_name, customer_phone, tracking_link_wareiq)
@@ -1636,19 +1578,7 @@ class ShipFedex:
                     except Exception as e:
                         pass
 
-                    dimensions = order[33][0]
-                    dimensions['length'] = dimensions['length'] * order[35][0]
-                    weight = order[34][0] * order[35][0]
-                    volumetric_weight = (dimensions['length'] * dimensions['breadth'] * dimensions['height']) / 5000
-                    for idx, dim in enumerate(order[33]):
-                        if idx == 0:
-                            continue
-                        dim['length'] += dim['length'] * (order[35][idx])
-                        volumetric_weight += (dim['length'] * dim['breadth'] * dim['height']) / 5000
-                        weight += order[34][idx] * (order[35][idx])
-                    if dimensions['length'] and dimensions['breadth']:
-                        dimensions['height'] = round(
-                            (volumetric_weight * 5000) / (dimensions['length'] * dimensions['breadth']))
+                    weight, volumetric_weight, dimensions = calculate_order_weight_dimensions(order)
 
                     insert_shipments_data_query = """INSERT INTO SHIPMENTS (awb, status, order_id, pickup_id, courier_id, 
                                                                             dimensions, volumetric_weight, weight, remark, return_point_id, routing_code, 
@@ -1673,6 +1603,8 @@ class ShipFedex:
 
                         try:
                             tracking_link_wareiq = "https://webapp.wareiq.com/tracking/" + str(awb_no)
+                            if order[60]:
+                                tracking_link_wareiq = "https://"+order[60]+".wiq.app/tracking/" + str(awb_no)
                             tracking_link_wareiq = UrlShortner.get_short_url(tracking_link_wareiq, self.cur)
                             send_received_event(client_name, customer_phone, tracking_link_wareiq)
                         except Exception:
@@ -1824,23 +1756,7 @@ class ShipSelfShip:
                 if pickup_point[0] == 142 and order[18] not in pidge_del_sdd_pincodes:
                     continue
 
-                weight, dimensions, volumetric_weight = 0.5, {"length": 1, "breadth":1, "height":1}, 0.5
-                try:
-                    dimensions = order[33][0]
-                    dimensions['length'] = dimensions['length'] * order[35][0]
-                    weight = order[34][0] * order[35][0]
-                    volumetric_weight = (dimensions['length'] * dimensions['breadth'] * dimensions['height']) / 5000
-                    for idx, dim in enumerate(order[33]):
-                        if idx == 0:
-                            continue
-                        dim['length'] += dim['length'] * (order[35][idx])
-                        volumetric_weight += (dim['length'] * dim['breadth'] * dim['height']) / 5000
-                        weight += order[34][idx] * (order[35][idx])
-                    if dimensions['length'] and dimensions['breadth']:
-                        dimensions['height'] = round(
-                            (volumetric_weight * 5000) / (dimensions['length'] * dimensions['breadth']))
-                except Exception:
-                    pass
+                weight, volumetric_weight, dimensions = calculate_order_weight_dimensions(order)
 
                 insert_shipments_data_query = """INSERT INTO SHIPMENTS (awb, status, order_id, pickup_id, courier_id, 
                                                                                 dimensions, volumetric_weight, weight, remark, return_point_id, routing_code, 
@@ -1987,19 +1903,7 @@ class ShipPidge:
                 if not (lat and lon):
                     lat, lon = get_lat_lon(order, self.cur)
 
-                dimensions = order[33][0]
-                dimensions['length'] = dimensions['length'] * order[35][0]
-                weight = order[34][0] * order[35][0]
-                volumetric_weight = (dimensions['length'] * dimensions['breadth'] * dimensions['height']) / 5000
-                for idx, dim in enumerate(order[33]):
-                    if idx == 0:
-                        continue
-                    dim['length'] += dim['length'] * (order[35][idx])
-                    volumetric_weight += (dim['length'] * dim['breadth'] * dim['height']) / 5000
-                    weight += order[34][idx] * (order[35][idx])
-                if dimensions['length'] and dimensions['breadth']:
-                    dimensions['height'] = round(
-                        (volumetric_weight * 5000) / (dimensions['length'] * dimensions['breadth']))
+                weight, volumetric_weight, dimensions = calculate_order_weight_dimensions(order)
 
                 if max(volumetric_weight, weight)>2:
                     if self.next_priority:
@@ -2191,8 +2095,6 @@ class ShipBlowhorn:
                         pass
                     continue
                 # kama ayurveda assign delhi orders pincode check
-                if order[18] not in pidge_del_sdd_pincodes:
-                    continue
                 zone = None
                 try:
                     zone = get_delivery_zone(pickup_point[8], order[18])
@@ -2219,19 +2121,7 @@ class ShipBlowhorn:
                 if not (lat and lon):
                     lat, lon = get_lat_lon(order, self.cur)
 
-                dimensions = order[33][0]
-                dimensions['length'] = dimensions['length'] * order[35][0]
-                weight = order[34][0] * order[35][0]
-                volumetric_weight = (dimensions['length'] * dimensions['breadth'] * dimensions['height']) / 5000
-                for idx, dim in enumerate(order[33]):
-                    if idx == 0:
-                        continue
-                    dim['length'] += dim['length'] * (order[35][idx])
-                    volumetric_weight += (dim['length'] * dim['breadth'] * dim['height']) / 5000
-                    weight += order[34][idx] * (order[35][idx])
-                if dimensions['length'] and dimensions['breadth']:
-                    dimensions['height'] = round(
-                        (volumetric_weight * 5000) / (dimensions['length'] * dimensions['breadth']))
+                weight, volumetric_weight, dimensions = calculate_order_weight_dimensions(order)
 
                 package_string = ""
                 for idx, prod in enumerate(order[40]):
@@ -2252,7 +2142,6 @@ class ShipBlowhorn:
                 pickup_address = pickup_point[4]
                 pickup_address += pickup_point[5] if pickup_point[5] else ""
                 blowhorn_body = {
-                    "awb_number": "WIQ"+str(order[0]),
                     "customer_name": order[13],
                     "customer_mobile": customer_phone,
                     "customer_email": order[4] if order[4] else "noemail@example.com",
@@ -2263,7 +2152,7 @@ class ShipBlowhorn:
                     "delivery_lat": str(lat),
                     "delivery_lon": str(lon),
                     "pickup_address": pickup_address,
-                    "pickup_postal_code": pickup_point[8],
+                    "pickup_postal_code": str(pickup_point[8]),
                     "pickup_lat": str(pick_lat),
                     "pickup_lon": str(pick_lon),
                     "pickup_customer_name": pickup_point[11],
@@ -2285,7 +2174,7 @@ class ShipBlowhorn:
                     blowhorn_body['is_cod'] = True
                     blowhorn_body['cash_on_delivery'] = str(order[27])
 
-                return_data_raw = requests.post(self.courier[16] + "api/orders/shipment", headers=self.headers, data=json.dumps(blowhorn_body)).json()
+                return_data_raw = requests.post(self.courier[16] + "/api/orders/shipment", headers=self.headers, data=json.dumps(blowhorn_body)).json()
                 logger.info(str(order[0])+": "+str(return_data_raw))
                 if return_data_raw.get('status')=='PASS':
                     order_status_change_ids.append(order[0])
@@ -2303,6 +2192,8 @@ class ShipBlowhorn:
 
                     try:
                         tracking_link_wareiq = "https://webapp.wareiq.com/tracking/" + str(return_data_raw['message']['awb_number'])
+                        if order[60]:
+                            tracking_link_wareiq = "https://"+order[60]+".wiq.app/tracking/" + str(return_data_raw['message']['awb_number'])
                         tracking_link_wareiq = UrlShortner.get_short_url(tracking_link_wareiq, self.cur)
                         send_received_event(client_name, customer_phone, tracking_link_wareiq)
                     except Exception:
@@ -2456,19 +2347,7 @@ class ShipDTDC:
                         package_quantity += order[35][idx]
                     package_string += "Shipping"
 
-                    dimensions = order[33][0]
-                    dimensions['length'] = dimensions['length'] * order[35][0]
-                    weight = order[34][0] * order[35][0]
-                    volumetric_weight = (dimensions['length'] * dimensions['breadth'] * dimensions['height']) / 5000
-                    for idx, dim in enumerate(order[33]):
-                        if idx == 0:
-                            continue
-                        dim['length'] = dim['length'] * (order[35][idx])
-                        volumetric_weight += (dim['length'] * dim['breadth'] * dim['height']) / 5000
-                        weight += order[34][idx] * (order[35][idx])
-                    if dimensions['length'] and dimensions['breadth']:
-                        dimensions['height'] = round(
-                            (volumetric_weight * 5000) / (dimensions['length'] * dimensions['breadth']))
+                    weight, volumetric_weight, dimensions = calculate_order_weight_dimensions(order)
 
                     shipping_phone = order[21] if order[21] else order[5]
                     shipping_phone = ''.join(e for e in str(shipping_phone) if e.isalnum())
@@ -2570,6 +2449,8 @@ class ShipDTDC:
 
                         try:
                             tracking_link_wareiq = "https://webapp.wareiq.com/tracking/" + str(return_data_raw['data'][0]['reference_number'])
+                            if order[60]:
+                                tracking_link_wareiq = "https://"+order[60]+".wiq.app/tracking/" + str(return_data_raw['data'][0]['reference_number'])
                             tracking_link_wareiq = UrlShortner.get_short_url(tracking_link_wareiq, self.cur)
                             if self.courier[1] != 'DHANIPHARMACY':
                                 send_received_event(client_name, customer_phone, tracking_link_wareiq)

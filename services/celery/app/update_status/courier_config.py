@@ -635,7 +635,7 @@ config = {
             "RTO Delivered": ("DELIVERED", "RT"),
         },
         "status_mapping": {
-            "BKD": ("READY TO SHIP", "UD", "Ready to Ship", "Booking done in DTDC hub"),
+            "BKD": ("READY TO SHIP", "UD", "Received", "Booking done in DTDC hub"),
             "OPMF": ("IN TRANSIT", "UD", "In Transit", "Shipment in transit"),
             "IPMF": ("IN TRANSIT", "UD", "In Transit", "Shipment in transit"),
             "OBMD": ("IN TRANSIT", "UD", "In Transit", "Shipment in transit"),

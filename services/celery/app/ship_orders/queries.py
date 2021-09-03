@@ -32,7 +32,7 @@ get_orders_to_ship_query = """select distinct on (aa.id) aa.id,aa.channel_order_
                                 ff.shop_url, aa.order_id_channel_unique, ee.products_name, aa.pickup_data_id, xx.cod_verified, 
                                 xx.id, ee.ship_courier, gg.location_id, ff.channel_id, yy.verify_cod, yy.essential, ee.subcategories, 
                                 yy.cod_ship_unconfirmed, yy.client_name, aa.chargeable_weight, yy.cod_man_ver, zz.id, 
-                                ff.unique_parameter, ff.id, ppa.warehouse_prefix, ppa.pincode, ee.products_sku
+                                ff.unique_parameter, ff.id, ppa.warehouse_prefix, ppa.pincode, ee.products_sku, clc.subdomain
                                 from orders aa
                                 left join shipping_address cc
                                 on aa.delivery_address_id=cc.id
@@ -67,6 +67,8 @@ get_orders_to_ship_query = """select distinct on (aa.id) aa.id,aa.channel_order_
                                 on cpa.id=aa.pickup_data_id
                                 left join pickup_points ppa
                                 on ppa.id=cpa.pickup_id
+                                left join client_customization clc
+ 								on aa.client_prefix=clc.client_prefix
                                 left join (select * from orders_invoice where cancelled is not true) zz
                                 on zz.order_id=aa.id
                                 where aa.client_prefix=%s

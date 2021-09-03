@@ -224,7 +224,7 @@ class OrderUpdateCourier:
                 )
                 conn.commit()
             except Exception as e:
-                logger.error("Status update failed for " + str(requested_order[0]) + "    err:" + str(e.args[0]))
+                logger.error("Status update failed for " + str(requested_order) + "    err:" + str(e.args[0]))
 
         # 15. Send SMS if necessary
         self.send_exotel_messages(exotel_idx, exotel_sms_data)
@@ -567,6 +567,13 @@ class OrderUpdateCourier:
             if check_obj["reason_code_number"] in config[self.name]["status_mapping"]:
                 order_new_status["new_status"] = config[self.name]["status_mapping"][check_obj["reason_code_number"]][0]
 
+            #pidge specific random flags
+            if order_new_status["new_status"] in ('DELIVERED', 'DISPATCHED') and payload.get("attempt_type") not in (10, 40):
+                return flags, order_new_status
+
+            if order_new_status["new_status"] in ('IN TRANSIT', ) and payload.get("attempt_type") not in (10, 70):
+                return flags, order_new_status
+
             if not order_new_status["new_status"] or order_new_status["new_status"] in (
                 "READY TO SHIP",
                 "PICKUP REQUESTED",
@@ -574,7 +581,7 @@ class OrderUpdateCourier:
                 return flags, order_new_status
 
         if self.name == "DTDC":
-            if order_new_status["new_status"] == "READY TO SHIP":
+            if not order_new_status["new_status"] or order_new_status["new_status"] in ("READY TO SHIP", "PICKUP REQUESTED"):
                 return flags, order_new_status
 
         flags["type"] = None
@@ -922,7 +929,7 @@ class OrderUpdateCourier:
             except Exception as e:
                 logger.error(str(e.args))
 
-            return_object["type"] = None
+        return_object["type"] = None
 
         return return_object, order_new_status
 
@@ -940,6 +947,8 @@ class OrderUpdateCourier:
             (datetime.utcnow() + timedelta(hours=5.5)).strftime("%Y-%m-%d %H:%M:%S"),
         )
         tracking_link = "https://webapp.wareiq.com/tracking/" + order_new_status["current_awb"]
+        if existing_order[43]:
+            tracking_link = "https://"+str(existing_order[43])+".wiq.app/tracking/" + existing_order[1]
         tracking_link = UrlShortner.get_short_url(tracking_link, self.cursor)
         send_delivered_event(customer_phone, existing_order, self.name, tracking_link)
 
@@ -995,6 +1004,8 @@ class OrderUpdateCourier:
             )
 
         tracking_link = "https://webapp.wareiq.com/tracking/" + order_new_status["current_awb"]
+        if existing_order[43]:
+            tracking_link = "https://"+str(existing_order[43])+".wiq.app/tracking/" + existing_order[1]
         tracking_link = UrlShortner.get_short_url(tracking_link, self.cursor)
         send_shipped_event(
             customer_phone,

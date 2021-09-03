@@ -119,15 +119,20 @@ def ecom_status_mapper(scan, new_data, requested_order, status_time):
 def dtdc_status_mapper(scan):
     to_record_status = ""
     #! Check if this is correct map
-    if scan["strCode"] == "BKD":
-        to_record_status = "Ready to ship"
+    if scan["strCode"] == "OPMF":
+        to_record_status = "Picked"
     elif scan["strCode"] == "OUTDLV":
         to_record_status = "Out for delivery"
     elif scan["strCode"] == "DLV":
         to_record_status = "Delivered"
     elif scan["strCode"].startswith("RTO"):
+        to_record_status = "Returned"
+    elif scan["strCode"] == "RTODLV":
         to_record_status = "RTO"
-    else:
+    elif scan["strCode"] in ('IPMF','OBMD','IBMD','OBMN','IBMN','OMBM','IMBM','ORBO',
+                             'IRBO','CDOUT','CDIN', 'NONDLV','RTOOPMF', 'RTOIPMF','RTOOBMD','RTOIBMD',
+                             'RTOOBMN','RTOIBMN','RTOOMBM','RTOIMBM', 'RTOORBO','RTOIRBO','RTOCDOUT','RTOCDIN',
+                             'RTOOUTDLV','RTONONDLV'):
         to_record_status = "In Transit"
 
     return to_record_status

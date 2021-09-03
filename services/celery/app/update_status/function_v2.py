@@ -1,4 +1,5 @@
 import logging, requests, json, xmltodict
+import psycopg2
 from datetime import datetime, timedelta
 from time import sleep
 
@@ -21,14 +22,16 @@ logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 conn = DbConnection.get_db_connection_instance()
-# conn = psycopg2.connect(host="localhost", database="", user="", password="", port="5431")
+# conn = psycopg2.connect(
+#     host="localhost", database="", user="", password="", port="5431"
+# )
 
 
 def update_status(sync_ext=None):
     cur = conn.cursor()
     # Fetch courier objects - [id, courier_name, api_key, api_password]
     if not sync_ext:
-        cur.execute(get_courier_id_and_key_query + " where integrated is true;")
+        cur.execute(get_courier_id_and_key_query + " where integrated is true")
     else:
         cur.execute(get_courier_id_and_key_query + " where integrated is not true;")
 
@@ -59,6 +62,8 @@ class OrderUpdateCourier:
             self.name = "Ecom Express"
         elif courier[1].startswith("Pidge"):
             self.name = "Pidge"
+        elif courier[1].startswith("DTDC"):
+            self.name = "DTDC"
         self.api_key = courier[2]
         self.api_password = courier[3]
         self.cursor = cursor
@@ -83,6 +88,9 @@ class OrderUpdateCourier:
             )
             logger.info("Count of {0} packages: ".format(self.name) + str(len(requested_ship_data)))
         else:
+            access_obj = self.get_access_credentials()
+            if access_obj["type"] == "continue":
+                return
             requested_ship_data, orders_dict, exotel_idx, exotel_sms_data = active_orders, {}, 0, {"From": "LM-WAREIQ"}
 
         for requested_order in requested_ship_data:
@@ -93,7 +101,7 @@ class OrderUpdateCourier:
                         requested_individual_order,
                         exotel_idx,
                         exotel_sms_data,
-                    ) = self.request_individual_status_from_courier(requested_order)
+                    ) = self.request_individual_status_from_courier(requested_order, access_obj)
                 else:
                     requested_individual_order = requested_order
 
@@ -103,13 +111,13 @@ class OrderUpdateCourier:
                     continue
 
                 # 4. Based on the API design, extract relevant information from API response
-                new_data = self.get_courier_specific_order_data(requested_individual_order)
-                if new_data["type"] == "continue":
+                order_new_status = self.get_courier_specific_order_data(requested_individual_order)
+                if order_new_status["type"] == "continue":
                     continue
 
                 # 5. In this section, generate any courier specific flags to be used later in their corresponding logic
-                flags, new_data = self.set_courier_specific_flags(
-                    requested_individual_order, new_data, orders_dict, check_obj
+                flags, order_new_status = self.set_courier_specific_flags(
+                    requested_individual_order, order_new_status, orders_dict, check_obj
                 )
                 if flags["type"] == "continue":
                     continue
@@ -117,7 +125,7 @@ class OrderUpdateCourier:
                 if config[self.name]["api_type"] == "individual":
                     order = requested_order
                 else:
-                    order = orders_dict[new_data["current_awb"]]
+                    order = orders_dict[order_new_status["current_awb"]]
 
                 try:
                     # 6. Get current scans information for an order
@@ -133,7 +141,7 @@ class OrderUpdateCourier:
 
                     # 7. Convert courier specific order status into a uniform WareIQ standard
                     new_status_dict, flags = self.convert_courier_status_to_wareiq_status(
-                        requested_individual_order, new_data, order, flags
+                        requested_individual_order, order_new_status, order, flags
                     )
 
                     # 8. Update the status of the orders under certain conditions only
@@ -159,8 +167,13 @@ class OrderUpdateCourier:
                     logger.error("Open status failed for id: " + str(order[0]) + "\nErr: " + str(e.args[0]))
 
                 # 9. Update shipment status of the order
-                status_obj, new_data = self.update_shipment_data(
-                    requested_individual_order, new_data, order, new_data["current_awb"], flags, check_obj
+                status_obj, order_new_status = self.update_shipment_data(
+                    requested_individual_order,
+                    order_new_status,
+                    order,
+                    order_new_status["current_awb"],
+                    flags,
+                    check_obj,
                 )
                 if status_obj["type"] == "continue":
                     continue
@@ -169,38 +182,45 @@ class OrderUpdateCourier:
                 customer_phone = "0" + customer_phone[-10:]
 
                 # 10. Update webhooks if the new status is delivered
-                if new_data["new_status"] == "DELIVERED":
-                    self.send_delivered_update(new_data, order, customer_phone)
+                if order_new_status["new_status"] == "DELIVERED":
+                    self.send_delivered_update(order_new_status, order, customer_phone)
 
                 # 11. Update webhooks if the new status is RTO
-                if new_data["new_status"] == "RTO":
-                    self.send_rto_update(new_data["new_status"], order)
+                if order_new_status["new_status"] == "RTO":
+                    self.send_rto_update(order_new_status["new_status"], order)
 
                 # 12. Update webhooks if the new status is in transit and previous status is not in transit
                 if (
-                    order[2] in ("READY TO SHIP", "PICKUP REQUESTED", "NOT PICKED")
-                    and new_data["new_status"] == "IN TRANSIT"
+                    order[2].upper() in ("READY TO SHIP", "PICKUP REQUESTED", "NOT PICKED")
+                    and order_new_status["new_status"] == "IN TRANSIT"
                 ):
                     pickup_count, pickup_dict, status_obj = self.send_new_to_transit_update(
-                        pickup_count, pickup_dict, new_data, order, status_obj, customer_phone, flags
+                        pickup_count, pickup_dict, order_new_status, order, status_obj, customer_phone, flags
                     )
                     if status_obj["type"] == "continue":
                         continue
 
                 # 13. Update webhooks if the new status is pending
-                if order[2] != new_data["new_status"]:
+                if order[2].upper() != order_new_status["new_status"]:
                     status_update_tuple = (
-                        new_data["new_status"],
+                        order_new_status["new_status"],
                         status_obj["data"]["status_type"],
                         status_obj["data"]["status_detail"],
                         order[0],
                     )
                     self.cursor.execute(order_status_update_query, status_update_tuple)
-                    self.send_pending_update(new_data, status_obj["data"]["status_code"], order, requested_order)
+                    self.send_pending_update(
+                        order_new_status, status_obj["data"]["status_code"], order, requested_order
+                    )
 
                 # 14. Update webhooks for courier specific updates
                 exotel_idx, exotel_sms_data = self.courier_specific_status_updates(
-                    new_data["new_status"], order, exotel_idx, exotel_sms_data, customer_phone, new_data["current_awb"]
+                    order_new_status["new_status"],
+                    order,
+                    exotel_idx,
+                    exotel_sms_data,
+                    customer_phone,
+                    order_new_status["current_awb"],
                 )
                 conn.commit()
             except Exception as e:
@@ -221,24 +241,39 @@ class OrderUpdateCourier:
 
         conn.commit()
 
+    def get_access_credentials(self):
+        """
+        This function generates additional auth requirements to access status API
+        """
+        access_obj = {"type": None}
+
+        if self.name == "DTDC":
+            self.cursor.execute(
+                "SELECT api_credential_1, api_credential_2 FROM master_couriers WHERE id={0}".format(self.id)
+            )
+            [username, password] = self.cursor.fetchall()[0]
+
+            url = config[self.name]["auth_token_api"] + "?username={0}&password={1}".format(username, password)
+            response = requests.get(url)
+            try:
+                access_obj["auth_token"] = response.text
+            except Exception as e:
+                access_obj["type"] = "continue"
+                logger.error("Error: " + str(e.args[0]))
+
+        return access_obj
+
     def try_check_status_url(self, check_status_url, api_type, headers, data):
         """
         This function executes courier API dependent request pattern
         """
+        req = None
         try:
-            if api_type == "GET":
-                req = requests.get(check_status_url)
-            elif api_type == "POST":
-                if headers and data:
-                    req = requests.post(check_status_url, headers=headers, data=data)
+            req = requests.request(api_type, check_status_url, headers=headers, data=data)
         except Exception:
             sleep(10)
             try:
-                if api_type == "GET":
-                    req = requests.get(check_status_url)
-                elif api_type == "POST":
-                    if headers and data:
-                        req = requests.post(check_status_url, headers=headers, data=data)
+                req = requests.request(api_type, check_status_url, headers=headers, data=data)
             except Exception as e:
                 logger.error("{0} connection issue: ".format(self.id) + "\nError: " + str(e.args[0]))
                 pass
@@ -364,7 +399,7 @@ class OrderUpdateCourier:
 
         return requested_ship_data, orders_dict, exotel_idx, exotel_sms_data
 
-    def request_individual_status_from_courier(self, order):
+    def request_individual_status_from_courier(self, order, access_obj):
         """
         Function for couriers who require sending AWBs individually to their API.
         Depending on the API design of each courier, logic is segregated.
@@ -380,7 +415,20 @@ class OrderUpdateCourier:
                 "deviceId": "abc",
                 "buildNumber": "123",
             }
-            requested_order = requests.get(config[self.name]["status_url"] + str(order[0]), headers=headers).json()
+            requested_order = self.try_check_status_url(
+                config[self.name]["status_url"] + str(order[0]), "GET", headers, {}
+            ).json()
+
+        if self.name == "DTDC":
+            headers = {
+                "x-access-token": access_obj["auth_token"],
+                "Content-Type": "application/json",
+            }
+            payload = json.dumps({"trkType": "cnno", "strcnno": str(order[1]), "addtnlDtl": "Y"})
+
+            requested_order = self.try_check_status_url(
+                config[self.name]["status_url"], "POST", headers, payload
+            ).json()
 
         return requested_order, exotel_idx, exotel_sms_data
 
@@ -413,6 +461,16 @@ class OrderUpdateCourier:
 
             return_object["reason_code_number"] = reason_code_number
 
+        if self.name == "DTDC":
+            if requested_order["status"] == "FAILED":
+                logger.error(
+                    "Error: "
+                    + requested_order["errorDetails"][1]["value"]
+                    + " "
+                    + requested_order["errorDetails"][0]["value"]
+                )
+                return_object["type"] = "continue"
+
         return return_object
 
     def get_courier_specific_order_data(self, order):
@@ -421,52 +479,60 @@ class OrderUpdateCourier:
         from the courier API response. Different couriers provide different
         kinds of information. Accordingly logic is segregated.
         """
-        new_data = {"type": "continue"}
+        order_new_status = {"type": "continue"}
         if self.name == "Delhivery":
-            new_data["new_status"] = order["Shipment"]["Status"]["Status"]
-            new_data["current_awb"] = order["Shipment"]["AWB"]
+            order_new_status["new_status"] = order["Shipment"]["Status"]["Status"]
+            order_new_status["current_awb"] = order["Shipment"]["AWB"]
 
         if self.name == "Xpressbees":
-            new_data["new_status"] = order["ShipmentSummary"][0]["StatusCode"]
-            new_data["current_awb"] = order["AWBNo"]
+            order_new_status["new_status"] = order["ShipmentSummary"][0]["StatusCode"]
+            order_new_status["current_awb"] = order["AWBNo"]
 
         if self.name == "Bluedart":
             if order["StatusType"] == "NF":
-                return new_data
-            new_data["current_awb"] = order["@WaybillNo"] if "@WaybillNo" in order else ""
+                return order_new_status
+            order_new_status["current_awb"] = order["@WaybillNo"] if "@WaybillNo" in order else ""
             try:
-                new_data["scan_group"] = order["Scans"]["ScanDetail"][0]["ScanGroupType"]
-                new_data["scan_code"] = order["Scans"]["ScanDetail"][0]["ScanCode"]
+                order_new_status["scan_group"] = order["Scans"]["ScanDetail"][0]["ScanGroupType"]
+                order_new_status["scan_code"] = order["Scans"]["ScanDetail"][0]["ScanCode"]
             except Exception as e:
-                new_data["scan_group"] = order["Scans"]["ScanDetail"]["ScanGroupType"]
-                new_data["scan_code"] = order["Scans"]["ScanDetail"]["ScanCode"]
+                order_new_status["scan_group"] = order["Scans"]["ScanDetail"]["ScanGroupType"]
+                order_new_status["scan_code"] = order["Scans"]["ScanDetail"]["ScanCode"]
 
             if (
-                new_data["scan_group"] not in config[self.name]["status_mapping"]
-                or new_data["scan_code"] not in config[self.name]["status_mapping"][new_data["scan_group"]]
+                order_new_status["scan_group"] not in config[self.name]["status_mapping"]
+                or order_new_status["scan_code"]
+                not in config[self.name]["status_mapping"][order_new_status["scan_group"]]
             ):
-                return new_data
+                return order_new_status
 
-            new_data["new_status"] = config[self.name]["status_mapping"][new_data["scan_group"]][new_data["scan_code"]][
-                0
-            ]
-            new_data["current_awb"] = order["@WaybillNo"]
+            order_new_status["new_status"] = config[self.name]["status_mapping"][order_new_status["scan_group"]][
+                order_new_status["scan_code"]
+            ][0]
+            order_new_status["current_awb"] = order["@WaybillNo"]
 
         if self.name == "Ecom Express":
-            new_data["scan_code"] = order["reason_code_number"]
-            if new_data["scan_code"] not in config[self.name]["status_mapping"]:
-                return new_data
+            order_new_status["scan_code"] = order["reason_code_number"]
+            if order_new_status["scan_code"] not in config[self.name]["status_mapping"]:
+                return order_new_status
 
-            new_data["new_status"] = config[self.name]["status_mapping"][new_data["scan_code"]][0]
-            new_data["current_awb"] = order["awb_number"]
+            order_new_status["new_status"] = config[self.name]["status_mapping"][order_new_status["scan_code"]][0]
+            order_new_status["current_awb"] = order["awb_number"]
 
         if self.name == "Pidge":
-            new_data["current_awb"] = str(order["data"]["current_status"]["PBID"])
+            order_new_status["current_awb"] = str(order["data"]["current_status"]["PBID"])
 
-        new_data["type"] = None
-        return new_data
+        if self.name == "DTDC":
+            order_new_status["current_awb"] = order["trackHeader"]["strShipmentNo"]
+            order_new_status["scan_code"] = order["trackHeader"]["strStatus"]
+            order_new_status["new_status"] = config[self.name]["status_to_code_mapping"][order_new_status["scan_code"]][
+                0
+            ]
 
-    def set_courier_specific_flags(self, requested_order, new_data, orders_dict, check_obj):
+        order_new_status["type"] = None
+        return order_new_status
+
+    def set_courier_specific_flags(self, requested_order, order_new_status, orders_dict, check_obj):
         """
         Courier specific sanity checks and custom flags to be used later in their logic are
         performed here.
@@ -478,42 +544,56 @@ class OrderUpdateCourier:
         if self.name == "Bluedart":
             flags["is_return"] = False
             if "@RefNo" in requested_order and str(requested_order["@RefNo"]).startswith("074"):
-                new_data["current_awb"] = str(str(requested_order["@RefNo"]).split("-")[1]).strip()
+                order_new_status["current_awb"] = str(str(requested_order["@RefNo"]).split("-")[1]).strip()
                 flags["is_return"] = True
 
-            if flags["is_return"] and new_data["new_status"] != "DELIVERED":
-                return flags, new_data
+            if flags["is_return"] and order_new_status["new_status"] != "DELIVERED":
+                return flags, order_new_status
 
         if self.name == "Ecom Express":
             if (
-                orders_dict[new_data["current_awb"]][2] == "CANCELED" and new_data["new_status"] != "IN TRANSIT"
-            ) or new_data["new_status"] in ("READY TO SHIP", "PICKUP REQUESTED"):
-                return flags, new_data
+                orders_dict[order_new_status["current_awb"]][2] == "CANCELED"
+                and order_new_status["new_status"] != "IN TRANSIT"
+            ) or order_new_status["new_status"] in ("READY TO SHIP", "PICKUP REQUESTED"):
+                return flags, order_new_status
 
         if self.name == "Pidge":
             payload = requested_order["data"]["current_status"]
             flags["is_return"] = False
             if payload.get("attempt_type") == 30:
                 flags["is_return"] = True
-            new_data["new_status"] = ""
+            order_new_status["new_status"] = ""
 
             if check_obj["reason_code_number"] in config[self.name]["status_mapping"]:
-                new_data["new_status"] = config[self.name]["status_mapping"][check_obj["reason_code_number"]][0]
+                order_new_status["new_status"] = config[self.name]["status_mapping"][check_obj["reason_code_number"]][0]
 
-            #pidge specific random flags
-            if new_data["new_status"] in ('DELIVERED', 'DISPATCHED') and payload.get("attempt_type") not in (10, 40):
-                return flags, new_data
+            # pidge specific random flags
+            if order_new_status["new_status"] in ("DELIVERED", "DISPATCHED") and payload.get("attempt_type") not in (
+                10,
+                40,
+            ):
+                return flags, order_new_status
 
-            if new_data["new_status"] in ('IN TRANSIT', ) and payload.get("attempt_type") not in (10, 70):
-                return flags, new_data
+            if order_new_status["new_status"] in ("IN TRANSIT",) and payload.get("attempt_type") not in (10, 70):
+                return flags, order_new_status
 
-            if not new_data["new_status"] or new_data["new_status"] in ("READY TO SHIP", "PICKUP REQUESTED"):
-                return flags, new_data
+            if not order_new_status["new_status"] or order_new_status["new_status"] in (
+                "READY TO SHIP",
+                "PICKUP REQUESTED",
+            ):
+                return flags, order_new_status
+
+        if self.name == "DTDC":
+            if not order_new_status["new_status"] or order_new_status["new_status"] in (
+                "READY TO SHIP",
+                "PICKUP REQUESTED",
+            ):
+                return flags, order_new_status
 
         flags["type"] = None
-        return flags, new_data
+        return flags, order_new_status
 
-    def convert_courier_status_to_wareiq_status(self, requested_order, new_data, existing_order, flags):
+    def convert_courier_status_to_wareiq_status(self, requested_order, order_new_status, existing_order, flags):
         """
         Convert terinology of order details in courier API to a uniform WareIQ format.
         """
@@ -604,7 +684,7 @@ class OrderUpdateCourier:
                     status_time = datetime.strptime(status_time, config[self.name]["status_time_format"])
 
                 to_record_status, flags = config[self.name]["status_mapper_fn"](
-                    each_scan, new_data["new_status"], flags
+                    each_scan, order_new_status["new_status"], flags
                 )
                 if not to_record_status:
                     continue
@@ -645,7 +725,7 @@ class OrderUpdateCourier:
                     status_time = datetime.strptime(status_time, config[self.name]["status_time_format"])
 
                 to_record_status, status_time = config[self.name]["status_mapper_fn"](
-                    each_scan, new_data, requested_order, status_time
+                    each_scan, order_new_status, requested_order, status_time
                 )
                 if not to_record_status:
                     continue
@@ -715,9 +795,41 @@ class OrderUpdateCourier:
                         "",
                         status_time,
                     )
+
+        if self.name == "DTDC":
+            for each_scan in requested_order["trackDetails"]:
+                status_time = each_scan["strActionDate"] + "-" + each_scan["strActionTime"]
+                if status_time:
+                    status_time = datetime.strptime(status_time, config[self.name]["status_time_format"])
+
+                to_record_status = config[self.name]["status_mapper_fn"](each_scan)
+                if to_record_status not in new_status:
+                    new_status[to_record_status] = (
+                        existing_order[0],
+                        self.id,
+                        existing_order[10],
+                        config[self.name]["status_mapping"][each_scan["strCode"]][1],
+                        to_record_status,
+                        config[self.name]["status_to_code_mapping"][each_scan["strAction"]][2],
+                        "",
+                        "",
+                        status_time,
+                    )
+                elif to_record_status == "In Transit" and new_status[to_record_status][8] < status_time:
+                    new_status[to_record_status] = (
+                        existing_order[0],
+                        self.id,
+                        existing_order[10],
+                        config[self.name]["status_mapping"][each_scan["strCode"]][1],
+                        to_record_status,
+                        config[self.name]["status_to_code_mapping"][each_scan["strAction"]][2],
+                        "",
+                        "",
+                        status_time,
+                    )
         return new_status, flags
 
-    def update_shipment_data(self, requested_order, new_data, existing_order, current_awb, flags, check_obj):
+    def update_shipment_data(self, requested_order, order_new_status, existing_order, current_awb, flags, check_obj):
         """
         Once order status data is converted to uniform WareIQ format,
         update them in DB accordingly.
@@ -727,17 +839,17 @@ class OrderUpdateCourier:
             "data": {"status_type": None, "status_detail": None, "status_code": None, "edd": None},
         }
         if self.name == "Delhivery":
-            if new_data["new_status"] == "Manifested":
-                return return_object
+            if order_new_status["new_status"] == "Manifested":
+                return return_object, order_new_status
 
-            new_data["new_status"] = new_data["new_status"].upper()
-            if (existing_order[2] == "CANCELED" and new_data["new_status"] != "IN TRANSIT") or new_data[
+            order_new_status["new_status"] = order_new_status["new_status"].upper()
+            if (existing_order[2] == "CANCELED" and order_new_status["new_status"] != "IN TRANSIT") or order_new_status[
                 "new_status"
             ] in ("READY TO SHIP", "NOT PICKED", "PICKUP REQUESTED"):
-                return return_object
+                return return_object, order_new_status
 
             return_object["data"]["status_type"] = requested_order["Shipment"]["Status"]["StatusType"]
-            if new_data["new_status"] == "PENDING":
+            if order_new_status["new_status"] == "PENDING":
                 return_object["data"]["status_code"] = requested_order["Shipment"]["Scans"][-1]["ScanDetail"][
                     "StatusCode"
                 ]
@@ -745,34 +857,36 @@ class OrderUpdateCourier:
             return_object["data"]["edd"] = requested_order["Shipment"]["expectedDate"]
 
         if self.name == "Xpressbees":
-            new_status_temp = config[self.name]["status_mapping"][new_data["new_status"]][0].upper()
+            new_status_temp = config[self.name]["status_mapping"][order_new_status["new_status"]][0].upper()
             try:
-                return_object["data"]["status_type"] = config[self.name]["status_mapping"][new_data["new_status"]][1]
+                return_object["data"]["status_type"] = config[self.name]["status_mapping"][
+                    order_new_status["new_status"]
+                ][1]
             except KeyError:
                 return_object["data"]["status_type"] = None
 
             if new_status_temp in ("READY TO SHIP", "PICKUP REQUESTED"):
-                return return_object
+                return return_object, order_new_status
 
-            new_data["new_status"] = new_status_temp
+            order_new_status["new_status"] = new_status_temp
 
-            if existing_order[2] == "CANCELED" and new_data["new_status"] != "IN TRANSIT":
-                return return_object
+            if existing_order[2] == "CANCELED" and order_new_status["new_status"] != "IN TRANSIT":
+                return return_object, order_new_status
 
             return_object["data"]["edd"] = requested_order["ShipmentSummary"][0].get("ExpectedDeliveryDate")
 
         if self.name == "Bluedart":
-            if flags["is_return"] and new_data["new_status"] == "DELIVERED":
-                new_data["new_status"] = "RTO"
+            if flags["is_return"] and order_new_status["new_status"] == "DELIVERED":
+                order_new_status["new_status"] = "RTO"
 
             return_object["data"]["status_type"] = requested_order["StatusType"]
-            if new_data["new_status"] in ("NOT PICKED", "READY TO SHIP", "PICKUP REQUESTED"):
-                return return_object
+            if order_new_status["new_status"] in ("NOT PICKED", "READY TO SHIP", "PICKUP REQUESTED"):
+                return return_object, order_new_status
             return_object["data"]["status_detail"] = None
-            return_object["data"]["status_code"] = new_data["scan_code"]
+            return_object["data"]["status_code"] = order_new_status["scan_code"]
 
-            if existing_order[2] == "CANCELED" and new_data["new_status"] != "IN TRANSIT":
-                return return_object
+            if existing_order[2] == "CANCELED" and order_new_status["new_status"] != "IN TRANSIT":
+                return return_object, order_new_status
 
             return_object["data"]["edd"] = (
                 requested_order["ExpectedDeliveryDate"] if "ExpectedDeliveryDate" in requested_order else None
@@ -782,13 +896,28 @@ class OrderUpdateCourier:
             return_object["data"]["edd"] = (
                 requested_order["expected_date"] if "expected_date" in requested_order else None
             )
-            return_object["data"]["status_type"] = config[self.name]["status_mapping"][new_data["scan_code"]][1]
+            return_object["data"]["status_type"] = config[self.name]["status_mapping"][order_new_status["scan_code"]][1]
             return_object["data"]["status_detail"] = None
-            return_object["data"]["status_code"] = new_data["scan_code"]
+            return_object["data"]["status_code"] = order_new_status["scan_code"]
 
         if self.name == "Pidge":
             if check_obj["reason_code_number"] in config[self.name]["status_mapping"]:
                 return_object["data"]["status_type"] = "UD" if not flags["is_return"] else "RT"
+
+        if self.name == "DTDC":
+            new_status_temp = order_new_status["new_status"].upper()
+            try:
+                return_object["data"]["status_type"] = config[self.name]["status_mapping"][
+                    order_new_status["new_status"]
+                ][1]
+            except KeyError:
+                return_object["data"]["status_type"] = None
+
+            return_object["data"]["status_code"] = order_new_status["scan_code"]
+            if new_status_temp == "READY TO SHIP":
+                return return_object, order_new_status
+
+            order_new_status["new_status"] = new_status_temp
 
         if return_object["data"]["edd"]:
             try:
@@ -808,9 +937,9 @@ class OrderUpdateCourier:
 
         return_object["type"] = None
 
-        return return_object, new_data
+        return return_object, order_new_status
 
-    def send_delivered_update(self, new_data, existing_order, customer_phone):
+    def send_delivered_update(self, order_new_status, existing_order, customer_phone):
         """
         Send updates for the orders with new status as delivered.
         """
@@ -818,14 +947,14 @@ class OrderUpdateCourier:
         webhook_updates(
             existing_order,
             self.cursor,
-            new_data["new_status"],
+            order_new_status["new_status"],
             "Shipment Delivered",
             "",
             (datetime.utcnow() + timedelta(hours=5.5)).strftime("%Y-%m-%d %H:%M:%S"),
         )
-        tracking_link = "https://webapp.wareiq.com/tracking/" + new_data["current_awb"]
+        tracking_link = "https://webapp.wareiq.com/tracking/" + order_new_status["current_awb"]
         if existing_order[43]:
-            tracking_link = "https://"+str(existing_order[43])+".wiq.app/tracking/" + existing_order[1]
+            tracking_link = "https://" + str(existing_order[43]) + ".wiq.app/tracking/" + existing_order[1]
         tracking_link = UrlShortner.get_short_url(tracking_link, self.cursor)
         send_delivered_event(customer_phone, existing_order, self.name, tracking_link)
 
@@ -844,7 +973,7 @@ class OrderUpdateCourier:
         )
 
     def send_new_to_transit_update(
-        self, pickup_count, pickup_dict, new_data, existing_order, status_obj, customer_phone, flags
+        self, pickup_count, pickup_dict, order_new_status, existing_order, status_obj, customer_phone, flags
     ):
         """
         Send updates for the orders with new status as picked up for delivery.
@@ -869,7 +998,7 @@ class OrderUpdateCourier:
         webhook_updates(
             existing_order,
             self.cursor,
-            new_data["new_status"],
+            order_new_status["new_status"],
             "Shipment Picked Up",
             "",
             (datetime.utcnow() + timedelta(hours=5.5)).strftime("%Y-%m-%d %H:%M:%S"),
@@ -877,12 +1006,12 @@ class OrderUpdateCourier:
 
         if status_obj["data"]["edd"]:
             self.cursor.execute(
-                "UPDATE shipments SET pdd=%s WHERE awb=%s", (status_obj["data"]["edd"], new_data["current_awb"])
+                "UPDATE shipments SET pdd=%s WHERE awb=%s", (status_obj["data"]["edd"], order_new_status["current_awb"])
             )
 
-        tracking_link = "https://webapp.wareiq.com/tracking/" + new_data["current_awb"]
+        tracking_link = "https://webapp.wareiq.com/tracking/" + order_new_status["current_awb"]
         if existing_order[43]:
-            tracking_link = "https://"+str(existing_order[43])+".wiq.app/tracking/" + existing_order[1]
+            tracking_link = "https://" + str(existing_order[43]) + ".wiq.app/tracking/" + existing_order[1]
         tracking_link = UrlShortner.get_short_url(tracking_link, self.cursor)
         send_shipped_event(
             customer_phone,
@@ -895,7 +1024,7 @@ class OrderUpdateCourier:
 
         return pickup_count, pickup_dict, status_obj
 
-    def send_pending_update(self, new_data, status_code, existing_order, requested_order):
+    def send_pending_update(self, order_new_status, status_code, existing_order, requested_order):
         """
         Send updates for the orders with new status as pending.
         Also perform verifications for NDR.
@@ -903,19 +1032,26 @@ class OrderUpdateCourier:
         try:
             ndr_reason = None
             if self.name == "Delhivery":
-                if new_data["new_status"] == "PENDING" and status_code in config[self.name]["status_mapping"]:
+                if order_new_status["new_status"] == "PENDING" and status_code in config[self.name]["status_mapping"]:
                     ndr_reason = config[self.name]["status_mapping"][status_code]
+
             if self.name == "Xpressbees":
                 if requested_order["ShipmentSummary"][0]["StatusCode"] == "UD":
                     ndr_reason = config[self.name]["ndr_mapper_fn"](requested_order)
+
             if self.name == "Bluedart":
                 if (
-                    new_data["new_status"] == "PENDING"
-                    and status_code in config[self.name]["status_mapping"][new_data["scan_group"]]
+                    order_new_status["new_status"] == "PENDING"
+                    and status_code in config[self.name]["status_mapping"][order_new_status["scan_group"]]
                 ):
-                    ndr_reason = config[self.name]["status_mapping"][new_data["scan_group"]][status_code][3]
+                    ndr_reason = config[self.name]["status_mapping"][order_new_status["scan_group"]][status_code][3]
+
             if self.name == "Ecom Express":
-                if new_data["new_status"] == "PENDING" and status_code in config[self.name]["ndr_reasons"]:
+                if order_new_status["new_status"] == "PENDING" and status_code in config[self.name]["ndr_reasons"]:
+                    ndr_reason = config[self.name]["ndr_reasons"][status_code]
+
+            if self.name == "DTDC":
+                if order_new_status["new_status"] == "PENDING" and status_code in config[self.name]["ndr_reasons"]:
                     ndr_reason = config[self.name]["ndr_reasons"][status_code]
 
             if ndr_reason:
@@ -923,7 +1059,7 @@ class OrderUpdateCourier:
                 webhook_updates(
                     existing_order,
                     self.cursor,
-                    new_data["new_status"],
+                    order_new_status["new_status"],
                     "",
                     "",
                     (datetime.utcnow() + timedelta(hours=5.5)).strftime("%Y-%m-%d %H:%M:%S"),

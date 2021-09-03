@@ -116,6 +116,28 @@ def ecom_status_mapper(scan, new_data, requested_order, status_time):
     return to_record_status, status_time
 
 
+def dtdc_status_mapper(scan):
+    to_record_status = ""
+    #! Check if this is correct map
+    if scan["strCode"] == "OPMF":
+        to_record_status = "Picked"
+    elif scan["strCode"] == "OUTDLV":
+        to_record_status = "Out for delivery"
+    elif scan["strCode"] == "DLV":
+        to_record_status = "Delivered"
+    elif scan["strCode"].startswith("RTO"):
+        to_record_status = "Returned"
+    elif scan["strCode"] == "RTODLV":
+        to_record_status = "RTO"
+    elif scan["strCode"] in ('IPMF','OBMD','IBMD','OBMN','IBMN','OMBM','IMBM','ORBO',
+                             'IRBO','CDOUT','CDIN', 'NONDLV','RTOOPMF', 'RTOIPMF','RTOOBMD','RTOIBMD',
+                             'RTOOBMN','RTOIBMN','RTOOMBM','RTOIMBM', 'RTOORBO','RTOIRBO','RTOCDOUT','RTOCDIN',
+                             'RTOOUTDLV','RTONONDLV'):
+        to_record_status = "In Transit"
+
+    return to_record_status
+
+
 def xpressbees_ndr_mapper(requested_order):
     ndr_reason = None
     if requested_order["ShipmentSummary"][0]["Status"].lower() in config["Xpressbees"]["ndr_reasons"]:
@@ -145,6 +167,7 @@ def xpressbees_ndr_mapper(requested_order):
 # TODO Make all keys in config uniform across delivery partners
 config = {
     "Delhivery": {
+        "auth_token_api": None,
         "status_url": "https://track.delhivery.com/api/status/packages/json/?waybill=%s&token=%s",
         "api_type": "bulk",
         "status_mapper_fn": delhivery_status_mapper,
@@ -173,6 +196,7 @@ config = {
         },
     },
     "Xpressbees": {
+        "auth_token_api": None,
         "status_url": "http://xbclientapi.xbees.in/TrackingService.svc/GetShipmentSummaryDetails",
         "api_type": "bulk",
         "status_mapper_fn": xpressbees_status_mapper,
@@ -217,6 +241,7 @@ config = {
         },
     },
     "Bluedart": {
+        "auth_token_api": None,
         "status_url": "https://api.bluedart.com/servlet/RoutingServlet?handler=tnt&action=custawbquery&loginid=HYD50082&awb=awb&numbers=%s&format=xml&lickey=eguvjeknglfgmlsi5ko5hn3vvnhoddfs&verno=1.3&scan=1",
         "api_type": "bulk",
         "status_mapper_fn": bluedart_status_mapper,
@@ -461,6 +486,7 @@ config = {
         },
     },
     "Ecom Express": {
+        "auth_token_api": None,
         "status_url": "https://plapi.ecomexpress.in/track_me/api/mawbd/?awb=%s&username=%s&password=%s",
         "api_type": "bulk",
         "status_mapper_fn": ecom_status_mapper,
@@ -576,6 +602,7 @@ config = {
         },
     },
     "Pidge": {
+        "auth_token_api": None,
         "status_url": "https://dev-release-v1.pidge.in/v2.0/vendor/order/",
         "api_type": "individual",
         "status_mapper_fn": None,
@@ -590,6 +617,89 @@ config = {
             190: ("DELIVERED", "UD", "Delivered", "Shipment delivered"),
             5: ("PENDING", "UD", "In Transit", "Shipment not delivered"),
             0: ("CANCELED", "UD", "Cancelled", "order cancelled"),
+        },
+    },
+    "DTDC": {
+        # TODO Modify to prod urls
+        "auth_token_api": "https://blktracksvc.dtdc.com/dtdc-api/api/dtdc/authenticate",
+        "status_url": "https://blktracksvc.dtdc.com/dtdc-api/rest/JSONCnTrk/getTrackDetails",
+        "api_type": "individual",
+        "status_mapper_fn": dtdc_status_mapper,
+        "ndr_mapper_fn": None,
+        "status_time_format": "%d%m%Y-%H%M",
+        "status_to_code_mapping": {
+            "Booked": ("READY TO SHIP", "UD", "Received"),
+            "In Transit": ("IN TRANSIT", "UD", "In Transit"),
+            "Out For Delivery": ("DISPATCHED", "UD", "Out for delivery"),
+            "Not Delivered": ("PENDING", "UD", "In Transit"),
+            "Delivered": ("DELIVERED", "DL", "Delivered"),
+            "RTO Processed & Forwarded": ("IN TRANSIT", "RT", "Returned"),
+            "RTO In Transit": ("IN TRANSIT", "RT", "In Transit for RTO"),
+            "RTO Out For Delivery": ("DISPATCHED", "RT", "Dispatched for RTO"),
+            "RTO Not Delivered": ("PENDING", "RT", "In Transit for RTO"),
+            "RTO Delivered": ("DELIVERED", "RT", "Delivered for RTO"),
+        },
+        "status_mapping": {
+            "BKD": ("READY TO SHIP", "UD", "Received", "Booking done in DTDC hub"),
+            "OPMF": ("IN TRANSIT", "UD", "In Transit", "Shipment in transit"),
+            "IPMF": ("IN TRANSIT", "UD", "In Transit", "Shipment in transit"),
+            "OBMD": ("IN TRANSIT", "UD", "In Transit", "Shipment in transit"),
+            "IBMD": ("IN TRANSIT", "UD", "In Transit", "Shipment in transit"),
+            "OBMN": ("IN TRANSIT", "UD", "In Transit", "Shipment in transit"),
+            "IBMN": ("IN TRANSIT", "UD", "In Transit", "Shipment in transit"),
+            "OMBM": ("IN TRANSIT", "UD", "In Transit", "Shipment in transit"),
+            "IMBM": ("IN TRANSIT", "UD", "In Transit", "Shipment in transit"),
+            "ORBO": ("IN TRANSIT", "UD", "In Transit", "Shipment in transit"),
+            "IRBO": ("IN TRANSIT", "UD", "In Transit", "Shipment in transit"),
+            "CDOUT": ("IN TRANSIT", "UD", "In Transit", "Shipment in transit"),
+            "CDIN": ("IN TRANSIT", "UD", "In Transit", "Shipment in transit"),
+            "OUTDLV": ("DISPATCHED", "UD", "Out for delivery", "Shipment out for delivery"),
+            "NONDLV": ("PENDING", "UD", "In Transit", "Shipment not delivered"),
+            "DLV": ("DELIVERED", "DL", "Delivered", "Shipment delivered"),
+            "RTO": ("IN TRANSIT", "RT", "Returned", "Returned"),
+            "RTOOPMF": ("IN TRANSIT", "RT", "Returned", "Returned"),
+            "RTOIPMF": ("IN TRANSIT", "RT", "Returned", "Returned"),
+            "RTOOBMD": ("IN TRANSIT", "RT", "Returned", "Returned"),
+            "RTOIBMD": ("IN TRANSIT", "RT", "Returned", "Returned"),
+            "RTOOBMN": ("IN TRANSIT", "RT", "Returned", "Returned"),
+            "RTOIBMN": ("IN TRANSIT", "RT", "Returned", "Returned"),
+            "RTOOMBM": ("IN TRANSIT", "RT", "Returned", "Returned"),
+            "RTOIMBM": ("IN TRANSIT", "RT", "Returned", "Returned"),
+            "RTOORBO": ("IN TRANSIT", "RT", "Returned", "Returned"),
+            "RTOIRBO": ("IN TRANSIT", "RT", "Returned", "Returned"),
+            "RTOCDOUT": ("IN TRANSIT", "RT", "Returned", "Returned"),
+            "RTOCDIN": ("IN TRANSIT", "RT", "Returned", "Returned"),
+            "RTOOUTDLV": ("DISPATCHED", "RT", "Returned", "Returned"),
+            "RTONONDLV": ("PENDING", "RT", "Returned", "Returned"),
+            "RTODLV": ("DELIVERED", "RT", "Returned", "Returned"),
+        },
+        "ndr_reasons": {
+            "ADDRESS INCOMPLETE OR WRONG-(CIR)": 2,
+            "RECEIVER REQUESTED DELIVERY ON ANOTHER DATE-(CIR)": 4,
+            "COLLECTION AMOUNT NOT READY-(CIR)": 15,
+            "COVID 19 - CUSTOMER REFUSED TO ACCEPT": 1,
+            "ADDRESS CORRECT AND PINCODE WRONG-(CIR)": 2,
+            "OFFICE CLOSED OR DOOR LOCK-(CIR)": 6,
+            "CONTACT NAME / DEPT NOT MENTIONED-(CIR)": 2,
+            "RECEIVER REFUSE DELIVERY DUE TO DAMAGE-(DIR)": 11,
+            "LAST DATE OVER FOR SUBMISSION-(OTR)": 14,
+            "LAST MILE MISROUTE-(OTR)": 2,
+            "ADDRESS OK BUT NO SUCH PERSON-(CIR)": 1,
+            "AREA NON SERVICEABLE-(DIR)": 8,
+            "CUSTOMER WILL SELF COLLECT-(CIR)": 5,
+            "RECEIVER NOT AVAILABLE-(CIR)": 1,
+            "RECEIVER REFUSED DELIVERY(CIR)": 3,
+            "RECEIVER SHIFTED FROM GIVEN ADDRESS-(CIR)": 2,
+            "RESTRICTED ENTRY-(OTR)": 7,
+            "CONSIGNMENT LOST-(OTR)": 14,
+            "RESCHEDULED": 4,
+            "COVID 19 - OFFICE CLOSED/DOOR LOCKED": 6,
+            "RECEIVER WANTS OPEN DELIVERY-(CIR)": 10,
+            "CONSIGNOR REFUSED RTO SHIPMENT-(CIR)": 14,
+            "LOCAL HOLIDAY-(OTR)": 12,
+            "PAPERWORK REQUIRED-(OTR)": 14,
+            "COVID19 COULD NOT ATTEMPT": 12,
+            "OTP NOT GENERATED": 14,
         },
     },
 }

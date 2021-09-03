@@ -617,11 +617,23 @@ config = {
     "DTDC": {
         # TODO Modify to prod urls
         "auth_token_api": "https://blktracksvc.dtdc.com/dtdc-api/api/dtdc/authenticate",
-        "status_url": "http://ctbsplusapi.dtdc.com/dtdc-staging-api/rest/JSONCnTrk/getTrackDetails",
+        "status_url": "https://blktracksvc.dtdc.com/dtdc-api/rest/JSONCnTrk/getTrackDetails",
         "api_type": "individual",
         "status_mapper_fn": dtdc_status_mapper,
         "ndr_mapper_fn": None,
         "status_time_format": "%d%m%Y-%H%M",
+        "status_to_code_mapping": {
+            "Booked": ("READY TO SHIP", "UD"),
+            "In Transit": ("IN TRANSIT", "UD"),
+            "Out For Delivery": ("DISPATCHED", "UD"),
+            "Not Delivered": ("PENDING", "UD"),
+            "Delivered": ("DELIVERED", "DL"),
+            "RTO Processed & Forwarded": ("IN TRANSIT", "RT"),
+            "RTO In Transit": ("IN TRANSIT", "RT"),
+            "RTO Out For Delivery": ("DISPATCHED", "RT"),
+            "RTO Not Delivered": ("PENDING", "RT"),
+            "RTO Delivered": ("DELIVERED", "RT"),
+        },
         "status_mapping": {
             "BKD": ("READY TO SHIP", "UD", "Ready to Ship", "Booking done in DTDC hub"),
             "OPMF": ("IN TRANSIT", "UD", "In Transit", "Shipment in transit"),
@@ -660,10 +672,10 @@ config = {
             "ADDRESS INCOMPLETE OR WRONG-(CIR)": 2,
             "RECEIVER REQUESTED DELIVERY ON ANOTHER DATE-(CIR)": 4,
             "COLLECTION AMOUNT NOT READY-(CIR)": 15,
-            "COVID 19 - CUSTOMER REFUSED TO ACCEPT": 3,  #!
+            "COVID 19 - CUSTOMER REFUSED TO ACCEPT": 1,
             "ADDRESS CORRECT AND PINCODE WRONG-(CIR)": 2,
             "OFFICE CLOSED OR DOOR LOCK-(CIR)": 6,
-            "CONTACT NAME / DEPT NOT MENTIONED-(CIR)": 0,  #!
+            "CONTACT NAME / DEPT NOT MENTIONED-(CIR)": 2,
             "RECEIVER REFUSE DELIVERY DUE TO DAMAGE-(DIR)": 11,
             "LAST DATE OVER FOR SUBMISSION-(OTR)": 14,
             "LAST MILE MISROUTE-(OTR)": 2,
@@ -674,15 +686,15 @@ config = {
             "RECEIVER REFUSED DELIVERY(CIR)": 3,
             "RECEIVER SHIFTED FROM GIVEN ADDRESS-(CIR)": 2,
             "RESTRICTED ENTRY-(OTR)": 7,
-            "CONSIGNMENT LOST-(OTR)": 0,  #! New row to be added in table?
+            "CONSIGNMENT LOST-(OTR)": 14,
             "RESCHEDULED": 4,
-            "COVID 19 - OFFICE CLOSED/DOOR LOCKED": 7,  #!
+            "COVID 19 - OFFICE CLOSED/DOOR LOCKED": 6,
             "RECEIVER WANTS OPEN DELIVERY-(CIR)": 10,
-            "CONSIGNOR REFUSED RTO SHIPMENT-(CIR)": 3,  #!
-            "LOCAL HOLIDAY-(OTR)": 12,  #!
+            "CONSIGNOR REFUSED RTO SHIPMENT-(CIR)": 14,
+            "LOCAL HOLIDAY-(OTR)": 12,
             "PAPERWORK REQUIRED-(OTR)": 14,
-            "COVID19 COULD NOT ATTEMPT": 12,  #! Add covid 19 related row?
-            "OTP NOT GENERATED": 14,  #!
+            "COVID19 COULD NOT ATTEMPT": 12,
+            "OTP NOT GENERATED": 14,
         },
     },
 }

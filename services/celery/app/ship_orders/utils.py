@@ -13,15 +13,15 @@ RAVEN_HEADERS = {"Content-Type": "application/json", "Authorization": "AuthKey K
 
 
 def calculate_order_weight_dimensions(order):
+    if order[52]:
+        return float(order[52]), float(order[52]), {"length": 1, "breadth": 1, "height": 1}
     dimensions = order[33][0]
-    dimensions['length'] = dimensions['length'] * order[35][0]
     weight = order[34][0] * order[35][0]
-    volumetric_weight = (dimensions['length'] * dimensions['breadth'] * dimensions['height']) / 5000
+    volumetric_weight = (dimensions['length'] * dimensions['breadth'] * dimensions['height'] * order[35][0]) / 5000
     for idx, dim in enumerate(order[33]):
         if idx == 0:
             continue
-        dim['length'] += dim['length'] * (order[35][idx])
-        volumetric_weight += (dim['length'] * dim['breadth'] * dim['height']) / 5000
+        volumetric_weight += (dim['length'] * dim['breadth'] * dim['height'] * (order[35][idx])) / 5000
         weight += order[34][idx] * (order[35][idx])
     if dimensions['length'] and dimensions['breadth']:
         dimensions['height'] = round(

@@ -567,11 +567,14 @@ class OrderUpdateCourier:
             if check_obj["reason_code_number"] in config[self.name]["status_mapping"]:
                 order_new_status["new_status"] = config[self.name]["status_mapping"][check_obj["reason_code_number"]][0]
 
-            #pidge specific random flags
-            if order_new_status["new_status"] in ('DELIVERED', 'DISPATCHED') and payload.get("attempt_type") not in (10, 40):
+            # pidge specific random flags
+            if order_new_status["new_status"] in ("DELIVERED", "DISPATCHED") and payload.get("attempt_type") not in (
+                10,
+                40,
+            ):
                 return flags, order_new_status
 
-            if order_new_status["new_status"] in ('IN TRANSIT', ) and payload.get("attempt_type") not in (10, 70):
+            if order_new_status["new_status"] in ("IN TRANSIT",) and payload.get("attempt_type") not in (10, 70):
                 return flags, order_new_status
 
             if not order_new_status["new_status"] or order_new_status["new_status"] in (
@@ -581,7 +584,10 @@ class OrderUpdateCourier:
                 return flags, order_new_status
 
         if self.name == "DTDC":
-            if not order_new_status["new_status"] or order_new_status["new_status"] in ("READY TO SHIP", "PICKUP REQUESTED"):
+            if not order_new_status["new_status"] or order_new_status["new_status"] in (
+                "READY TO SHIP",
+                "PICKUP REQUESTED",
+            ):
                 return flags, order_new_status
 
         flags["type"] = None
@@ -802,9 +808,9 @@ class OrderUpdateCourier:
                         existing_order[0],
                         self.id,
                         existing_order[10],
-                        each_scan["sTrRemarks"],
+                        config[self.name]["status_mapping"][each_scan["strCode"]][1],
                         to_record_status,
-                        each_scan["strAction"],
+                        config[self.name]["status_to_code_mapping"][each_scan["strAction"]][2],
                         "",
                         "",
                         status_time,
@@ -814,9 +820,9 @@ class OrderUpdateCourier:
                         existing_order[0],
                         self.id,
                         existing_order[10],
-                        each_scan["sTrRemarks"],
+                        config[self.name]["status_mapping"][each_scan["strCode"]][1],
                         to_record_status,
-                        each_scan["strAction"],
+                        config[self.name]["status_to_code_mapping"][each_scan["strAction"]][2],
                         "",
                         "",
                         status_time,
@@ -948,7 +954,7 @@ class OrderUpdateCourier:
         )
         tracking_link = "https://webapp.wareiq.com/tracking/" + order_new_status["current_awb"]
         if existing_order[43]:
-            tracking_link = "https://"+str(existing_order[43])+".wiq.app/tracking/" + existing_order[1]
+            tracking_link = "https://" + str(existing_order[43]) + ".wiq.app/tracking/" + existing_order[1]
         tracking_link = UrlShortner.get_short_url(tracking_link, self.cursor)
         send_delivered_event(customer_phone, existing_order, self.name, tracking_link)
 
@@ -1005,7 +1011,7 @@ class OrderUpdateCourier:
 
         tracking_link = "https://webapp.wareiq.com/tracking/" + order_new_status["current_awb"]
         if existing_order[43]:
-            tracking_link = "https://"+str(existing_order[43])+".wiq.app/tracking/" + existing_order[1]
+            tracking_link = "https://" + str(existing_order[43]) + ".wiq.app/tracking/" + existing_order[1]
         tracking_link = UrlShortner.get_short_url(tracking_link, self.cursor)
         send_shipped_event(
             customer_phone,

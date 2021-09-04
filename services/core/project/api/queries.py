@@ -908,6 +908,7 @@ WHERE
         AND aa.sales IS NULL
         AND aa.in_transit_quantity = 0)
     __WAREHOUSE_FILTER__
+    __OVER_STOCK_FILTER__
 __SORT_BY_FILTER__
 __PAGINATION__
 """

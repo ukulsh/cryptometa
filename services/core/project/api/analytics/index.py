@@ -964,6 +964,11 @@ def inventory_analytics(resp):
             response["data"] = {}
             return jsonify(response), 400
 
+        past_time_period = (
+            datetime.strptime(previous_sales_end_date, "%Y-%m-%d")
+            - datetime.strptime(previous_sales_start_date, "%Y-%m-%d")
+        ).days
+
         # Run query to get stats on each product
         query_to_run = inventory_analytics_query.format(
             client_prefix, previous_sales_start_date, previous_sales_end_date
@@ -977,22 +982,25 @@ def inventory_analytics(resp):
                 "AND aa.warehouse_prefix IN {0}".format(str(tuple(warehouses))),
             )
 
-        count_query = query_to_run.replace("__SORT_BY_FILTER__", "")
-        count_query = count_query.replace("__PAGINATION__", "")
-        cur.execute(count_query)
-        total_count = cur.rowcount
-
         if sort_by == "stock_out":
+            query_to_run = query_to_run.replace("__OVER_STOCK_FILTER__", "")
             query_to_run = query_to_run.replace(
                 "__SORT_BY_FILTER__",
                 "ORDER BY COALESCE(aa.available_quantity, 0) / (CASE WHEN (aa.sales = 0) THEN NULL ELSE aa.sales END) ASC, aa.sales DESC",
             )
         elif sort_by == "over_stock":
             query_to_run = query_to_run.replace(
+                "__OVER_STOCK_FILTER__",
+                "AND COALESCE(aa.sales*{0}*{1}/{2}, 0) <= COALESCE(aa.available_quantity, 0)".format(
+                    (1 + expected_growth), future_time_period, past_time_period
+                ),
+            )
+            query_to_run = query_to_run.replace(
                 "__SORT_BY_FILTER__",
                 "ORDER BY COALESCE(aa.sales, 0) - COALESCE(aa.available_quantity, 0) ASC",
             )
         elif sort_by == "best_seller":
+            query_to_run = query_to_run.replace("__OVER_STOCK_FILTER__", "")
             query_to_run = query_to_run.replace(
                 "__SORT_BY_FILTER__",
                 "ORDER BY aa.sales DESC NULLS LAST",
@@ -1000,6 +1008,10 @@ def inventory_analytics(resp):
         else:
             response["data"] = {}
             return jsonify(response), 400
+
+        count_query = query_to_run.replace("__PAGINATION__", "")
+        cur.execute(count_query)
+        total_count = cur.rowcount
 
         query_to_run = query_to_run.replace(
             "__PAGINATION__",
@@ -1022,14 +1034,7 @@ def inventory_analytics(resp):
             data_obj["sales"] = 0 if not stat[6] else int(stat[6])
             data_obj["in_transit_qty"] = 0 if not stat[7] else int(stat[7])
             data_obj["ead"] = None if not stat[8] else datetime.strftime(stat[8], "%d-%m-%Y")
-            data_obj["sku_velocity"] = round(
-                data_obj["sales"]
-                / (
-                    datetime.strptime(previous_sales_end_date, "%Y-%m-%d")
-                    - datetime.strptime(previous_sales_start_date, "%Y-%m-%d")
-                ).days,
-                2,
-            )
+            data_obj["sku_velocity"] = round(data_obj["sales"] / past_time_period, 2)
             if data_obj["sku_velocity"] != 0:
                 data_obj["days_left"] = max(int(data_obj["available_qty"] / data_obj["sku_velocity"]), 0)
             else:

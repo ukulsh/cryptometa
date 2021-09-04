@@ -957,6 +957,7 @@ def inventory_analytics(resp):
             ).strftime("%Y-%m-%d")
             future_time_period = int(data.get("future_time_period"))
             expected_growth = float(data.get("expected_growth"))
+            search_key = data.get("search_key")
             sort_by = data.get("sort_by")
             page = int(data.get("page"))
             per_page = int(data.get("per_page"))
@@ -982,15 +983,22 @@ def inventory_analytics(resp):
                 if len(warehouses) == 1:
                     query_to_run = query_to_run.replace(
                         "__WAREHOUSE_FILTER__",
-                        "AND aa.warehouse_prefix IN {0}".format("('" + str(warehouses[0]) + "')"),
+                        "AND aa.warehouse_prefix IN {0}".format("('{0}')".format(str(warehouses[0]))),
                     )
                 else:
                     query_to_run = query_to_run.replace(
                         "__WAREHOUSE_FILTER__",
-                        "AND aa.warehouse_prefix IN {0}".format(str(tuple(warehouses[0]))),
+                        "AND aa.warehouse_prefix IN {0}".format(str(tuple(warehouses))),
                     )
             else:
                 query_to_run = query_to_run.replace("__WAREHOUSE_FILTER__", "")
+
+        # Search key filter
+        if search_key:
+            query_to_run = query_to_run.replace(
+                "__SEARCH_KEY_FILTER__",
+                "AND (aa.product_name ILIKE '%{0}%' OR aa.sku ILIKE '%{0}%')".format(search_key),
+            )
 
         # Sort wise filter logic
         if sort_by == "stock_out":
@@ -1124,6 +1132,7 @@ def inventory_snapshot(resp):
         try:
             data = json.loads(request.data)
             warehouses = data.get("warehouses")
+            search_key = data.get("search_key")
             page = int(data.get("page"))
             per_page = int(data.get("per_page"))
         except Exception as e:
@@ -1141,15 +1150,22 @@ def inventory_snapshot(resp):
                 if len(warehouses) == 1:
                     query_to_run = query_to_run.replace(
                         "__WAREHOUSE_FILTER__",
-                        "AND bb.warehouse_prefix IN {0}".format("('" + str(warehouses[0]) + "')"),
+                        "AND aa.warehouse_prefix IN {0}".format("('{0}')".format(str(warehouses[0]))),
                     )
                 else:
                     query_to_run = query_to_run.replace(
                         "__WAREHOUSE_FILTER__",
-                        "AND bb.warehouse_prefix IN {0}".format(str(tuple(warehouses[0]))),
+                        "AND aa.warehouse_prefix IN {0}".format(str(tuple(warehouses))),
                     )
             else:
                 query_to_run = query_to_run.replace("__WAREHOUSE_FILTER__", "")
+
+        # Search key filter
+        if search_key:
+            query_to_run = query_to_run.replace(
+                "__SEARCH_KEY_FILTER__",
+                "AND (aa.name ILIKE '%{0}%' OR aa.sku ILIKE '%{0}%')".format(search_key),
+            )
 
         count_query = query_to_run.replace("__PAGINATION__", "")
         cur.execute(count_query)

@@ -909,6 +909,7 @@ WHERE
         AND aa.in_transit_quantity = 0)
     __WAREHOUSE_FILTER__
     __OVER_STOCK_FILTER__
+    __SEARCH_KEY_FILTER__
 __SORT_BY__
 __PAGINATION__
 """
@@ -970,6 +971,7 @@ FROM
 WHERE
     aa.client_prefix = '{0}' AND bb.status = 'awaiting'
     __WAREHOUSE_FILTER__
+    __SEARCH_KEY_FILTER__
 GROUP BY
     aa.client_prefix,
     aa.id,

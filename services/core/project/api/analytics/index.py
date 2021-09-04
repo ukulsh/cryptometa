@@ -950,10 +950,10 @@ def inventory_analytics(resp):
             data = json.loads(request.data)
             warehouses = data.get("warehouses")
             previous_sales_start_date = (
-                datetime.strptime(data.get("previous_sales_start_date"), "%d-%m-%Y") + timedelta(days=1)
+                datetime.strptime(data.get("previous_sales_start_date"), "%Y-%m-%d") + timedelta(days=1)
             ).strftime("%Y-%m-%d")
             previous_sales_end_date = (
-                datetime.strptime(data.get("previous_sales_end_date"), "%d-%m-%Y") + timedelta(days=1)
+                datetime.strptime(data.get("previous_sales_end_date"), "%Y-%m-%d") + timedelta(days=1)
             ).strftime("%Y-%m-%d")
             future_time_period = int(data.get("future_time_period"))
             expected_growth = float(data.get("expected_growth"))
@@ -966,11 +966,7 @@ def inventory_analytics(resp):
 
         # Run query to get stats on each product
         query_to_run = inventory_analytics_query.format(
-            client_prefix,
-            previous_sales_start_date,
-            previous_sales_end_date,
-            (page - 1) * per_page,
-            per_page,
+            client_prefix, previous_sales_start_date, previous_sales_end_date
         )
 
         if warehouses == "all":
@@ -981,27 +977,35 @@ def inventory_analytics(resp):
                 "AND aa.warehouse_prefix IN {0}".format(str(tuple(warehouses))),
             )
 
+        count_query = query_to_run.replace("__SORT_BY_FILTER__", "")
+        count_query = count_query.replace("__PAGINATION__", "")
+        cur.execute(count_query)
+        total_count = cur.rowcount
+
         if sort_by == "stock_out":
             query_to_run = query_to_run.replace(
                 "__SORT_BY_FILTER__",
-                "COALESCE(aa.sales, 0) - COALESCE(aa.available_quantity, 0) DESC",
+                "ORDER BY COALESCE(aa.available_quantity, 0) / (CASE WHEN (aa.sales = 0) THEN NULL ELSE aa.sales END) ASC, aa.sales DESC",
             )
         elif sort_by == "over_stock":
             query_to_run = query_to_run.replace(
                 "__SORT_BY_FILTER__",
-                "COALESCE(aa.sales, 0) - COALESCE(aa.available_quantity, 0) ASC",
+                "ORDER BY COALESCE(aa.sales, 0) - COALESCE(aa.available_quantity, 0) ASC",
             )
         elif sort_by == "best_seller":
             query_to_run = query_to_run.replace(
                 "__SORT_BY_FILTER__",
-                "aa.sales DESC NULLS LAST",
+                "ORDER BY aa.sales DESC NULLS LAST",
             )
         else:
             response["data"] = {}
             return jsonify(response), 400
 
+        query_to_run = query_to_run.replace(
+            "__PAGINATION__",
+            "OFFSET {0} LIMIT {1}".format((page - 1) * per_page, per_page),
+        )
         cur.execute(query_to_run)
-        total_count = cur.rowcount
         stats = cur.fetchall()
 
         # Process the query result
@@ -1111,8 +1115,14 @@ def inventory_snapshot(resp):
 
         # Run query to get status on each in transit order to warehouse
         query_to_run = inventory_analytics_in_transit_query.format(client_prefix, (page - 1) * per_page, per_page)
-        cur.execute(query_to_run)
+        count_query = query_to_run.replace("__PAGINATION__", "")
+        cur.execute(count_query)
         total_count = cur.rowcount
+
+        query_to_run = inventory_analytics_in_transit_query.replace(
+            "__PAGINATION__", "OFFSET {0} LIMIT {1}".format((page - 1) * per_page, per_page)
+        )
+        cur.execute(query_to_run)
         in_transit_orders = cur.fetchall()
 
         # Process the query result

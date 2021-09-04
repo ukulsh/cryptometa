@@ -145,11 +145,11 @@ get_orders_to_ship_query = """select aa.id,aa.channel_order_id,aa.order_date,aa.
                                      or (yy.cod_ship_unconfirmed=true and aa.order_date<(NOW() - interval '1 day')))
                                 order by order_date"""
 
-update_last_shipped_order_query = """UPDATE client_couriers SET last_shipped_order_id=%s, last_shipped_time=%s WHERE client_prefix=%s"""
-
-update_orders_status_query = (
-    """UPDATE orders SET status='READY TO SHIP' WHERE id in %s;"""
+update_last_shipped_order_query = (
+    """UPDATE client_couriers SET last_shipped_order_id=%s, last_shipped_time=%s WHERE client_prefix=%s"""
 )
+
+update_orders_status_query = """UPDATE orders SET status='READY TO SHIP' WHERE id in %s;"""
 
 delete_failed_shipments_query = """DELETE FROM 	order_status where shipment_id in 
                                     (select id  from shipments where remark like 'Crashing while saving package%' or remark like 'COD%');
@@ -198,9 +198,7 @@ insert_manifest_data_query = """INSERT INTO manifests (manifest_id, warehouse_pr
 
 #########################update status
 
-get_courier_id_and_key_query = (
-    """SELECT id, courier_name, api_key FROM master_couriers;"""
-)
+get_courier_id_and_key_query = """SELECT id, courier_name, api_key FROM master_couriers;"""
 
 get_status_update_orders_query = """select aa.id, bb.awb, aa.status, aa.client_prefix, aa.customer_phone, 
                                     aa.order_id_channel_unique, bb.channel_fulfillment_id, cc.api_key, 
@@ -235,9 +233,7 @@ get_status_update_orders_query = """select aa.id, bb.awb, aa.status, aa.client_p
                                     and bb.awb is not null
                                     and bb.courier_id=%s;"""
 
-order_status_update_query = (
-    """UPDATE orders SET status=%s, status_type=%s, status_detail=%s WHERE id=%s;"""
-)
+order_status_update_query = """UPDATE orders SET status=%s, status_type=%s, status_detail=%s WHERE id=%s;"""
 
 select_statuses_query = """SELECT  id, status_code, status, status_text, location, status_time, location_city from order_status
                             WHERE order_id=%s AND shipment_id=%s AND courier_id=%s
@@ -309,9 +305,7 @@ insert_into_courier_cost_query = """INSERT INTO courier_charges (weight_charged,
 
 get_client_balance = """select current_balance, account_type from client_mapping where client_prefix=%s"""
 
-update_client_balance = (
-    """update client_mapping set current_balance=%s where client_prefix=%s"""
-)
+update_client_balance = """update client_mapping set current_balance=%s where client_prefix=%s"""
 
 ######################### Ivr verification
 
@@ -914,9 +908,8 @@ WHERE
         AND aa.sales IS NULL
         AND aa.in_transit_quantity = 0)
     __WAREHOUSE_FILTER__
-ORDER BY
-    __SORT_BY_FILTER__
-OFFSET {3} LIMIT {4}
+__SORT_BY_FILTER__
+__PAGINATION__
 """
 
 inventory_analytics_filters_query = """
@@ -984,5 +977,5 @@ GROUP BY
 ORDER BY
 	ead ASC NULLS LAST,
     in_transit_quantity DESC
-OFFSET {1} LIMIT {2}
+__PAGINATION
 """

@@ -969,23 +969,34 @@ def inventory_analytics(resp):
             - datetime.strptime(previous_sales_start_date, "%Y-%m-%d")
         ).days
 
-        # Run query to get stats on each product
+        # Query to get stats on each product
         query_to_run = inventory_analytics_query.format(
             client_prefix, previous_sales_start_date, previous_sales_end_date
         )
 
+        # Update warehouse filter
         if warehouses == "all":
             query_to_run = query_to_run.replace("__WAREHOUSE_FILTER__", "")
         else:
-            query_to_run = query_to_run.replace(
-                "__WAREHOUSE_FILTER__",
-                "AND aa.warehouse_prefix IN {0}".format(str(tuple(warehouses))),
-            )
+            if isinstance(warehouses, list):
+                if len(warehouses) == 1:
+                    query_to_run = query_to_run.replace(
+                        "__WAREHOUSE_FILTER__",
+                        "AND aa.warehouse_prefix IN {0}".format("('" + str(warehouses[0]) + "')"),
+                    )
+                else:
+                    query_to_run = query_to_run.replace(
+                        "__WAREHOUSE_FILTER__",
+                        "AND aa.warehouse_prefix IN {0}".format(str(tuple(warehouses[0]))),
+                    )
+            else:
+                query_to_run = query_to_run.replace("__WAREHOUSE_FILTER__", "")
 
+        # Sort wise filter logic
         if sort_by == "stock_out":
             query_to_run = query_to_run.replace("__OVER_STOCK_FILTER__", "")
             query_to_run = query_to_run.replace(
-                "__SORT_BY_FILTER__",
+                "__SORT_BY__",
                 "ORDER BY COALESCE(aa.available_quantity, 0) / (CASE WHEN (aa.sales = 0) THEN NULL ELSE aa.sales END) ASC, aa.sales DESC",
             )
         elif sort_by == "over_stock":
@@ -996,13 +1007,13 @@ def inventory_analytics(resp):
                 ),
             )
             query_to_run = query_to_run.replace(
-                "__SORT_BY_FILTER__",
+                "__SORT_BY__",
                 "ORDER BY COALESCE(aa.sales, 0) - COALESCE(aa.available_quantity, 0) ASC",
             )
         elif sort_by == "best_seller":
             query_to_run = query_to_run.replace("__OVER_STOCK_FILTER__", "")
             query_to_run = query_to_run.replace(
-                "__SORT_BY_FILTER__",
+                "__SORT_BY__",
                 "ORDER BY aa.sales DESC NULLS LAST",
             )
         else:
@@ -1112,6 +1123,7 @@ def inventory_snapshot(resp):
         # Extract data from payload
         try:
             data = json.loads(request.data)
+            warehouses = data.get("warehouses")
             page = int(data.get("page"))
             per_page = int(data.get("per_page"))
         except Exception as e:
@@ -1120,6 +1132,26 @@ def inventory_snapshot(resp):
 
         # Run query to get status on each in transit order to warehouse
         query_to_run = inventory_analytics_in_transit_query.format(client_prefix, (page - 1) * per_page, per_page)
+
+        # Update warehouse filter
+        if warehouses == "all":
+            query_to_run = query_to_run.replace("__WAREHOUSE_FILTER__", "")
+        else:
+            if isinstance(warehouses, list):
+                print("list")
+                if len(warehouses) == 1:
+                    query_to_run = query_to_run.replace(
+                        "__WAREHOUSE_FILTER__",
+                        "AND bb.warehouse_prefix IN {0}".format("('" + str(warehouses[0]) + "')"),
+                    )
+                else:
+                    query_to_run = query_to_run.replace(
+                        "__WAREHOUSE_FILTER__",
+                        "AND bb.warehouse_prefix IN {0}".format(str(tuple(warehouses[0]))),
+                    )
+            else:
+                query_to_run = query_to_run.replace("__WAREHOUSE_FILTER__", "")
+
         count_query = query_to_run.replace("__PAGINATION__", "")
         cur.execute(count_query)
         total_count = cur.rowcount

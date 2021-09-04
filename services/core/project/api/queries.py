@@ -909,7 +909,7 @@ WHERE
         AND aa.in_transit_quantity = 0)
     __WAREHOUSE_FILTER__
     __OVER_STOCK_FILTER__
-__SORT_BY_FILTER__
+__SORT_BY__
 __PAGINATION__
 """
 
@@ -969,6 +969,7 @@ FROM
     LEFT JOIN products_wro cc ON aa.id = cc.master_product_id AND bb.id = cc.wro_id
 WHERE
     aa.client_prefix = '{0}' AND bb.status = 'awaiting'
+    __WAREHOUSE_FILTER__
 GROUP BY
     aa.client_prefix,
     aa.id,
@@ -978,5 +979,5 @@ GROUP BY
 ORDER BY
 	ead ASC NULLS LAST,
     in_transit_quantity DESC
-__PAGINATION
+__PAGINATION__
 """

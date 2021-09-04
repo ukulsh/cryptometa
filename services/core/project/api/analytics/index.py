@@ -1138,7 +1138,6 @@ def inventory_snapshot(resp):
             query_to_run = query_to_run.replace("__WAREHOUSE_FILTER__", "")
         else:
             if isinstance(warehouses, list):
-                print("list")
                 if len(warehouses) == 1:
                     query_to_run = query_to_run.replace(
                         "__WAREHOUSE_FILTER__",
@@ -1156,7 +1155,7 @@ def inventory_snapshot(resp):
         cur.execute(count_query)
         total_count = cur.rowcount
 
-        query_to_run = inventory_analytics_in_transit_query.replace(
+        query_to_run = query_to_run.replace(
             "__PAGINATION__", "OFFSET {0} LIMIT {1}".format((page - 1) * per_page, per_page)
         )
         cur.execute(query_to_run)

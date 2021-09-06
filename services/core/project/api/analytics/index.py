@@ -1033,7 +1033,7 @@ def inventory_analytics(resp):
             query_to_run = query_to_run.replace("__STOCK_OUT_FILTER__", "")
             query_to_run = query_to_run.replace("__OVER_STOCK_FILTER__", "")
             query_to_run = query_to_run.replace(
-                "__BEST_SELLER_FILTER__", "AND (aa.sales IS NOT NULL) OR (NOT (aa.sales = 0))"
+                "__BEST_SELLER_FILTER__", "AND ((aa.sales IS NOT NULL) OR (NOT (aa.sales = 0)))"
             )
             query_to_run = query_to_run.replace(
                 "__SORT_BY__",

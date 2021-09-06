@@ -1011,6 +1011,7 @@ def inventory_analytics(resp):
                 ),
             )
             query_to_run = query_to_run.replace("__OVER_STOCK_FILTER__", "")
+            query_to_run = query_to_run.replace("__BEST_SELLER_FILTER__", "")
             query_to_run = query_to_run.replace(
                 "__SORT_BY__",
                 "ORDER BY COALESCE(aa.available_quantity, 0) / NULLIF(aa.sales, 0) ASC, aa.sales DESC",
@@ -1023,6 +1024,7 @@ def inventory_analytics(resp):
                     (1 + expected_growth), future_time_period, past_time_period
                 ),
             )
+            query_to_run = query_to_run.replace("__BEST_SELLER_FILTER__", "")
             query_to_run = query_to_run.replace(
                 "__SORT_BY__",
                 "ORDER BY COALESCE(aa.sales, 0) - COALESCE(aa.available_quantity, 0) ASC",
@@ -1030,6 +1032,9 @@ def inventory_analytics(resp):
         elif sort_by == "best_seller":
             query_to_run = query_to_run.replace("__STOCK_OUT_FILTER__", "")
             query_to_run = query_to_run.replace("__OVER_STOCK_FILTER__", "")
+            query_to_run = query_to_run.replace(
+                "__BEST_SELLER_FILTER__", "AND (aa.sales IS NOT NULL) OR (NOT (aa.sales = 0))"
+            )
             query_to_run = query_to_run.replace(
                 "__SORT_BY__",
                 "ORDER BY aa.sales DESC NULLS LAST",

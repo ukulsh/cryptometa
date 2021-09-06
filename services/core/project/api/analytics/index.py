@@ -999,6 +999,8 @@ def inventory_analytics(resp):
                 "__SEARCH_KEY_FILTER__",
                 "AND (aa.product_name ILIKE '%{0}%' OR aa.sku ILIKE '%{0}%')".format(search_key),
             )
+        else:
+            query_to_run = query_to_run.replace("__SEARCH_KEY_FILTER__", "")
 
         # Sort wise filter logic
         if sort_by == "stock_out":
@@ -1166,6 +1168,8 @@ def inventory_snapshot(resp):
                 "__SEARCH_KEY_FILTER__",
                 "AND (aa.name ILIKE '%{0}%' OR aa.sku ILIKE '%{0}%')".format(search_key),
             )
+        else:
+            query_to_run = query_to_run.replace("__SEARCH_KEY_FILTER__", "")
 
         count_query = query_to_run.replace("__PAGINATION__", "")
         cur.execute(count_query)

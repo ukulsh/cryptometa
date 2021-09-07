@@ -5,7 +5,7 @@ get_order_details_query = """select aa.id, bb.awb, aa.status, aa.client_prefix, 
                                     nn.client_name, nn.client_logo, nn.custom_email_subject, bb.courier_id, nn.theme_color, cc.unique_parameter,
                                     cc.mark_shipped, cc.shipped_status, cc.mark_invoiced, cc.invoiced_status, cc.mark_delivered, 
                                     cc.delivered_status, cc.mark_returned, cc.returned_status, cc.id, ee.amount, oo.warehouse_prefix, nn.verify_ndr, pp.webhook_id,
-                                    nn.client_name, bb.courier_id, oo.city, oo.warehouse_prefix
+                                    nn.client_name, bb.courier_id, oo.city, oo.warehouse_prefix, clc.subdomain
                                     from orders aa
                                     left join shipments bb
                                     on aa.id=bb.order_id
@@ -30,6 +30,8 @@ get_order_details_query = """select aa.id, bb.awb, aa.status, aa.client_prefix, 
                                     on aa.client_prefix=nn.client_prefix 
                                     left join (select client_prefix, max(id) as webhook_id from webhooks where status='active' group by client_prefix) pp
                                     on pp.client_prefix=aa.client_prefix
+                                    left join client_customization clc
+ 									on aa.client_prefix=clc.client_prefix
                                     where __FILTER_ORDER__;"""
 
 insert_scan_query = """INSERT INTO order_scans (order_id, courier_id, shipment_id, status_code, status, status_text, 
@@ -130,8 +132,10 @@ get_pickup_requests_query = """select aa.pickup_data_id,  bb.courier_id, dd.ware
                                 left join shipments bb on aa.id=bb.order_id
                                 left join client_pickups cc on aa.pickup_data_id=cc.id
                                 left join pickup_points dd on cc.pickup_id=dd.id
+                                left join client_mapping ee on ee.client_prefix=aa.client_prefix
                                 where aa.status in ('READY TO SHIP', 'PICKUP REQUESTED')
-                                and bb.id is not null"""
+                                and bb.id is not null
+                                and ee.auto_pur!=false"""
 
 insert_manifest_query = """INSERT into manifests (manifest_id, warehouse_prefix, courier_id, client_pickup_id, 
                             pickup_id, pickup_date, manifest_url, total_scheduled) VALUES (%s,%s,%s,%s,%s,%s,%s,%s) returning id;"""

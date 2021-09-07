@@ -99,7 +99,7 @@ def tracking_page_detials(awb):
             LEFT JOIN orders bb on aa.client_prefix=bb.client_prefix 
             LEFT JOIN shipments cc on bb.id=cc.order_id
             WHERE subdomain=%s and cc.awb=%s""",
-            (subdomain, awb),
+            (subdomain.lower(), awb),
         )
 
         client_details = cur.fetchone()

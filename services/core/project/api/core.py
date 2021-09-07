@@ -654,6 +654,54 @@ def freshdesk_url_new(auth_data):
 @core_blueprint.route('/core/dev', methods=['POST'])
 def ping_dev():
     return 0
+    import requests, json
+    cur = conn.cursor()
+    cur.execute("""select aa.id, bb.awb, aa.status, aa.client_prefix, aa.customer_phone, 
+                    aa.order_id_channel_unique, bb.channel_fulfillment_id, cc.api_key, 
+                    cc.api_password, cc.shop_url, bb.id, aa.pickup_data_id, aa.channel_order_id, ee.payment_mode, 
+                    cc.channel_id, gg.location_id, mm.item_list, mm.sku_quan_list, aa.customer_name, aa.customer_email, 
+                    nn.client_name, nn.client_logo, nn.custom_email_subject, bb.courier_id, nn.theme_color, cc.unique_parameter,
+                    cc.mark_shipped, cc.shipped_status, cc.mark_invoiced, cc.invoiced_status, cc.mark_delivered, 
+                    cc.delivered_status, cc.mark_returned, cc.returned_status, cc.id, ee.amount, oo.warehouse_prefix, nn.verify_ndr, pp.webhook_id
+                    from orders aa
+                    left join shipments bb
+                    on aa.id=bb.order_id
+                    left join (select order_id, array_agg(channel_item_id) as item_list, array_agg(quantity) as sku_quan_list from
+                              (select kk.order_id, kk.channel_item_id, kk.quantity
+                              from op_association kk
+                              left join master_products ll on kk.master_product_id=ll.id) nn
+                              group by order_id) mm
+                    on aa.id=mm.order_id
+                    left join client_channel cc
+                    on aa.client_channel_id=cc.id
+                    left join client_pickups dd
+                    on aa.pickup_data_id=dd.id
+                    left join pickup_points oo
+                    on dd.pickup_id=oo.id
+                    left join orders_payments ee
+                    on aa.id=ee.order_id
+                    left join client_channel_locations gg
+                    on aa.client_channel_id=gg.client_channel_id
+                    and aa.pickup_data_id=gg.pickup_data_id
+                    left join client_mapping nn
+                    on aa.client_prefix=nn.client_prefix
+                    left join (select client_prefix, max(id) as webhook_id from webhooks where status='active' group by client_prefix) pp
+                    on pp.client_prefix=aa.client_prefix
+                    where aa.status='RTO'
+                    and aa.client_channel_id=21
+                    and aa.order_date>'2021-04-01';""")
+    all_orders = cur.fetchall()
+    for order in all_orders:
+        create_fulfillment_url = (
+                "https://%s:%s@%s/admin/api/2019-10/orders/%s/cancel.json"
+                % (order[7], order[8], order[9], order[5])
+        )
+        tra_header = {'Content-Type': 'application/json'}
+        cancel_data = {"restock": False}
+        req_ful = requests.post(create_fulfillment_url, data=json.dumps(cancel_data),
+                                headers=tra_header)
+
+    return 0
     import requests
     cur = conn.cursor()
     cur.execute("""select order_id_channel_unique, awb, courier_name, dd.api_key, dd.unique_parameter from orders aa

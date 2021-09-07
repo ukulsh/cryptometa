@@ -86,6 +86,8 @@ def consume_ecom_scan_util(payload):
             customer_phone = order[4].replace(" ", "")
             customer_phone = "0" + customer_phone[-10:]
             tracking_link = "https://webapp.wareiq.com/tracking/" + order[1]
+            if order[43]:
+                tracking_link = "https://"+str(order[43])+".wiq.app/tracking/" + order[1]
 
             if tracking_status == "Picked":
                 mark_picked_channel(order, cur, courier="Ecom Express")
@@ -177,6 +179,8 @@ def consume_sfxsdd_scan_util(payload):
             customer_phone = order[4].replace(" ", "")
             customer_phone = "0" + customer_phone[-10:]
             tracking_link = "https://webapp.wareiq.com/tracking/" + order[1]
+            if order[43]:
+                tracking_link = "https://"+str(order[43])+".wiq.app/tracking/" + order[1]
 
             if tracking_status == "Picked":
                 mark_picked_channel(order, cur, courier="Shadowfax")
@@ -256,6 +260,12 @@ def consume_pidge_scan_util(payload):
             location = order[41]
             location_city = order[41]
 
+            if status in ('DELIVERED', 'DISPATCHED') and payload.get("attempt_type") not in (10, 40):
+                return "No status to update"
+
+            if status in ('IN TRANSIT', ) and payload.get("attempt_type") not in (10, 70):
+                return "No status to update"
+
             if reason_code_number in pidge_status_mapping:
                 status = pidge_status_mapping[reason_code_number][0]
                 status_type = "UD" if not is_return else "RT"
@@ -290,6 +300,8 @@ def consume_pidge_scan_util(payload):
             customer_phone = order[4].replace(" ", "")
             customer_phone = "0" + customer_phone[-10:]
             tracking_link = "https://webapp.wareiq.com/tracking/" + order[1]
+            if order[43]:
+                tracking_link = "https://"+str(order[43])+".wiq.app/tracking/" + order[1]
 
             if tracking_status == "Picked":
                 mark_picked_channel(order, cur, courier="Pidge")
@@ -398,6 +410,8 @@ def consume_delhivery_scan_util(payload):
             customer_phone = order[4].replace(" ", "")
             customer_phone = "0" + customer_phone[-10:]
             tracking_link = "https://webapp.wareiq.com/tracking/" + order[1]
+            if order[43]:
+                tracking_link = "https://"+str(order[43])+".wiq.app/tracking/" + order[1]
 
             if tracking_status == "Picked":
                 mark_picked_channel(order, cur, courier="Delhivery")
@@ -503,6 +517,8 @@ def consume_xpressbees_scan_util(payload):
             customer_phone = order[4].replace(" ", "")
             customer_phone = "0" + customer_phone[-10:]
             tracking_link = "https://webapp.wareiq.com/tracking/" + order[1]
+            if order[43]:
+                tracking_link = "https://"+str(order[43])+".wiq.app/tracking/" + order[1]
 
             if tracking_status == "Picked":
                 mark_picked_channel(order, cur, courier="Xpressbees")
@@ -772,11 +788,15 @@ def sync_all_products_with_channel(client_prefix):
 
 def create_cod_remittance_entry():
     cur = conn.cursor()
-
-    cur.execute("select distinct(client_prefix) FROM orders aa WHERE client_prefix is not null order by client_prefix")
-    all_clients = cur.fetchall()
     insert_tuple = list()
     insert_value_str = ""
+
+    # weekly remittance
+    cur.execute("""select distinct(aa.client_prefix), remittance_cycle FROM orders aa
+                    left join client_mapping bb on aa.client_prefix=bb.client_prefix
+                    WHERE aa.client_prefix is not null AND (remittance_cycle is null or remittance_cycle =1)
+                    order by aa.client_prefix""")
+    all_clients = cur.fetchall()
     remittance_date = datetime.utcnow() + timedelta(hours=5.5) + timedelta(days=8)
     for client in all_clients:
         remittance_id = client[0] + "_" + str(remittance_date.date())
@@ -796,6 +816,73 @@ def create_cod_remittance_entry():
         insert_tuple.append(
             (client[0], remittance_id, remittance_date, 'processing', datetime.utcnow() + timedelta(hours=5.5), del_from, del_to))
         insert_value_str += "%s,"
+
+    #twice a week remittance
+    cur.execute("""select distinct(aa.client_prefix), remittance_cycle FROM orders aa 
+                    left join client_mapping bb on aa.client_prefix=bb.client_prefix
+                    WHERE aa.client_prefix is not null AND remittance_cycle=2
+                    order by aa.client_prefix""")
+    all_clients = cur.fetchall()
+    remittance_dates = [datetime.utcnow() + timedelta(hours=5.5) + timedelta(days=5),
+                        datetime.utcnow() + timedelta(hours=5.5) + timedelta(days=8)]
+    for client in all_clients:
+        for remittance_date in remittance_dates:
+            remittance_id = client[0] + "_" + str(remittance_date.date())
+            last_remittance_id = client[0] + "_" + str((remittance_date - timedelta(days=7)).date())
+            cur.execute("SELECT * from cod_remittance WHERE remittance_id=%s", (last_remittance_id,))
+            try:
+                cur.fetchone()[0]
+            except Exception as e:
+                if remittance_date.weekday()==1:
+                    del_from = remittance_date - timedelta(days=12)
+                elif remittance_date.weekday()==4:
+                    del_from = remittance_date - timedelta(days=11)
+                del_to = remittance_date - timedelta(days=8)
+                insert_tuple.append(
+                    (client[0], last_remittance_id, remittance_date - timedelta(days=7), 'processing',
+                     datetime.utcnow() + timedelta(hours=5.5), del_from, del_to))
+                insert_value_str += "%s,"
+            if remittance_date.weekday()==1:
+                del_from = remittance_date - timedelta(days=5)
+            elif remittance_date.weekday()==4:
+                del_from = remittance_date - timedelta(days=4)
+            del_to = remittance_date - timedelta(days=1)
+            insert_tuple.append(
+                (client[0], remittance_id, remittance_date, 'processing', datetime.utcnow() + timedelta(hours=5.5), del_from, del_to))
+            insert_value_str += "%s,"
+
+    #7 days a week remittance
+    cur.execute("""select distinct(aa.client_prefix), remittance_cycle FROM orders aa 
+                    left join client_mapping bb on aa.client_prefix=bb.client_prefix
+                    WHERE aa.client_prefix is not null AND remittance_cycle=7
+                    order by aa.client_prefix""")
+    all_clients = cur.fetchall()
+    remittance_dates = [datetime.utcnow() + timedelta(hours=5.5) + timedelta(days=8),
+                        datetime.utcnow() + timedelta(hours=5.5) + timedelta(days=9),
+                        datetime.utcnow() + timedelta(hours=5.5) + timedelta(days=10),
+                        datetime.utcnow() + timedelta(hours=5.5) + timedelta(days=11),
+                        datetime.utcnow() + timedelta(hours=5.5) + timedelta(days=12),
+                        datetime.utcnow() + timedelta(hours=5.5) + timedelta(days=13),
+                        datetime.utcnow() + timedelta(hours=5.5) + timedelta(days=14)]
+    for client in all_clients:
+        for remittance_date in remittance_dates:
+            remittance_id = client[0] + "_" + str(remittance_date.date())
+            last_remittance_id = client[0] + "_" + str((remittance_date - timedelta(days=7)).date())
+            cur.execute("SELECT * from cod_remittance WHERE remittance_id=%s", (last_remittance_id,))
+            try:
+                cur.fetchone()[0]
+            except Exception as e:
+                del_from = remittance_date - timedelta(days=15)
+                del_to = remittance_date - timedelta(days=14)
+                insert_tuple.append(
+                    (client[0], last_remittance_id, remittance_date - timedelta(days=7), 'processing',
+                     datetime.utcnow() + timedelta(hours=5.5), del_from, del_to))
+                insert_value_str += "%s,"
+            del_from = remittance_date - timedelta(days=8)
+            del_to = remittance_date - timedelta(days=7)
+            insert_tuple.append(
+                (client[0], remittance_id, remittance_date, 'processing', datetime.utcnow() + timedelta(hours=5.5), del_from, del_to))
+            insert_value_str += "%s,"
 
     insert_value_str = insert_value_str.rstrip(",")
 
@@ -1188,7 +1275,7 @@ def ship_bulk_orders(order_list, auth_data, courier):
             order_ids = cur.fetchone()[0]
             if not order_ids:
                 return {"success": False, "msg": "invalid order ids"}, 400
-            ship_obj = ShippingRules(courier_name=courier, order_ids=order_ids, force_ship=True)
+            ship_obj = ShippingRules(courier_name=courier, order_ids=order_ids, force_ship=True, cur=cur)
             ship_obj.ship_orders_courier_wise()
             conn.commit()
 
@@ -1355,7 +1442,7 @@ def update_available_quantity_from_easyecom():
                                 left join pickup_points bb on aa.pickup_id=bb.id
                                 where aa.client_prefix='KAMAAYURVEDA'
                                 and aa.enable_sdd=true
-                                and bb.warehouse_prefix in ('TNPMRO')""")
+                                and bb.warehouse_prefix in ('TNPMRO', 'TLLTRO')""")
 
             pickup_points = cur.fetchall()
             token_headers = {"Username": "WareIQ",
@@ -1653,7 +1740,9 @@ def update_pincode_serviceability_table():
                     url = "https://api.ecomexpress.in/apiv2/pincodes/"
                     req = requests.post(url, data={"username": courer_data[2], "password": courer_data[3]})
                     pincode_list = req.json()
+                    pincode_not_str = "('"
                     for pincode in pincode_list:
+                        pincode_not_str+=str(pincode.get('pincode'))+"','"
                         serviceable = pincode.get('active')
                         pincode_str = str(pincode.get('pincode'))
                         sortcode = pincode.get('route')
@@ -1661,13 +1750,21 @@ def update_pincode_serviceability_table():
                                                                           serviceable, serviceable, serviceable, sortcode,
                                                                           datetime.utcnow()+timedelta(hours=5.5)))
                         conn.commit()
+                    pincode_not_str = pincode_not_str.rstrip(",'")
+                    pincode_not_str += "')"
+                    cur.execute("""UPDATE pincode_serviceability SET serviceable=false, cod_available=false,
+                                         reverse_pickup=false, pickup=false, last_updated=now() where courier_id=15 
+                                         and pincode not in %s"""%pincode_not_str)
+                    conn.commit()
                 elif courier in (2, 12):
                     url = "https://track.delhivery.com/c/api/pin-codes/json/"
                     headers = {"Content-Type": "application/json",
                                "Authorization": "Token %s"%(courer_data[2])}
                     req = requests.get(url, headers=headers)
                     pincode_list = req.json()
+                    pincode_not_str = "('"
                     for pincode in pincode_list['delivery_codes']:
+                        pincode_not_str+=str(pincode['postal_code'].get('pin'))+"','"
                         serviceable = True if pincode['postal_code'].get('pre_paid').upper()=='Y' else False
                         cod_available = True if pincode['postal_code'].get('cod').upper()=='Y' else False
                         pickup = True if pincode['postal_code'].get('pickup').upper()=='Y' else False
@@ -1678,7 +1775,12 @@ def update_pincode_serviceability_table():
                                                                           datetime.utcnow()+timedelta(hours=5.5)))
 
                         conn.commit()
-
+                    pincode_not_str = pincode_not_str.rstrip(",'")
+                    pincode_not_str += "')"
+                    cur.execute("""UPDATE pincode_serviceability SET serviceable=false, cod_available=false,
+                                         reverse_pickup=false, pickup=false, last_updated=now() where courier_id=2 
+                                         and pincode not in %s"""%pincode_not_str)
+                    conn.commit()
                 elif courier==9:
                     from zeep import Client
                     check_url = "https://netconnect.bluedart.com/Ver1.9/ShippingAPI/Finder/ServiceFinderQuery.svc?wsdl"
@@ -1690,7 +1792,7 @@ def update_pincode_serviceability_table():
                         "Api_type": "S",
                         "Version": "1.3"
                     }
-                    cur.execute("SELECT pincode FROM pincode_serviceability WHERE courier_id=15;")
+                    cur.execute("SELECT distinct(pincode) FROM pincode_serviceability;")
                     all_pincodes = cur.fetchall()
                     for pincode in all_pincodes:
                         request_data = {
@@ -1708,6 +1810,28 @@ def update_pincode_serviceability_table():
                                                                           datetime.utcnow()+timedelta(hours=5.5)))
 
                         conn.commit()
+
+                elif courier==42:
+                    check_url = "http://fareyesvc.ctbsplus.dtdc.com/ratecalapi/PincodeApiCall"
+                    cur.execute("SELECT distinct(pincode) FROM pincode_serviceability;")
+                    all_pincodes = cur.fetchall()
+                    for pincode in all_pincodes:
+                        req = requests.post(check_url, headers={"content-type": "application/json"}, json={
+                            "orgPincode":"110016",
+                            "desPincode":str(pincode[0])
+                        })
+                        if req.json() and req.json()['ZIPCODE_RESP']:
+                            req = req.json()['ZIPCODE_RESP'][0]
+                            serviceable = True if req['SERVFLAG']=='Y' else False
+                            cod_available = True if req['SERV_COD']=='Y' else False
+                            pickup = True if req['SERVFLAG']=='Y' else False
+                            pincode_str = str(pincode[0])
+                            sortcode = None
+                            cur.execute(update_pincode_serviceability_query, (pincode_str, courier, serviceable,
+                                                                              cod_available, pickup, pickup, sortcode,
+                                                                              datetime.utcnow()+timedelta(hours=5.5)))
+
+                            conn.commit()
             except Exception as e:
                 logger.error("Couldn't update serviceability for "+str(courier)+"\nError: "+str(e.args[0]))
 
@@ -1835,12 +1959,22 @@ def push_kama_wondersoft(unique_id, cur=conn.cursor(), type="shipped"):
                             }
                         }
             if order[18]:
-                json_body['Order']['Payments']['Payment'].append({
-                    "PaymentMode": order[20],
-                    "PaymentValue": order[18],
-                    "ModeType": "nan",
-                    "PaymentReference": order[19],
-                })
+                if "|" in order[19]:
+                    PaymentReference = order[19].split("|")
+                    for idx, payment_obj in enumerate(PaymentReference):
+                        json_body['Order']['Payments']['Payment'].append({
+                            "PaymentMode": order[20].split("|")[idx],
+                            "PaymentValue": float(payment_obj.split(":")[1]),
+                            "ModeType": "nan",
+                            "PaymentReference": payment_obj.split(":")[0],
+                        })
+                else:
+                    json_body['Order']['Payments']['Payment'].append({
+                        "PaymentMode": order[20],
+                        "PaymentValue": order[18],
+                        "ModeType": "nan",
+                        "PaymentReference": order[19],
+                    })
 
         token_headers = {"Username": "WareIQ",
                          "Password": "Wondersoft#12",

@@ -215,7 +215,7 @@ def bulkship_orders(resp):
 
 @app.route("/scans/v1/dev", methods=["GET"])
 def celery_dev():
-    push_awbs_easyecom.apply_async(queue='mark_channel_delivered')
+    push_awbs_easyecom.apply_async(queue="mark_channel_delivered")
     return jsonify({"msg": "Task received"}), 200
 
 

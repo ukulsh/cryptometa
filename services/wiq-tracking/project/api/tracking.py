@@ -18,10 +18,12 @@ tracking_blueprint = Blueprint("tracking", __name__)
 
 hashids = Hashids(min_length=6, salt="thoda namak shamak daalte hai")
 
-conn = psycopg2.connect(host=os.environ.get('DATABASE_HOST'),
-                        database=os.environ.get('DATABASE_NAME'),
-                        user=os.environ.get('DATABASE_USER'),
-                        password=os.environ.get('DATABASE_PASSWORD'))
+conn = psycopg2.connect(
+    host=os.environ.get("DATABASE_HOST"),
+    database=os.environ.get("DATABASE_NAME"),
+    user=os.environ.get("DATABASE_USER"),
+    password=os.environ.get("DATABASE_PASSWORD"),
+)
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -104,9 +106,7 @@ def tracking_page_detials(awb):
 
         client_details = cur.fetchone()
         if not client_details or not client_details[3]:
-            return redirect(
-                url.split("tracking")[0] + "?invalid=Tracking ID not found."
-            )
+            return redirect(url.split("tracking")[0] + "?invalid=Tracking ID not found.")
 
         customization_details = {
             "client_prefix": client_details[0],
@@ -167,10 +167,7 @@ def tracking_page_details_id():
         orderId = request.args.get("orderId")
         mobile = request.args.get("mobile")
         if not orderId or not mobile:
-            return redirect(
-                url.split("tracking")[0]
-                + "?invalid=Order ID and phone number required."
-            )
+            return redirect(url.split("tracking")[0] + "?invalid=Order ID and phone number required.")
 
         mobile = "".join(e for e in str(mobile) if e.isalnum())
         mobile = "0" + mobile[-10:]
@@ -188,13 +185,19 @@ def tracking_page_details_id():
             WHERE subdomain=%s and bb.channel_order_id=%s and bb.customer_phone=%s""",
             (client_track, orderId, mobile),
         )
-        client_details = cur.fetchone()
+        client_details = cur.fetchall()
+
+        # Check for multiple AWBs connected to the user
+        if len(client_details) > 1:
+            awbs = [ii[4] for ii in client_details]
+            awbString = ",".join(awbs)
+            return redirect(url.split("tracking")[0] + "?awb=" + awbString)
+
+        if len(client_details) == 1:
+            client_details = client_details[0]
 
         if not client_details or not client_details[3] or not client_details[4]:
-            return redirect(
-                url.split("tracking")[0]
-                + "?invalid=No record found for given ID and phone number."
-            )
+            return redirect(url.split("tracking")[0] + "?invalid=No record found for given ID and phone number.")
 
         customization_details = {
             "client_prefix": client_details[0],
@@ -212,12 +215,8 @@ def tracking_page_details_id():
             "banners": json.loads(client_details[12]) if client_details[12] else [],
         }
 
-        req1 = requests.get(
-            CORE_SERVICE_URL + "/orders/v1/track/%s" % client_details[4]
-        )
-        req2 = requests.get(
-            CORE_SERVICE_URL + "/orders/v1/track/%s?details=true" % client_details[4]
-        )
+        req1 = requests.get(CORE_SERVICE_URL + "/orders/v1/track/%s" % client_details[4])
+        req2 = requests.get(CORE_SERVICE_URL + "/orders/v1/track/%s?details=true" % client_details[4])
 
         if not req1.status_code == 200:
             return render_template("tracking.html", data=customization_details)
@@ -237,13 +236,11 @@ def tracking_page_details_id():
             data["details_data"] = req2.json()["data"]
             for key, value in data["details_data"].items():
                 for each_scan in value:
-                    scan_time = datetime.strptime(
-                        each_scan["time"], "%d %b %Y, %H:%M:%S"
-                    )
+                    scan_time = datetime.strptime(each_scan["time"], "%d %b %Y, %H:%M:%S")
                     scan_time = scan_time.strftime("%I:%M %p")
                     each_scan["time"] = scan_time
 
-        courier = helper.get_courier_details(customization_details['awb'], cur)
+        courier = helper.get_courier_details(customization_details["awb"], cur)
         customization_details["courier_name"] = courier[0]
         customization_details["courier_logo"] = courier[1]
 

@@ -76,6 +76,7 @@ from project.api.utils import (
     tracking_get_delhivery_details,
     tracking_get_bluedart_details,
     tracking_get_ecomxp_details,
+    tracking_get_dtdc_details,
     check_client_order_ids,
     cancel_order_on_couriers,
     cancel_order_on_channels,
@@ -2869,14 +2870,21 @@ def track_order(awb):
         details = request.args.get("details")
         if details:
             try:
-                if shipment and shipment.courier.courier_name.startswith("Xpressbees"):  # Xpressbees details of status
+                if shipment and shipment.courier.courier_name.startswith("Xpressbees"):
+                    # Xpressbees details of status
                     return_details = tracking_get_xpressbees_details(shipment, awb)
-                elif shipment and shipment.courier.courier_name.startswith("Delhivery"):  # Delhivery details of status
+                elif shipment and shipment.courier.courier_name.startswith("Delhivery"):
+                    # Delhivery details of status
                     return_details = tracking_get_delhivery_details(shipment, awb)
-                elif shipment and shipment.courier.courier_name.startswith("Bluedart"):  # Bluedart details of status
+                elif shipment and shipment.courier.courier_name.startswith("Bluedart"):
+                    # Bluedart details of status
                     return_details = tracking_get_bluedart_details(shipment, awb)
-                elif shipment and shipment.courier.courier_name.startswith("Ecom"):  # Ecom details of status
+                elif shipment and shipment.courier.courier_name.startswith("Ecom"):
+                    # Ecom details of status
                     return_details = tracking_get_ecomxp_details(shipment, awb)
+                elif shipment and shipment.courier.courier_name.startswith("DTDC"):
+                    # DTDC details of status
+                    return_details = tracking_get_dtdc_details(shipment, awb)
 
                 return jsonify({"success": True, "data": return_details}), 200
             except Exception as e:

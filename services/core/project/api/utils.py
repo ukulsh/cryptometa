@@ -1081,8 +1081,8 @@ def tracking_get_xpressbees_details(shipment, awb):
         else:
             return_details[time_str[:11]].append(return_details_obj)
 
-        for key in return_details:
-            return_details[key] = sorted(return_details[key], key=lambda k: k["time"], reverse=True)
+    for key in return_details:
+        return_details[key] = sorted(return_details[key], key=lambda k: k["time"], reverse=True)
 
     return return_details
 
@@ -1111,8 +1111,8 @@ def tracking_get_delhivery_details(shipment, awb):
         else:
             return_details[time_str[:11]].append(return_details_obj)
 
-        for key in return_details:
-            return_details[key] = sorted(return_details[key], key=lambda k: k["time"], reverse=True)
+    for key in return_details:
+        return_details[key] = sorted(return_details[key], key=lambda k: k["time"], reverse=True)
 
     return return_details
 
@@ -1148,8 +1148,8 @@ def tracking_get_bluedart_details(shipment, awb):
         else:
             return_details[time_str[:11]].append(return_details_obj)
 
-        for key in return_details:
-            return_details[key] = sorted(return_details[key], key=lambda k: k["time"], reverse=True)
+    for key in return_details:
+        return_details[key] = sorted(return_details[key], key=lambda k: k["time"], reverse=True)
 
     return return_details
 
@@ -1185,10 +1185,87 @@ def tracking_get_ecomxp_details(shipment, awb):
         else:
             return_details[time_str[:11]].append(return_details_obj)
 
-        for key in return_details:
-            return_details[key] = sorted(return_details[key], key=lambda k: k["time"], reverse=True)
+    for key in return_details:
+        return_details[key] = sorted(return_details[key], key=lambda k: k["time"], reverse=True)
 
     return return_details
+
+
+def tracking_get_dtdc_details(shipment, awb):
+    username, password = shipment.courier.api_credential_1, shipment.courier.api_credential_2
+    auth_token_url = (
+        "https://blktracksvc.dtdc.com/dtdc-api/api/dtdc/authenticate"
+        + "?username={0}&password={1}".format(username, password)
+    )
+    auth_token = requests.get(auth_token_url).text
+
+    headers = {
+        "x-access-token": auth_token,
+        "Content-Type": "application/json",
+    }
+    payload = json.dumps({"trkType": "cnno", "strcnno": str(awb), "addtnlDtl": "Y"})
+    req = requests.get(
+        "https://blktracksvc.dtdc.com/dtdc-api/rest/JSONCnTrk/getTrackDetails", headers=headers, data=payload
+    ).json()
+
+    return_details = dict()
+    scan_list = req.get("trackDetails")
+
+    status_mapping = {
+        "BKD": "Received",
+        "OPMF": "In Transit",
+        "IPMF": "In Transit",
+        "OBMD": "In Transit",
+        "IBMD": "In Transit",
+        "OBMN": "In Transit",
+        "IBMN": "In Transit",
+        "OMBM": "In Transit",
+        "IMBM": "In Transit",
+        "ORBO": "In Transit",
+        "IRBO": "In Transit",
+        "CDOUT": "In Transit",
+        "CDIN": "In Transit",
+        "OUTDLV": "Out for delivery",
+        "NONDLV": "In Transit",
+        "DLV": "Delivered",
+        "RTO": "Returned",
+        "RTOOPMF": "Returned",
+        "RTOIPMF": "Returned",
+        "RTOOBMD": "Returned",
+        "RTOIBMD": "Returned",
+        "RTOOBMN": "Returned",
+        "RTOIBMN": "Returned",
+        "RTOOMBM": "Returned",
+        "RTOIMBM": "Returned",
+        "RTOORBO": "Returned",
+        "RTOIRBO": "Returned",
+        "RTOCDOUT": "Returned",
+        "RTOCDIN": "Returned",
+        "RTOOUTDLV": "Returned",
+        "RTONONDLV": "Returned",
+        "RTODLV": "Returned",
+    }
+
+    for each_scan in scan_list:
+        return_details_obj = dict()
+        return_details_obj["status"] = status_mapping[each_scan["strCode"]]
+        return_details_obj["city"] = ""
+
+        status_time = each_scan["strActionDate"] + "-" + each_scan["strActionTime"]
+        if status_time:
+            status_time = datetime.strptime(status_time, "%d%m%Y-%H%M")
+        time_str = status_time.strftime("%d %b %Y, %H:%M:%S")
+        return_details_obj["time"] = time_str
+
+        if time_str[:11] not in return_details:
+            return_details[time_str[:11]] = [return_details_obj]
+        else:
+            return_details[time_str[:11]].append(return_details_obj)
+
+    for key in return_details:
+        return_details[key] = sorted(return_details[key], key=lambda k: k["time"], reverse=True)
+
+    return
 
 
 def check_client_order_ids(order_ids, auth_data, cur):

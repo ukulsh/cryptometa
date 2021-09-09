@@ -215,6 +215,8 @@ def bulkship_orders(resp):
 
 @app.route("/scans/v1/dev", methods=["GET"])
 def celery_dev():
+    calculate_costs.apply_async(queue="calculate_costs")
+    assign_pickup_points.apply_async(queue="assign_pickup_points", args=(30,))
     push_awbs_easyecom.apply_async(queue="mark_channel_delivered")
     return jsonify({"msg": "Task received"}), 200
 
@@ -227,8 +229,8 @@ def orders_fetch(client_prefix=None, sync_all=None):
 
 
 @celery_app.task(name="assign_pickup_points")
-def assign_pickup_points():
-    assign_pickup_points_for_unassigned()
+def assign_pickup_points(days=5):
+    assign_pickup_points_for_unassigned(days=days)
     return "successfully completed assign_pickup_points"
 
 

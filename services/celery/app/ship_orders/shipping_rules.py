@@ -891,6 +891,10 @@ class ShipBluedart:
                 continue
 
             for order in all_new_orders:
+                if order[18] in bluedart_embargo_pincodes and not self.force_ship:
+                    if self.next_priority:
+                        push_order_to_next_priority(self.next_priority, [order[0]], self.courier, self.cur)
+                    continue
                 if not order[54]:
                     last_invoice_no = invoice_order(self.cur, last_invoice_no, pickup_point[23], order[0], pickup_id)
                 if order[26].lower() == 'cod' and not order[27] and not self.force_ship:
@@ -2113,7 +2117,9 @@ class ShipBlowhorn:
                                 "Cod confirmation not sent. Order id: " + str(order[0]))
                         continue
 
-                if zone != 'A' and not self.force_ship:
+                if zone != 'A':
+                    if self.next_priority and not self.force_ship:
+                        push_order_to_next_priority(self.next_priority, [order[0]], self.courier, self.cur)
                     continue
 
                 lat, lon = order[22], order[23]

@@ -175,9 +175,7 @@ class OrderList(Resource):
             page = data.get("page", 1)
             per_page = data.get("per_page", 10)
             search_key = data.get("search_key", "")
-            search_key_on_customer_detail = data.get(
-                "search_key_on_customer_detail", ""
-            )
+            search_key_on_customer_detail = data.get("search_key_on_customer_detail", "")
             since_id = data.get("since_id", None)
             filters = data.get("filters", {})
             auth_data = resp.get("data")
@@ -192,10 +190,7 @@ class OrderList(Resource):
 
             client_prefix = auth_data.get("client_prefix")
 
-            cur.execute(
-                "SELECT hide_weights, thirdwatch FROM client_mapping WHERE client_prefix='%s'"
-                % client_prefix
-            )
+            cur.execute("SELECT hide_weights, thirdwatch FROM client_mapping WHERE client_prefix='%s'" % client_prefix)
             try:
                 mapping_data = cur.fetchone()
                 hide_weights = mapping_data[0]
@@ -253,23 +248,14 @@ class OrderList(Resource):
                     "country": order[20],
                     "pincode": order[21],
                 }
-                resp_obj["order_date"] = (
-                    order[2].strftime("%d %b %Y, %I:%M %p") if order[2] else None
-                )
-                resp_obj["delivered_time"] = (
-                    order[22].strftime("%d %b %Y, %I:%M %p") if order[22] else None
-                )
-                resp_obj["manifest_time"] = (
-                    order[34].strftime("%d %b %Y, %I:%M %p") if order[34] else None
-                )
+                resp_obj["order_date"] = order[2].strftime("%d %b %Y, %I:%M %p") if order[2] else None
+                resp_obj["delivered_time"] = order[22].strftime("%d %b %Y, %I:%M %p") if order[22] else None
+                resp_obj["manifest_time"] = order[34].strftime("%d %b %Y, %I:%M %p") if order[34] else None
                 resp_obj["payment"] = {"mode": order[24], "amount": order[25]}
 
                 resp_obj["product_details"] = list()
                 not_shipped = None
-                if (
-                    order[1] in product_detail_by_order_id
-                    and product_detail_by_order_id[order[1]][0]
-                ):
+                if order[1] in product_detail_by_order_id and product_detail_by_order_id[order[1]][0]:
                     product_data = product_detail_by_order_id[order[1]]
                     for idx, prod in enumerate(product_data[0]):
                         if not product_data[3][idx] or not product_data[4][idx]:
@@ -308,16 +294,14 @@ class OrderList(Resource):
                     attempt_list = list()
                     for idx, reason_id in enumerate(order[35]):
                         att_obj = {
-                            "attempt_date": order[37][idx].strftime(
-                                "%d %b %Y, %H:%M:%S"
-                            ),
+                            "attempt_date": order[37][idx].strftime("%d %b %Y, %H:%M:%S"),
                             "reason": order[36][idx],
                         }
                         attempt_list.append(att_obj)
                     resp_obj["attempt_list"] = attempt_list
                     resp_obj["ndr_id"] = order[46]
                     ndr_action = "take_action"
-                    if order[30] and order[47] and order[47][0]=='requested':
+                    if order[30] and order[47] and order[47][0] == "requested":
                         if order[31] == True and order[32] in ("call", "text"):
                             ndr_action = "Cancellation confirmed by customer"
                         elif order[31] == True and order[32] == "manual":
@@ -326,10 +310,10 @@ class OrderList(Resource):
                             ndr_action = "Re-attempt requested by seller"
                         elif order[31] == False and order[32] in ("call", "text"):
                             ndr_action = "Re-attempt requested by customer"
-                        elif order[47] and order[47][0]=='reattempt':
-                            ndr_action ="Re-attempt requested by seller"
-                        elif order[47] and order[47][0]=='cancelled':
-                            ndr_action= "Cancellation confirmed by seller"
+                        elif order[47] and order[47][0] == "reattempt":
+                            ndr_action = "Re-attempt requested by seller"
+                        elif order[47] and order[47][0] == "cancelled":
+                            ndr_action = "Cancellation confirmed by seller"
 
                     resp_obj["ndr_action"] = ndr_action
 
@@ -349,16 +333,10 @@ class OrderList(Resource):
                 if type == "shipped":
                     resp_obj["status_detail"] = order[4]
 
-                if (
-                    order[50]
-                    and order[3] == "DELIVERED"
-                    and order[50].startswith("https://wareiqpods")
-                ):
+                if order[50] and order[3] == "DELIVERED" and order[50].startswith("https://wareiqpods"):
                     resp_obj["pod_link"] = order[50]
 
-                resp_obj["last_updated"] = (
-                    order[51].strftime("%Y-%m-%d %H:%M:%S") if order[51] else None
-                )
+                resp_obj["last_updated"] = order[51].strftime("%Y-%m-%d %H:%M:%S") if order[51] else None
 
                 resp_obj["status"] = order[3]
                 if (
@@ -426,22 +404,14 @@ def get_count(resp, type):
             auth_data,
         )
 
-        count_query = (
-            "select count(*) from ("
-            + query_to_run.replace("__PAGINATION__", "")
-            + ") xx"
-        )
+        count_query = "select count(*) from (" + query_to_run.replace("__PAGINATION__", "") + ") xx"
         count_query = re.sub(r"""__.+?__""", "", count_query)
         count_query_prefix = """select count(*) from (select distinct on (aa.order_date, aa.id) aa.channel_order_id as order_id, aa.id as unique_id, aa.order_date"""
         count_query_suffix = "from orders aa"
         prefix_ind = count_query.find(count_query_prefix)
         suffix_ind = count_query.find(count_query_suffix)
         if prefix_ind == 0 and suffix_ind > 0:
-            count_query = (
-                count_query[: prefix_ind + len(count_query_prefix)]
-                + " "
-                + count_query[suffix_ind:]
-            )
+            count_query = count_query[: prefix_ind + len(count_query_prefix)] + " " + count_query[suffix_ind:]
         cur.execute(count_query)
         total_count = cur.fetchone()[0]
 
@@ -488,10 +458,7 @@ def download_orders(resp, type):
             auth_data,
         )
 
-        cur.execute(
-            "SELECT hide_weights, thirdwatch FROM client_mapping WHERE client_prefix='%s'"
-            % client_prefix
-        )
+        cur.execute("SELECT hide_weights, thirdwatch FROM client_mapping WHERE client_prefix='%s'" % client_prefix)
         try:
             mapping_data = cur.fetchone()
             hide_weights = mapping_data[0]
@@ -538,9 +505,7 @@ def download_orders(resp, type):
                 "report_id": report_id,
             }
             requests.post(
-                "{0}/scans/v1/downloadQueue/orders".format(
-                    current_app.config["CELERY_SERVICE_URL"]
-                ),
+                "{0}/scans/v1/downloadQueue/orders".format(current_app.config["CELERY_SERVICE_URL"]),
                 json=request_data,
             )
             return jsonify({"success": True, "status": "queued"}), 202
@@ -562,11 +527,7 @@ def get_orders_filters(resp):
     client_qs = None
     all_vendors = None
     if auth_data["user_group"] == "multi-vendor":
-        all_vendors = (
-            db.session.query(MultiVendor)
-            .filter(MultiVendor.client_prefix == client_prefix)
-            .first()
-        )
+        all_vendors = db.session.query(MultiVendor).filter(MultiVendor.client_prefix == client_prefix).first()
         all_vendors = all_vendors.vendor_list
     if current_tab == "ndr":
         type = {"Action Requested": 0, "Action Required": 0}
@@ -653,9 +614,7 @@ def get_orders_filters(resp):
         .group_by(Orders.status)
     )
     courier_qs = (
-        db.session.query(
-            MasterCouriers.courier_name, func.count(MasterCouriers.courier_name)
-        )
+        db.session.query(MasterCouriers.courier_name, func.count(MasterCouriers.courier_name))
         .join(Shipments, MasterCouriers.id == Shipments.courier_id)
         .join(Orders, Orders.id == Shipments.order_id)
         .join(ClientPickups, Orders.pickup_data_id == ClientPickups.id, isouter=True)
@@ -664,18 +623,14 @@ def get_orders_filters(resp):
         .group_by(MasterCouriers.courier_name)
     )
     pickup_point_qs = (
-        db.session.query(
-            PickupPoints.warehouse_prefix, func.count(PickupPoints.warehouse_prefix)
-        )
+        db.session.query(PickupPoints.warehouse_prefix, func.count(PickupPoints.warehouse_prefix))
         .join(ClientPickups, PickupPoints.id == ClientPickups.pickup_id)
         .join(Orders, ClientPickups.id == Orders.pickup_data_id)
         .join(OrdersPayments, Orders.id == OrdersPayments.order_id, isouter=True)
         .group_by(PickupPoints.warehouse_prefix)
     )
     channel_qs = (
-        db.session.query(
-            MasterChannels.channel_name, func.count(MasterChannels.channel_name)
-        )
+        db.session.query(MasterChannels.channel_name, func.count(MasterChannels.channel_name))
         .join(Orders, Orders.master_channel_id == MasterChannels.id)
         .group_by(MasterChannels.channel_name)
     )
@@ -691,9 +646,9 @@ def get_orders_filters(resp):
         "SCHEDULED",
     ]
     if auth_data["user_group"] == "super-admin":
-        client_qs = db.session.query(
-            Orders.client_prefix, func.count(Orders.client_prefix)
-        ).join(OrdersPayments, Orders.id == OrdersPayments.order_id, isouter=True)
+        client_qs = db.session.query(Orders.client_prefix, func.count(Orders.client_prefix)).join(
+            OrdersPayments, Orders.id == OrdersPayments.order_id, isouter=True
+        )
     elif auth_data["user_group"] == "warehouse":
         client_qs = (
             db.session.query(Orders.client_prefix, func.count(Orders.client_prefix))
@@ -721,19 +676,13 @@ def get_orders_filters(resp):
         channel_qs = channel_qs.filter(Orders.client_prefix.in_(all_vendors))
     if auth_data["user_group"] == "warehouse":
         status_qs = status_qs.filter(PickupPoints.warehouse_prefix == warehouse_prefix)
-        courier_qs = courier_qs.filter(
-            PickupPoints.warehouse_prefix == warehouse_prefix
-        )
-        pickup_point_qs = pickup_point_qs.filter(
-            PickupPoints.warehouse_prefix == warehouse_prefix
-        )
+        courier_qs = courier_qs.filter(PickupPoints.warehouse_prefix == warehouse_prefix)
+        pickup_point_qs = pickup_point_qs.filter(PickupPoints.warehouse_prefix == warehouse_prefix)
 
     if current_tab == "shipped":
         status_qs = status_qs.filter(not_(Orders.status.in_(shipped_filters)))
         courier_qs = courier_qs.filter(not_(Orders.status.in_(shipped_filters)))
-        pickup_point_qs = pickup_point_qs.filter(
-            not_(Orders.status.in_(shipped_filters))
-        )
+        pickup_point_qs = pickup_point_qs.filter(not_(Orders.status.in_(shipped_filters)))
         channel_qs = channel_qs.filter(not_(Orders.status.in_(shipped_filters)))
         if client_qs:
             client_qs = client_qs.filter(not_(Orders.status.in_(shipped_filters)))
@@ -777,28 +726,16 @@ def get_orders_filters(resp):
         if client_qs:
             client_qs = client_qs.filter(Orders.status == "NEW")
     if current_tab == "ready_to_ship":
-        status_qs = status_qs.filter(
-            Orders.status.in_(["READY TO SHIP", "PICKUP REQUESTED"])
-        )
-        courier_qs = courier_qs.filter(
-            Orders.status.in_(["READY TO SHIP", "PICKUP REQUESTED"])
-        )
-        pickup_point_qs = pickup_point_qs.filter(
-            Orders.status.in_(["READY TO SHIP", "PICKUP REQUESTED"])
-        )
-        channel_qs = channel_qs.filter(
-            Orders.status.in_(["READY TO SHIP", "PICKUP REQUESTED"])
-        )
+        status_qs = status_qs.filter(Orders.status.in_(["READY TO SHIP", "PICKUP REQUESTED"]))
+        courier_qs = courier_qs.filter(Orders.status.in_(["READY TO SHIP", "PICKUP REQUESTED"]))
+        pickup_point_qs = pickup_point_qs.filter(Orders.status.in_(["READY TO SHIP", "PICKUP REQUESTED"]))
+        channel_qs = channel_qs.filter(Orders.status.in_(["READY TO SHIP", "PICKUP REQUESTED"]))
         if client_qs:
-            client_qs = client_qs.filter(
-                Orders.status.in_(["READY TO SHIP", "PICKUP REQUESTED"])
-            )
+            client_qs = client_qs.filter(Orders.status.in_(["READY TO SHIP", "PICKUP REQUESTED"]))
     if current_tab == "rvp":
         status_qs = status_qs.filter(OrdersPayments.payment_mode == "Pickup")
         courier_qs = courier_qs.filter(OrdersPayments.payment_mode == "Pickup")
-        pickup_point_qs = pickup_point_qs.filter(
-            OrdersPayments.payment_mode == "Pickup"
-        )
+        pickup_point_qs = pickup_point_qs.filter(OrdersPayments.payment_mode == "Pickup")
         if client_qs:
             client_qs = client_qs.filter(OrdersPayments.payment_mode == "Pickup")
     status_qs = status_qs.order_by(Orders.status).all()
@@ -812,11 +749,7 @@ def get_orders_filters(resp):
     if client_qs:
         if all_vendors:
             client_qs = client_qs.filter(Orders.client_prefix.in_(all_vendors))
-        client_qs = (
-            client_qs.group_by(Orders.client_prefix)
-            .order_by(Orders.client_prefix)
-            .all()
-        )
+        client_qs = client_qs.group_by(Orders.client_prefix).order_by(Orders.client_prefix).all()
         response["filters"]["client"] = [{x[0]: x[1]} for x in client_qs]
 
     return jsonify(response), 200
@@ -835,11 +768,7 @@ def get_failed_orders(resp):
     client_prefix = auth_data.get("client_prefix")
     all_vendors = None
     if auth_data["user_group"] == "multi-vendor":
-        all_vendors = (
-            db.session.query(MultiVendor)
-            .filter(MultiVendor.client_prefix == client_prefix)
-            .first()
-        )
+        all_vendors = db.session.query(MultiVendor).filter(MultiVendor.client_prefix == client_prefix).first()
         all_vendors = all_vendors.vendor_list
 
     cur = conn.cursor()
@@ -857,25 +786,19 @@ def get_failed_orders(resp):
             "AND aa.client_prefix='%s'" % auth_data["client_prefix"],
         )
     elif all_vendors:
-        query_to_run = query_to_run.replace(
-            "__CLIENT_FILTER__", "AND aa.client_prefix in %s" % str(tuple(all_vendors))
-        )
+        query_to_run = query_to_run.replace("__CLIENT_FILTER__", "AND aa.client_prefix in %s" % str(tuple(all_vendors)))
     else:
         query_to_run = query_to_run.replace("__CLIENT_FILTER__", "")
 
     if search_key:
         query_to_run = query_to_run.replace(
             "__SEARCH_FILTER__",
-            " and aa.channel_order_id ilike '%__SEARCH_KEY__%'".replace(
-                "__SEARCH_KEY__", search_key
-            ),
+            " and aa.channel_order_id ilike '%__SEARCH_KEY__%'".replace("__SEARCH_KEY__", search_key),
         )
     else:
         query_to_run = query_to_run.replace("__SEARCH_FILTER__", "")
 
-    count_query = (
-        "select count(*) from (" + query_to_run.replace("__PAGINATION__", "") + ") xx"
-    )
+    count_query = "select count(*) from (" + query_to_run.replace("__PAGINATION__", "") + ") xx"
     count_query = re.sub(r"""__.+?__""", "", count_query)
     cur.execute(count_query)
     total_count = cur.fetchone()[0]
@@ -892,9 +815,7 @@ def get_failed_orders(resp):
         order_obj = dict()
         order_obj["order_id"] = order[1]
         order_obj["unique_id"] = order[0]
-        order_obj["order_date"] = (
-            order[2].strftime("%d %b %Y, %I:%M %p") if order[2] else None
-        )
+        order_obj["order_date"] = order[2].strftime("%d %b %Y, %I:%M %p") if order[2] else None
         order_obj["customer_name"] = order[3]
         order_obj["customer_email"] = order[4]
         order_obj["customer_phone"] = order[5]
@@ -1154,9 +1075,7 @@ def add_order_post(resp):
                 .filter(PickupPoints.warehouse_prefix == pickup_filter)
             )
             if auth_data.get("user_group") == "client":
-                pickup_data = pickup_data.filter(
-                    ClientPickups.client_prefix == auth_data.get("client_prefix")
-                )
+                pickup_data = pickup_data.filter(ClientPickups.client_prefix == auth_data.get("client_prefix"))
             pickup_data = pickup_data.first()
 
         chargeable_weight = data.get("weight")
@@ -1194,47 +1113,28 @@ def add_order_post(resp):
                         db.session.query(MasterProducts)
                         .filter(
                             MasterProducts.sku == prod["sku"],
-                            MasterProducts.client_prefix
-                            == auth_data.get("client_prefix"),
+                            MasterProducts.client_prefix == auth_data.get("client_prefix"),
                         )
                         .first()
                     )
                     if not prod_obj:
                         dimensions = {
-                            "length": float(prod.get("length"))
-                            if prod.get("length")
-                            else None,
-                            "breadth": float(prod.get("breadth"))
-                            if prod.get("breadth")
-                            else None,
-                            "height": float(prod.get("height"))
-                            if prod.get("height")
-                            else None,
+                            "length": float(prod.get("length")) if prod.get("length") else None,
+                            "breadth": float(prod.get("breadth")) if prod.get("breadth") else None,
+                            "height": float(prod.get("height")) if prod.get("height") else None,
                         }
                         prod_obj = MasterProducts(
                             sku=str(prod["sku"]),
-                            name=str(
-                                prod.get("name")
-                                if prod.get("name")
-                                else prod.get("sku")
-                            ),
+                            name=str(prod.get("name") if prod.get("name") else prod.get("sku")),
                             client_prefix=auth_data.get("client_prefix"),
                             dimensions=dimensions,
-                            weight=float(prod.get("weight"))
-                            if prod.get("weight")
-                            else None,
-                            price=float(prod.get("price"))
-                            if prod.get("price")
-                            else None,
+                            weight=float(prod.get("weight")) if prod.get("weight") else None,
+                            price=float(prod.get("price")) if prod.get("price") else None,
                         )
                         db.session.add(prod_obj)
 
                 else:
-                    prod_obj = (
-                        db.session.query(MasterProducts)
-                        .filter(MasterProducts.id == int(prod["id"]))
-                        .first()
-                    )
+                    prod_obj = db.session.query(MasterProducts).filter(MasterProducts.id == int(prod["id"])).first()
 
                 if prod_obj:
                     tax_lines = prod.get("tax_lines")
@@ -1374,10 +1274,7 @@ def upload_orders(resp):
             )
             if order_exists:
                 failed_ids.append(str(row_data.order_id).rstrip())
-                cw.writerow(
-                    list(row_data.values)
-                    + ["Order ID already exists. Please use a different ID."]
-                )
+                cw.writerow(list(row_data.values) + ["Order ID already exists. Please use a different ID."])
                 return
 
             delivery_address = ShippingAddress(
@@ -1428,8 +1325,7 @@ def upload_orders(resp):
                         db.session.query(MasterProducts)
                         .filter(
                             MasterProducts.sku == sku_str.strip(),
-                            MasterProducts.client_prefix
-                            == auth_data.get("client_prefix"),
+                            MasterProducts.client_prefix == auth_data.get("client_prefix"),
                         )
                         .first()
                     )
@@ -1443,22 +1339,13 @@ def upload_orders(resp):
                     else:
                         failed_ids.append(str(row_data.order_id).rstrip())
                         cw.writerow(
-                            list(row_data.values)
-                            + [
-                                "One or more SKU not found. Please add SKU in products tab."
-                            ]
+                            list(row_data.values) + ["One or more SKU not found. Please add SKU in products tab."]
                         )
                         db.session.rollback()
                         return
 
-            subtotal = (
-                float(row_data.subtotal) if not np.isnan(row_data.subtotal) else 0
-            )
-            shipping_charges = (
-                float(row_data.shipping_charges)
-                if not np.isnan(row_data.shipping_charges)
-                else 0
-            )
+            subtotal = float(row_data.subtotal) if not np.isnan(row_data.subtotal) else 0
+            shipping_charges = float(row_data.shipping_charges) if not np.isnan(row_data.shipping_charges) else 0
             payment = OrdersPayments(
                 payment_mode=str(row_data.payment_mode),
                 subtotal=subtotal,
@@ -1510,9 +1397,7 @@ def download_shiplabels(resp):
     )
 
     if auth_data["user_group"] == "client":
-        orders_qs = orders_qs.filter(
-            Orders.client_prefix == auth_data.get("client_prefix")
-        )
+        orders_qs = orders_qs.filter(Orders.client_prefix == auth_data.get("client_prefix"))
     orders_qs = orders_qs.order_by(Orders.order_date, Orders.id).all()
     if not orders_qs:
         return jsonify({"success": False, "msg": "No valid order ID"}), 404
@@ -1526,9 +1411,7 @@ def download_shiplabels(resp):
         (
             auth_data.get("warehouse_prefix"),
             auth_data.get("client_prefix"),
-            auth_data.get("username")
-            if auth_data.get("username")
-            else auth_data.get("client_prefix"),
+            auth_data.get("username") if auth_data.get("username") else auth_data.get("client_prefix"),
             "Shiplabels",
             title,
             None,
@@ -1540,9 +1423,7 @@ def download_shiplabels(resp):
     )
     report_id = cur.fetchone()[0]
     conn.commit()
-    shiplabel_url, failed_ids = shiplabel_download_util(
-        orders_qs, auth_data, report_id, cur
-    )
+    shiplabel_url, failed_ids = shiplabel_download_util(orders_qs, auth_data, report_id, cur)
     return (
         jsonify({"status": "success", "url": shiplabel_url, "failed_ids": failed_ids}),
         200,
@@ -1563,9 +1444,7 @@ def update_ndr(resp):
     all_vendors = None
     if auth_data["user_group"] == "multi-vendor":
         all_vendors = (
-            db.session.query(MultiVendor)
-            .filter(MultiVendor.client_prefix == auth_data.get("client_prefix"))
-            .first()
+            db.session.query(MultiVendor).filter(MultiVendor.client_prefix == auth_data.get("client_prefix")).first()
         )
         all_vendors = all_vendors.vendor_list
 
@@ -1600,11 +1479,7 @@ def update_ndr(resp):
     ndr_obj.updated_phone = updated_phone
     ndr_obj.current_status = "reattempt" if reattempt else "cancelled"
 
-    ndr_ver = (
-        db.session.query(NDRVerification)
-        .filter(NDRVerification.order_id == ndr_obj.order_id)
-        .first()
-    )
+    ndr_ver = db.session.query(NDRVerification).filter(NDRVerification.order_id == ndr_obj.order_id).first()
     if ndr_ver:
         ndr_ver.ndr_verified = False if reattempt else True
         ndr_ver.verified_via = "manual"
@@ -1636,26 +1511,14 @@ def shiplabel_download_util(orders_qs, auth_data, report_id, cur):
     if auth_data["user_group"] == "warehouse":
         qs = (
             db.session.query(WarehouseMapping)
-            .filter(
-                WarehouseMapping.warehouse_prefix == auth_data.get("warehouse_prefix")
-            )
+            .filter(WarehouseMapping.warehouse_prefix == auth_data.get("warehouse_prefix"))
             .first()
         )
         if qs and qs.shiplabel_type:
             shiplabel_type = qs.shiplabel_type
 
-    file_pref = (
-        auth_data["client_prefix"]
-        if auth_data["client_prefix"]
-        else auth_data["warehouse_prefix"]
-    )
-    file_name = (
-        "shiplabels_"
-        + str(file_pref)
-        + "_"
-        + str(datetime.now().strftime("%d_%b_%Y_%H_%M_%S"))
-        + ".pdf"
-    )
+    file_pref = auth_data["client_prefix"] if auth_data["client_prefix"] else auth_data["warehouse_prefix"]
+    file_name = "shiplabels_" + str(file_pref) + "_" + str(datetime.now().strftime("%d_%b_%Y_%H_%M_%S")) + ".pdf"
     if shiplabel_type == "TH1":
         c = canvas.Canvas(file_name, pagesize=(288, 432))
         create_shiplabel_blank_page_thermal(c)
@@ -1779,15 +1642,11 @@ def request_pickups(resp):
 
                     manifest_qs = Manifests(
                         manifest_id=manifest_id_str,
-                        warehouse_prefix=order_list[
-                            0
-                        ].pickup_data.pickup.warehouse_prefix,
+                        warehouse_prefix=order_list[0].pickup_data.pickup.warehouse_prefix,
                         courier_id=courier_id,
                         client_pickup_id=pickup_data_id,
                         pickup_id=order_list[0].pickup_data.pickup.id,
-                        pickup_date=pickup_time_ist.replace(
-                            hour=13, minute=0, second=0
-                        ),
+                        pickup_date=pickup_time_ist.replace(hour=13, minute=0, second=0),
                         manifest_url="",
                         total_scheduled=len(order_list),
                     )
@@ -1798,9 +1657,7 @@ def request_pickups(resp):
                 manifest_id = manifest_qs.id
 
                 for order in order_list:
-                    stmt = insert(OrderPickups).values(
-                        manifest_id=manifest_id, order_id=order.id, picked=False
-                    )
+                    stmt = insert(OrderPickups).values(manifest_id=manifest_id, order_id=order.id, picked=False)
                     stmt = stmt.on_conflict_do_nothing()
                     db.session.execute(stmt)
                     order.status = "PICKUP REQUESTED"
@@ -1828,24 +1685,18 @@ def pick_orders(resp, pickup_id):
 
         manifest_id = int(pickup_id)
 
-        order_qs = db.session.query(OrderPickups).filter(
-            OrderPickups.manifest_id == manifest_id
-        )
+        order_qs = db.session.query(OrderPickups).filter(OrderPickups.manifest_id == manifest_id)
         if status and status.lower() == "picked":
             order_qs = order_qs.filter(OrderPickups.picked == True)
         elif status and status.lower() == "notpicked":
             order_qs = order_qs.filter(OrderPickups.picked == False)
-        order_qs = order_qs.order_by(OrderPickups.pickup_time.desc()).paginate(
-            page, per_page, error_out=False
-        )
+        order_qs = order_qs.order_by(OrderPickups.pickup_time.desc()).paginate(page, per_page, error_out=False)
         data = list()
         for order in order_qs.items:
             res_obj = dict()
             res_obj["unique_id"] = order.order_id
             res_obj["order_id"] = order.order.channel_order_id
-            res_obj["awb"] = (
-                order.order.shipments[0].awb if order.order.shipments[0] else None
-            )
+            res_obj["awb"] = order.order.shipments[0].awb if order.order.shipments[0] else None
             res_obj["picked"] = order.picked
             res_obj["picked_time"] = order.pickup_time
             data.append(res_obj)
@@ -1883,9 +1734,7 @@ def pickup_download(resp, pickup_id):
             cur = conn.cursor()
             orders_qs = (
                 db.session.query(Orders, ClientMapping)
-                .outerjoin(
-                    ClientMapping, Orders.client_prefix == ClientMapping.client_prefix
-                )
+                .outerjoin(ClientMapping, Orders.client_prefix == ClientMapping.client_prefix)
                 .outerjoin(OrderPickups, Orders.id == OrderPickups.order_id)
                 .filter(OrderPickups.manifest_id == manifest_id)
                 .all()
@@ -1914,9 +1763,7 @@ def pickup_download(resp, pickup_id):
             )
             report_id = cur.fetchone()[0]
             conn.commit()
-            shiplabel_url, failed_ids = shiplabel_download_util(
-                orders_qs, auth_data, report_id, cur
-            )
+            shiplabel_url, failed_ids = shiplabel_download_util(orders_qs, auth_data, report_id, cur)
             return (
                 jsonify(
                     {
@@ -1931,9 +1778,7 @@ def pickup_download(resp, pickup_id):
         elif flag == "invoice":
             orders_qs = (
                 db.session.query(Orders, ClientMapping)
-                .outerjoin(
-                    ClientMapping, Orders.client_prefix == ClientMapping.client_prefix
-                )
+                .outerjoin(ClientMapping, Orders.client_prefix == ClientMapping.client_prefix)
                 .outerjoin(OrderPickups, Orders.id == OrderPickups.order_id)
                 .filter(OrderPickups.manifest_id == manifest_id)
                 .all()
@@ -2005,9 +1850,7 @@ def download_invoice(resp):
     )
 
     if auth_data["user_group"] == "client":
-        orders_qs = orders_qs.filter(
-            Orders.client_prefix == auth_data.get("client_prefix")
-        )
+        orders_qs = orders_qs.filter(Orders.client_prefix == auth_data.get("client_prefix"))
     orders_qs = orders_qs.order_by(Orders.order_date, Orders.id).all()
     if not orders_qs:
         return jsonify({"success": False, "msg": "No valid order ID"}), 404
@@ -2021,18 +1864,8 @@ def download_invoice(resp):
 
 
 def download_invoice_util(orders_qs, auth_data):
-    file_pref = (
-        auth_data["client_prefix"]
-        if auth_data["client_prefix"]
-        else auth_data["warehouse_prefix"]
-    )
-    file_name = (
-        "invoice_"
-        + str(file_pref)
-        + "_"
-        + str(datetime.now().strftime("%d_%b_%Y_%H_%M_%S"))
-        + ".pdf"
-    )
+    file_pref = auth_data["client_prefix"] if auth_data["client_prefix"] else auth_data["warehouse_prefix"]
+    file_name = "invoice_" + str(file_pref) + "_" + str(datetime.now().strftime("%d_%b_%Y_%H_%M_%S")) + ".pdf"
     c = canvas.Canvas(file_name, pagesize=A4)
     create_invoice_blank_page(c)
     failed_ids = dict()
@@ -2072,9 +1905,7 @@ def download_picklist(resp):
     orders_qs = db.session.query(Orders).filter(Orders.id.in_(order_ids))
 
     if auth_data["user_group"] == "client":
-        orders_qs = orders_qs.filter(
-            Orders.client_prefix == auth_data.get("client_prefix")
-        )
+        orders_qs = orders_qs.filter(Orders.client_prefix == auth_data.get("client_prefix"))
     orders_qs = orders_qs.order_by(Orders.id).all()
     if not orders_qs:
         return jsonify({"success": False, "msg": "No valid order ID"}), 404
@@ -2111,10 +1942,7 @@ def download_picklist_util(orders_qs, auth_data):
                         sku = new_prod.combo_prod.sku
                         shelf = ""
                         for prod_quan in prod.master_product.quantity:
-                            if (
-                                prod_quan.warehouse_prefix == current_wh
-                                and prod_quan.wh_loc
-                            ):
+                            if prod_quan.warehouse_prefix == current_wh and prod_quan.wh_loc:
                                 shelf = prod_quan.wh_loc
                                 break
                         products_dict[order.client_prefix][new_prod.combo_prod_id] = {
@@ -2124,18 +1952,15 @@ def download_picklist_util(orders_qs, auth_data):
                             "shelf": shelf,
                         }
                     else:
-                        products_dict[order.client_prefix][new_prod.combo_prod_id][
-                            "quantity"
-                        ] += (prod.quantity * new_prod.quantity)
+                        products_dict[order.client_prefix][new_prod.combo_prod_id]["quantity"] += (
+                            prod.quantity * new_prod.quantity
+                        )
             else:
                 if prod.master_product_id not in products_dict[order.client_prefix]:
                     sku = prod.master_product.sku
                     shelf = ""
                     for prod_quan in prod.master_product.quantity:
-                        if (
-                            prod_quan.warehouse_prefix == current_wh
-                            and prod_quan.wh_loc
-                        ):
+                        if prod_quan.warehouse_prefix == current_wh and prod_quan.wh_loc:
                             shelf = prod_quan.wh_loc
                             break
                     products_dict[order.client_prefix][prod.master_product_id] = {
@@ -2145,22 +1970,10 @@ def download_picklist_util(orders_qs, auth_data):
                         "shelf": shelf,
                     }
                 else:
-                    products_dict[order.client_prefix][prod.master_product_id][
-                        "quantity"
-                    ] += prod.quantity
+                    products_dict[order.client_prefix][prod.master_product_id]["quantity"] += prod.quantity
 
-    file_pref = (
-        auth_data["client_prefix"]
-        if auth_data["client_prefix"]
-        else auth_data["warehouse_prefix"]
-    )
-    file_name = (
-        "picklist_"
-        + str(file_pref)
-        + "_"
-        + str(datetime.now().strftime("%d_%b_%Y_%H_%M_%S"))
-        + ".pdf"
-    )
+    file_pref = auth_data["client_prefix"] if auth_data["client_prefix"] else auth_data["warehouse_prefix"]
+    file_name = "picklist_" + str(file_pref) + "_" + str(datetime.now().strftime("%d_%b_%Y_%H_%M_%S")) + ".pdf"
     c = canvas.Canvas(file_name, pagesize=A4)
     c = generate_picklist(c, products_dict, order_count)
 
@@ -2185,9 +1998,7 @@ def download_packlist(resp):
     orders_qs = db.session.query(Orders).filter(Orders.id.in_(order_ids))
 
     if auth_data["user_group"] == "client":
-        orders_qs = orders_qs.filter(
-            Orders.client_prefix == auth_data.get("client_prefix")
-        )
+        orders_qs = orders_qs.filter(Orders.client_prefix == auth_data.get("client_prefix"))
     orders_qs = orders_qs.order_by(Orders.order_date, Orders.id).all()
     if not orders_qs:
         return jsonify({"success": False, "msg": "No valid order ID"}), 404
@@ -2221,57 +2032,33 @@ def download_packlist_util(orders_qs, auth_data):
             if prod.master_product.combo:
                 for new_prod in prod.master_product.combo:
                     sku = new_prod.combo_prod.sku
-                    if (
-                        new_prod.combo_prod_id
-                        not in orders_dict[order.client_prefix][order.channel_order_id]
-                    ):
-                        orders_dict[order.client_prefix][order.channel_order_id][
-                            new_prod.combo_prod_id
-                        ] = {
+                    if new_prod.combo_prod_id not in orders_dict[order.client_prefix][order.channel_order_id]:
+                        orders_dict[order.client_prefix][order.channel_order_id][new_prod.combo_prod_id] = {
                             "sku": sku,
                             "name": new_prod.combo_prod.name,
                             "quantity": prod.quantity * new_prod.quantity,
-                            "price": str(prod.amount / prod.quantity)
-                            if prod.amount
-                            else "",
+                            "price": str(prod.amount / prod.quantity) if prod.amount else "",
                         }
                     else:
-                        orders_dict[order.client_prefix][order.channel_order_id][
-                            new_prod.combo_prod_id
-                        ]["quantity"] += (prod.quantity * new_prod.quantity)
+                        orders_dict[order.client_prefix][order.channel_order_id][new_prod.combo_prod_id][
+                            "quantity"
+                        ] += (prod.quantity * new_prod.quantity)
             else:
                 sku = prod.master_product.sku
-                if (
-                    prod.master_product_id
-                    not in orders_dict[order.client_prefix][order.channel_order_id]
-                ):
-                    orders_dict[order.client_prefix][order.channel_order_id][
-                        prod.master_product_id
-                    ] = {
+                if prod.master_product_id not in orders_dict[order.client_prefix][order.channel_order_id]:
+                    orders_dict[order.client_prefix][order.channel_order_id][prod.master_product_id] = {
                         "sku": sku,
                         "name": prod.master_product.name,
                         "quantity": prod.quantity,
-                        "price": str(prod.amount / prod.quantity)
-                        if prod.amount
-                        else "",
+                        "price": str(prod.amount / prod.quantity) if prod.amount else "",
                     }
                 else:
-                    orders_dict[order.client_prefix][order.channel_order_id][
-                        prod.master_product_id
-                    ]["quantity"] += prod.quantity
+                    orders_dict[order.client_prefix][order.channel_order_id][prod.master_product_id][
+                        "quantity"
+                    ] += prod.quantity
 
-    file_pref = (
-        auth_data["client_prefix"]
-        if auth_data["client_prefix"]
-        else auth_data["warehouse_prefix"]
-    )
-    file_name = (
-        "packlist_"
-        + str(file_pref)
-        + "_"
-        + str(datetime.now().strftime("%d_%b_%Y_%H_%M_%S"))
-        + ".pdf"
-    )
+    file_pref = auth_data["client_prefix"] if auth_data["client_prefix"] else auth_data["warehouse_prefix"]
+    file_name = "packlist_" + str(file_pref) + "_" + str(datetime.now().strftime("%d_%b_%Y_%H_%M_%S")) + ".pdf"
     c = canvas.Canvas(file_name, pagesize=A4)
     c = generate_packlist(c, orders_dict, order_count)
 
@@ -2317,9 +2104,7 @@ def cancel_order_channel(resp, order_id):
             if order.orders_invoice:
                 for invoice_obj in order.orders_invoice:
                     invoice_obj.cancelled = True
-            db.session.query(OrderStatus).filter(
-                OrderStatus.order_id == order.id
-            ).delete()
+            db.session.query(OrderStatus).filter(OrderStatus.order_id == order.id).delete()
 
     db.session.commit()
 
@@ -2335,14 +2120,10 @@ def download_manifests(resp):
         return jsonify({"success": False, "msg": "Auth Failed"}), 404
 
     order_ids = data["order_ids"]
-    orders_qs = db.session.query(Orders).filter(
-        Orders.id.in_(order_ids), Orders.shipments != None
-    )
+    orders_qs = db.session.query(Orders).filter(Orders.id.in_(order_ids), Orders.shipments != None)
 
     if auth_data["user_group"] == "client":
-        orders_qs = orders_qs.filter(
-            Orders.client_prefix == auth_data.get("client_prefix")
-        )
+        orders_qs = orders_qs.filter(Orders.client_prefix == auth_data.get("client_prefix"))
     orders_qs = orders_qs.order_by(Orders.order_date, Orders.id).all()
     if not orders_qs:
         return jsonify({"success": False, "msg": "No valid order ID"}), 404
@@ -2362,11 +2143,7 @@ def download_manifests(resp):
 
 def download_manifest_util(orders_qs, auth_data):
     orders_list = list()
-    warehouse = (
-        auth_data["client_prefix"]
-        if auth_data["client_prefix"]
-        else auth_data["warehouse_prefix"]
-    )
+    warehouse = auth_data["client_prefix"] if auth_data["client_prefix"] else auth_data["warehouse_prefix"]
     courier = None
     store = None
     for order in orders_qs:
@@ -2436,10 +2213,7 @@ def bulk_cancel_orders(resp):
         return jsonify({"success": False, "msg": "Invalid order ids"}), 400
 
     cur.execute("UPDATE orders SET status='CANCELED' WHERE id in %s" % order_tuple_str)
-    cur.execute(
-        "UPDATE orders_invoice SET cancelled=true WHERE order_id in %s"
-        % order_tuple_str
-    )
+    cur.execute("UPDATE orders_invoice SET cancelled=true WHERE order_id in %s" % order_tuple_str)
 
     conn.commit()
 
@@ -2479,14 +2253,9 @@ def bulk_delivered_orders(resp, mark_op):
             "AND aa.client_prefix='%s'" % auth_data["client_prefix"],
         )
     elif auth_data["user_group"] == "multi-vendor":
-        cur.execute(
-            "SELECT vendor_list FROM multi_vendor WHERE client_prefix='%s';"
-            % auth_data["client_prefix"]
-        )
+        cur.execute("SELECT vendor_list FROM multi_vendor WHERE client_prefix='%s';" % auth_data["client_prefix"])
         vendor_list = cur.fetchone()[0]
-        query_to_run = query_to_run.replace(
-            "__CLIENT_FILTER__", "AND aa.client_prefix in %s" % str(tuple(vendor_list))
-        )
+        query_to_run = query_to_run.replace("__CLIENT_FILTER__", "AND aa.client_prefix in %s" % str(tuple(vendor_list)))
     else:
         query_to_run = query_to_run.replace("__CLIENT_FILTER__", "")
 
@@ -2510,9 +2279,7 @@ def bulk_delivered_orders(resp, mark_op):
 
     try:
         req = requests.post(
-            "{0}/scans/v1/mark_delivered_channel".format(
-                current_app.config["CELERY_SERVICE_URL"]
-            ),
+            "{0}/scans/v1/mark_delivered_channel".format(current_app.config["CELERY_SERVICE_URL"]),
             json={
                 "token": "b4r74rn3r84rn4ru84hr",
                 "order_ids": order_ids,
@@ -2529,9 +2296,9 @@ def bulk_delivered_orders(resp, mark_op):
     if mark_op == "rto":
         mark_status = "RTO"
     cur.execute(
-        "UPDATE orders SET status='__STATUS__' WHERE id in __ORDER_IDS__".replace(
-            "__STATUS__", mark_status
-        ).replace("__ORDER_IDS__", order_tuple_str)
+        "UPDATE orders SET status='__STATUS__' WHERE id in __ORDER_IDS__".replace("__STATUS__", mark_status).replace(
+            "__ORDER_IDS__", order_tuple_str
+        )
     )
 
     conn.commit()
@@ -2574,14 +2341,9 @@ def bulk_assign_pickups(resp):
             "AND aa.client_prefix='%s'" % auth_data["client_prefix"],
         )
     elif auth_data["user_group"] == "multi-vendor":
-        cur.execute(
-            "SELECT vendor_list FROM multi_vendor WHERE client_prefix='%s';"
-            % auth_data["client_prefix"]
-        )
+        cur.execute("SELECT vendor_list FROM multi_vendor WHERE client_prefix='%s';" % auth_data["client_prefix"])
         vendor_list = cur.fetchone()[0]
-        query_to_run = query_to_run.replace(
-            "__CLIENT_FILTER__", "AND aa.client_prefix in %s" % str(tuple(vendor_list))
-        )
+        query_to_run = query_to_run.replace("__CLIENT_FILTER__", "AND aa.client_prefix in %s" % str(tuple(vendor_list)))
     else:
         query_to_run = query_to_run.replace("__CLIENT_FILTER__", "")
 
@@ -2631,19 +2393,14 @@ def get_manifests(resp):
     client_prefix = auth_data.get("client_prefix")
     query_to_run = select_pickups_list_query
     if auth_data["user_group"] == "client":
-        query_to_run = query_to_run.replace(
-            "__CLIENT_FILTER__", "AND cc.client_prefix = '%s'" % client_prefix
-        )
+        query_to_run = query_to_run.replace("__CLIENT_FILTER__", "AND cc.client_prefix = '%s'" % client_prefix)
     if auth_data["user_group"] == "warehouse":
         query_to_run = query_to_run.replace(
             "__PICKUP_FILTER__",
             "AND dd.warehouse_prefix = '%s'" % auth_data.get("warehouse_prefix"),
         )
     if auth_data["user_group"] == "multi-vendor":
-        cur.execute(
-            "SELECT vendor_list FROM multi_vendor WHERE client_prefix='%s';"
-            % client_prefix
-        )
+        cur.execute("SELECT vendor_list FROM multi_vendor WHERE client_prefix='%s';" % client_prefix)
         vendor_list = cur.fetchone()[0]
         query_to_run = query_to_run.replace(
             "__MV_CLIENT_FILTER__",
@@ -2658,39 +2415,30 @@ def get_manifests(resp):
                 courier_tuple = "('" + filters["courier"][0] + "')"
             else:
                 courier_tuple = str(tuple(filters["courier"]))
-            query_to_run = query_to_run.replace(
-                "__COURIER_FILTER__", "AND bb.courier_name in %s" % courier_tuple
-            )
+            query_to_run = query_to_run.replace("__COURIER_FILTER__", "AND bb.courier_name in %s" % courier_tuple)
         if "client" in filters and auth_data["user_group"] != "client":
             if len(filters["client"]) == 1:
                 client_tuple = "('" + filters["client"][0] + "')"
             else:
                 client_tuple = str(tuple(filters["client"]))
-            query_to_run = query_to_run.replace(
-                "__CLIENT_FILTER__", "AND cc.client_prefix in %s" % client_tuple
-            )
+            query_to_run = query_to_run.replace("__CLIENT_FILTER__", "AND cc.client_prefix in %s" % client_tuple)
 
         if "pickup_point" in filters:
             if len(filters["pickup_point"]) == 1:
                 pickup_tuple = "('" + filters["pickup_point"][0] + "')"
             else:
                 pickup_tuple = str(tuple(filters["pickup_point"]))
-            query_to_run = query_to_run.replace(
-                "__PICKUP_FILTER__", "AND dd.warehouse_prefix in %s" % pickup_tuple
-            )
+            query_to_run = query_to_run.replace("__PICKUP_FILTER__", "AND dd.warehouse_prefix in %s" % pickup_tuple)
 
         if "pickup_time" in filters:
             filter_date_start = filters["pickup_time"][0][0:19].replace("T", " ")
             filter_date_end = filters["pickup_time"][1][0:19].replace("T", " ")
             query_to_run = query_to_run.replace(
                 "__PICKUP_TIME_FILTER__",
-                "AND aa.pickup_date between '%s' and '%s'"
-                % (filter_date_start, filter_date_end),
+                "AND aa.pickup_date between '%s' and '%s'" % (filter_date_start, filter_date_end),
             )
 
-    count_query = (
-        "select count(*) from (" + query_to_run.replace("__PAGINATION__", "") + ") xx"
-    )
+    count_query = "select count(*) from (" + query_to_run.replace("__PAGINATION__", "") + ") xx"
     count_query = re.sub(r"""__.+?__""", "", count_query)
     cur.execute(count_query)
     total_count = cur.fetchone()[0]
@@ -2753,24 +2501,12 @@ class OrderDetails(Resource):
                     "name": order.customer_name,
                     "email": order.customer_email,
                     "phone": order.customer_phone,
-                    "address_one": order.delivery_address.address_one
-                    if order.delivery_address
-                    else "",
-                    "address_two": order.delivery_address.address_two
-                    if order.delivery_address
-                    else "",
-                    "city": order.delivery_address.city
-                    if order.delivery_address
-                    else "",
-                    "country": order.delivery_address.country
-                    if order.delivery_address
-                    else "",
-                    "state": order.delivery_address.state
-                    if order.delivery_address
-                    else "",
-                    "pincode": order.delivery_address.pincode
-                    if order.delivery_address
-                    else "",
+                    "address_one": order.delivery_address.address_one if order.delivery_address else "",
+                    "address_two": order.delivery_address.address_two if order.delivery_address else "",
+                    "city": order.delivery_address.city if order.delivery_address else "",
+                    "country": order.delivery_address.country if order.delivery_address else "",
+                    "state": order.delivery_address.state if order.delivery_address else "",
+                    "pincode": order.delivery_address.pincode if order.delivery_address else "",
                 }
                 resp_obj["order_date"] = order.order_date.strftime("%d %b %Y, %I:%M %p")
                 resp_obj["payment"] = {
@@ -2781,16 +2517,10 @@ class OrderDetails(Resource):
                 for prod in order.products:
                     resp_obj["product_details"].append(
                         {
-                            "name": prod.master_product.name
-                            if prod.master_product
-                            else prod.product.name,
-                            "sku": prod.master_product.sku
-                            if prod.master_product
-                            else prod.product.master_sku,
+                            "name": prod.master_product.name if prod.master_product else prod.product.name,
+                            "sku": prod.master_product.sku if prod.master_product else prod.product.master_sku,
                             "quantity": prod.quantity,
-                            "id": prod.master_product.id
-                            if prod.master_product
-                            else None,
+                            "id": prod.master_product.id if prod.master_product else None,
                             "total": prod.amount,
                         }
                     )
@@ -2809,9 +2539,7 @@ class OrderDetails(Resource):
                     resp_obj["volumetric"] = order.shipments[0].volumetric_weight
                     if (
                         order.shipments[0].tracking_link
-                        and order.shipments[0].tracking_link.startswith(
-                            "https://wareiqpods"
-                        )
+                        and order.shipments[0].tracking_link.startswith("https://wareiqpods")
                         and order.status == "DELIVERED"
                     ):
                         resp_obj["pod_link"] = order.shipments[0].tracking_link
@@ -2893,9 +2621,7 @@ class OrderDetails(Resource):
             if data.get("total"):
                 order.payments[0].subtotal = float(data.get("total"))
                 order.payments[0].shipping_charges = float(data.get("shipping_charges"))
-                order.payments[0].amount = float(data["total"]) + float(
-                    data["shipping_charges"]
-                )
+                order.payments[0].amount = float(data["total"]) + float(data["shipping_charges"])
             if data.get("awb") and order.shipments:
                 order.shipments[0].awb = data.get("awb")
 
@@ -2903,15 +2629,11 @@ class OrderDetails(Resource):
                 if order.exotel_data:
                     order.exotel_data[0].cod_verified = data.get("cod_verification")
                     order.exotel_data[0].verified_via = "manual"
-                    order.exotel_data[
-                        0
-                    ].verification_time = datetime.utcnow() + timedelta(hours=5.5)
+                    order.exotel_data[0].verification_time = datetime.utcnow() + timedelta(hours=5.5)
                 if data.get("cod_verification") == False:
                     order.status = "CANCELED"
                     cancel_order_on_couriers(order)
-                    db.session.query(OrderStatus).filter(
-                        OrderStatus.order_id == int(order_id)
-                    ).delete()
+                    db.session.query(OrderStatus).filter(OrderStatus.order_id == int(order_id)).delete()
                     cancel_order_on_channels(order)
                     if order.orders_invoice:  # cancel invoice
                         for invoice_obj in order.orders_invoice:
@@ -2926,9 +2648,7 @@ class OrderDetails(Resource):
             if "ndr_verification" in data and order.ndr_verification:
                 order.ndr_verification[0].ndr_verified = data.get("ndr_verification")
                 order.ndr_verification[0].verified_via = "manual"
-                order.ndr_verification[
-                    0
-                ].verification_time = datetime.utcnow() + timedelta(hours=5.5)
+                order.ndr_verification[0].verification_time = datetime.utcnow() + timedelta(hours=5.5)
 
             if "pickup_point" in data:
                 client_pickup = (
@@ -2942,10 +2662,7 @@ class OrderDetails(Resource):
                 )
 
                 if client_pickup:
-                    if (
-                        client_pickup.wareiq_location
-                        and auth_data.get("user_group") != "super-admin"
-                    ):
+                    if client_pickup.wareiq_location and auth_data.get("user_group") != "super-admin":
 
                         def check_inventory_available(prod, warehouse_check):
                             wh_found = None
@@ -2962,11 +2679,9 @@ class OrderDetails(Resource):
                             if prod.master_product:
                                 if prod.master_product.combo:
                                     for new_prod in prod.master_product.combo:
-                                        available_quan_check = (
-                                            check_inventory_available(
-                                                new_prod.combo_prod,
-                                                data.get("pickup_point"),
-                                            )
+                                        available_quan_check = check_inventory_available(
+                                            new_prod.combo_prod,
+                                            data.get("pickup_point"),
                                         )
                                         if not available_quan_check:
                                             return {
@@ -2987,15 +2702,9 @@ class OrderDetails(Resource):
 
                     order.pickup_data = client_pickup
                     order.status = "NEW"
-                    db.session.query(OrderStatus).filter(
-                        OrderStatus.order_id == int(order_id)
-                    ).delete()
-                    db.session.query(OrderScans).filter(
-                        OrderScans.order_id == int(order_id)
-                    ).delete()
-                    db.session.query(Shipments).filter(
-                        Shipments.order_id == int(order_id)
-                    ).delete()
+                    db.session.query(OrderStatus).filter(OrderStatus.order_id == int(order_id)).delete()
+                    db.session.query(OrderScans).filter(OrderScans.order_id == int(order_id)).delete()
+                    db.session.query(Shipments).filter(Shipments.order_id == int(order_id)).delete()
                     if order.shipments and order.shipments[0].awb:
                         cancel_order_on_couriers(order)
 
@@ -3047,11 +2756,7 @@ class CreateReturn(Resource):
 
             if data.get("products"):
                 for prod in data.get("products"):
-                    prod_obj = (
-                        db.session.query(MasterProducts)
-                        .filter(MasterProducts.id == prod["id"])
-                        .first()
-                    )
+                    prod_obj = db.session.query(MasterProducts).filter(MasterProducts.id == prod["id"]).first()
 
                     if prod_obj:
                         op_association = OPAssociation(
@@ -3060,14 +2765,14 @@ class CreateReturn(Resource):
                             quantity=prod["quantity"],
                         )
                         new_order.products.append(op_association)
-                        if prod['qc_enabled']:
+                        if prod["qc_enabled"]:
                             qc_obj = ReturnOrderQualityCheck(
                                 order=new_order,
                                 master_product=prod_obj,
-                                image_url=prod['image_url'],
-                                color=prod['color'],
-                                reason=prod['reason'],
-                                unique_id=prod['unique_id']
+                                image_url=prod["image_url"],
+                                color=prod["color"],
+                                reason=prod["reason"],
+                                unique_id=prod["unique_id"],
                             )
                             new_order.qc.append(qc_obj)
 
@@ -3163,53 +2868,22 @@ def track_order(awb):
 
         details = request.args.get("details")
         if details:
-            if shipment and shipment.courier.courier_name.startswith(
-                "Xpressbees"
-            ):  # Xpressbees details of status
-                try:
+            try:
+                if shipment and shipment.courier.courier_name.startswith("Xpressbees"):  # Xpressbees details of status
                     return_details = tracking_get_xpressbees_details(shipment, awb)
-                    return jsonify({"success": True, "data": return_details}), 200
-                except Exception as e:
-                    return (
-                        jsonify({"success": False, "msg": "Details not available"}),
-                        400,
-                    )
-
-            if shipment and shipment.courier.courier_name.startswith(
-                "Delhivery"
-            ):  # Delhivery details of status
-                try:
+                elif shipment and shipment.courier.courier_name.startswith("Delhivery"):  # Delhivery details of status
                     return_details = tracking_get_delhivery_details(shipment, awb)
-                    return jsonify({"success": True, "data": return_details}), 200
-                except Exception as e:
-                    return (
-                        jsonify({"success": False, "msg": "Details not available"}),
-                        400,
-                    )
-
-            if shipment and shipment.courier.courier_name.startswith(
-                "Bluedart"
-            ):  # Bluedart details of status
-                try:
+                elif shipment and shipment.courier.courier_name.startswith("Bluedart"):  # Bluedart details of status
                     return_details = tracking_get_bluedart_details(shipment, awb)
-                    return jsonify({"success": True, "data": return_details}), 200
-                except Exception as e:
-                    return (
-                        jsonify({"success": False, "msg": "Details not available"}),
-                        400,
-                    )
-
-            if shipment and shipment.courier.courier_name.startswith(
-                "Ecom"
-            ):  # Ecom details of status
-                try:
+                elif shipment and shipment.courier.courier_name.startswith("Ecom"):  # Ecom details of status
                     return_details = tracking_get_ecomxp_details(shipment, awb)
-                    return jsonify({"success": True, "data": return_details}), 200
-                except Exception as e:
-                    return (
-                        jsonify({"success": False, "msg": "Details not available"}),
-                        400,
-                    )
+
+                return jsonify({"success": True, "data": return_details}), 200
+            except Exception as e:
+                return (
+                    jsonify({"success": False, "msg": "Details not available"}),
+                    400,
+                )
 
         if req_obj and "ShipmentData" in req_obj and req_obj["ShipmentData"]:
             response = dict()
@@ -3218,9 +2892,7 @@ def track_order(awb):
             response["status"] = last_status
             response["logo_url"] = None
             response["theme_color"] = None
-            response["remark"] = req_obj["ShipmentData"][0]["Shipment"]["Status"][
-                "Instructions"
-            ]
+            response["remark"] = req_obj["ShipmentData"][0]["Shipment"]["Status"]["Instructions"]
             response["order_id"] = req_obj["ShipmentData"][0]["Shipment"]["ReferenceNo"]
             if len(req_obj["ShipmentData"][0]["Shipment"]["PickUpDate"]) != 19:
                 status_time = datetime.strptime(
@@ -3236,9 +2908,7 @@ def track_order(awb):
             response["placed_on"] = status_time.strftime("%d %b %Y, %H:%M:%S")
             response["get_details"] = True
             if "expectedDate" in req_obj["ShipmentData"][0]["Shipment"]:
-                response["arriving_on"] = req_obj["ShipmentData"][0]["Shipment"][
-                    "expectedDate"
-                ][:10]
+                response["arriving_on"] = req_obj["ShipmentData"][0]["Shipment"]["expectedDate"][:10]
             else:
                 response["arriving_on"] = None
             picked_obj = {"status": "Picked", "city": None, "time": None}
@@ -3322,17 +2992,13 @@ def track_order(awb):
         )
         if not order_statuses:
             return (
-                jsonify(
-                    {"success": False, "msg": "tracking not available for this id"}
-                ),
+                jsonify({"success": False, "msg": "tracking not available for this id"}),
                 400,
             )
 
         client_obj = (
             db.session.query(ClientMapping)
-            .filter(
-                ClientMapping.client_prefix == order_statuses[-1].order.client_prefix
-            )
+            .filter(ClientMapping.client_prefix == order_statuses[-1].order.client_prefix)
             .first()
         )
 
@@ -3347,19 +3013,14 @@ def track_order(awb):
         #     prod_obj = {"name": op_ass.master_product.name, "quantity": op_ass.quantity}
         #     response['products'].append(prod_obj)
         response["destination_city"] = None
-        if (
-            shipment.order.status not in ("DELIVERED", "RTO")
-            and shipment.order.status_type != "RT"
-        ):
+        if shipment.order.status not in ("DELIVERED", "RTO") and shipment.order.status_type != "RT":
             response["destination_city"] = shipment.order.delivery_address.city
         if client_obj:
             response["logo_url"] = client_obj.client_logo
             response["theme_color"] = client_obj.theme_color
         response["remark"] = order_statuses[-1].status_text
         response["order_id"] = order_statuses[-1].order.channel_order_id
-        response["placed_on"] = order_statuses[-1].order.order_date.strftime(
-            "%d %b %Y, %I:%M %p"
-        )
+        response["placed_on"] = order_statuses[-1].order.order_date.strftime("%d %b %Y, %I:%M %p")
         response["get_details"] = True
         response["order_track"] = list()
         if shipment.edd:
@@ -3370,9 +3031,7 @@ def track_order(awb):
             status_dict = dict()
             status_dict["status"] = order_status.status
             status_dict["city"] = order_status.location_city
-            status_dict["time"] = order_status.status_time.strftime(
-                "%d %b %Y, %I:%M %p"
-            )
+            status_dict["time"] = order_status.status_time.strftime("%d %b %Y, %I:%M %p")
             response["order_track"].append(status_dict)
 
         addition_statuses = list()
@@ -3414,18 +3073,14 @@ def get_invoice_details(unique_id):
         )
         order_qs = (
             db.session.query(OrdersInvoice)
-            .filter(
-                OrdersInvoice.qr_url == url, OrdersInvoice.order_id == int(unique_id)
-            )
+            .filter(OrdersInvoice.qr_url == url, OrdersInvoice.order_id == int(unique_id))
             .first()
         )
         if not order_qs:
             return jsonify({"success": False, "msg": "Invalid URL"}), 400
 
         cl_map = (
-            db.session.query(ClientMapping)
-            .filter(ClientMapping.client_prefix == order_qs.order.client_prefix)
-            .first()
+            db.session.query(ClientMapping).filter(ClientMapping.client_prefix == order_qs.order.client_prefix).first()
         )
         if not cl_map:
             return jsonify({"success": False, "msg": "Invalid URL"}), 400
@@ -3438,11 +3093,7 @@ def get_invoice_details(unique_id):
         client_logo = cl_map.client_logo if cl_map.client_logo else ""
         client_name = cl_map.legal_name if cl_map.legal_name else cl_map.client_name
         invoice_no = order_qs.invoice_no_text if order_qs.invoice_no_text else ""
-        invoice_date = (
-            order_qs.date_created.strftime("%d %b %Y, %H:%M:%S")
-            if order_qs.date_created
-            else ""
-        )
+        invoice_date = order_qs.date_created.strftime("%d %b %Y, %H:%M:%S") if order_qs.date_created else ""
 
         for prod in order_qs.order.products:
             try:
@@ -3451,11 +3102,7 @@ def get_invoice_details(unique_id):
                     for tax_lines in prod.tax_lines:
                         total_tax += tax_lines["rate"]
 
-                    taxable_val = (
-                        prod.amount
-                        if prod.amount is not None
-                        else prod.master_product.price * prod.quantity
-                    )
+                    taxable_val = prod.amount if prod.amount is not None else prod.master_product.price * prod.quantity
 
                     taxable_val = taxable_val / (1 + total_tax)
                     for tax_lines in prod.tax_lines:
@@ -3467,20 +3114,10 @@ def get_invoice_details(unique_id):
                         else:
                             igst += gst
 
-                elif order_qs.order.shipments and (
-                    prod.amount or prod.master_product.price
-                ):
-                    total_tax = (
-                        prod.master_product.tax_rate
-                        if prod.master_product.tax_rate
-                        else 0.18
-                    )
+                elif order_qs.order.shipments and (prod.amount or prod.master_product.price):
+                    total_tax = prod.master_product.tax_rate if prod.master_product.tax_rate else 0.18
 
-                    taxable_val = (
-                        prod.amount
-                        if prod.amount is not None
-                        else prod.master_product.price * prod.quantity
-                    )
+                    taxable_val = prod.amount if prod.amount is not None else prod.master_product.price * prod.quantity
 
                     taxable_val = taxable_val / (1 + total_tax)
                     if order_qs.order.shipments[0].same_state:
@@ -3540,12 +3177,12 @@ def ivr_call(resp):
 
         ivr_url = "https://ff2064142bc89ac5e6c52a6398063872f95f759249509009:783fa09c0ba1110309f606c7411889192335bab2e908a079@api.exotel.com/v1/Accounts/wareiq1/Calls/connect"
         call_data = {
-            'From': from_no,
-            'To': str(order.customer_phone),
-            'CallerId': '02248930167',
-            'CallType': 'trans',
-            'StatusCallback': 'http://track.wareiq.com/orders/v1/ivrcalls/passthru/%s'%str(ivr_id),
-            'MaxRetries': 1
+            "From": from_no,
+            "To": str(order.customer_phone),
+            "CallerId": "02248930167",
+            "CallType": "trans",
+            "StatusCallback": "http://track.wareiq.com/orders/v1/ivrcalls/passthru/%s" % str(ivr_id),
+            "MaxRetries": 1,
         }
 
         req = requests.post(ivr_url, data=call_data)
@@ -3603,9 +3240,7 @@ def ivr_call_history(resp):
 @orders_blueprint.route("/orders/v1/ivrcalls/passthru/<ivr_id>", methods=["POST"])
 def ivr_passthru(ivr_id):
     try:
-        ivr_obj = (
-            db.session.query(IVRHistory).filter(IVRHistory.id == int(ivr_id)).first()
-        )
+        ivr_obj = db.session.query(IVRHistory).filter(IVRHistory.id == int(ivr_id)).first()
         if not ivr_obj:
             return jsonify({"success": False, "msg": "IVR details not found"}), 404
 
@@ -3773,18 +3408,10 @@ def serviceability_badges_shopify():
             if not highest_num_loc or value["count"] > highest_num_loc[1]:
                 highest_num_loc = [key, value["count"], value["pincode"]]
             if value["count"] == no_sku:
-                warehouse_pincode_str += (
-                    "('" + key + "','" + str(value["pincode"]) + "'),"
-                )
+                warehouse_pincode_str += "('" + key + "','" + str(value["pincode"]) + "'),"
 
         if not warehouse_pincode_str:
-            warehouse_pincode_str = (
-                "('"
-                + str(highest_num_loc[0])
-                + "','"
-                + str(str(highest_num_loc[2]))
-                + "'),"
-            )
+            warehouse_pincode_str = "('" + str(highest_num_loc[0]) + "','" + str(str(highest_num_loc[2])) + "'),"
 
         warehouse_pincode_str = warehouse_pincode_str.rstrip(",")
 
@@ -3793,9 +3420,7 @@ def serviceability_badges_shopify():
 
         try:
             cur_2.execute(
-                fetch_warehouse_to_pick_from.replace(
-                    "__WAREHOUSE_PINCODES__", warehouse_pincode_str
-                )
+                fetch_warehouse_to_pick_from.replace("__WAREHOUSE_PINCODES__", warehouse_pincode_str)
                 .replace("__COURIER_ID__", str(courier_id))
                 .replace("__DELIVERY_PINCODE__", str(del_pincode))
             )
@@ -3851,9 +3476,7 @@ def serviceability_badges_shopify():
         else:
             label_url = "https://logourls.s3.amazonaws.com/wareiq_standard.jpeg"
 
-        delivered_by = (
-            datetime.utcnow() + timedelta(hours=5.5) + timedelta(days=days_for_delivery)
-        )
+        delivered_by = datetime.utcnow() + timedelta(hours=5.5) + timedelta(days=days_for_delivery)
 
         delivery_zone = final_wh[2]
         if delivery_zone in ("D1", "D2"):
@@ -3993,9 +3616,9 @@ class PincodeServiceabilty(Resource):
             no_sku = len(sku_list)
             try:
                 cur.execute(
-                    available_warehouse_product_quantity.replace(
-                        "__SKU_STR__", sku_string
-                    ).replace("__CLIENT_PREFIX__", auth_data["client_prefix"])
+                    available_warehouse_product_quantity.replace("__SKU_STR__", sku_string).replace(
+                        "__CLIENT_PREFIX__", auth_data["client_prefix"]
+                    )
                 )
             except Exception:
                 conn.rollback()
@@ -4031,18 +3654,10 @@ class PincodeServiceabilty(Resource):
                 if not highest_num_loc or value["count"] > highest_num_loc[1]:
                     highest_num_loc = [key, value["count"], value["pincode"]]
                 if value["count"] == no_sku:
-                    warehouse_pincode_str += (
-                        "('" + key + "','" + str(value["pincode"]) + "'),"
-                    )
+                    warehouse_pincode_str += "('" + key + "','" + str(value["pincode"]) + "'),"
 
             if not warehouse_pincode_str:
-                warehouse_pincode_str = (
-                    "('"
-                    + str(highest_num_loc[0])
-                    + "','"
-                    + str(str(highest_num_loc[2]))
-                    + "'),"
-                )
+                warehouse_pincode_str = "('" + str(highest_num_loc[0]) + "','" + str(str(highest_num_loc[2])) + "'),"
 
             warehouse_pincode_str = warehouse_pincode_str.rstrip(",")
 
@@ -4051,9 +3666,7 @@ class PincodeServiceabilty(Resource):
 
             try:
                 cur_2.execute(
-                    fetch_warehouse_to_pick_from.replace(
-                        "__WAREHOUSE_PINCODES__", warehouse_pincode_str
-                    )
+                    fetch_warehouse_to_pick_from.replace("__WAREHOUSE_PINCODES__", warehouse_pincode_str)
                     .replace("__COURIER_ID__", str(courier_id))
                     .replace("__DELIVERY_PINCODE__", str(del_pincode))
                 )
@@ -4099,11 +3712,7 @@ class PincodeServiceabilty(Resource):
             else:
                 label_url = "https://logourls.s3.amazonaws.com/wareiq_standard.jpeg"
 
-            delivered_by = (
-                datetime.utcnow()
-                + timedelta(hours=5.5)
-                + timedelta(days=days_for_delivery)
-            )
+            delivered_by = datetime.utcnow() + timedelta(hours=5.5) + timedelta(days=days_for_delivery)
 
             delivery_zone = final_wh[2]
             if delivery_zone in ("D1", "D2"):
@@ -4259,11 +3868,7 @@ class GetShipmentData(Resource):
             for order in orders_qs:
                 ret_obj = dict()
                 ret_obj["order_no"] = order.order_id_channel_unique
-                ret_obj["order_date"] = (
-                    order.order_date.strftime("%Y-%m-%d %I:%M %p")
-                    if order.order_date
-                    else None
-                )
+                ret_obj["order_date"] = order.order_date.strftime("%Y-%m-%d %I:%M %p") if order.order_date else None
                 if order.shipments and order.shipments[0].courier:
                     ret_obj["status"] = "success"
                     ret_obj["sort_code"] = order.shipments[0].routing_code
@@ -4275,11 +3880,7 @@ class GetShipmentData(Resource):
                     ret_obj["msg"] = "order not shipped yet"
                     ret_obj["order_status"] = order.status
 
-                ret_obj["WH"] = (
-                    order.pickup_data.pickup.warehouse_prefix
-                    if order.pickup_data
-                    else None
-                )
+                ret_obj["WH"] = order.pickup_data.pickup.warehouse_prefix if order.pickup_data else None
                 return_data.append(ret_obj)
                 orders_available_list.append(order.order_id_channel_unique)
 
@@ -4319,9 +3920,7 @@ class TrackShipments(Resource):
             if len(awbs) > 200:
                 return {"status": "Failed", "msg": "max allowed awbs 200"}, 400
 
-            shipment_qs = (
-                db.session.query(Shipments).filter(Shipments.awb.in_(awbs)).all()
-            )
+            shipment_qs = db.session.query(Shipments).filter(Shipments.awb.in_(awbs)).all()
             found_awbs = list()
             for shipment in shipment_qs:
                 try:
@@ -4343,10 +3942,7 @@ class TrackShipments(Resource):
 
                     client_obj = (
                         db.session.query(ClientMapping)
-                        .filter(
-                            ClientMapping.client_prefix
-                            == order_statuses[-1].order.client_prefix
-                        )
+                        .filter(ClientMapping.client_prefix == order_statuses[-1].order.client_prefix)
                         .first()
                     )
 
@@ -4365,21 +3961,14 @@ class TrackShipments(Resource):
                         }
                         response["products"].append(prod_obj)
                     response["destination_city"] = None
-                    if (
-                        shipment.order.status not in ("DELIVERED", "RTO")
-                        and shipment.order.status_type != "RT"
-                    ):
-                        response[
-                            "destination_city"
-                        ] = shipment.order.delivery_address.city
+                    if shipment.order.status not in ("DELIVERED", "RTO") and shipment.order.status_type != "RT":
+                        response["destination_city"] = shipment.order.delivery_address.city
                     if client_obj:
                         response["logo_url"] = client_obj.client_logo
                         response["theme_color"] = client_obj.theme_color
                     response["remark"] = order_statuses[-1].status_text
                     response["order_id"] = order_statuses[-1].order.channel_order_id
-                    response["placed_on"] = order_statuses[
-                        -1
-                    ].order.order_date.strftime("%d %b %Y, %I:%M %p")
+                    response["placed_on"] = order_statuses[-1].order.order_date.strftime("%d %b %Y, %I:%M %p")
                     response["get_details"] = True
                     response["order_track"] = list()
                     if shipment.edd:
@@ -4390,9 +3979,7 @@ class TrackShipments(Resource):
                         status_dict = dict()
                         status_dict["status"] = order_status.status
                         status_dict["city"] = order_status.location_city
-                        status_dict["time"] = order_status.status_time.strftime(
-                            "%d %b %Y, %I:%M %p"
-                        )
+                        status_dict["time"] = order_status.status_time.strftime("%d %b %Y, %I:%M %p")
                         response["order_track"].append(status_dict)
 
                     return_data.append(response)
@@ -4408,9 +3995,7 @@ class TrackShipments(Resource):
 
             for awb in awbs:
                 if awb not in found_awbs:
-                    return_data.append(
-                        {"awb": awb, "success": False, "msg": "awb not found"}
-                    )
+                    return_data.append({"awb": awb, "success": False, "msg": "awb not found"})
 
             return {"success": True, "data": return_data}, 200
 
@@ -4428,12 +4013,28 @@ def get_pickup_points(resp):
     try:
         cur = conn.cursor()
         auth_data = resp.get("data")
-        #KAMA customization
-        if auth_data.get('warehouse_prefix') in ('MHJTRO','MHCHRO','KAVRRO','GJAORO','MHPMRO','HRDGRO','TLLTRO','RJMIRO',
-                                                 'UPPMRO', 'WBQMRO','TNEARO','CBWHECB2C','MHWHECB2C','DLWHEC','PLB2C01',
-                                                 'HOLISOLBL','TNPMRO'):
+        # KAMA customization
+        if auth_data.get("warehouse_prefix") in (
+            "MHJTRO",
+            "MHCHRO",
+            "KAVRRO",
+            "GJAORO",
+            "MHPMRO",
+            "HRDGRO",
+            "TLLTRO",
+            "RJMIRO",
+            "UPPMRO",
+            "WBQMRO",
+            "TNEARO",
+            "CBWHECB2C",
+            "MHWHECB2C",
+            "DLWHEC",
+            "PLB2C01",
+            "HOLISOLBL",
+            "TNPMRO",
+        ):
 
-            response["pickup_points"] = ['PLB2C01', 'MHWHECB2C', 'DLWHEC']
+            response["pickup_points"] = ["PLB2C01", "MHWHECB2C", "DLWHEC"]
             return jsonify(response), 200
 
         page = request.args.get("page", 1)
@@ -4450,9 +4051,7 @@ def get_pickup_points(resp):
                                                     order by bb.warehouse_prefix
                                                     __PAGINATION__) xx"""
         if auth_data["user_group"] == "super-admin":
-            pickup_points_select_query = pickup_points_select_query.replace(
-                "__CLIENT_FILTER__", " where 1=1 "
-            )
+            pickup_points_select_query = pickup_points_select_query.replace("__CLIENT_FILTER__", " where 1=1 ")
         elif auth_data["user_group"] == "client":
             pickup_points_select_query = pickup_points_select_query.replace(
                 "__CLIENT_FILTER__", "where aa.client_prefix='%s'" % str(client_prefix)
@@ -4479,9 +4078,7 @@ def get_pickup_points(resp):
                 ),
             )
         else:
-            pickup_points_select_query = pickup_points_select_query.replace(
-                "__SEARCH_FILTER__", ""
-            )
+            pickup_points_select_query = pickup_points_select_query.replace("__SEARCH_FILTER__", "")
 
         if pickup_points_select_query:
             cur.execute(pickup_points_select_query)
@@ -4504,18 +4101,12 @@ def getshipcouriers(resp):
                 return jsonify({"msg": "Invalid user type"}), 400
             data = json.loads(request.data)
             total_orders = len(data.get("order_ids"))
-            order_tuple_str = check_client_order_ids(
-                data.get("order_ids"), auth_data, cur
-            )
+            order_tuple_str = check_client_order_ids(data.get("order_ids"), auth_data, cur)
 
             if not order_tuple_str:
                 return jsonify({"success": False, "msg": "Invalid order ids"}), 400
 
-            cur.execute(
-                select_serviceable_couriers_orders.replace(
-                    "__ORDER_IDS__", order_tuple_str
-                )
-            )
+            cur.execute(select_serviceable_couriers_orders.replace("__ORDER_IDS__", order_tuple_str))
             all_cours = cur.fetchall()
             serv_dict = dict()
             for cour in all_cours:
@@ -4541,8 +4132,7 @@ def getshipcouriers(resp):
                             "courier_name": fetch[1],
                             "id": fetch[0],
                             "serviceable_count": data["serviceable_count"],
-                            "unserviceable_count": total_orders
-                            - data["serviceable_count"],
+                            "unserviceable_count": total_orders - data["serviceable_count"],
                         }
                     )
             courier_list.append(
@@ -4553,9 +4143,7 @@ def getshipcouriers(resp):
                     "unserviceable_count": 0,
                 }
             )
-            courier_list = sorted(
-                courier_list, key=lambda k: k["serviceable_count"], reverse=True
-            )
+            courier_list = sorted(courier_list, key=lambda k: k["serviceable_count"], reverse=True)
             return jsonify({"courier_list": courier_list, "success": True}), 200
         except Exception:
             return jsonify({"success": False}), 400

@@ -1370,6 +1370,23 @@ def cancel_order_on_couriers(order):
             }
             req = requests.put(url, headers=headers, data=payload)
 
+        if order.shipments[0].courier.courier_name.startswith("DTDC"):  # Cancel on DTDC
+            headers = {
+                "Authorization": "Basic " + order.shipments[0].courier.api_key,
+                "Content-Type": "application/json",
+            }
+            cancel_body = json.dumps(
+                {
+                    "AWBNo": [order.shipments[0].awb],
+                    "customerCode": order.shipments[0].courier.api_password.split("|")[0],
+                }
+            )
+            req = requests.post(
+                "​https://app.shipsy.in/api/client/integration/consignment/cancellation",
+                headers=headers,
+                data=cancel_body,
+            )
+
 
 def cancel_order_on_channels(order):
 

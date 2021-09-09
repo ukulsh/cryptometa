@@ -118,9 +118,7 @@ def ecom_status_mapper(scan, new_data, requested_order, status_time):
 
 def dtdc_status_mapper(scan):
     to_record_status = ""
-    if scan["strCode"] == "BKD":
-        to_record_status = "Received"
-    elif scan["strCode"] == "OPMF":
+    if scan["strCode"] == "OPMF":
         to_record_status = "Picked"
     elif scan["strCode"] == "OUTDLV":
         to_record_status = "Out for delivery"

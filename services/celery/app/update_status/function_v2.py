@@ -803,6 +803,9 @@ class OrderUpdateCourier:
                     status_time = datetime.strptime(status_time, config[self.name]["status_time_format"])
 
                 to_record_status = config[self.name]["status_mapper_fn"](each_scan)
+                if not to_record_status:
+                    continue
+
                 if to_record_status not in new_status:
                     new_status[to_record_status] = (
                         existing_order[0],

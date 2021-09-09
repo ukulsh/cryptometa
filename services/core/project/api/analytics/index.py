@@ -937,10 +937,8 @@ def inventory_analytics(resp):
         auth_data = resp.get("data")
         client_prefix = auth_data.get("client_prefix")
 
-        # Threshold percentage in the range [0, 1] above which quantity is considered threshold
+        # Threshold percentage in the range [0, 1] above which quantity is considered overstock
         overstock_threshold = 0
-        # Future number of days to be considered for calculating expected sales to determine overstock
-        overstock_timeline = 90
 
         if not auth_data:
             return jsonify({"msg": "Authentication Failed"}), 401
@@ -949,13 +947,13 @@ def inventory_analytics(resp):
         try:
             data = json.loads(request.data)
             warehouses = data.get("warehouses")
-            previous_sales_start_date = (
-                datetime.strptime(data.get("previous_sales_start_date"), "%Y-%m-%d") + timedelta(days=1)
-            ).strftime("%Y-%m-%d")
+            previous_sales_start_date = data.get("previous_sales_start_date")
             previous_sales_end_date = (
                 datetime.strptime(data.get("previous_sales_end_date"), "%Y-%m-%d") + timedelta(days=1)
             ).strftime("%Y-%m-%d")
             future_time_period = int(data.get("future_time_period"))
+            # Future number of days to be considered for calculating expected sales to determine overstock
+            overstock_timeline = int(data.get("future_time_period"))
             expected_growth = float(data.get("expected_growth"))
             search_key = data.get("search_key")
             sort_by = data.get("sort_by")
@@ -968,6 +966,7 @@ def inventory_analytics(resp):
         past_time_period = (
             datetime.strptime(previous_sales_end_date, "%Y-%m-%d")
             - datetime.strptime(previous_sales_start_date, "%Y-%m-%d")
+            - timedelta(days=1)
         ).days
 
         # Query to get stats on each product

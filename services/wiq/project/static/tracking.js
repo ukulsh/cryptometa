@@ -7,6 +7,32 @@ $(document).ready(function() {
     trackingError.classList.remove('hide');
   }
 
+  let awbString = urlParams.get('awb');
+  if(awbString) {
+    let awbList = awbString.split(',');
+    if(awbList && awbList.length > 0) {
+      let multipleAwbContainer = document.querySelector('.multiple-awb-container');
+      let trackingUrl = window && window.location && window.location.origin || 'https://wareiq.wiq.app';
+      let innerHTML = `
+        <div class="awb-list">
+          ${awbList.map((awb) => {
+            let trackUrl = `${trackingUrl}/tracking/${awb}`
+            return (
+              `<div class="awb-item">
+                <div class="awb-number"><div class="awb-icon"><img src="https://wareiq-assets.s3.amazonaws.com/track_package.svg" alt="In Transit"></div><span>${awb}</span></div>
+                <a href="${trackUrl}" class="awb-tracking-link" target="_blank">
+                  <button class="awb-tracking-btn">Track Package</button>
+                </a>
+              </div>`
+            )
+          }).join('')}
+        </div>
+      `;
+      multipleAwbContainer.innerHTML = innerHTML;
+      multipleAwbContainer.classList.remove('hide');
+    }
+  }
+
   let orderIdRadio = document.querySelector('#orderId');
   let awbRadio = document.querySelector('#awbNumber');
 

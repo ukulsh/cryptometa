@@ -129,6 +129,7 @@ ORDERS_DOWNLOAD_HEADERS = [
     "SGST",
     "IGST",
     "WareIQ ID",
+    "Zone",
 ]
 
 ORDERS_UPLOAD_HEADERS = [

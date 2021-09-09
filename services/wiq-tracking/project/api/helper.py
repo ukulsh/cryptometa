@@ -9,3 +9,20 @@ def get_courier_details(awb, cur):
         (awb,),
     )
     return cur.fetchone()
+
+
+def check_subdomain_exists(subdomain, cur):
+    cur.execute(
+        """
+            SELECT 
+                client_prefix, client_logo_url, theme_color, background_image_url, 
+                client_name, client_url, nav_links, support_url, privacy_url, nps_enabled, 
+                banners  
+            FROM client_customization 
+            WHERE subdomain=%s
+            """,
+        (subdomain,),
+    )
+    client_details = cur.fetchone()
+
+    return client_details

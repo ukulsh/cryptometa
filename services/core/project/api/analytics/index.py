@@ -966,7 +966,6 @@ def inventory_analytics(resp):
         past_time_period = (
             datetime.strptime(previous_sales_end_date, "%Y-%m-%d")
             - datetime.strptime(previous_sales_start_date, "%Y-%m-%d")
-            - timedelta(days=1)
         ).days
 
         # Query to get stats on each product
@@ -1003,37 +1002,56 @@ def inventory_analytics(resp):
 
         # Sort wise filter logic
         if sort_by == "stock_out":
+            # For stock out,
+            # 1. Filter only those entries with projected sales is greater than available and in transit quantity (quantity to restock > 0)
             query_to_run = query_to_run.replace(
                 "__STOCK_OUT_FILTER__",
-                "AND COALESCE(aa.sales*{0}*{1}/{2}, 0) > COALESCE(aa.available_quantity, 0)".format(
+                "AND COALESCE(aa.sales*{0}*{1}/{2}, 0) > (COALESCE(aa.available_quantity, 0) + COALESCE(aa.in_transit_quantity, 0))".format(
                     (1 + expected_growth), future_time_period, past_time_period
                 ),
             )
             query_to_run = query_to_run.replace("__OVER_STOCK_FILTER__", "")
             query_to_run = query_to_run.replace("__BEST_SELLER_FILTER__", "")
+
+            # 2. Order based on two levels:
+            # a) First level on the ascending order of days left
+            # b) Second level on descending order of quantity to restock
             query_to_run = query_to_run.replace(
                 "__SORT_BY__",
-                "ORDER BY COALESCE(aa.available_quantity, 0) / NULLIF(aa.sales, 0) ASC, aa.sales DESC",
-            )
-        elif sort_by == "over_stock":
-            query_to_run = query_to_run.replace("__STOCK_OUT_FILTER__", "")
-            query_to_run = query_to_run.replace(
-                "__OVER_STOCK_FILTER__",
-                "AND COALESCE(aa.sales*{0}*{1}/{2}, 0) <= COALESCE(aa.available_quantity, 0)".format(
+                """ORDER BY COALESCE(aa.available_quantity, 0) / NULLIF(aa.sales, 0) ASC, 
+                        (COALESCE(aa.sales*{0}*{1}/{2}, 0) - (COALESCE(aa.available_quantity, 0) + COALESCE(aa.in_transit_quantity, 0))) DESC""".format(
                     (1 + expected_growth), future_time_period, past_time_period
                 ),
             )
+        elif sort_by == "over_stock":
+            # For over stock,
+            # 1. Filter only those entries with projected sales is less than or equal to available and in transit quantity (quantity of over stock > 0)
+            query_to_run = query_to_run.replace("__STOCK_OUT_FILTER__", "")
+            query_to_run = query_to_run.replace(
+                "__OVER_STOCK_FILTER__",
+                "AND COALESCE(aa.sales*{0}*{1}/{2}, 0) <= (COALESCE(aa.available_quantity, 0) + COALESCE(aa.in_transit_quantity, 0))".format(
+                    (1 + expected_growth), overstock_timeline, past_time_period
+                ),
+            )
             query_to_run = query_to_run.replace("__BEST_SELLER_FILTER__", "")
+
+            # 2. Order based on ascending order of quantity to restock
             query_to_run = query_to_run.replace(
                 "__SORT_BY__",
-                "ORDER BY COALESCE(aa.sales, 0) - COALESCE(aa.available_quantity, 0) ASC",
+                "ORDER BY (COALESCE(aa.sales*{0}*{1}/{2}, 0) - (COALESCE(aa.available_quantity, 0) + COALESCE(aa.in_transit_quantity, 0))) ASC".format(
+                    (1 + expected_growth), overstock_timeline, past_time_period
+                ),
             )
         elif sort_by == "best_seller":
+            # For best seller,
+            # 1. Filter only those entries with non-zero sales
             query_to_run = query_to_run.replace("__STOCK_OUT_FILTER__", "")
             query_to_run = query_to_run.replace("__OVER_STOCK_FILTER__", "")
             query_to_run = query_to_run.replace(
                 "__BEST_SELLER_FILTER__", "AND ((aa.sales IS NOT NULL) OR (NOT (aa.sales = 0)))"
             )
+
+            # 2. Order based on descending order of sales
             query_to_run = query_to_run.replace(
                 "__SORT_BY__",
                 "ORDER BY aa.sales DESC NULLS LAST",
@@ -1075,9 +1093,11 @@ def inventory_analytics(resp):
             data_obj["qty_to_restock"] = (
                 math.ceil(data_obj["sku_velocity"] * (1 + expected_growth) * future_time_period)
                 - data_obj["available_qty"]
+                - data_obj["in_transit_qty"]
             )
             data_obj["overstock"] = max(
                 data_obj["available_qty"]
+                + data_obj["in_transit_qty"]
                 - math.ceil((1 + overstock_threshold) * data_obj["sku_velocity"] * overstock_timeline),
                 0,
             )

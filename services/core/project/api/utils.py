@@ -1204,7 +1204,7 @@ def tracking_get_dtdc_details(shipment, awb):
         "Content-Type": "application/json",
     }
     payload = json.dumps({"trkType": "cnno", "strcnno": str(awb), "addtnlDtl": "Y"})
-    req = requests.get(
+    req = requests.post(
         "https://blktracksvc.dtdc.com/dtdc-api/rest/JSONCnTrk/getTrackDetails", headers=headers, data=payload
     ).json()
 
@@ -1265,7 +1265,7 @@ def tracking_get_dtdc_details(shipment, awb):
     for key in return_details:
         return_details[key] = sorted(return_details[key], key=lambda k: k["time"], reverse=True)
 
-    return
+    return return_details
 
 
 def check_client_order_ids(order_ids, auth_data, cur):

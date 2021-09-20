@@ -118,6 +118,7 @@ ORDERS_DOWNLOAD_HEADERS = [
     "Delivered Date",
     "COD Verfication",
     "COD Verified Via",
+    "COD verification Time",
     "NDR Verfication",
     "NDR Verified Via",
     "PDD",
